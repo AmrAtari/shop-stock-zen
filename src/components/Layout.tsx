@@ -1,7 +1,10 @@
 import { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, AlertCircle, BarChart3 } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { LayoutDashboard, Package, AlertCircle, BarChart3, ShoppingCart, Store, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface LayoutProps {
   children: ReactNode;
@@ -9,13 +12,26 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Inventory", href: "/inventory", icon: Package },
+    { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
+    { name: "Stores", href: "/stores", icon: Store },
     { name: "Alerts", href: "/alerts", icon: AlertCircle },
     { name: "Reports", href: "/reports", icon: BarChart3 },
   ];
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate("/auth");
+      toast.success("Logged out successfully");
+    } catch (error: any) {
+      toast.error("Failed to logout");
+    }
+  };
 
   return (
     <div className="flex h-screen bg-background">
@@ -48,6 +64,17 @@ const Layout = ({ children }: LayoutProps) => {
             );
           })}
         </nav>
+
+        <div className="p-4 border-t border-sidebar-border">
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
+            onClick={handleLogout}
+          >
+            <LogOut className="w-5 h-5 mr-3" />
+            <span className="font-medium">Logout</span>
+          </Button>
+        </div>
       </aside>
 
       {/* Main Content */}
