@@ -273,7 +273,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         <DialogHeader>
           <DialogTitle>Import Inventory Data</DialogTitle>
           <DialogDescription>
-            Upload an Excel or CSV file to import or update your inventory
+            Upload an Excel or CSV file to import or update your inventory. Works with files downloaded from Google Sheets.
           </DialogDescription>
         </DialogHeader>
 
@@ -314,15 +314,24 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             )}
           </div>
 
-          <div className="bg-muted p-3 rounded-lg text-sm">
-            <p className="font-medium mb-2">Expected columns:</p>
-            {importType === "full" ? (
+          <div className="space-y-3">
+            <div className="bg-primary/5 border border-primary/20 p-3 rounded-lg text-sm">
+              <p className="font-medium mb-2 text-primary">📊 Using Google Sheets?</p>
               <p className="text-muted-foreground">
-                SKU, Name, Category, Brand, Size, Color, Gender, Season, Quantity, Min Stock, Unit, Supplier, Location
+                Download your sheet as Excel (.xlsx) or CSV: File → Download → Microsoft Excel or Comma Separated Values (.csv)
               </p>
-            ) : (
-              <p className="text-muted-foreground">SKU, Quantity</p>
-            )}
+            </div>
+
+            <div className="bg-muted p-3 rounded-lg text-sm">
+              <p className="font-medium mb-2">Expected columns:</p>
+              {importType === "full" ? (
+                <p className="text-muted-foreground">
+                  SKU, Name, Category, Brand, Size, Color, Gender, Season, Quantity, Min Stock, Unit, Supplier, Location
+                </p>
+              ) : (
+                <p className="text-muted-foreground">SKU, Quantity</p>
+              )}
+            </div>
           </div>
         </div>
 
