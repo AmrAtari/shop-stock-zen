@@ -52,6 +52,27 @@ export type Database = {
       }
       colors: {
         Row: {
+          color_id: string | null
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          color_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          color_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      departments: {
+        Row: {
           created_at: string
           id: string
           name: string
@@ -174,18 +195,28 @@ export type Database = {
           brand: string | null
           category: string
           color: string | null
+          color_id: string | null
           created_at: string
+          department: string | null
+          description: string | null
           gender: string | null
           id: string
+          item_color_code: string | null
+          item_number: string | null
           last_restocked: string | null
           location: string | null
+          main_group: string | null
           min_stock: number
           name: string
+          origin: string | null
+          pos_description: string | null
           quantity: number
           season: string | null
           size: string | null
           sku: string
           supplier: string | null
+          tax: number | null
+          theme: string | null
           unit: string
           updated_at: string
         }
@@ -193,18 +224,28 @@ export type Database = {
           brand?: string | null
           category: string
           color?: string | null
+          color_id?: string | null
           created_at?: string
+          department?: string | null
+          description?: string | null
           gender?: string | null
           id?: string
+          item_color_code?: string | null
+          item_number?: string | null
           last_restocked?: string | null
           location?: string | null
+          main_group?: string | null
           min_stock?: number
           name: string
+          origin?: string | null
+          pos_description?: string | null
           quantity?: number
           season?: string | null
           size?: string | null
           sku: string
           supplier?: string | null
+          tax?: number | null
+          theme?: string | null
           unit?: string
           updated_at?: string
         }
@@ -212,24 +253,70 @@ export type Database = {
           brand?: string | null
           category?: string
           color?: string | null
+          color_id?: string | null
           created_at?: string
+          department?: string | null
+          description?: string | null
           gender?: string | null
           id?: string
+          item_color_code?: string | null
+          item_number?: string | null
           last_restocked?: string | null
           location?: string | null
+          main_group?: string | null
           min_stock?: number
           name?: string
+          origin?: string | null
+          pos_description?: string | null
           quantity?: number
           season?: string | null
           size?: string | null
           sku?: string
           supplier?: string | null
+          tax?: number | null
+          theme?: string | null
           unit?: string
           updated_at?: string
         }
         Relationships: []
       }
       locations: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      main_groups: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      origins: {
         Row: {
           created_at: string
           id: string
@@ -491,6 +578,24 @@ export type Database = {
         Relationships: []
       }
       suppliers: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      themes: {
         Row: {
           created_at: string
           id: string
