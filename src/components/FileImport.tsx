@@ -325,9 +325,17 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             <div className="bg-muted p-3 rounded-lg text-sm">
               <p className="font-medium mb-2">Expected columns:</p>
               {importType === "full" ? (
-                <p className="text-muted-foreground">
-                  SKU, Name, Category, Brand, Size, Color, Gender, Season, Quantity, Min Stock, Unit, Supplier, Location
-                </p>
+                <div className="space-y-2">
+                  <p className="text-muted-foreground">
+                    <strong>Required:</strong> SKU, Name, Category
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    <strong>Optional:</strong> Brand, Size, Color, Gender, Season, Quantity, Min Stock, Unit, Supplier, Location
+                  </p>
+                  <p className="text-xs text-muted-foreground italic">
+                    Note: Quantity defaults to 0 if not provided
+                  </p>
+                </div>
               ) : (
                 <p className="text-muted-foreground">SKU, Quantity</p>
               )}

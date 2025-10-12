@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Upload, Download, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
+import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { toast } from "sonner";
@@ -16,7 +17,9 @@ const InventoryNew = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | undefined>();
+  const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -139,6 +142,7 @@ const InventoryNew = () => {
               <TableHead>Quantity</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Location</TableHead>
+              <TableHead>Prices</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -160,6 +164,19 @@ const InventoryNew = () => {
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
                   <TableCell>{item.location || "-"}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedItemForHistory({ id: item.id, name: item.name });
+                        setPriceHistoryOpen(true);
+                      }}
+                    >
+                      <History className="w-4 h-4 mr-1" />
+                      History
+                    </Button>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
@@ -200,6 +217,15 @@ const InventoryNew = () => {
         onOpenChange={setImportOpen}
         onImportComplete={fetchInventory}
       />
+
+      {selectedItemForHistory && (
+        <PriceHistoryDialog
+          open={priceHistoryOpen}
+          onOpenChange={setPriceHistoryOpen}
+          itemId={selectedItemForHistory.id}
+          itemName={selectedItemForHistory.name}
+        />
+      )}
     </div>
   );
 };

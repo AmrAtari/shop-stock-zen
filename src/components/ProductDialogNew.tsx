@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Item, PriceLevel } from "@/types/database";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { History } from "lucide-react";
+import PriceHistoryDialog from "./PriceHistoryDialog";
 
 interface ProductDialogNewProps {
   open: boolean;
@@ -61,6 +63,8 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
     selling_price: 0,
     wholesale_price: 0,
   });
+
+  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -465,7 +469,20 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
           </div>
 
           <div className="border-t pt-4">
-            <h3 className="font-semibold mb-4">Pricing Information</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Pricing Information</h3>
+              {item && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPriceHistoryOpen(true)}
+                >
+                  <History className="w-4 h-4 mr-2" />
+                  View Price History
+                </Button>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="cost_price">Cost Price ($) *</Label>
@@ -512,6 +529,15 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
           </DialogFooter>
         </form>
       </DialogContent>
+
+      {item && (
+        <PriceHistoryDialog
+          open={priceHistoryOpen}
+          onOpenChange={setPriceHistoryOpen}
+          itemId={item.id}
+          itemName={item.name}
+        />
+      )}
     </Dialog>
   );
 };
