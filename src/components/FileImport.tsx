@@ -22,19 +22,29 @@ interface FileImportProps {
 const itemSchema = z.object({
   sku: z.string().trim().min(1, "SKU is required").max(50, "SKU must be less than 50 characters"),
   name: z.string().trim().min(1, "Name is required").max(200, "Name must be less than 200 characters"),
+  pos_description: z.string().trim().min(1, "Pos Description is required").max(300, "Pos Description must be less than 300 characters"),
+  item_number: z.string().trim().min(1, "Item Number is required").max(50, "Item Number must be less than 50 characters"),
+  supplier: z.string().trim().min(1, "Supplier is required").max(200, "Supplier must be less than 200 characters"),
+  department: z.string().trim().min(1, "Department is required").max(100, "Department must be less than 100 characters"),
+  main_group: z.string().trim().min(1, "Main Group is required").max(100, "Main Group must be less than 100 characters"),
   category: z.string().trim().min(1, "Category is required").max(100, "Category must be less than 100 characters"),
-  brand: z.string().trim().max(100, "Brand must be less than 100 characters").optional().nullable(),
-  size: z.string().trim().max(50, "Size must be less than 50 characters").optional().nullable(),
-  color: z.string().trim().max(50, "Color must be less than 50 characters").optional().nullable(),
-  gender: z.string().trim().max(50, "Gender must be less than 50 characters").optional().nullable(),
-  season: z.string().trim().max(50, "Season must be less than 50 characters").optional().nullable(),
+  origin: z.string().trim().min(1, "Origin is required").max(100, "Origin must be less than 100 characters"),
+  season: z.string().trim().min(1, "Season is required").max(50, "Season must be less than 50 characters"),
+  size: z.string().trim().min(1, "Size is required").max(50, "Size must be less than 50 characters"),
+  color: z.string().trim().min(1, "Color is required").max(50, "Color must be less than 50 characters"),
+  color_id: z.string().trim().min(1, "Color Id is required").max(50, "Color Id must be less than 50 characters"),
+  item_color_code: z.string().trim().min(1, "Item Color Code is required").max(50, "Item Color Code must be less than 50 characters"),
+  theme: z.string().trim().max(100, "Theme must be less than 100 characters").optional().nullable(),
+  cost_price: z.number().min(0, "Cost cannot be negative").max(1000000000, "Cost is too large"),
+  selling_price: z.number().min(0, "Price cannot be negative").max(1000000000, "Price is too large"),
+  tax: z.number().min(0, "Tax cannot be negative").max(100, "Tax must be less than 100"),
   unit: z.string().trim().min(1, "Unit is required").max(20, "Unit must be less than 20 characters"),
   quantity: z.number().int("Quantity must be a whole number").min(0, "Quantity cannot be negative").max(1000000, "Quantity is too large").optional().nullable(),
   min_stock: z.number().int("Min stock must be a whole number").min(0, "Min stock cannot be negative").max(1000000, "Min stock is too large").optional().nullable(),
   location: z.string().trim().max(200, "Location must be less than 200 characters").optional().nullable(),
-  supplier: z.string().trim().max(200, "Supplier must be less than 200 characters").optional().nullable(),
-  cost_price: z.number().min(0, "Cost price cannot be negative").max(1000000000, "Cost price is too large").optional().nullable(),
-  selling_price: z.number().min(0, "Selling price cannot be negative").max(1000000000, "Selling price is too large").optional().nullable(),
+  description: z.string().trim().max(500, "Description must be less than 500 characters").optional().nullable(),
+  gender: z.string().trim().max(50, "Gender must be less than 50 characters").optional().nullable(),
+  brand: z.string().trim().max(100, "Brand must be less than 100 characters").optional().nullable(),
   wholesale_price: z.number().min(0, "Wholesale price cannot be negative").max(1000000000, "Wholesale price is too large").optional().nullable(),
 });
 
@@ -149,19 +159,29 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           const validationResult = itemSchema.safeParse({
             sku,
             name: row.Name || row.name,
+            pos_description: row["Pos Description"] || row.pos_description,
+            item_number: row["Item Number"] || row.item_number,
+            supplier: row.Supplier || row.supplier,
+            department: row.Department || row.department,
+            main_group: row["Main Group"] || row.main_group,
             category: row.Category || row.category,
-            brand: row.Brand || row.brand || null,
-            size: row.Size || row.size || null,
-            color: row.Color || row.color || null,
-            gender: row.Gender || row.gender || null,
-            season: row.Season || row.season || null,
+            origin: row.Origin || row.origin,
+            season: row.Season || row.season,
+            size: row.Size || row.size,
+            color: row.Color || row.color,
+            color_id: row["Color Id"] || row.color_id,
+            item_color_code: row["Item Color Code"] || row.item_color_code,
+            theme: row.Theme || row.theme || null,
+            cost_price: row.Cost || row.cost ? parseFloat(row.Cost || row.cost) : 0,
+            selling_price: row.Price || row.price ? parseFloat(row.Price || row.price) : 0,
+            tax: row.Tax || row.tax ? parseFloat(row.Tax || row.tax) : 0,
             unit: row.Unit || row.unit || "pcs",
             quantity: row.Quantity || row.quantity ? parseInt(row.Quantity || row.quantity) : null,
             min_stock: row["Min Stock"] || row.min_stock ? parseInt(row["Min Stock"] || row.min_stock) : null,
             location: row.Location || row.location || null,
-            supplier: row.Supplier || row.supplier || null,
-            cost_price: row["Cost Price"] || row.cost_price ? parseFloat(row["Cost Price"] || row.cost_price) : null,
-            selling_price: row["Selling Price"] || row.selling_price ? parseFloat(row["Selling Price"] || row.selling_price) : null,
+            description: row.Desc || row.description || null,
+            gender: row.Gender || row.gender || null,
+            brand: row.Brand || row.brand || null,
             wholesale_price: row["Wholesale Price"] || row.wholesale_price ? parseFloat(row["Wholesale Price"] || row.wholesale_price) : null,
           });
 
@@ -205,7 +225,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             
             // Calculate differences
             const differences: Record<string, { old: any; new: any }> = {};
-            const fieldsToCompare = ['name', 'category', 'brand', 'size', 'color', 'gender', 'season', 'unit', 'quantity', 'min_stock', 'location', 'supplier'];
+            const fieldsToCompare = ['name', 'pos_description', 'item_number', 'description', 'department', 'main_group', 'category', 'origin', 'season', 'size', 'color', 'color_id', 'item_color_code', 'theme', 'brand', 'gender', 'unit', 'quantity', 'min_stock', 'location', 'supplier', 'tax'];
             
             fieldsToCompare.forEach((field) => {
               if (existing[field] !== validatedData[field as keyof typeof validatedData]) {
@@ -229,16 +249,26 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             const { error } = await supabase.from("items").insert({
               sku: validatedData.sku,
               name: validatedData.name,
+              pos_description: validatedData.pos_description,
+              item_number: validatedData.item_number,
+              description: validatedData.description,
+              supplier: validatedData.supplier,
+              department: validatedData.department,
+              main_group: validatedData.main_group,
               category: validatedData.category,
-              brand: validatedData.brand,
+              origin: validatedData.origin,
+              season: validatedData.season,
               size: validatedData.size,
               color: validatedData.color,
+              color_id: validatedData.color_id,
+              item_color_code: validatedData.item_color_code,
+              theme: validatedData.theme,
+              brand: validatedData.brand,
               gender: validatedData.gender,
-              season: validatedData.season,
+              tax: validatedData.tax,
               quantity: validatedData.quantity ?? 0,
               min_stock: validatedData.min_stock ?? 10,
               unit: validatedData.unit,
-              supplier: validatedData.supplier,
               location: validatedData.location,
             });
 
@@ -426,11 +456,11 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               <p className="font-medium mb-2">Expected columns:</p>
               {importType === "full" ? (
                 <div className="space-y-2">
-                  <p className="text-muted-foreground">
-                    <strong>Required:</strong> SKU, Name, Category
+                  <p className="text-muted-foreground text-xs">
+                    <strong>Required:</strong> Name, Pos Description, Item Number, SKU, Supplier, Department, Main Group, Category, Origin, Season, Size, Color, Color Id, Item Color Code, Price, Cost, Tax
                   </p>
                   <p className="text-muted-foreground text-xs">
-                    <strong>Optional:</strong> Brand, Size, Color, Gender, Season, Quantity, Min Stock, Unit, Supplier, Location
+                    <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, Location
                   </p>
                   <p className="text-xs text-muted-foreground italic">
                     Note: Quantity defaults to 0 if not provided
