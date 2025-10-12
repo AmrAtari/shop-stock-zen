@@ -15,6 +15,18 @@ interface ProductDialogNewProps {
   onSave: () => void;
 }
 
+interface Attributes {
+  categories: { id: string; name: string }[];
+  brands: { id: string; name: string }[];
+  sizes: { id: string; name: string }[];
+  colors: { id: string; name: string }[];
+  genders: { id: string; name: string }[];
+  seasons: { id: string; name: string }[];
+  suppliers: { id: string; name: string }[];
+  locations: { id: string; name: string }[];
+  units: { id: string; name: string }[];
+}
+
 const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNewProps) => {
   const [formData, setFormData] = useState<Partial<Item>>({
     name: "",
@@ -32,11 +44,29 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
     location: "",
   });
 
+  const [attributes, setAttributes] = useState<Attributes>({
+    categories: [],
+    brands: [],
+    sizes: [],
+    colors: [],
+    genders: [],
+    seasons: [],
+    suppliers: [],
+    locations: [],
+    units: [],
+  });
+
   const [priceData, setPriceData] = useState({
     cost_price: 0,
     selling_price: 0,
     wholesale_price: 0,
   });
+
+  useEffect(() => {
+    if (open) {
+      fetchAttributes();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (item) {
@@ -65,6 +95,46 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
       });
     }
   }, [item, open]);
+
+  const fetchAttributes = async () => {
+    try {
+      const [
+        categories,
+        brands,
+        sizes,
+        colors,
+        genders,
+        seasons,
+        suppliers,
+        locations,
+        units
+      ] = await Promise.all([
+        supabase.from("categories").select("*").order("name"),
+        supabase.from("brands").select("*").order("name"),
+        supabase.from("sizes").select("*").order("name"),
+        supabase.from("colors").select("*").order("name"),
+        supabase.from("genders").select("*").order("name"),
+        supabase.from("seasons").select("*").order("name"),
+        supabase.from("suppliers").select("*").order("name"),
+        supabase.from("locations").select("*").order("name"),
+        supabase.from("units").select("*").order("name"),
+      ]);
+
+      setAttributes({
+        categories: categories.data || [],
+        brands: brands.data || [],
+        sizes: sizes.data || [],
+        colors: colors.data || [],
+        genders: genders.data || [],
+        seasons: seasons.data || [],
+        suppliers: suppliers.data || [],
+        locations: locations.data || [],
+        units: units.data || [],
+      });
+    } catch (error) {
+      console.error("Error fetching attributes:", error);
+    }
+  };
 
   const fetchCurrentPrice = async (itemId: string) => {
     try {
@@ -197,51 +267,100 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="category">Category *</Label>
-              <Input
-                id="category"
+              <Select
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                placeholder="Shoes, Clothing, etc."
+                onValueChange={(value) => setFormData({ ...formData, category: value })}
                 required
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.name}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="brand">Brand</Label>
-              <Input
-                id="brand"
+              <Select
                 value={formData.brand || ""}
-                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-              />
+                onValueChange={(value) => setFormData({ ...formData, brand: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select brand" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.brands.map((brand) => (
+                    <SelectItem key={brand.id} value={brand.name}>
+                      {brand.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="supplier">Supplier</Label>
-              <Input
-                id="supplier"
+              <Select
                 value={formData.supplier || ""}
-                onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-              />
+                onValueChange={(value) => setFormData({ ...formData, supplier: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select supplier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.name}>
+                      {supplier.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="size">Size</Label>
-              <Input
-                id="size"
+              <Select
                 value={formData.size || ""}
-                onChange={(e) => setFormData({ ...formData, size: e.target.value })}
-              />
+                onValueChange={(value) => setFormData({ ...formData, size: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.sizes.map((size) => (
+                    <SelectItem key={size.id} value={size.name}>
+                      {size.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="color">Color</Label>
-              <Input
-                id="color"
+              <Select
                 value={formData.color || ""}
-                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-              />
+                onValueChange={(value) => setFormData({ ...formData, color: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select color" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.colors.map((color) => (
+                    <SelectItem key={color.id} value={color.name}>
+                      {color.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -251,13 +370,14 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
                 onValueChange={(value) => setFormData({ ...formData, gender: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select" />
+                  <SelectValue placeholder="Select gender" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Men">Men</SelectItem>
-                  <SelectItem value="Women">Women</SelectItem>
-                  <SelectItem value="Unisex">Unisex</SelectItem>
-                  <SelectItem value="Kids">Kids</SelectItem>
+                  {attributes.genders.map((gender) => (
+                    <SelectItem key={gender.id} value={gender.name}>
+                      {gender.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -269,14 +389,14 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
                 onValueChange={(value) => setFormData({ ...formData, season: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select" />
+                  <SelectValue placeholder="Select season" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Spring">Spring</SelectItem>
-                  <SelectItem value="Summer">Summer</SelectItem>
-                  <SelectItem value="Fall">Fall</SelectItem>
-                  <SelectItem value="Winter">Winter</SelectItem>
-                  <SelectItem value="All Season">All Season</SelectItem>
+                  {attributes.seasons.map((season) => (
+                    <SelectItem key={season.id} value={season.name}>
+                      {season.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -315,10 +435,11 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pcs">Pieces</SelectItem>
-                  <SelectItem value="pair">Pair</SelectItem>
-                  <SelectItem value="set">Set</SelectItem>
-                  <SelectItem value="box">Box</SelectItem>
+                  {attributes.units.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.name}>
+                      {unit.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -326,12 +447,21 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
 
           <div className="space-y-2">
             <Label htmlFor="location">Storage Location</Label>
-            <Input
-              id="location"
+            <Select
               value={formData.location || ""}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              placeholder="e.g., Shelf A1, Warehouse B"
-            />
+              onValueChange={(value) => setFormData({ ...formData, location: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select location" />
+              </SelectTrigger>
+              <SelectContent>
+                {attributes.locations.map((location) => (
+                  <SelectItem key={location.id} value={location.name}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="border-t pt-4">

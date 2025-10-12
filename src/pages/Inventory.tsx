@@ -52,6 +52,10 @@ const InventoryNew = () => {
     if (!confirm("Are you sure you want to delete this item?")) return;
 
     try {
+      // Delete associated price levels first
+      await supabase.from("price_levels").delete().eq("item_id", id);
+      
+      // Then delete the item
       const { error } = await supabase.from("items").delete().eq("id", id);
 
       if (error) throw error;
