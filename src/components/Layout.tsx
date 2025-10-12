@@ -22,6 +22,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
     { name: "Stores", href: "/stores", icon: Store },
     { name: "Alerts", href: "/alerts", icon: AlertCircle },
+    { name: "Duplicates", href: "/duplicates", icon: AlertCircle },
     { name: "Reports", href: "/reports", icon: BarChart3 },
   ];
 

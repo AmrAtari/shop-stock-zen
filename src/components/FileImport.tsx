@@ -100,6 +100,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
       if (importType === "full") {
         // Full import: create or detect duplicates
+        let importLogId: string | null = null;
+        
         for (const row of data) {
           const sku = row.SKU || row.sku;
           if (!sku) {
@@ -112,15 +114,62 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             .from("items")
             .select("*")
             .eq("sku", sku)
-            .single();
+            .maybeSingle();
 
           if (existing) {
-            // Found duplicate - store for comparison
+            // Found duplicate - create import log if not exists
+            if (!importLogId) {
+              const { data: logData } = await supabase
+                .from("import_logs")
+                .insert({
+                  file_name: file.name,
+                  import_type: importType,
+                  total_rows: data.length,
+                  successful_rows: 0,
+                  failed_rows: 0,
+                  duplicates_found: 0,
+                  status: "processing",
+                })
+                .select()
+                .single();
+              importLogId = logData?.id || null;
+            }
+
+            // Store duplicate for comparison
             duplicatesFound++;
-            duplicates.push({
+            const newData = {
+              name: row.Name || row.name,
+              category: row.Category || row.category,
+              brand: row.Brand || row.brand,
+              size: row.Size || row.size,
+              color: row.Color || row.color,
+              gender: row.Gender || row.gender,
+              season: row.Season || row.season,
+              quantity: parseInt(row.Quantity || row.quantity || "0"),
+              min_stock: parseInt(row["Min Stock"] || row.min_stock || "10"),
+              unit: row.Unit || row.unit || "pcs",
+              supplier: row.Supplier || row.supplier,
+              location: row.Location || row.location,
+            };
+
+            // Calculate differences
+            const differences: Record<string, { old: any; new: any }> = {};
+            Object.keys(newData).forEach((key) => {
+              if (existing[key as keyof typeof existing] !== newData[key as keyof typeof newData]) {
+                differences[key] = {
+                  old: existing[key as keyof typeof existing],
+                  new: newData[key as keyof typeof newData],
+                };
+              }
+            });
+
+            // Save to duplicate_comparisons table
+            await supabase.from("duplicate_comparisons").insert({
+              import_log_id: importLogId,
               sku,
-              existing,
-              newData: row,
+              existing_data: existing,
+              new_data: newData,
+              differences,
             });
           } else {
             // Insert new item
@@ -171,16 +220,30 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         }
       }
 
-      // Log import
-      const { error: logError } = await supabase.from("import_logs").insert({
-        file_name: file.name,
-        import_type: importType,
-        total_rows: data.length,
-        successful_rows: successCount,
-        failed_rows: failCount,
-        duplicates_found: duplicatesFound,
-        status: "completed",
-      });
+      // Update or create import log
+      if (importType === "full" && duplicatesFound > 0) {
+        // Update existing log
+        await supabase
+          .from("import_logs")
+          .update({
+            successful_rows: successCount,
+            failed_rows: failCount,
+            duplicates_found: duplicatesFound,
+            status: "completed",
+          })
+          .eq("id", (await supabase.from("import_logs").select("id").order("created_at", { ascending: false }).limit(1).single()).data?.id);
+      } else {
+        // Create new log
+        await supabase.from("import_logs").insert({
+          file_name: file.name,
+          import_type: importType,
+          total_rows: data.length,
+          successful_rows: successCount,
+          failed_rows: failCount,
+          duplicates_found: duplicatesFound,
+          status: "completed",
+        });
+      }
 
       toast.success(
         `Import completed: ${successCount} successful, ${failCount} failed${
@@ -189,7 +252,9 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       );
 
       if (duplicatesFound > 0) {
-        toast.info("Check the Duplicates section to review conflicting items");
+        toast.info("Duplicates found! Go to Duplicates page to review and resolve them", {
+          duration: 5000,
+        });
       }
 
       onImportComplete();

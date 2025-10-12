@@ -13,6 +13,7 @@ import Reports from "./pages/Reports";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import Stores from "./pages/Stores";
 import Configuration from "./pages/Configuration";
+import Duplicates from "./pages/Duplicates";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -78,6 +79,14 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <Layout><Configuration /></Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/duplicates"
+            element={
+              <ProtectedRoute>
+                <Layout><Duplicates /></Layout>
               </ProtectedRoute>
             }
           />
