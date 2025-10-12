@@ -12,6 +12,7 @@ import Alerts from "./pages/Alerts";
 import Reports from "./pages/Reports";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import Stores from "./pages/Stores";
+import Configuration from "./pages/Configuration";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -69,6 +70,14 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <Layout><Stores /></Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/configuration"
+            element={
+              <ProtectedRoute>
+                <Layout><Configuration /></Layout>
               </ProtectedRoute>
             }
           />

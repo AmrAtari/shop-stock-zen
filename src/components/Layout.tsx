@@ -1,10 +1,11 @@
 import { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Package, AlertCircle, BarChart3, ShoppingCart, Store, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, AlertCircle, BarChart3, ShoppingCart, Store, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 interface LayoutProps {
   children: ReactNode;
@@ -13,6 +14,7 @@ interface LayoutProps {
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAdmin } = useIsAdmin();
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -22,6 +24,10 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "Alerts", href: "/alerts", icon: AlertCircle },
     { name: "Reports", href: "/reports", icon: BarChart3 },
   ];
+
+  if (isAdmin) {
+    navigation.push({ name: "Configuration", href: "/configuration", icon: Settings });
+  }
 
   const handleLogout = async () => {
     try {
