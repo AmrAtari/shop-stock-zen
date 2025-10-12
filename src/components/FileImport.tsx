@@ -48,6 +48,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   const [file, setFile] = useState<File | null>(null);
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [importErrors, setImportErrors] = useState<{
+    type: string;
+    message: string;
+    validationErrors: Array<{ row: number; sku: string; errors: any[] }>;
+  } | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -116,7 +122,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       }
 
       if (data.length === 0) {
-        toast.error("No data found in file");
+        setImportErrors({
+          type: "Empty File",
+          message: "The selected file contains no data. Please check your file and try again.",
+          validationErrors: []
+        });
+        setErrorDialogOpen(true);
         setIsUploading(false);
         return;
       }
@@ -318,6 +329,16 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         });
       }
 
+      // Show error dialog if there were validation errors
+      if (validationErrors.length > 0) {
+        setImportErrors({
+          type: "Validation Errors",
+          message: `${failCount} row(s) failed validation. Please review the errors below and correct your data.`,
+          validationErrors
+        });
+        setErrorDialogOpen(true);
+      }
+
       toast.success(
         `Import completed: ${successCount} successful, ${failCount} failed${
           duplicatesFound > 0 ? `, ${duplicatesFound} duplicates found` : ""
@@ -334,15 +355,21 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       onOpenChange(false);
       setFile(null);
     } catch (error: any) {
-      toast.error("Import failed: " + error.message);
+      setImportErrors({
+        type: "Import Failed",
+        message: error.message || "An unexpected error occurred during import. Please check your file format and try again.",
+        validationErrors: []
+      });
+      setErrorDialogOpen(true);
     } finally {
       setIsUploading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
         <DialogHeader>
           <DialogTitle>Import Inventory Data</DialogTitle>
           <DialogDescription>
@@ -427,6 +454,64 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Error Dialog */}
+    <Dialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-destructive flex items-center gap-2">
+            <span className="text-2xl">⚠️</span>
+            {importErrors?.type}
+          </DialogTitle>
+          <DialogDescription>
+            {importErrors?.message}
+          </DialogDescription>
+        </DialogHeader>
+
+        {importErrors && importErrors.validationErrors.length > 0 && (
+          <div className="space-y-3">
+            <div className="text-sm font-medium">Error Details:</div>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {importErrors.validationErrors.map((error, idx) => (
+                <div key={idx} className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  <div className="font-medium text-sm mb-2">
+                    Row {error.row} {error.sku && `(SKU: ${error.sku})`}
+                  </div>
+                  <ul className="space-y-1 text-sm text-muted-foreground">
+                    {error.errors.map((err: any, errIdx: number) => (
+                      <li key={errIdx} className="flex items-start gap-2">
+                        <span className="text-destructive">•</span>
+                        <span>
+                          <strong>{err.path.join('.')}</strong>: {err.message}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="bg-muted p-4 rounded-lg text-sm space-y-2">
+          <p className="font-medium">💡 Tips to fix these errors:</p>
+          <ul className="space-y-1 text-muted-foreground">
+            <li>• Ensure all required fields (SKU, Name, Category) are filled</li>
+            <li>• Check that numeric fields (Quantity, Price) contain valid numbers</li>
+            <li>• Verify text fields don't exceed maximum character limits</li>
+            <li>• Make sure there are no special characters in numeric fields</li>
+            <li>• Save your file as Excel (.xlsx) or CSV before importing</li>
+          </ul>
+        </div>
+
+        <DialogFooter>
+          <Button onClick={() => setErrorDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>
   );
 };
 
