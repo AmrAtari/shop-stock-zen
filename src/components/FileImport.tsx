@@ -10,12 +10,39 @@ import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
+import { z } from "zod";
 
 interface FileImportProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImportComplete: () => void;
 }
+
+// Validation schema for item data
+const itemSchema = z.object({
+  sku: z.string().trim().min(1, "SKU is required").max(50, "SKU must be less than 50 characters"),
+  name: z.string().trim().min(1, "Name is required").max(200, "Name must be less than 200 characters"),
+  category: z.string().trim().min(1, "Category is required").max(100, "Category must be less than 100 characters"),
+  brand: z.string().trim().max(100, "Brand must be less than 100 characters").optional().nullable(),
+  size: z.string().trim().max(50, "Size must be less than 50 characters").optional().nullable(),
+  color: z.string().trim().max(50, "Color must be less than 50 characters").optional().nullable(),
+  gender: z.string().trim().max(50, "Gender must be less than 50 characters").optional().nullable(),
+  season: z.string().trim().max(50, "Season must be less than 50 characters").optional().nullable(),
+  unit: z.string().trim().min(1, "Unit is required").max(20, "Unit must be less than 20 characters"),
+  quantity: z.number().int("Quantity must be a whole number").min(0, "Quantity cannot be negative").max(1000000, "Quantity is too large").optional().nullable(),
+  min_stock: z.number().int("Min stock must be a whole number").min(0, "Min stock cannot be negative").max(1000000, "Min stock is too large").optional().nullable(),
+  location: z.string().trim().max(200, "Location must be less than 200 characters").optional().nullable(),
+  supplier: z.string().trim().max(200, "Supplier must be less than 200 characters").optional().nullable(),
+  cost_price: z.number().min(0, "Cost price cannot be negative").max(1000000000, "Cost price is too large").optional().nullable(),
+  selling_price: z.number().min(0, "Selling price cannot be negative").max(1000000000, "Selling price is too large").optional().nullable(),
+  wholesale_price: z.number().min(0, "Wholesale price cannot be negative").max(1000000000, "Wholesale price is too large").optional().nullable(),
+});
+
+// Validation schema for quantity update
+const quantityUpdateSchema = z.object({
+  sku: z.string().trim().min(1, "SKU is required").max(50, "SKU must be less than 50 characters"),
+  quantity: z.number().int("Quantity must be a whole number").min(0, "Quantity cannot be negative").max(1000000, "Quantity is too large"),
+});
 
 const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) => {
   const [file, setFile] = useState<File | null>(null);
@@ -90,30 +117,57 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
       if (data.length === 0) {
         toast.error("No data found in file");
+        setIsUploading(false);
         return;
       }
 
       let successCount = 0;
       let failCount = 0;
       let duplicatesFound = 0;
-      const duplicates = [];
+      const validationErrors: any[] = [];
 
       if (importType === "full") {
         // Full import: create or detect duplicates
         let importLogId: string | null = null;
         
-        for (const row of data) {
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
           const sku = row.SKU || row.sku;
-          if (!sku) {
+          
+          // Validate row data
+          const validationResult = itemSchema.safeParse({
+            sku,
+            name: row.Name || row.name,
+            category: row.Category || row.category,
+            brand: row.Brand || row.brand || null,
+            size: row.Size || row.size || null,
+            color: row.Color || row.color || null,
+            gender: row.Gender || row.gender || null,
+            season: row.Season || row.season || null,
+            unit: row.Unit || row.unit || "pcs",
+            quantity: row.Quantity || row.quantity ? parseInt(row.Quantity || row.quantity) : null,
+            min_stock: row["Min Stock"] || row.min_stock ? parseInt(row["Min Stock"] || row.min_stock) : null,
+            location: row.Location || row.location || null,
+            supplier: row.Supplier || row.supplier || null,
+            cost_price: row["Cost Price"] || row.cost_price ? parseFloat(row["Cost Price"] || row.cost_price) : null,
+            selling_price: row["Selling Price"] || row.selling_price ? parseFloat(row["Selling Price"] || row.selling_price) : null,
+            wholesale_price: row["Wholesale Price"] || row.wholesale_price ? parseFloat(row["Wholesale Price"] || row.wholesale_price) : null,
+          });
+
+          if (!validationResult.success) {
             failCount++;
+            const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(", ");
+            validationErrors.push({ row: i + 1, sku, errors: validationResult.error.errors });
             continue;
           }
+
+          const validatedData = validationResult.data;
 
           // Check if item exists
           const { data: existing } = await supabase
             .from("items")
             .select("*")
-            .eq("sku", sku)
+            .eq("sku", validatedData.sku)
             .maybeSingle();
 
           if (existing) {
@@ -137,28 +191,16 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
             // Store duplicate for comparison
             duplicatesFound++;
-            const newData = {
-              name: row.Name || row.name,
-              category: row.Category || row.category,
-              brand: row.Brand || row.brand,
-              size: row.Size || row.size,
-              color: row.Color || row.color,
-              gender: row.Gender || row.gender,
-              season: row.Season || row.season,
-              quantity: parseInt(row.Quantity || row.quantity || "0"),
-              min_stock: parseInt(row["Min Stock"] || row.min_stock || "10"),
-              unit: row.Unit || row.unit || "pcs",
-              supplier: row.Supplier || row.supplier,
-              location: row.Location || row.location,
-            };
-
+            
             // Calculate differences
             const differences: Record<string, { old: any; new: any }> = {};
-            Object.keys(newData).forEach((key) => {
-              if (existing[key as keyof typeof existing] !== newData[key as keyof typeof newData]) {
-                differences[key] = {
-                  old: existing[key as keyof typeof existing],
-                  new: newData[key as keyof typeof newData],
+            const fieldsToCompare = ['name', 'category', 'brand', 'size', 'color', 'gender', 'season', 'unit', 'quantity', 'min_stock', 'location', 'supplier'];
+            
+            fieldsToCompare.forEach((field) => {
+              if (existing[field] !== validatedData[field as keyof typeof validatedData]) {
+                differences[field] = {
+                  old: existing[field],
+                  new: validatedData[field as keyof typeof validatedData],
                 };
               }
             });
@@ -166,51 +208,82 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             // Save to duplicate_comparisons table
             await supabase.from("duplicate_comparisons").insert({
               import_log_id: importLogId,
-              sku,
+              sku: validatedData.sku,
               existing_data: existing,
-              new_data: newData,
+              new_data: row,
               differences,
             });
           } else {
             // Insert new item
             const { error } = await supabase.from("items").insert({
-              sku,
-              name: row.Name || row.name,
-              category: row.Category || row.category,
-              brand: row.Brand || row.brand,
-              size: row.Size || row.size,
-              color: row.Color || row.color,
-              gender: row.Gender || row.gender,
-              season: row.Season || row.season,
-              quantity: parseInt(row.Quantity || row.quantity || "0"),
-              min_stock: parseInt(row["Min Stock"] || row.min_stock || "10"),
-              unit: row.Unit || row.unit || "pcs",
-              supplier: row.Supplier || row.supplier,
-              location: row.Location || row.location,
+              sku: validatedData.sku,
+              name: validatedData.name,
+              category: validatedData.category,
+              brand: validatedData.brand,
+              size: validatedData.size,
+              color: validatedData.color,
+              gender: validatedData.gender,
+              season: validatedData.season,
+              quantity: validatedData.quantity ?? 0,
+              min_stock: validatedData.min_stock ?? 10,
+              unit: validatedData.unit,
+              supplier: validatedData.supplier,
+              location: validatedData.location,
             });
 
             if (error) {
               failCount++;
             } else {
               successCount++;
+              
+              // Handle price levels if provided
+              if (validatedData.cost_price || validatedData.selling_price || validatedData.wholesale_price) {
+                const { data: insertedItem } = await supabase
+                  .from("items")
+                  .select("id")
+                  .eq("sku", validatedData.sku)
+                  .single();
+
+                if (insertedItem) {
+                  await supabase.from("price_levels").insert({
+                    item_id: insertedItem.id,
+                    cost_price: validatedData.cost_price ?? 0,
+                    selling_price: validatedData.selling_price ?? 0,
+                    wholesale_price: validatedData.wholesale_price,
+                    is_current: true,
+                    effective_date: new Date().toISOString()
+                  });
+                }
+              }
             }
           }
         }
       } else {
         // Quantity update: match by SKU and update quantity only
-        for (const row of data) {
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
           const sku = row.SKU || row.sku;
-          const quantity = parseInt(row.Quantity || row.quantity || "0");
+          const quantityValue = row.Quantity || row.quantity;
+          
+          // Validate row data
+          const validationResult = quantityUpdateSchema.safeParse({
+            sku,
+            quantity: quantityValue ? parseInt(quantityValue) : undefined,
+          });
 
-          if (!sku) {
+          if (!validationResult.success) {
             failCount++;
+            const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(", ");
+            validationErrors.push({ row: i + 1, sku, errors: validationResult.error.errors });
             continue;
           }
 
+          const validatedData = validationResult.data;
+
           const { error } = await supabase
             .from("items")
-            .update({ quantity })
-            .eq("sku", sku);
+            .update({ quantity: validatedData.quantity })
+            .eq("sku", validatedData.sku);
 
           if (error) {
             failCount++;
