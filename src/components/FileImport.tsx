@@ -68,17 +68,19 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      const validTypes = [
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "text/csv"
-      ];
-      
-      if (!validTypes.includes(selectedFile.type)) {
-        toast.error("Please upload a valid Excel (.xls, .xlsx) or CSV file");
+      const name = selectedFile.name.toLowerCase();
+      const isValidByExt = name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv");
+
+      if (!isValidByExt) {
+        setImportErrors({
+          type: "Invalid File Type",
+          message: "Please upload an Excel (.xls, .xlsx) or CSV (.csv) file.",
+          validationErrors: []
+        });
+        setErrorDialogOpen(true);
         return;
       }
-      
+
       setFile(selectedFile);
     }
   };
@@ -121,6 +123,24 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     }
 
     setIsUploading(true);
+
+    // Helpers to make header matching robust (trim spaces, tabs, case, punctuation)
+    const normalizeKey = (k: string) =>
+      k?.toString().toLowerCase().replace(/\s+/g, "").replace(/[_-]/g, "").replace(/[^a-z0-9]/g, "");
+
+    const getVal = (row: any, ...keys: string[]) => {
+      for (const key of keys) {
+        if (row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
+      }
+      const normMap: Record<string, any> = Object.fromEntries(
+        Object.keys(row || {}).map((k) => [normalizeKey(k), (row as any)[k]])
+      );
+      for (const key of keys) {
+        const v = normMap[normalizeKey(key)];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+      return undefined;
+    };
 
     try {
       let data: any[];
