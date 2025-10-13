@@ -14,6 +14,7 @@ import PurchaseOrders from "./pages/PurchaseOrders";
 import Stores from "./pages/Stores";
 import Configuration from "./pages/Configuration";
 import Duplicates from "./pages/Duplicates";
+import Transfers from "./pages/Transfers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -87,6 +88,14 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <Layout><Duplicates /></Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/transfers"
+            element={
+              <ProtectedRoute>
+                <Layout><Transfers /></Layout>
               </ProtectedRoute>
             }
           />

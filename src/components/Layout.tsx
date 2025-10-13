@@ -18,17 +18,12 @@ const Layout = ({ children }: LayoutProps) => {
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    ...(isAdmin ? [{ name: "System Configuration", href: "/configuration", icon: Settings }] : []),
     { name: "Inventory", href: "/inventory", icon: Package },
-    { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
-    { name: "Stores", href: "/stores", icon: Store },
-    { name: "Alerts", href: "/alerts", icon: AlertCircle },
-    { name: "Duplicates", href: "/duplicates", icon: AlertCircle },
     { name: "Reports", href: "/reports", icon: BarChart3 },
+    { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
+    { name: "Transfers", href: "/transfers", icon: Store },
   ];
-
-  if (isAdmin) {
-    navigation.push({ name: "Configuration", href: "/configuration", icon: Settings });
-  }
 
   const handleLogout = async () => {
     try {

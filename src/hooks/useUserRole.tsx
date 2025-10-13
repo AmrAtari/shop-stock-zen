@@ -4,38 +4,42 @@ import { supabase } from "@/integrations/supabase/client";
 export type UserRole = "admin" | "supervisor" | "inventory_man" | "cashier" | null;
 
 export interface UserPermissions {
-  canAddProducts: boolean;
-  canEditProducts: boolean;
-  canDeleteProducts: boolean;
-  canImportData: boolean;
-  canExportData: boolean;
   canManageUsers: boolean;
-  canViewReports: boolean;
-  canTransferStock: boolean;
+  canViewUsers: boolean;
+  canEditItems: boolean;
+  canDeleteItems: boolean;
+  canCreatePurchaseOrders: boolean;
+  canApprovePurchaseOrders: boolean;
+  canCreateTransfers: boolean;
+  canApproveTransfers: boolean;
   canAcceptTransfers: boolean;
-  canViewAllStores: boolean;
-  canModifySystem: boolean;
-  canProcessTransactions: boolean;
+  canViewAllReports: boolean;
+  canViewOwnStoreReports: boolean;
   canViewStock: boolean;
+  canManageConfiguration: boolean;
+  canExportData: boolean;
+  canImportData: boolean;
 }
 
 export const useUserRole = () => {
   const [role, setRole] = useState<UserRole>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [permissions, setPermissions] = useState<UserPermissions>({
-    canAddProducts: false,
-    canEditProducts: false,
-    canDeleteProducts: false,
-    canImportData: false,
-    canExportData: false,
     canManageUsers: false,
-    canViewReports: false,
-    canTransferStock: false,
+    canViewUsers: false,
+    canEditItems: false,
+    canDeleteItems: false,
+    canCreatePurchaseOrders: false,
+    canApprovePurchaseOrders: false,
+    canCreateTransfers: false,
+    canApproveTransfers: false,
     canAcceptTransfers: false,
-    canViewAllStores: false,
-    canModifySystem: false,
-    canProcessTransactions: false,
+    canViewAllReports: false,
+    canViewOwnStoreReports: false,
     canViewStock: false,
+    canManageConfiguration: false,
+    canExportData: false,
+    canImportData: false,
   });
 
   useEffect(() => {
@@ -77,94 +81,104 @@ export const useUserRole = () => {
   const getPermissionsForRole = (userRole: UserRole): UserPermissions => {
     switch (userRole) {
       case "admin":
-        // Admin: Full permissions on everything
+        // Admin: Full access (add, modify, delete everything)
         return {
-          canAddProducts: true,
-          canEditProducts: true,
-          canDeleteProducts: true,
-          canImportData: true,
-          canExportData: true,
           canManageUsers: true,
-          canViewReports: true,
-          canTransferStock: true,
+          canViewUsers: true,
+          canEditItems: true,
+          canDeleteItems: true,
+          canCreatePurchaseOrders: true,
+          canApprovePurchaseOrders: true,
+          canCreateTransfers: true,
+          canApproveTransfers: true,
           canAcceptTransfers: true,
-          canViewAllStores: true,
-          canModifySystem: true,
-          canProcessTransactions: true,
+          canViewAllReports: true,
+          canViewOwnStoreReports: true,
           canViewStock: true,
+          canManageConfiguration: true,
+          canExportData: true,
+          canImportData: true,
         };
       
       case "supervisor":
-        // Supervisor: Can add products, import stock, do transactions, accept transfers
-        // Cannot modify system settings or delete
+        // Supervisor: Add products, import stock, create purchase orders, approve transfers, view all reports
+        // Cannot modify system config
         return {
-          canAddProducts: true,
-          canEditProducts: false,
-          canDeleteProducts: false,
-          canImportData: true,
-          canExportData: true,
           canManageUsers: false,
-          canViewReports: true,
-          canTransferStock: true,
+          canViewUsers: true,
+          canEditItems: true,
+          canDeleteItems: false,
+          canCreatePurchaseOrders: true,
+          canApprovePurchaseOrders: true,
+          canCreateTransfers: true,
+          canApproveTransfers: true,
           canAcceptTransfers: true,
-          canViewAllStores: true,
-          canModifySystem: false,
-          canProcessTransactions: true,
+          canViewAllReports: true,
+          canViewOwnStoreReports: true,
           canViewStock: true,
+          canManageConfiguration: false,
+          canExportData: true,
+          canImportData: true,
         };
       
       case "inventory_man":
-        // Inventory Man: Can transfer stock, upload data, get reports for own store only
+        // Inventory Man: Transfer stock between stores, upload transfer data, view own store reports only
         return {
-          canAddProducts: false,
-          canEditProducts: false,
-          canDeleteProducts: false,
-          canImportData: true,
-          canExportData: true,
           canManageUsers: false,
-          canViewReports: true,
-          canTransferStock: true,
-          canAcceptTransfers: false,
-          canViewAllStores: false,
-          canModifySystem: false,
-          canProcessTransactions: false,
+          canViewUsers: false,
+          canEditItems: false,
+          canDeleteItems: false,
+          canCreatePurchaseOrders: false,
+          canApprovePurchaseOrders: false,
+          canCreateTransfers: true,
+          canApproveTransfers: false,
+          canAcceptTransfers: true,
+          canViewAllReports: false,
+          canViewOwnStoreReports: true,
           canViewStock: true,
+          canManageConfiguration: false,
+          canExportData: true,
+          canImportData: true,
         };
       
       case "cashier":
-        // Cashier: Can only view available stock
+        // Cashier: Read-only access to check stock availability by SKU/barcode
         return {
-          canAddProducts: false,
-          canEditProducts: false,
-          canDeleteProducts: false,
-          canImportData: false,
-          canExportData: false,
           canManageUsers: false,
-          canViewReports: false,
-          canTransferStock: false,
+          canViewUsers: false,
+          canEditItems: false,
+          canDeleteItems: false,
+          canCreatePurchaseOrders: false,
+          canApprovePurchaseOrders: false,
+          canCreateTransfers: false,
+          canApproveTransfers: false,
           canAcceptTransfers: false,
-          canViewAllStores: false,
-          canModifySystem: false,
-          canProcessTransactions: false,
+          canViewAllReports: false,
+          canViewOwnStoreReports: false,
           canViewStock: true,
+          canManageConfiguration: false,
+          canExportData: false,
+          canImportData: false,
         };
       
       default:
         // No role: No permissions
         return {
-          canAddProducts: false,
-          canEditProducts: false,
-          canDeleteProducts: false,
-          canImportData: false,
-          canExportData: false,
           canManageUsers: false,
-          canViewReports: false,
-          canTransferStock: false,
+          canViewUsers: false,
+          canEditItems: false,
+          canDeleteItems: false,
+          canCreatePurchaseOrders: false,
+          canApprovePurchaseOrders: false,
+          canCreateTransfers: false,
+          canApproveTransfers: false,
           canAcceptTransfers: false,
-          canViewAllStores: false,
-          canModifySystem: false,
-          canProcessTransactions: false,
+          canViewAllReports: false,
+          canViewOwnStoreReports: false,
           canViewStock: false,
+          canManageConfiguration: false,
+          canExportData: false,
+          canImportData: false,
         };
     }
   };

@@ -98,3 +98,31 @@ export interface StockAdjustment {
   notes: string | null;
   created_at: string;
 }
+
+export interface Transfer {
+  id: string;
+  transfer_number: string;
+  from_store_id: string | null;
+  to_store_id: string | null;
+  status: string;
+  total_items: number;
+  reason: string | null;
+  notes: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  received_by: string | null;
+  approved_at: string | null;
+  received_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TransferItem {
+  id: string;
+  transfer_id: string;
+  item_id: string | null;
+  sku: string;
+  item_name: string;
+  quantity: number;
+  created_at: string;
+}
