@@ -13,6 +13,8 @@ export interface Item {
   brand: string | null;
   size: string | null;
   color: string | null;
+  color_id: string | null;
+  item_color_code: string | null;
   gender: string | null;
   season: string | null;
   unit: string;
@@ -20,6 +22,14 @@ export interface Item {
   min_stock: number;
   location: string | null;
   supplier: string | null;
+  department: string | null;
+  main_group: string | null;
+  origin: string | null;
+  theme: string | null;
+  item_number: string | null;
+  pos_description: string | null;
+  description: string | null;
+  tax: number | null;
   last_restocked: string | null;
   created_at: string;
   updated_at: string;

@@ -124,11 +124,27 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
     setIsUploading(true);
 
+    // Helper to auto-create attribute if it doesn't exist
+    const ensureAttributeExists = async (table: string, name: string): Promise<void> => {
+      if (!name || name.trim() === "") return;
+      
+      const trimmedName = name.trim();
+      const { data: existing } = await (supabase as any)
+        .from(table)
+        .select("id")
+        .eq("name", trimmedName)
+        .maybeSingle();
+      
+      if (!existing) {
+        await (supabase as any).from(table).insert({ name: trimmedName });
+      }
+    };
+
     // Helpers to make header matching robust (trim spaces, tabs, case, punctuation)
-    const normalizeKey = (k: string) =>
+    const normalizeKey = (k: string): string =>
       k?.toString().toLowerCase().replace(/\s+/g, "").replace(/[_-]/g, "").replace(/[^a-z0-9]/g, "");
 
-    const getVal = (row: any, ...keys: string[]) => {
+    const getVal = (row: any, ...keys: string[]): any => {
       for (const key of keys) {
         if (row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
       }
@@ -213,6 +229,23 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           }
 
           const validatedData = validationResult.data;
+
+          // Auto-create missing attributes
+          await Promise.all([
+            ensureAttributeExists("brands", validatedData.brand || ""),
+            ensureAttributeExists("categories", validatedData.category),
+            ensureAttributeExists("suppliers", validatedData.supplier),
+            ensureAttributeExists("departments", validatedData.department),
+            ensureAttributeExists("main_groups", validatedData.main_group),
+            ensureAttributeExists("origins", validatedData.origin),
+            ensureAttributeExists("seasons", validatedData.season),
+            ensureAttributeExists("sizes", validatedData.size),
+            ensureAttributeExists("colors", validatedData.color),
+            ensureAttributeExists("genders", validatedData.gender || ""),
+            ensureAttributeExists("themes", validatedData.theme || ""),
+            ensureAttributeExists("locations", validatedData.location || ""),
+            ensureAttributeExists("units", validatedData.unit),
+          ]);
 
           // Check if item exists
           const { data: existing } = await supabase

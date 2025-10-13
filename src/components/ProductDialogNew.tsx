@@ -27,6 +27,10 @@ interface Attributes {
   suppliers: { id: string; name: string }[];
   locations: { id: string; name: string }[];
   units: { id: string; name: string }[];
+  departments: { id: string; name: string }[];
+  main_groups: { id: string; name: string }[];
+  origins: { id: string; name: string }[];
+  themes: { id: string; name: string }[];
 }
 
 const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNewProps) => {
@@ -44,6 +48,10 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
     unit: "pcs",
     supplier: "",
     location: "",
+    department: "",
+    main_group: "",
+    origin: "",
+    theme: "",
   });
 
   const [attributes, setAttributes] = useState<Attributes>({
@@ -56,6 +64,10 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
     suppliers: [],
     locations: [],
     units: [],
+    departments: [],
+    main_groups: [],
+    origins: [],
+    themes: [],
   });
 
   const [priceData, setPriceData] = useState({
@@ -91,6 +103,10 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         unit: "pcs",
         supplier: "",
         location: "",
+        department: "",
+        main_group: "",
+        origin: "",
+        theme: "",
       });
       setPriceData({
         cost_price: 0,
@@ -111,7 +127,11 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         seasons,
         suppliers,
         locations,
-        units
+        units,
+        departments,
+        main_groups,
+        origins,
+        themes
       ] = await Promise.all([
         supabase.from("categories").select("*").order("name"),
         supabase.from("brands").select("*").order("name"),
@@ -122,6 +142,10 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         supabase.from("suppliers").select("*").order("name"),
         supabase.from("locations").select("*").order("name"),
         supabase.from("units").select("*").order("name"),
+        supabase.from("departments").select("*").order("name"),
+        supabase.from("main_groups").select("*").order("name"),
+        supabase.from("origins").select("*").order("name"),
+        supabase.from("themes").select("*").order("name"),
       ]);
 
       setAttributes({
@@ -134,6 +158,10 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         suppliers: suppliers.data || [],
         locations: locations.data || [],
         units: units.data || [],
+        departments: departments.data || [],
+        main_groups: main_groups.data || [],
+        origins: origins.data || [],
+        themes: themes.data || [],
       });
     } catch (error) {
       console.error("Error fetching attributes:", error);
@@ -289,6 +317,105 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
               </Select>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="department">Department</Label>
+              <Select
+                value={formData.department || ""}
+                onValueChange={(value) => setFormData({ ...formData, department: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.name}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="main_group">Main Group</Label>
+              <Select
+                value={formData.main_group || ""}
+                onValueChange={(value) => setFormData({ ...formData, main_group: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select main group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.main_groups.map((group) => (
+                    <SelectItem key={group.id} value={group.name}>
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="brand">Brand</Label>
+              <Select
+                value={formData.brand || ""}
+                onValueChange={(value) => setFormData({ ...formData, brand: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select brand" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.brands.map((brand) => (
+                    <SelectItem key={brand.id} value={brand.name}>
+                      {brand.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="origin">Origin</Label>
+              <Select
+                value={formData.origin || ""}
+                onValueChange={(value) => setFormData({ ...formData, origin: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select origin" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.origins.map((origin) => (
+                    <SelectItem key={origin.id} value={origin.name}>
+                      {origin.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="theme">Theme</Label>
+              <Select
+                value={formData.theme || ""}
+                onValueChange={(value) => setFormData({ ...formData, theme: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.themes.map((theme) => (
+                    <SelectItem key={theme.id} value={theme.name}>
+                      {theme.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="brand">Brand</Label>
               <Select
