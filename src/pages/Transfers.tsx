@@ -6,6 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { useTransfers, useStores } from "@/hooks/useTransfers";
@@ -19,6 +22,14 @@ const Transfers = () => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState({
+    from_store_id: "",
+    to_store_id: "",
+    reason: "",
+    notes: "",
+  });
   
   const { data: transfers = [], isLoading } = useTransfers(searchTerm, statusFilter);
   const { data: stores = [] } = useStores();
@@ -69,6 +80,49 @@ const Transfers = () => {
     return store?.name || storeId;
   };
 
+  const handleCreateTransfer = async () => {
+    if (!formData.from_store_id || !formData.to_store_id) {
+      toast.error("Please select both stores");
+      return;
+    }
+
+    if (formData.from_store_id === formData.to_store_id) {
+      toast.error("Source and destination stores must be different");
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const transferNumber = `TRF-${String(transfers.length + 1).padStart(5, "0")}`;
+      
+      const { error } = await supabase.from("transfers").insert({
+        transfer_number: transferNumber,
+        from_store_id: formData.from_store_id,
+        to_store_id: formData.to_store_id,
+        status: "pending",
+        total_items: 0,
+        reason: formData.reason || null,
+        notes: formData.notes || null,
+      });
+
+      if (error) throw error;
+
+      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+      toast.success("Transfer created successfully");
+      setIsCreateModalOpen(false);
+      setFormData({
+        from_store_id: "",
+        to_store_id: "",
+        reason: "",
+        notes: "",
+      });
+    } catch (error: any) {
+      toast.error("Failed to create transfer");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   if (isLoading) {
     return <div className="p-8">Loading...</div>;
   }
@@ -80,7 +134,7 @@ const Transfers = () => {
           <h1 className="text-3xl font-bold">Inventory Transfers</h1>
           <p className="text-muted-foreground mt-1">Manage transfers between stores</p>
         </div>
-        <Button>
+        <Button onClick={() => setIsCreateModalOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
           New Transfer
         </Button>
@@ -181,6 +235,82 @@ const Transfers = () => {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create New Transfer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="from_store">From Store</Label>
+              <Select
+                value={formData.from_store_id}
+                onValueChange={(value) => setFormData({ ...formData, from_store_id: value })}
+              >
+                <SelectTrigger id="from_store">
+                  <SelectValue placeholder="Select source store" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="to_store">To Store</Label>
+              <Select
+                value={formData.to_store_id}
+                onValueChange={(value) => setFormData({ ...formData, to_store_id: value })}
+              >
+                <SelectTrigger id="to_store">
+                  <SelectValue placeholder="Select destination store" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reason">Reason</Label>
+              <Input
+                id="reason"
+                placeholder="e.g., Stock rebalancing"
+                value={formData.reason}
+                onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Textarea
+                id="notes"
+                placeholder="Additional notes..."
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateTransfer} disabled={isCreating}>
+              {isCreating ? "Creating..." : "Create Transfer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
