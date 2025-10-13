@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { History } from "lucide-react";
 import PriceHistoryDialog from "./PriceHistoryDialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
 
 interface ProductDialogNewProps {
   open: boolean;
@@ -34,6 +36,7 @@ interface Attributes {
 }
 
 const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNewProps) => {
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Partial<Item>>({
     name: "",
     sku: "",
@@ -235,6 +238,12 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         }
 
         toast.success("Product updated successfully");
+        
+        // Invalidate all related queries
+        await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
       } else {
         // Create new item
         const insertData: any = { ...formData };
@@ -254,6 +263,12 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         });
 
         toast.success("Product added successfully");
+        
+        // Invalidate all related queries
+        await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
       }
 
       onSave();

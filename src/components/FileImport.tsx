@@ -12,6 +12,8 @@ import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { z } from "zod";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
 
 interface FileImportProps {
   open: boolean;
@@ -56,6 +58,7 @@ const quantityUpdateSchema = z.object({
 });
 
 const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) => {
+  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
@@ -402,6 +405,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           duplicatesFound > 0 ? `, ${duplicatesFound} duplicates skipped` : ""
         }`
       );
+
+      // Invalidate all related queries for real-time updates
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
 
       onImportComplete();
       onOpenChange(false);

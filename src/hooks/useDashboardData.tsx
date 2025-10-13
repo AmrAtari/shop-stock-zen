@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { queryKeys } from "./queryKeys";
 
 interface DashboardMetrics {
   totalItems: number;
@@ -25,7 +26,7 @@ interface LowStockItem {
 export const useDashboardData = () => {
   // Fetch dashboard metrics
   const { data: metrics, isLoading: metricsLoading } = useQuery({
-    queryKey: ["dashboard-metrics"],
+    queryKey: queryKeys.dashboard.metrics,
     queryFn: async (): Promise<DashboardMetrics> => {
       const { data: items, error: itemsError } = await supabase
         .from("items")
@@ -57,7 +58,7 @@ export const useDashboardData = () => {
 
   // Fetch category distribution for charts
   const { data: categoryData, isLoading: categoryLoading } = useQuery({
-    queryKey: ["dashboard-category-distribution"],
+    queryKey: queryKeys.dashboard.categoryDistribution,
     queryFn: async () => {
       const { data: items, error: itemsError } = await supabase
         .from("items")
@@ -114,7 +115,7 @@ export const useDashboardData = () => {
 
   // Fetch low stock items
   const { data: lowStockItems, isLoading: lowStockLoading } = useQuery({
-    queryKey: ["dashboard-low-stock"],
+    queryKey: queryKeys.dashboard.lowStock,
     queryFn: async (): Promise<LowStockItem[]> => {
       const { data, error } = await supabase
         .from("items")

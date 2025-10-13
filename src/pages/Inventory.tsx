@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Search, Edit, Trash2, Upload, Download, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,36 +13,34 @@ import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
 
 const InventoryNew = () => {
-  const [inventory, setInventory] = useState<Item[]>([]);
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | undefined>();
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchInventory();
-  }, []);
-
-  const fetchInventory = async () => {
-    try {
+  const { data: inventory = [], isLoading } = useQuery({
+    queryKey: queryKeys.inventory.all,
+    queryFn: async () => {
       const { data, error } = await supabase
         .from("items")
         .select("*")
         .order("name");
 
-      if (error) throw error;
-      setInventory(data || []);
-    } catch (error: any) {
-      toast.error("Failed to load inventory");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      if (error) {
+        toast.error("Failed to load inventory");
+        throw error;
+      }
+
+      return data || [];
+    },
+  });
 
   const filteredInventory = useMemo(() => {
     return inventory.filter(
@@ -75,7 +73,12 @@ const InventoryNew = () => {
 
       if (error) throw error;
       toast.success("Item deleted successfully");
-      fetchInventory();
+      
+      // Invalidate all related queries
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -246,13 +249,13 @@ const InventoryNew = () => {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         item={editingItem}
-        onSave={fetchInventory}
+        onSave={() => {}}
       />
 
       <FileImport
         open={importOpen}
         onOpenChange={setImportOpen}
-        onImportComplete={fetchInventory}
+        onImportComplete={() => {}}
       />
 
       {selectedItemForHistory && (
