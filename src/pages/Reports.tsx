@@ -1,43 +1,35 @@
-import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
-import { mockInventory, mockAdjustments } from "@/lib/mockData";
 import { Badge } from "@/components/ui/badge";
+import { useReportsData } from "@/hooks/useReportsData";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const Reports = () => {
-  const profitMargins = useMemo(() => {
-    return mockInventory.map(item => ({
-      name: item.name,
-      margin: ((item.sellingPrice - item.costPrice) / item.sellingPrice * 100).toFixed(1),
-      profit: (item.sellingPrice - item.costPrice).toFixed(2),
-    })).sort((a, b) => parseFloat(b.margin) - parseFloat(a.margin));
-  }, []);
+  const { categoryValue, stockMovement, profitMargins, recentAdjustments, isLoading, error } = useReportsData();
 
-  const stockMovement = useMemo(() => {
-    return mockAdjustments.map(adj => ({
-      date: adj.date,
-      item: adj.itemName,
-      change: adj.adjustment,
-    }));
-  }, []);
+  if (isLoading) {
+    return (
+      <div className="p-8 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Reports & Analytics</h1>
+          <p className="text-muted-foreground mt-1">Detailed insights into your inventory</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Skeleton className="h-[400px]" />
+          <Skeleton className="h-[400px]" />
+        </div>
+      </div>
+    );
+  }
 
-  const categoryValue = useMemo(() => {
-    const categories = mockInventory.reduce((acc, item) => {
-      if (!acc[item.category]) {
-        acc[item.category] = { totalValue: 0, totalItems: 0 };
-      }
-      acc[item.category].totalValue += item.quantity * item.sellingPrice;
-      acc[item.category].totalItems += item.quantity;
-      return acc;
-    }, {} as Record<string, { totalValue: number; totalItems: number }>);
-
-    return Object.entries(categories).map(([name, data]) => ({
-      name,
-      value: Math.round(data.totalValue),
-      items: data.totalItems,
-    }));
-  }, []);
+  if (error) {
+    return (
+      <div className="p-8">
+        <div className="text-destructive">Error loading reports: {(error as Error).message}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -55,10 +47,10 @@ const Reports = () => {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={categoryValue}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="name" />
+                <XAxis dataKey="category" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="total_value" fill="hsl(var(--chart-1))" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -77,7 +69,7 @@ const Reports = () => {
                 <Tooltip />
                 <Line 
                   type="monotone" 
-                  dataKey="change" 
+                  dataKey="adjustment" 
                   stroke="hsl(var(--chart-2))" 
                   strokeWidth={2}
                   dot={{ fill: "hsl(var(--chart-2))", r: 4 }}
@@ -104,14 +96,14 @@ const Reports = () => {
             </TableHeader>
             <TableBody>
               {profitMargins.map((item) => {
-                const margin = parseFloat(item.margin);
+                const margin = item.margin;
                 const performance = margin > 50 ? 'success' : margin > 30 ? 'warning' : 'destructive';
                 
                 return (
                   <TableRow key={item.name}>
                     <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>{item.margin}%</TableCell>
-                    <TableCell>${item.profit}</TableCell>
+                    <TableCell>{margin.toFixed(1)}%</TableCell>
+                    <TableCell>${item.profit.toFixed(2)}</TableCell>
                     <TableCell>
                       <Badge variant={performance as any}>
                         {margin > 50 ? 'Excellent' : margin > 30 ? 'Good' : 'Low'}
@@ -142,12 +134,12 @@ const Reports = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockAdjustments.map((adj) => (
-                <TableRow key={adj.id}>
-                  <TableCell>{adj.date}</TableCell>
-                  <TableCell className="font-medium">{adj.itemName}</TableCell>
-                  <TableCell>{adj.previousQty}</TableCell>
-                  <TableCell>{adj.newQty}</TableCell>
+              {recentAdjustments.map((adj, index) => (
+                <TableRow key={index}>
+                  <TableCell>{adj.created_at}</TableCell>
+                  <TableCell className="font-medium">{adj.item_name}</TableCell>
+                  <TableCell>{adj.previous_quantity}</TableCell>
+                  <TableCell>{adj.new_quantity}</TableCell>
                   <TableCell>
                     <Badge variant={adj.adjustment > 0 ? 'success' : 'destructive'}>
                       {adj.adjustment > 0 ? '+' : ''}{adj.adjustment}
