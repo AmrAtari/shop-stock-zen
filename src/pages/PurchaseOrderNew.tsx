@@ -18,7 +18,7 @@ import { POItemSelector } from "@/components/POItemSelector";
 import { POItemImport } from "@/components/POItemImport";
 import { POBarcodeScanner } from "@/components/POBarcodeScanner";
 import { supabase } from "@/integrations/supabase/client";
-import { useSuppliers } from "@/hooks/usePurchaseOrders";
+import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ import { Item, Supplier } from "@/types/database";
 
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
+  store: z.string().optional(),
   orderDate: z.date(),
   expectedDelivery: z.date().optional(),
   buyerCompanyName: z.string().optional(),
@@ -63,6 +64,7 @@ const PurchaseOrderNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
+  const { data: stores = [] } = useStores();
   const { data: inventory = [] } = useQuery<Item[]>({
     queryKey: queryKeys.inventory.all,
     queryFn: async () => {
@@ -215,6 +217,7 @@ const PurchaseOrderNew = () => {
         .insert({
           po_number: poNumber,
           supplier: supplierData.name,
+          store_id: data.store || null,
           order_date: data.orderDate.toISOString(),
           expected_delivery: data.expectedDelivery?.toISOString(),
           buyer_company_name: data.buyerCompanyName,
@@ -291,10 +294,25 @@ const PurchaseOrderNew = () => {
             <CardTitle>1. Identification & Dates</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>PO Number</Label>
                 <Input value="Auto-generated on save" disabled />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="store">Store (Optional)</Label>
+                <Select value={watch("store")} onValueChange={(value) => setValue("store", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select store" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stores.map((store) => (
+                      <SelectItem key={store.id} value={store.id}>
+                        {store.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="orderDate">Order Date *</Label>

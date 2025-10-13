@@ -45,3 +45,17 @@ export const useSuppliers = () => {
     },
   });
 };
+
+export const useStores = () => {
+  return useQuery({
+    queryKey: ['stores'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+};
