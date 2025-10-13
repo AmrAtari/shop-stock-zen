@@ -97,7 +97,7 @@ const Transfers = () => {
     try {
       const transferNumber = `TRF-${String(transfers.length + 1).padStart(5, "0")}`;
       
-      const { error } = await supabase.from("transfers").insert({
+      const { data, error } = await supabase.from("transfers").insert({
         transfer_number: transferNumber,
         from_store_id: formData.from_store_id,
         to_store_id: formData.to_store_id,
@@ -105,7 +105,7 @@ const Transfers = () => {
         total_items: 0,
         reason: formData.reason || null,
         notes: formData.notes || null,
-      });
+      }).select().single();
 
       if (error) throw error;
 
@@ -118,6 +118,11 @@ const Transfers = () => {
         reason: "",
         notes: "",
       });
+      
+      // Navigate to the transfer detail page to add items
+      if (data) {
+        navigate(`/transfers/${data.id}`);
+      }
     } catch (error: any) {
       toast.error("Failed to create transfer");
     } finally {
