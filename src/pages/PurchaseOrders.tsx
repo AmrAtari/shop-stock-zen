@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Plus, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PaginationControls } from "@/components/PaginationControls";
+import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
 import { PurchaseOrder } from "@/types/database";
 import { toast } from "sonner";
@@ -33,6 +35,16 @@ const PurchaseOrders = () => {
       setIsLoading(false);
     }
   };
+
+  const pagination = usePagination({
+    totalItems: purchaseOrders.length,
+    itemsPerPage: 10,
+    initialPage: 1,
+  });
+
+  const paginatedPurchaseOrders = useMemo(() => {
+    return purchaseOrders.slice(pagination.startIndex, pagination.endIndex);
+  }, [purchaseOrders, pagination.startIndex, pagination.endIndex]);
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -90,7 +102,7 @@ const PurchaseOrders = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {purchaseOrders.map((po) => (
+                {paginatedPurchaseOrders.map((po) => (
                   <TableRow key={po.id}>
                     <TableCell className="font-medium">{po.po_number}</TableCell>
                     <TableCell>{po.supplier}</TableCell>
@@ -119,6 +131,18 @@ const PurchaseOrders = () => {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {purchaseOrders.length > 0 && (
+            <PaginationControls
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              onPageChange={pagination.goToPage}
+              canGoPrev={pagination.canGoPrev}
+              canGoNext={pagination.canGoNext}
+              totalItems={purchaseOrders.length}
+              startIndex={pagination.startIndex}
+              endIndex={pagination.endIndex}
+            />
           )}
         </CardContent>
       </Card>

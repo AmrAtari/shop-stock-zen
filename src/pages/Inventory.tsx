@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
+import { PaginationControls } from "@/components/PaginationControls";
+import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { toast } from "sonner";
@@ -50,6 +52,16 @@ const InventoryNew = () => {
         item.category.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [inventory, searchTerm]);
+
+  const pagination = usePagination({
+    totalItems: filteredInventory.length,
+    itemsPerPage: 20,
+    initialPage: 1,
+  });
+
+  const paginatedInventory = useMemo(() => {
+    return filteredInventory.slice(pagination.startIndex, pagination.endIndex);
+  }, [filteredInventory, pagination.startIndex, pagination.endIndex]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
@@ -147,7 +159,7 @@ const InventoryNew = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredInventory.map((item) => {
+            {paginatedInventory.map((item) => {
               const status = getStockStatus(item);
               return (
                 <TableRow key={item.id}>
@@ -204,6 +216,17 @@ const InventoryNew = () => {
           </TableBody>
         </Table>
       </div>
+
+      <PaginationControls
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
+        onPageChange={pagination.goToPage}
+        canGoPrev={pagination.canGoPrev}
+        canGoNext={pagination.canGoNext}
+        totalItems={filteredInventory.length}
+        startIndex={pagination.startIndex}
+        endIndex={pagination.endIndex}
+      />
 
       <ProductDialogNew
         open={dialogOpen}

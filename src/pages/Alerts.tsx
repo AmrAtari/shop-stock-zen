@@ -1,11 +1,24 @@
+import { useMemo } from "react";
 import { AlertTriangle, Package, TrendingDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PaginationControls } from "@/components/PaginationControls";
+import { usePagination } from "@/hooks/usePagination";
 import { useAlertsData } from "@/hooks/useAlertsData";
 
 const Alerts = () => {
   const { outOfStock, lowStock, restockRecommendations, isLoading } = useAlertsData();
+
+  const pagination = usePagination({
+    totalItems: restockRecommendations.length,
+    itemsPerPage: 10,
+    initialPage: 1,
+  });
+
+  const paginatedRestockRecommendations = useMemo(() => {
+    return restockRecommendations.slice(pagination.startIndex, pagination.endIndex);
+  }, [restockRecommendations, pagination.startIndex, pagination.endIndex]);
 
   return (
     <div className="p-8 space-y-6">
@@ -115,7 +128,7 @@ const Alerts = () => {
             <p className="text-center text-muted-foreground py-8">No restock recommendations</p>
           ) : (
             <div className="space-y-4">
-              {restockRecommendations.map(item => (
+              {paginatedRestockRecommendations.map(item => (
                 <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex-1">
                     <p className="font-medium">{item.name}</p>
@@ -134,6 +147,18 @@ const Alerts = () => {
                 </div>
               ))}
             </div>
+          )}
+          {restockRecommendations.length > 0 && (
+            <PaginationControls
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              onPageChange={pagination.goToPage}
+              canGoPrev={pagination.canGoPrev}
+              canGoNext={pagination.canGoNext}
+              totalItems={restockRecommendations.length}
+              startIndex={pagination.startIndex}
+              endIndex={pagination.endIndex}
+            />
           )}
         </CardContent>
       </Card>

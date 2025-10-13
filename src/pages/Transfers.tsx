@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Plus, Eye, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PaginationControls } from "@/components/PaginationControls";
+import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
 import { Transfer } from "@/types/database";
 import { toast } from "sonner";
@@ -35,6 +37,16 @@ const Transfers = () => {
       setIsLoading(false);
     }
   };
+
+  const pagination = usePagination({
+    totalItems: transfers.length,
+    itemsPerPage: 10,
+    initialPage: 1,
+  });
+
+  const paginatedTransfers = useMemo(() => {
+    return transfers.slice(pagination.startIndex, pagination.endIndex);
+  }, [transfers, pagination.startIndex, pagination.endIndex]);
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -105,7 +117,7 @@ const Transfers = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transfers.map((transfer) => (
+                {paginatedTransfers.map((transfer) => (
                   <TableRow key={transfer.id}>
                     <TableCell className="font-medium">{transfer.transfer_number}</TableCell>
                     <TableCell>{transfer.from_store_id || "N/A"}</TableCell>
@@ -132,6 +144,18 @@ const Transfers = () => {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {transfers.length > 0 && (
+            <PaginationControls
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              onPageChange={pagination.goToPage}
+              canGoPrev={pagination.canGoPrev}
+              canGoNext={pagination.canGoNext}
+              totalItems={transfers.length}
+              startIndex={pagination.startIndex}
+              endIndex={pagination.endIndex}
+            />
           )}
         </CardContent>
       </Card>

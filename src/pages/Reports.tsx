@@ -2,11 +2,35 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { Badge } from "@/components/ui/badge";
+import { PaginationControls } from "@/components/PaginationControls";
+import { usePagination } from "@/hooks/usePagination";
 import { useReportsData } from "@/hooks/useReportsData";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const Reports = () => {
   const { categoryValue, stockMovement, profitMargins, recentAdjustments, isLoading, error } = useReportsData();
+
+  const profitMarginsPagination = usePagination({
+    totalItems: profitMargins.length,
+    itemsPerPage: 20,
+    initialPage: 1,
+  });
+
+  const adjustmentsPagination = usePagination({
+    totalItems: recentAdjustments.length,
+    itemsPerPage: 20,
+    initialPage: 1,
+  });
+
+  const paginatedProfitMargins = profitMargins.slice(
+    profitMarginsPagination.startIndex,
+    profitMarginsPagination.endIndex
+  );
+
+  const paginatedAdjustments = recentAdjustments.slice(
+    adjustmentsPagination.startIndex,
+    adjustmentsPagination.endIndex
+  );
 
   if (isLoading) {
     return (
@@ -95,7 +119,7 @@ const Reports = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {profitMargins.map((item) => {
+              {paginatedProfitMargins.map((item) => {
                 const margin = item.margin;
                 const performance = margin > 50 ? 'success' : margin > 30 ? 'warning' : 'destructive';
                 
@@ -114,6 +138,16 @@ const Reports = () => {
               })}
             </TableBody>
           </Table>
+          <PaginationControls
+            currentPage={profitMarginsPagination.currentPage}
+            totalPages={profitMarginsPagination.totalPages}
+            onPageChange={profitMarginsPagination.goToPage}
+            canGoPrev={profitMarginsPagination.canGoPrev}
+            canGoNext={profitMarginsPagination.canGoNext}
+            totalItems={profitMargins.length}
+            startIndex={profitMarginsPagination.startIndex}
+            endIndex={profitMarginsPagination.endIndex}
+          />
         </CardContent>
       </Card>
 
@@ -134,7 +168,7 @@ const Reports = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recentAdjustments.map((adj, index) => (
+              {paginatedAdjustments.map((adj, index) => (
                 <TableRow key={index}>
                   <TableCell>{adj.created_at}</TableCell>
                   <TableCell className="font-medium">{adj.item_name}</TableCell>
@@ -150,6 +184,16 @@ const Reports = () => {
               ))}
             </TableBody>
           </Table>
+          <PaginationControls
+            currentPage={adjustmentsPagination.currentPage}
+            totalPages={adjustmentsPagination.totalPages}
+            onPageChange={adjustmentsPagination.goToPage}
+            canGoPrev={adjustmentsPagination.canGoPrev}
+            canGoNext={adjustmentsPagination.canGoNext}
+            totalItems={recentAdjustments.length}
+            startIndex={adjustmentsPagination.startIndex}
+            endIndex={adjustmentsPagination.endIndex}
+          />
         </CardContent>
       </Card>
     </div>

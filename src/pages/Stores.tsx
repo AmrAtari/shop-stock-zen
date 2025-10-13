@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PaginationControls } from "@/components/PaginationControls";
+import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
 import { Store } from "@/types/database";
 import { toast } from "sonner";
@@ -90,6 +92,16 @@ const Stores = () => {
     setDialogOpen(true);
   };
 
+  const pagination = usePagination({
+    totalItems: stores.length,
+    itemsPerPage: 10,
+    initialPage: 1,
+  });
+
+  const paginatedStores = useMemo(() => {
+    return stores.slice(pagination.startIndex, pagination.endIndex);
+  }, [stores, pagination.startIndex, pagination.endIndex]);
+
   if (isLoading) {
     return <div className="p-8">Loading...</div>;
   }
@@ -108,7 +120,7 @@ const Stores = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {stores.map((store) => (
+        {paginatedStores.map((store) => (
           <Card key={store.id}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -137,6 +149,19 @@ const Stores = () => {
           </Card>
         ))}
       </div>
+
+      {stores.length > 0 && (
+        <PaginationControls
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          onPageChange={pagination.goToPage}
+          canGoPrev={pagination.canGoPrev}
+          canGoNext={pagination.canGoNext}
+          totalItems={stores.length}
+          startIndex={pagination.startIndex}
+          endIndex={pagination.endIndex}
+        />
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
