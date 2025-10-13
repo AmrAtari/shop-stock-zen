@@ -20,9 +20,9 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     ...(isAdmin ? [{ name: "System Configuration", href: "/configuration", icon: Settings }] : []),
     { name: "Inventory", href: "/inventory", icon: Package },
-    { name: "Reports", href: "/reports", icon: BarChart3 },
     { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
     { name: "Transfers", href: "/transfers", icon: Store },
+    { name: "Reports", href: "/reports", icon: BarChart3 },
   ];
 
   const handleLogout = async () => {
