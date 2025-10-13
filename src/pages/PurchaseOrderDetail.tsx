@@ -21,6 +21,21 @@ const PurchaseOrderDetail = () => {
   const { isAdmin } = useIsAdmin();
   const queryClient = useQueryClient();
 
+  const updateStatusMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+    },
+  });
+
   if (isLoading) {
     return <div className="p-8">Loading...</div>;
   }
@@ -81,21 +96,6 @@ const PurchaseOrderDetail = () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Purchase Order");
     XLSX.writeFile(workbook, `PO_${po.po_number}.xlsx`);
   };
-
-  const updateStatusMutation = useMutation({
-    mutationFn: async (newStatus: string) => {
-      const { error } = await supabase
-        .from("purchase_orders")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq("id", id);
-      
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
-    },
-  });
 
   const handleSubmit = async () => {
     try {
