@@ -147,46 +147,84 @@ const PurchaseOrderDetail = () => {
 
   const handleReceive = async () => {
     try {
-      // Update all items in inventory
-      for (const item of items) {
-        if (item.item_id) {
-          // Get current quantity
-          const { data: currentItem } = await supabase
-            .from("items")
-            .select("quantity")
-            .eq("id", item.item_id)
-            .single();
+      let updatedCount = 0;
+      const notFoundSkus: string[] = [];
 
-          if (currentItem) {
-            // Update quantity
-            await supabase
-              .from("items")
-              .update({ 
-                quantity: currentItem.quantity + item.quantity,
-                last_restocked: new Date().toISOString()
-              })
-              .eq("id", item.item_id);
+      for (const item of items) {
+        // Find the inventory item either by explicit item_id or fallback to SKU
+        let targetId: string | null = null;
+        let currentQty = 0;
+
+        if (item.item_id) {
+          const { data: byId, error: byIdErr } = await supabase
+            .from("items")
+            .select("id, quantity")
+            .eq("id", item.item_id)
+            .maybeSingle();
+
+          if (byIdErr) throw byIdErr;
+          if (byId) {
+            targetId = byId.id as string;
+            currentQty = (byId.quantity as number) ?? 0;
+          }
+        } else if (item.sku) {
+          const { data: bySku, error: bySkuErr } = await supabase
+            .from("items")
+            .select("id, quantity")
+            .eq("sku", item.sku)
+            .maybeSingle();
+
+          if (bySkuErr) throw bySkuErr;
+          if (bySku) {
+            targetId = bySku.id as string;
+            currentQty = (bySku.quantity as number) ?? 0;
           }
         }
 
-        // Update received quantity in PO items
-        await supabase
+        if (targetId) {
+          const { error: updateErr } = await supabase
+            .from("items")
+            .update({
+              quantity: currentQty + item.quantity,
+              last_restocked: new Date().toISOString(),
+            })
+            .eq("id", targetId);
+          if (updateErr) throw updateErr;
+          updatedCount += 1;
+        } else {
+          if (item.sku) notFoundSkus.push(item.sku);
+        }
+
+        // Update received quantity in PO items regardless to reflect processing
+        const { error: poiErr } = await supabase
           .from("purchase_order_items")
           .update({ received_quantity: item.quantity })
           .eq("id", item.id);
+        if (poiErr) throw poiErr;
       }
 
-      // Update PO status to completed
-      await updateStatusMutation.mutateAsync("completed");
-      
-      toast({
-        title: "PO Received",
-        description: "Purchase order has been received and inventory updated.",
-      });
-    } catch (error) {
+      if (updatedCount > 0) {
+        await updateStatusMutation.mutateAsync("completed");
+        // Refresh related caches so Inventory reflects latest stock
+        await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+
+        toast({
+          title: "PO Received",
+          description: notFoundSkus.length
+            ? `Inventory updated. Missing SKUs not linked to items: ${notFoundSkus.join(", ")}`
+            : "Purchase order has been received and inventory updated.",
+        });
+      } else {
+        toast({
+          title: "No Items Updated",
+          description: "Could not match any PO items to inventory by Item ID or SKU.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to receive purchase order.",
+        description: error?.message || "Failed to receive purchase order.",
         variant: "destructive",
       });
     }
