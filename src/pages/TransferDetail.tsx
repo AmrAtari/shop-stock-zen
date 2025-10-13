@@ -283,11 +283,12 @@ const TransferDetail = () => {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-start">
-            <div>
+            <div className="space-y-1">
               <CardTitle className="text-2xl">{transfer.transfer_number}</CardTitle>
-              <p className="text-muted-foreground mt-1">
-                Transfer Date: {format(new Date(transfer.created_at), "PPP")}
-              </p>
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                <span>Transfer Date: {format(new Date(transfer.created_at), "PPP")}</span>
+                {transfer.reason && <span>• Reason: {transfer.reason}</span>}
+              </div>
             </div>
             <Badge variant={getStatusVariant(transfer.status) as any} className="text-lg px-4 py-2">
               {transfer.status.toUpperCase().replace("_", " ")}

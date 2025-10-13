@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Eye, Trash2, Package, ArrowRightLeft } from "lucide-react";
+import { Plus, Eye, Trash2, Package, ArrowRightLeft, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { useTransfers, useStores } from "@/hooks/useTransfers";
@@ -18,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const Transfers = () => {
   const navigate = useNavigate();
@@ -29,6 +32,7 @@ const Transfers = () => {
   const [formData, setFormData] = useState({
     from_store_id: "",
     to_store_id: "",
+    transfer_date: new Date(),
     reason: "",
     notes: "",
   });
@@ -101,6 +105,7 @@ const Transfers = () => {
         transfer_number: transferNumber,
         from_store_id: formData.from_store_id,
         to_store_id: formData.to_store_id,
+        created_at: formData.transfer_date.toISOString(),
         status: "pending",
         total_items: 0,
         reason: formData.reason || null,
@@ -115,6 +120,7 @@ const Transfers = () => {
       setFormData({
         from_store_id: "",
         to_store_id: "",
+        transfer_date: new Date(),
         reason: "",
         notes: "",
       });
@@ -285,6 +291,33 @@ const Transfers = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="transfer_date">Transfer Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !formData.transfer_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.transfer_date ? format(formData.transfer_date, "PPP") : "Select date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.transfer_date}
+                    onSelect={(date) => date && setFormData({ ...formData, transfer_date: date })}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-2">
