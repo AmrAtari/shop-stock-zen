@@ -13,4 +13,12 @@ export const queryKeys = {
   alerts: {
     all: ['alerts'] as const,
   },
+  purchaseOrders: {
+    all: ['purchase-orders'] as const,
+    detail: (id: string) => ['purchase-orders', id] as const,
+    items: (poId: string) => ['purchase-orders', poId, 'items'] as const,
+  },
+  suppliers: {
+    all: ['suppliers'] as const,
+  },
 };

@@ -11,6 +11,8 @@ import Inventory from "./pages/Inventory";
 import Alerts from "./pages/Alerts";
 import Reports from "./pages/Reports";
 import PurchaseOrders from "./pages/PurchaseOrders";
+import PurchaseOrderNew from "./pages/PurchaseOrderNew";
+import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
 import Stores from "./pages/Stores";
 import Configuration from "./pages/Configuration";
 import Duplicates from "./pages/Duplicates";
@@ -73,6 +75,26 @@ const App = () => (
               <ProtectedRoute>
                 <Layout>
                   <PurchaseOrders />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/purchase-orders/new"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <PurchaseOrderNew />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/purchase-orders/:id"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <PurchaseOrderDetail />
                 </Layout>
               </ProtectedRoute>
             }

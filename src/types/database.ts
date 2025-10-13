@@ -46,6 +46,16 @@ export interface PriceLevel {
   created_at: string;
 }
 
+export interface Supplier {
+  id: string;
+  name: string;
+  address: string | null;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  created_at: string;
+}
+
 export interface PurchaseOrder {
   id: string;
   po_number: string;
@@ -56,6 +66,22 @@ export interface PurchaseOrder {
   total_cost: number;
   expected_delivery: string | null;
   notes: string | null;
+  order_date: string;
+  buyer_company_name: string | null;
+  buyer_address: string | null;
+  buyer_contact: string | null;
+  billing_address: string | null;
+  shipping_address: string | null;
+  supplier_contact_person: string | null;
+  payment_terms: string;
+  currency: string;
+  shipping_method: string | null;
+  fob_terms: string | null;
+  special_instructions: string | null;
+  subtotal: number;
+  tax_amount: number;
+  shipping_charges: number;
+  authorized_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +92,11 @@ export interface PurchaseOrderItem {
   item_id: string | null;
   sku: string;
   item_name: string;
+  item_description: string | null;
+  color: string | null;
+  size: string | null;
+  model_number: string | null;
+  unit: string;
   quantity: number;
   cost_price: number;
   received_quantity: number;

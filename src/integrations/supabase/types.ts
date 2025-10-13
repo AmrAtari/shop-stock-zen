@@ -377,37 +377,52 @@ export type Database = {
       }
       purchase_order_items: {
         Row: {
+          color: string | null
           cost_price: number
           created_at: string
           id: string
+          item_description: string | null
           item_id: string | null
           item_name: string
+          model_number: string | null
           po_id: string
           quantity: number
           received_quantity: number
+          size: string | null
           sku: string
+          unit: string | null
         }
         Insert: {
+          color?: string | null
           cost_price: number
           created_at?: string
           id?: string
+          item_description?: string | null
           item_id?: string | null
           item_name: string
+          model_number?: string | null
           po_id: string
           quantity: number
           received_quantity?: number
+          size?: string | null
           sku: string
+          unit?: string | null
         }
         Update: {
+          color?: string | null
           cost_price?: number
           created_at?: string
           id?: string
+          item_description?: string | null
           item_id?: string | null
           item_name?: string
+          model_number?: string | null
           po_id?: string
           quantity?: number
           received_quantity?: number
+          size?: string | null
           sku?: string
+          unit?: string | null
         }
         Relationships: [
           {
@@ -428,40 +443,88 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          authorized_by: string | null
+          billing_address: string | null
+          buyer_address: string | null
+          buyer_company_name: string | null
+          buyer_contact: string | null
           created_at: string
+          currency: string | null
           expected_delivery: string | null
+          fob_terms: string | null
           id: string
           notes: string | null
+          order_date: string
+          payment_terms: string | null
           po_number: string
+          shipping_address: string | null
+          shipping_charges: number | null
+          shipping_method: string | null
+          special_instructions: string | null
           status: string
           store_id: string | null
+          subtotal: number | null
           supplier: string
+          supplier_contact_person: string | null
+          tax_amount: number | null
           total_cost: number
           total_items: number
           updated_at: string
         }
         Insert: {
+          authorized_by?: string | null
+          billing_address?: string | null
+          buyer_address?: string | null
+          buyer_company_name?: string | null
+          buyer_contact?: string | null
           created_at?: string
+          currency?: string | null
           expected_delivery?: string | null
+          fob_terms?: string | null
           id?: string
           notes?: string | null
+          order_date?: string
+          payment_terms?: string | null
           po_number: string
+          shipping_address?: string | null
+          shipping_charges?: number | null
+          shipping_method?: string | null
+          special_instructions?: string | null
           status?: string
           store_id?: string | null
+          subtotal?: number | null
           supplier: string
+          supplier_contact_person?: string | null
+          tax_amount?: number | null
           total_cost?: number
           total_items?: number
           updated_at?: string
         }
         Update: {
+          authorized_by?: string | null
+          billing_address?: string | null
+          buyer_address?: string | null
+          buyer_company_name?: string | null
+          buyer_contact?: string | null
           created_at?: string
+          currency?: string | null
           expected_delivery?: string | null
+          fob_terms?: string | null
           id?: string
           notes?: string | null
+          order_date?: string
+          payment_terms?: string | null
           po_number?: string
+          shipping_address?: string | null
+          shipping_charges?: number | null
+          shipping_method?: string | null
+          special_instructions?: string | null
           status?: string
           store_id?: string | null
+          subtotal?: number | null
           supplier?: string
+          supplier_contact_person?: string | null
+          tax_amount?: number | null
           total_cost?: number
           total_items?: number
           updated_at?: string
@@ -579,19 +642,31 @@ export type Database = {
       }
       suppliers: {
         Row: {
+          address: string | null
+          contact_person: string | null
           created_at: string
+          email: string | null
           id: string
           name: string
+          phone: string | null
         }
         Insert: {
+          address?: string | null
+          contact_person?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           name: string
+          phone?: string | null
         }
         Update: {
+          address?: string | null
+          contact_person?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           name?: string
+          phone?: string | null
         }
         Relationships: []
       }
@@ -771,6 +846,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_po_number: {
+        Args: { supplier_name: string }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
