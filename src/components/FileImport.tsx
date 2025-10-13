@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileSpreadsheet } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Upload, FileSpreadsheet, Download, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
@@ -59,6 +60,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateErrors, setDuplicateErrors] = useState<Array<{ sku: string; name: string; differences: any }>>([]);
   const [importErrors, setImportErrors] = useState<{
     type: string;
     message: string;
@@ -182,6 +185,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       let failCount = 0;
       let duplicatesFound = 0;
       const validationErrors: any[] = [];
+      const duplicatesList: Array<{ sku: string; name: string; differences: any }> = [];
 
       if (importType === "full") {
         // Full import: create or detect duplicates
@@ -255,25 +259,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             .maybeSingle();
 
           if (existing) {
-            // Found duplicate - create import log if not exists
-            if (!importLogId) {
-              const { data: logData } = await supabase
-                .from("import_logs")
-                .insert({
-                  file_name: file.name,
-                  import_type: importType,
-                  total_rows: data.length,
-                  successful_rows: 0,
-                  failed_rows: 0,
-                  duplicates_found: 0,
-                  status: "processing",
-                })
-                .select()
-                .single();
-              importLogId = logData?.id || null;
-            }
-
-            // Store duplicate for comparison
+            // Found duplicate - collect for error dialog
             duplicatesFound++;
             
             // Calculate differences
@@ -289,13 +275,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               }
             });
 
-            // Save to duplicate_comparisons table
-            await supabase.from("duplicate_comparisons").insert({
-              import_log_id: importLogId,
+            duplicatesList.push({
               sku: validatedData.sku,
-              existing_data: existing,
-              new_data: row,
-              differences,
+              name: validatedData.name,
+              differences: Object.keys(differences).length > 0 ? differences : null,
             });
           } else {
             // Insert new item
@@ -387,30 +370,16 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         }
       }
 
-      // Update or create import log
-      if (importType === "full" && duplicatesFound > 0) {
-        // Update existing log
-        await supabase
-          .from("import_logs")
-          .update({
-            successful_rows: successCount,
-            failed_rows: failCount,
-            duplicates_found: duplicatesFound,
-            status: "completed",
-          })
-          .eq("id", (await supabase.from("import_logs").select("id").order("created_at", { ascending: false }).limit(1).single()).data?.id);
-      } else {
-        // Create new log
-        await supabase.from("import_logs").insert({
-          file_name: file.name,
-          import_type: importType,
-          total_rows: data.length,
-          successful_rows: successCount,
-          failed_rows: failCount,
-          duplicates_found: duplicatesFound,
-          status: "completed",
-        });
-      }
+      // Create import log
+      await supabase.from("import_logs").insert({
+        file_name: file.name,
+        import_type: importType,
+        total_rows: data.length,
+        successful_rows: successCount,
+        failed_rows: failCount,
+        duplicates_found: duplicatesFound,
+        status: "completed",
+      });
 
       // Show error dialog if there were validation errors
       if (validationErrors.length > 0) {
@@ -422,17 +391,17 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         setErrorDialogOpen(true);
       }
 
+      // Show duplicate dialog if duplicates were found
+      if (duplicatesFound > 0) {
+        setDuplicateErrors(duplicatesList);
+        setDuplicateDialogOpen(true);
+      }
+
       toast.success(
-        `Import completed: ${successCount} successful, ${failCount} failed${
-          duplicatesFound > 0 ? `, ${duplicatesFound} duplicates found` : ""
+        `Import completed: ${successCount} successful${failCount > 0 ? `, ${failCount} failed` : ""}${
+          duplicatesFound > 0 ? `, ${duplicatesFound} duplicates skipped` : ""
         }`
       );
-
-      if (duplicatesFound > 0) {
-        toast.info("Duplicates found! Go to Duplicates page to review and resolve them", {
-          duration: 5000,
-        });
-      }
 
       onImportComplete();
       onOpenChange(false);
@@ -447,6 +416,23 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const exportDuplicateLog = () => {
+    const errorData = duplicateErrors.map((dup) => ({
+      SKU: dup.sku,
+      Name: dup.name,
+      Status: "Duplicate - Already exists in system",
+      Differences: dup.differences
+        ? Object.keys(dup.differences).map(k => `${k}: ${dup.differences[k].old} → ${dup.differences[k].new}`).join("; ")
+        : "No differences (exact duplicate)",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(errorData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Duplicate Items");
+    XLSX.writeFile(wb, `duplicate-items-${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success("Duplicate log exported successfully");
   };
 
   return (
@@ -590,6 +576,79 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         <DialogFooter>
           <Button onClick={() => setErrorDialogOpen(false)}>
             Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Duplicate Items Dialog */}
+    <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
+      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-destructive" />
+            Duplicate Items Found
+          </DialogTitle>
+          <DialogDescription>
+            {duplicateErrors.length} item{duplicateErrors.length > 1 ? "s" : ""} already exist in the system
+          </DialogDescription>
+        </DialogHeader>
+
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Import Partially Completed</AlertTitle>
+          <AlertDescription>
+            Some items were skipped because they already exist in the system (matching SKU). These items were not updated to prevent accidental data changes. You can export the error log to see which items were affected and review their differences.
+          </AlertDescription>
+        </Alert>
+
+        <div className="border rounded-lg overflow-hidden">
+          <div className="max-h-[300px] overflow-y-auto">
+            <div className="divide-y">
+              {duplicateErrors.slice(0, 15).map((dup, index) => (
+                <div key={index} className="p-3 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{dup.sku}</p>
+                      <p className="text-sm text-muted-foreground">{dup.name}</p>
+                      {dup.differences && (
+                        <p className="text-xs text-destructive mt-1">
+                          {Object.keys(dup.differences).length} field{Object.keys(dup.differences).length > 1 ? "s" : ""} differ
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-xs bg-destructive/10 text-destructive px-2 py-1 rounded">
+                      Duplicate
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {duplicateErrors.length > 15 && (
+            <div className="bg-muted px-3 py-2 text-center text-sm text-muted-foreground">
+              And {duplicateErrors.length - 15} more duplicate{duplicateErrors.length - 15 > 1 ? "s" : ""}...
+            </div>
+          )}
+        </div>
+
+        <div className="bg-muted p-4 rounded-lg text-sm space-y-2">
+          <p className="font-medium">💡 What to do next:</p>
+          <ul className="space-y-1 text-muted-foreground">
+            <li>• Export the error log to see all duplicate items and their differences</li>
+            <li>• Review if the existing data needs to be updated manually</li>
+            <li>• Remove duplicate rows from your import file and try again</li>
+            <li>• Use the "Quantity Update Only" import type if you only need to update quantities</li>
+          </ul>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
+            Close
+          </Button>
+          <Button onClick={exportDuplicateLog}>
+            <Download className="w-4 h-4 mr-2" />
+            Export Error Log
           </Button>
         </DialogFooter>
       </DialogContent>

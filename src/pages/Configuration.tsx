@@ -128,7 +128,7 @@ const Configuration = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AttributeTable)}>
-        <TabsList className="grid grid-cols-13 w-full gap-1">
+        <TabsList className="flex flex-wrap w-full gap-1">
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
