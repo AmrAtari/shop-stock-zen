@@ -31,7 +31,9 @@ const App = () => (
             path="/"
             element={
               <ProtectedRoute>
-                <Layout><Dashboard /></Layout>
+                <Layout>
+                  <Dashboard />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -39,7 +41,9 @@ const App = () => (
             path="/inventory"
             element={
               <ProtectedRoute>
-                <Layout><Inventory /></Layout>
+                <Layout>
+                  <Inventory />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -47,7 +51,9 @@ const App = () => (
             path="/alerts"
             element={
               <ProtectedRoute>
-                <Layout><Alerts /></Layout>
+                <Layout>
+                  <Alerts />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -55,7 +61,9 @@ const App = () => (
             path="/reports"
             element={
               <ProtectedRoute>
-                <Layout><Reports /></Layout>
+                <Layout>
+                  <Reports />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -63,7 +71,9 @@ const App = () => (
             path="/purchase-orders"
             element={
               <ProtectedRoute>
-                <Layout><PurchaseOrders /></Layout>
+                <Layout>
+                  <PurchaseOrders />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -71,23 +81,20 @@ const App = () => (
             path="/stores"
             element={
               <ProtectedRoute>
-                <Layout><Stores /></Layout>
+                <Layout>
+                  <Stores />
+                </Layout>
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/configuration"
-            element={
-              <ProtectedRoute>
-                <Layout><Configuration /></Layout>
-              </ProtectedRoute>
-            }
-          />
+
           <Route
             path="/duplicates"
             element={
               <ProtectedRoute>
-                <Layout><Duplicates /></Layout>
+                <Layout>
+                  <Duplicates />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -95,7 +102,19 @@ const App = () => (
             path="/transfers"
             element={
               <ProtectedRoute>
-                <Layout><Transfers /></Layout>
+                <Layout>
+                  <Transfers />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/configuration"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Configuration />
+                </Layout>
               </ProtectedRoute>
             }
           />
