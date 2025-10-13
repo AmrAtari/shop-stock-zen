@@ -5,14 +5,21 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { usePurchaseOrderDetail } from "@/hooks/usePurchaseOrderDetail";
-import { ArrowLeft, Printer, Download, Edit } from "lucide-react";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
 
 const PurchaseOrderDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data, isLoading, error } = usePurchaseOrderDetail(id || "");
+  const { isAdmin } = useIsAdmin();
+  const queryClient = useQueryClient();
 
   if (isLoading) {
     return <div className="p-8">Loading...</div>;
@@ -75,6 +82,69 @@ const PurchaseOrderDetail = () => {
     XLSX.writeFile(workbook, `PO_${po.po_number}.xlsx`);
   };
 
+  const updateStatusMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+    },
+  });
+
+  const handleSubmit = async () => {
+    try {
+      await updateStatusMutation.mutateAsync("pending");
+      toast({
+        title: "PO Submitted",
+        description: "Purchase order has been submitted for approval.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to submit purchase order.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleApprove = async () => {
+    try {
+      await updateStatusMutation.mutateAsync("approved");
+      toast({
+        title: "PO Approved",
+        description: "Purchase order has been approved.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve purchase order.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleReject = async () => {
+    try {
+      await updateStatusMutation.mutateAsync("cancelled");
+      toast({
+        title: "PO Rejected",
+        description: "Purchase order has been rejected.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject purchase order.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusVariant = (status: string) => {
     switch (status) {
       case "completed":
@@ -112,10 +182,28 @@ const PurchaseOrderDetail = () => {
             Export Excel
           </Button>
           {po.status === "draft" && (
-            <Button onClick={() => navigate(`/purchase-orders/${id}/edit`)}>
-              <Edit className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
+            <>
+              <Button onClick={() => navigate(`/purchase-orders/${id}/edit`)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+              <Button onClick={handleSubmit}>
+                <Send className="mr-2 h-4 w-4" />
+                Submit for Approval
+              </Button>
+            </>
+          )}
+          {po.status === "pending" && isAdmin && (
+            <>
+              <Button onClick={handleApprove} variant="default">
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Approve
+              </Button>
+              <Button onClick={handleReject} variant="destructive">
+                <XCircle className="mr-2 h-4 w-4" />
+                Reject
+              </Button>
+            </>
           )}
         </div>
       </div>

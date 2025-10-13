@@ -100,6 +100,16 @@ const App = () => (
             }
           />
           <Route
+            path="/purchase-orders/:id/edit"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <PurchaseOrderNew />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/stores"
             element={
               <ProtectedRoute>
