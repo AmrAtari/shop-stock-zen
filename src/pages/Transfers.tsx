@@ -1,19 +1,21 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-// Added Scan icon to imports
-import { Plus, Eye, Upload, X, Save, Box, CornerDownRight, Scan } from "lucide-react";
+// Lucide icons
+import { Plus, Eye, Upload, X, Save, Box, CornerDownRight, Scan, Loader } from "lucide-react";
+// Firebase Imports
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
+import {
+  getFirestore,
+  doc,
+  addDoc,
+  onSnapshot,
+  collection,
+  query,
+  serverTimestamp,
+  setLogLevel,
+} from "firebase/firestore";
 
-// --- MOCK DATA, TYPES, AND UTILITIES (for standalone file) ---
-
-// Mock Types
-const initialTransfer: Transfer = {
-  id: crypto.randomUUID(),
-  transfer_number: "TRF-001",
-  from_store_id: "WH-Main",
-  to_store_id: "Store-A",
-  status: "pending",
-  total_items: 5,
-  created_at: new Date().toISOString(),
-};
+// --- TYPES AND UTILITIES ---
 
 type Transfer = {
   id: string;
@@ -30,43 +32,28 @@ type Location = {
   name: string;
 };
 
-// Mock Database and Stores
+type ItemLine = {
+  itemId: string;
+  sku: string;
+  quantity: number;
+  unitCost: number;
+  batchId: string;
+};
+
+type NewTransfer = {
+  transferDate: string;
+  sourceLocationId: string;
+  destinationLocationId: string;
+  reason: string;
+  items: ItemLine[];
+};
+
+// Mock Database and Stores (Locations are static for this example)
 const mockLocations: Location[] = [
   { id: "WH-Main", name: "Main Warehouse (WH-Main)" },
   { id: "Store-A", name: "Retail Store A" },
   { id: "Store-B", name: "Retail Store B" },
   { id: "RMA", name: "Returns Area (RMA)" },
-];
-
-const mockTransfers: Transfer[] = [
-  { ...initialTransfer },
-  {
-    id: crypto.randomUUID(),
-    transfer_number: "TRF-002",
-    from_store_id: "Store-A",
-    to_store_id: "WH-Main",
-    status: "received",
-    total_items: 12,
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: crypto.randomUUID(),
-    transfer_number: "TRF-003",
-    from_store_id: "Store-B",
-    to_store_id: "Store-A",
-    status: "in_transit",
-    total_items: 2,
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: crypto.randomUUID(),
-    transfer_number: "TRF-004",
-    from_store_id: "WH-Main",
-    to_store_id: "Store-B",
-    status: "rejected",
-    total_items: 25,
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
 ];
 
 // Mock Hooks and Components (Simplified Shadcn/UI style)
@@ -75,31 +62,6 @@ const toast = {
   success: (msg: string) => console.log("TOAST SUCCESS:", msg),
 };
 const useUserRole = () => ({ permissions: { canCreateTransfers: true } });
-const usePagination = ({
-  totalItems,
-  itemsPerPage,
-  initialPage,
-}: {
-  totalItems: number;
-  itemsPerPage: number;
-  initialPage: number;
-}) => {
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const [currentPage, setCurrentPage] = useState(initialPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
-  const goToPage = (page: number) => setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  return {
-    currentPage,
-    totalPages,
-    startIndex,
-    endIndex,
-    goToPage,
-    canGoPrev: currentPage > 1,
-    canGoNext: currentPage < totalPages,
-  };
-};
-// Generic UI components implemented with Tailwind
 const Button = ({ children, onClick, variant = "default", className = "", disabled = false, type = "button" }: any) => {
   let baseStyle = "px-4 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2";
   if (variant === "default") baseStyle += " bg-blue-600 text-white hover:bg-blue-700 shadow-md";
@@ -115,8 +77,10 @@ const Button = ({ children, onClick, variant = "default", className = "", disabl
   );
 };
 
-const Card = ({ children, className = "" }: any) => (
-  <div className={`bg-white shadow-xl rounded-xl border border-gray-100 ${className}`}>{children}</div>
+const Card = ({ children, className = "", onClick = () => {} }: any) => (
+  <div onClick={onClick} className={`bg-white shadow-xl rounded-xl border-gray-100 ${className}`}>
+    {children}
+  </div>
 );
 const CardHeader = ({ children }: any) => <div className="p-6 border-b border-gray-100">{children}</div>;
 const CardTitle = ({ children }: any) => <h2 className="text-xl font-bold text-gray-800">{children}</h2>;
@@ -155,65 +119,13 @@ const Select = (props: any) => (
     {...props}
   />
 );
-const Textarea = (props: any) => (
-  <textarea
-    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150"
-    rows={3}
-    {...props}
-  />
-);
 const Label = ({ children, htmlFor }: any) => (
   <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
     {children}
   </label>
 );
 
-const PaginationControls = ({
-  currentPage,
-  totalPages,
-  onPageChange,
-  canGoPrev,
-  canGoNext,
-  totalItems,
-  startIndex,
-  endIndex,
-}: any) => (
-  <div className="flex items-center justify-between mt-4">
-    <div className="text-sm text-gray-600">
-      Showing {startIndex + 1} to {endIndex} of {totalItems} results
-    </div>
-    <div className="flex items-center gap-2">
-      <Button variant="outline" onClick={() => onPageChange(currentPage - 1)} disabled={!canGoPrev}>
-        Previous
-      </Button>
-      <div className="text-sm font-medium text-gray-700">
-        Page {currentPage} of {totalPages}
-      </div>
-      <Button variant="outline" onClick={() => onPageChange(currentPage + 1)} disabled={!canGoNext}>
-        Next
-      </Button>
-    </div>
-  </div>
-);
-// --- END MOCK UTILITIES ---
-
-// --- NEW MODAL COMPONENT ---
-
-type ItemLine = {
-  itemId: string;
-  sku: string;
-  quantity: number;
-  unitCost: number;
-  batchId: string;
-};
-
-type NewTransfer = {
-  transferDate: string;
-  sourceLocationId: string;
-  destinationLocationId: string;
-  reason: string;
-  items: ItemLine[];
-};
+// --- MODAL COMPONENT ---
 
 const initialNewTransferState: NewTransfer = {
   transferDate: new Date().toISOString().substring(0, 10), // Today's date
@@ -226,19 +138,23 @@ const initialNewTransferState: NewTransfer = {
 const CreateTransferModal = ({
   isOpen,
   onClose,
-  onCreate,
+  db,
+  userId,
+  transfersCount,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (data: NewTransfer) => void;
+  db: any;
+  userId: string;
+  transfersCount: number;
 }) => {
   const [formData, setFormData] = useState<NewTransfer>(initialNewTransferState);
   const [isSaving, setIsSaving] = useState(false);
-  // State to manage how items are added
   const [itemEntryMethod, setItemEntryMethod] = useState<"manual" | "barcode" | "excel">("manual");
-
-  // State for a new item being added manually/via scan
   const [newItem, setNewItem] = useState({ sku: "", quantity: 1, unitCost: 0, batchId: "" });
+
+  // Utility function to get the current App ID
+  const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -259,12 +175,10 @@ const CreateTransferModal = ({
       return;
     }
 
-    // Check if item already exists to update quantity (crucial for barcode scanning)
     const existingIndex = formData.items.findIndex((item) => item.sku === newItem.sku);
 
     let newItems;
     if (existingIndex > -1 && itemEntryMethod === "barcode") {
-      // If barcode mode, increment quantity
       newItems = formData.items.map((item, index) =>
         index === existingIndex ? { ...item, quantity: item.quantity + newItem.quantity } : item,
       );
@@ -273,7 +187,6 @@ const CreateTransferModal = ({
       toast.error(`Item ${newItem.sku} already exists. Please edit the line item below.`);
       return;
     } else {
-      // Add new item (for manual mode or new item in barcode mode)
       newItems = [
         ...formData.items,
         {
@@ -287,11 +200,15 @@ const CreateTransferModal = ({
     }
 
     setFormData((prev) => ({ ...prev, items: newItems }));
-    // Reset only SKU for quick successive scans/entries
     setNewItem((prev) => ({
       ...prev,
       sku: "",
-      quantity: itemEntryMethod === "barcode" ? 1 : initialNewTransferState.items[0].quantity,
+      quantity:
+        itemEntryMethod === "barcode"
+          ? 1
+          : itemEntryMethod === "manual" && prev.quantity > 1
+            ? prev.quantity
+            : initialNewTransferState.items[0].quantity,
     }));
   };
 
@@ -305,14 +222,19 @@ const CreateTransferModal = ({
     setFormData((prev) => ({ ...prev, items: newItems }));
   };
 
-  // Placeholder for Excel Import logic
+  const removeItemLine = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }));
+  };
+
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // In a real app, you would parse the file (CSV/XLSX) here.
-      // For now, we simulate importing 3 items and replacing the current list.
       toast.success(`Simulating import of file: ${file.name}. Items added.`);
 
+      // Mock imported items
       const importedItems: ItemLine[] = [
         { itemId: crypto.randomUUID(), sku: "EXC-1", quantity: 10, unitCost: 5.5, batchId: "F-1" },
         { itemId: crypto.randomUUID(), sku: "EXC-2", quantity: 20, unitCost: 2.1, batchId: "F-2" },
@@ -320,8 +242,7 @@ const CreateTransferModal = ({
       ];
 
       setFormData((prev) => ({ ...prev, items: importedItems }));
-      // Clear file input to allow re-selection
-      e.target.value = "";
+      e.target.value = ""; // Clear file input
     }
   };
 
@@ -337,26 +258,54 @@ const CreateTransferModal = ({
     }
 
     setIsSaving(true);
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
 
-    onCreate(formData);
-    setFormData(initialNewTransferState);
-    setIsSaving(false);
-    onClose();
-    toast.success("Transfer Voucher created successfully!");
+    try {
+      // Firestore Collection Path for Public Artifacts
+      const transfersRef = collection(db, `artifacts/${appId}/public/data/transfers`);
+
+      // Calculate total items
+      const totalItems = formData.items.reduce((sum, item) => sum + item.quantity, 0);
+
+      const newTransfer = {
+        transfer_number: `TRF-${transfersCount + 1}`, // Generate a sequential number (best done server-side in production)
+        from_store_id: formData.sourceLocationId,
+        to_store_id: formData.destinationLocationId,
+        status: "pending", // Default status on creation
+        total_items: totalItems,
+        reason: formData.reason,
+        transfer_date: formData.transferDate,
+        items: JSON.stringify(formData.items), // Serialize complex array structure
+        created_at: serverTimestamp(),
+        created_by_user_id: userId,
+      };
+
+      await addDoc(transfersRef, newTransfer);
+
+      setFormData(initialNewTransferState);
+      toast.success(`Transfer Voucher TRF-${transfersCount + 1} created successfully!`);
+      onClose();
+    } catch (error) {
+      console.error("Error creating transfer:", error);
+      toast.error("Failed to create transfer. Check console for details.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!isOpen) return null;
 
   return (
-    // Modal Overlay
+    // Modal Overlay: Clicks here trigger onClose
     <div
       className="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
     >
-      {/* Modal Content */}
-      <Card className="max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      {/* Modal Content: We STOP click propagation here! */}
+      <Card
+        className="max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+        // CRITICAL FIX: Stops the click event from bubbling up to the overlay's onClick={onClose}
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      >
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle>Create New Inventory Transfer Voucher</CardTitle>
@@ -364,7 +313,9 @@ const CreateTransferModal = ({
               <X className="w-5 h-5 text-gray-500" />
             </Button>
           </div>
-          <p className="text-sm text-gray-500 mt-1">Record the internal movement of stock between locations.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Record the internal movement of stock between locations. Created by: {userId}
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -692,7 +643,7 @@ const CreateTransferModal = ({
                 }
               >
                 <Save className="w-4 h-4" />
-                {isSaving ? "Saving..." : "Create Transfer"}
+                {isSaving ? "Creating..." : "Create Transfer"}
               </Button>
             </div>
           </form>
@@ -705,52 +656,127 @@ const CreateTransferModal = ({
 // --- MAIN APP COMPONENT ---
 
 const App = () => {
-  // In a real app, this would be an array of objects fetched from Supabase
-  const [transfers, setTransfers] = useState<Transfer[]>(mockTransfers);
-  const [isLoading, setIsLoading] = useState(false); // Set to false since we are using mock data initially
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [db, setDb] = useState<any>(null);
+  const [auth, setAuth] = useState<any>(null);
+  const [userId, setUserId] = useState("unknown");
 
   // Mock hook usage
   const { permissions } = useUserRole();
 
-  // Mock API call (Replaced with local state initialization)
-  const fetchTransfers = useCallback(async () => {
-    // Mock data is already loaded in useState initialization above
-    setIsLoading(false);
+  // Utility function to get the current App ID
+  const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
+
+  // 1. Initialize Firebase and Authenticate
+  useEffect(() => {
+    try {
+      setLogLevel("Debug");
+      const firebaseConfig = JSON.parse(typeof __firebase_config !== "undefined" ? __firebase_config : "{}");
+      const app = initializeApp(firebaseConfig);
+      const firestore = getFirestore(app);
+      const authInstance = getAuth(app);
+
+      setDb(firestore);
+      setAuth(authInstance);
+
+      // Handle Authentication - Await sign-in to guarantee authentication completion before setting state
+      const initializeAuth = async () => {
+        const initialAuthToken = typeof __initial_auth_token !== "undefined" ? __initial_auth_token : null;
+        let user = null;
+
+        if (initialAuthToken) {
+          try {
+            const userCredential = await signInWithCustomToken(authInstance, initialAuthToken);
+            user = userCredential.user;
+          } catch (err) {
+            console.error("[Auth] Custom token sign-in failed, falling back to anonymous.", err);
+            const userCredential = await signInAnonymously(authInstance);
+            user = userCredential.user;
+          }
+        } else {
+          const userCredential = await signInAnonymously(authInstance);
+          user = userCredential.user;
+        }
+
+        if (user) {
+          // Set state ONLY after successful sign-in
+          setUserId(user.uid);
+          setIsAuthReady(true);
+          console.log(`[Auth] User signed in successfully with UID: ${user.uid}. App is ready to fetch data.`);
+        } else {
+          // Fallback if sign-in failed for some reason (should be rare)
+          setUserId("anonymous-failed-" + crypto.randomUUID());
+          setIsAuthReady(true);
+          console.error("[Auth] Failed to sign in.");
+        }
+      };
+
+      initializeAuth();
+
+      // We explicitly remove onAuthStateChanged listener setup here to rely purely on the awaited sign-in above.
+    } catch (e) {
+      console.error("Failed to initialize Firebase:", e);
+      setIsAuthReady(true);
+      setIsLoading(false);
+      toast.error("Database connection failed.");
+    }
   }, []);
 
+  // 2. Fetch data in real-time once authentication is ready
   useEffect(() => {
-    // Simulating the initial data load
-    fetchTransfers();
-  }, [fetchTransfers]);
+    // This useEffect now runs only after isAuthReady is TRUE and db is set,
+    // which guarantees the sign-in is complete.
+    if (!isAuthReady || !db) return;
 
-  const handleCreateTransfer = (newTransferData: NewTransfer) => {
-    const totalItems = newTransferData.items.reduce((sum, item) => sum + item.quantity, 0);
+    console.log(`[Firestore] Subscribing to transfers using confirmed User ID: ${userId}`);
 
-    const newTransfer: Transfer = {
-      id: crypto.randomUUID(),
-      transfer_number: `TRF-${transfers.length + 1}`,
-      from_store_id: newTransferData.sourceLocationId,
-      to_store_id: newTransferData.destinationLocationId,
-      status: "pending", // Default status on creation
-      total_items: totalItems,
-      created_at: new Date().toISOString(),
-    };
+    // We reset loading here because we know we are ready to start the fetch
+    setIsLoading(true);
 
-    // Add the new transfer to the state
-    setTransfers((prev) => [newTransfer, ...prev]);
-    // Note: The actual line item details would be stored in a separate table/field in a real DB.
-  };
+    const transfersRef = collection(db, `artifacts/${appId}/public/data/transfers`);
+    const q = query(transfersRef);
 
-  const pagination = usePagination({
-    totalItems: transfers.length,
-    itemsPerPage: 10,
-    initialPage: 1,
-  });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedTransfers: Transfer[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
 
-  const paginatedTransfers = useMemo(() => {
-    return transfers.slice(pagination.startIndex, pagination.endIndex);
-  }, [transfers, pagination.startIndex, pagination.endIndex]);
+          // Note: The 'items' field is stored as a JSON string and not included in this top-level list view.
+
+          fetchedTransfers.push({
+            id: doc.id,
+            transfer_number: data.transfer_number || "N/A",
+            from_store_id: data.from_store_id,
+            to_store_id: data.to_store_id,
+            status: data.status,
+            total_items: data.total_items,
+            created_at: data.created_at?.toDate()?.toISOString() || data.transfer_date,
+          } as Transfer);
+        });
+
+        // Sort by creation date (newest first)
+        fetchedTransfers.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        setTransfers(fetchedTransfers);
+        setIsLoading(false);
+        console.log(`[Firestore] Successfully loaded ${fetchedTransfers.length} transfers.`);
+      },
+      (error) => {
+        console.error("Error listening to transfers:", error);
+        // This error now more definitively points to security rule failure if it still occurs
+        toast.error("Failed to load transfers list.");
+        setIsLoading(false);
+      },
+    );
+
+    // Cleanup function
+    return () => unsubscribe();
+  }, [isAuthReady, db, appId, userId]); // Depend on db, isAuthReady, and userId
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -768,8 +794,13 @@ const App = () => {
     }
   };
 
-  if (isLoading) {
-    return <div className="p-8">Loading...</div>;
+  if (isLoading || !isAuthReady) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 p-8">
+        <Loader className="w-8 h-8 animate-spin text-blue-600" />
+        <p className="ml-3 text-lg text-gray-600">Connecting to database...</p>
+      </div>
+    );
   }
 
   return (
@@ -777,11 +808,13 @@ const App = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-extrabold text-gray-900">Inventory Transfers</h1>
-          <p className="text-lg text-gray-500 mt-1">Manage stock movements between your internal locations.</p>
+          <p className="text-lg text-gray-500 mt-1">
+            Manage stock movements between your internal locations. (User ID:{" "}
+            <span className="font-mono text-sm text-blue-700">{userId}</span>)
+          </p>
         </div>
         {permissions.canCreateTransfers && (
           <div className="flex gap-3">
-            {/* The Import Excel button was removed here as requested */}
             <Button onClick={() => setIsModalOpen(true)} variant="default" className="text-sm">
               <Plus className="w-4 h-4" />
               New Transfer
@@ -792,12 +825,12 @@ const App = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Transfers</CardTitle>
+          <CardTitle>All Transfers ({transfers.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {transfers.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">No transfers yet</p>
+              <p className="text-gray-500">No transfers found in the database yet.</p>
               {permissions.canCreateTransfers && (
                 <Button className="mt-4" onClick={() => setIsModalOpen(true)}>
                   <CornerDownRight className="w-5 h-5 mr-2" />
@@ -806,62 +839,56 @@ const App = () => {
               )}
             </div>
           ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Transfer #</TableHead>
-                    <TableHead>From Location</TableHead>
-                    <TableHead>To Location</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Total Items</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Actions</TableHead>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Transfer #</TableHead>
+                  <TableHead>From Location</TableHead>
+                  <TableHead>To Location</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Total Items</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transfers.map((transfer) => (
+                  <TableRow key={transfer.id}>
+                    <TableCell className="font-medium text-blue-600">{transfer.transfer_number}</TableCell>
+                    <TableCell>{transfer.from_store_id}</TableCell>
+                    <TableCell>{transfer.to_store_id}</TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusVariant(transfer.status) as any}>
+                        {transfer.status.replace("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{transfer.total_items}</TableCell>
+                    <TableCell>{new Date(transfer.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        className="p-1"
+                        onClick={() => console.log(`Viewing transfer ${transfer.id}`)}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedTransfers.map((transfer) => (
-                    <TableRow key={transfer.id}>
-                      <TableCell className="font-medium text-blue-600">{transfer.transfer_number}</TableCell>
-                      <TableCell>{transfer.from_store_id}</TableCell>
-                      <TableCell>{transfer.to_store_id}</TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusVariant(transfer.status) as any}>
-                          {transfer.status.replace("_", " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">{transfer.total_items}</TableCell>
-                      <TableCell>{new Date(transfer.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          className="p-1"
-                          onClick={() => console.log(`Viewing transfer ${transfer.id}`)} // Mock navigation to detail page
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <PaginationControls
-                currentPage={pagination.currentPage}
-                totalPages={pagination.totalPages}
-                onPageChange={pagination.goToPage}
-                canGoPrev={pagination.canGoPrev}
-                canGoNext={pagination.canGoNext}
-                totalItems={transfers.length}
-                startIndex={pagination.startIndex}
-                endIndex={pagination.endIndex}
-              />
-            </>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
 
-      {/* The new modal component */}
-      <CreateTransferModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onCreate={handleCreateTransfer} />
+      {/* The modal component */}
+      <CreateTransferModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        db={db}
+        userId={userId}
+        transfersCount={transfers.length} // Used for simple sequential numbering (TRF-XXX)
+      />
     </div>
   );
 };
