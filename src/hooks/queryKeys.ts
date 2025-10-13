@@ -21,4 +21,12 @@ export const queryKeys = {
   suppliers: {
     all: ['suppliers'] as const,
   },
+  transfers: {
+    all: ['transfers'] as const,
+    detail: (id: string) => ['transfers', id] as const,
+    list: (searchTerm: string, statusFilter: string) => ['transfers', searchTerm, statusFilter] as const,
+  },
+  stores: {
+    all: ['stores'] as const,
+  },
 };
