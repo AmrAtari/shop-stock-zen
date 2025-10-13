@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, Eye, Trash2, Package, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import { queryKeys } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 
 const Transfers = () => {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -202,7 +204,7 @@ const Transfers = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => toast.info("View transfer details - Coming soon")}
+                          onClick={() => navigate(`/transfers/${transfer.id}`)}
                         >
                           <Eye className="w-4 h-4" />
                         </Button>

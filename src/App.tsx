@@ -17,6 +17,7 @@ import Stores from "./pages/Stores";
 import Configuration from "./pages/Configuration";
 import Duplicates from "./pages/Duplicates";
 import Transfers from "./pages/Transfers";
+import TransferDetail from "./pages/TransferDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -136,6 +137,16 @@ const App = () => (
               <ProtectedRoute>
                 <Layout>
                   <Transfers />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/transfers/:id"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <TransferDetail />
                 </Layout>
               </ProtectedRoute>
             }
