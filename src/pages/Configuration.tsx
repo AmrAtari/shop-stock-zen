@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useNavigate } from "react-router-dom";
 
-type AttributeTable = "categories" | "brands" | "sizes" | "colors" | "genders" | "seasons" | "suppliers" | "locations" | "units" | "departments" | "main_groups" | "origins" | "themes";
+type AttributeTable = "categories" | "sizes" | "colors" | "genders" | "seasons" | "suppliers" | "locations" | "units" | "departments" | "main_groups" | "origins" | "themes";
 
 interface Attribute {
   id: string;
@@ -21,7 +21,6 @@ const Configuration = () => {
   const navigate = useNavigate();
   const [attributes, setAttributes] = useState<Record<AttributeTable, Attribute[]>>({
     categories: [],
-    brands: [],
     sizes: [],
     colors: [],
     genders: [],
@@ -51,7 +50,7 @@ const Configuration = () => {
   }, [isAdmin]);
 
   const fetchAllAttributes = async () => {
-    const tables: AttributeTable[] = ["categories", "brands", "sizes", "colors", "genders", "seasons", "suppliers", "locations", "units", "departments", "main_groups", "origins", "themes"];
+    const tables: AttributeTable[] = ["categories", "sizes", "colors", "genders", "seasons", "suppliers", "locations", "units", "departments", "main_groups", "origins", "themes"];
     
     const promises = tables.map(async (table) => {
       const { data, error } = await supabase
@@ -130,7 +129,6 @@ const Configuration = () => {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AttributeTable)}>
         <TabsList className="flex flex-wrap w-full gap-1">
           <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="main_groups">Main Groups</TabsTrigger>
           <TabsTrigger value="sizes">Sizes</TabsTrigger>
@@ -144,7 +142,7 @@ const Configuration = () => {
           <TabsTrigger value="units">Units</TabsTrigger>
         </TabsList>
 
-        {(["categories", "brands", "departments", "main_groups", "sizes", "colors", "genders", "seasons", "origins", "themes", "suppliers", "locations", "units"] as AttributeTable[]).map((tab) => (
+        {(["categories", "departments", "main_groups", "sizes", "colors", "genders", "seasons", "origins", "themes", "suppliers", "locations", "units"] as AttributeTable[]).map((tab) => (
           <TabsContent key={tab} value={tab} className="space-y-4">
             <div className="flex gap-2">
               <Input

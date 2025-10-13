@@ -141,17 +141,25 @@ const InventoryNew = () => {
         />
       </div>
 
-      <div className="border rounded-lg">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Brand</TableHead>
               <TableHead>Category</TableHead>
+              <TableHead>Department</TableHead>
+              <TableHead>Main Group</TableHead>
+              <TableHead>Brand</TableHead>
               <TableHead>Size</TableHead>
               <TableHead>Color</TableHead>
+              <TableHead>Gender</TableHead>
+              <TableHead>Season</TableHead>
+              <TableHead>Origin</TableHead>
+              <TableHead>Theme</TableHead>
+              <TableHead>Supplier</TableHead>
               <TableHead>Quantity</TableHead>
+              <TableHead>Unit</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Prices</TableHead>
@@ -165,13 +173,19 @@ const InventoryNew = () => {
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.sku}</TableCell>
                   <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.brand || "-"}</TableCell>
                   <TableCell>{item.category}</TableCell>
+                  <TableCell>{item.department || "-"}</TableCell>
+                  <TableCell>{item.main_group || "-"}</TableCell>
+                  <TableCell>{item.brand || "-"}</TableCell>
                   <TableCell>{item.size || "-"}</TableCell>
                   <TableCell>{item.color || "-"}</TableCell>
-                  <TableCell>
-                    {item.quantity} {item.unit}
-                  </TableCell>
+                  <TableCell>{item.gender || "-"}</TableCell>
+                  <TableCell>{item.season || "-"}</TableCell>
+                  <TableCell>{item.origin || "-"}</TableCell>
+                  <TableCell>{item.theme || "-"}</TableCell>
+                  <TableCell>{item.supplier || "-"}</TableCell>
+                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>{item.unit}</TableCell>
                   <TableCell>
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
