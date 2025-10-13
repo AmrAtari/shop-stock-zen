@@ -1,16 +1,11 @@
-import { useMemo } from "react";
 import { AlertTriangle, Package, TrendingDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { mockInventory } from "@/lib/mockData";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAlertsData } from "@/hooks/useAlertsData";
 
 const Alerts = () => {
-  const alerts = useMemo(() => {
-    const outOfStock = mockInventory.filter(item => item.quantity === 0);
-    const lowStock = mockInventory.filter(item => item.quantity > 0 && item.quantity <= item.minStock);
-    
-    return { outOfStock, lowStock };
-  }, []);
+  const { outOfStock, lowStock, restockRecommendations, isLoading } = useAlertsData();
 
   return (
     <div className="p-8 space-y-6">
@@ -28,23 +23,28 @@ const Alerts = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {alerts.outOfStock.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-24" />
+                <Skeleton className="h-24" />
+              </div>
+            ) : outOfStock.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">No items out of stock</p>
             ) : (
               <div className="space-y-3">
-                {alerts.outOfStock.map(item => (
+                {outOfStock.map(item => (
                   <div key={item.id} className="p-4 border border-destructive/20 rounded-lg bg-destructive/5">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <p className="font-semibold">{item.name}</p>
                         <p className="text-sm text-muted-foreground">{item.sku} • {item.category}</p>
-                        <p className="text-sm text-muted-foreground mt-1">Location: {item.location}</p>
+                        <p className="text-sm text-muted-foreground mt-1">Location: {item.location || 'N/A'}</p>
                       </div>
                       <Badge variant="destructive">0 {item.unit}</Badge>
                     </div>
                     <div className="mt-3 pt-3 border-t border-destructive/20">
                       <p className="text-sm">
-                        <span className="text-muted-foreground">Supplier:</span> {item.supplier}
+                        <span className="text-muted-foreground">Supplier:</span> {item.supplier || 'N/A'}
                       </p>
                     </div>
                   </div>
@@ -62,17 +62,22 @@ const Alerts = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {alerts.lowStock.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-24" />
+                <Skeleton className="h-24" />
+              </div>
+            ) : lowStock.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">No low stock items</p>
             ) : (
               <div className="space-y-3">
-                {alerts.lowStock.map(item => (
+                {lowStock.map(item => (
                   <div key={item.id} className="p-4 border border-warning/20 rounded-lg bg-warning/5">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <p className="font-semibold">{item.name}</p>
                         <p className="text-sm text-muted-foreground">{item.sku} • {item.category}</p>
-                        <p className="text-sm text-muted-foreground mt-1">Location: {item.location}</p>
+                        <p className="text-sm text-muted-foreground mt-1">Location: {item.location || 'N/A'}</p>
                       </div>
                       <div className="text-right">
                         <Badge variant="warning">{item.quantity} {item.unit}</Badge>
@@ -81,7 +86,7 @@ const Alerts = () => {
                     </div>
                     <div className="mt-3 pt-3 border-t border-warning/20">
                       <p className="text-sm">
-                        <span className="text-muted-foreground">Supplier:</span> {item.supplier}
+                        <span className="text-muted-foreground">Supplier:</span> {item.supplier || 'N/A'}
                       </p>
                     </div>
                   </div>
@@ -100,33 +105,36 @@ const Alerts = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {[...alerts.outOfStock, ...alerts.lowStock]
-              .sort((a, b) => a.quantity - b.quantity)
-              .map(item => {
-                const recommendedOrder = Math.max(item.minStock * 2 - item.quantity, 0);
-                const estimatedCost = recommendedOrder * item.costPrice;
-                
-                return (
-                  <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex-1">
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Current: {item.quantity} {item.unit} | Min Stock: {item.minStock} {item.unit}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-primary">
-                        Order {recommendedOrder} {item.unit}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Est. Cost: ${estimatedCost.toFixed(2)}
-                      </p>
-                    </div>
+          {isLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+            </div>
+          ) : restockRecommendations.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No restock recommendations</p>
+          ) : (
+            <div className="space-y-4">
+              {restockRecommendations.map(item => (
+                <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-medium">{item.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Current: {item.quantity} {item.unit} | Min Stock: {item.minStock} {item.unit}
+                    </p>
                   </div>
-                );
-              })}
-          </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-primary">
+                      Order {item.recommendedOrder} {item.unit}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Est. Cost: ${item.estimatedCost.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
