@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
@@ -24,6 +25,13 @@ const InventoryNew = () => {
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | undefined>();
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
+  
+  // Filter states
+  const [modelNumberFilter, setModelNumberFilter] = useState<string>("all");
+  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [seasonFilter, setSeasonFilter] = useState<string>("all");
+  const [mainGroupFilter, setMainGroupFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   const { data: inventory = [], isLoading } = useQuery({
     queryKey: queryKeys.inventory.all,
@@ -43,13 +51,47 @@ const InventoryNew = () => {
   });
 
   const filteredInventory = useMemo(() => {
-    return inventory.filter(
-      (item) =>
+    return inventory.filter((item) => {
+      const matchesSearch =
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [inventory, searchTerm]);
+        item.category.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
+      const matchesLocation = locationFilter === "all" || item.location === locationFilter;
+      const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
+      const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
+      const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
+      
+      return matchesSearch && matchesModelNumber && matchesLocation && matchesSeason && matchesMainGroup && matchesCategory;
+    });
+  }, [inventory, searchTerm, modelNumberFilter, locationFilter, seasonFilter, mainGroupFilter, categoryFilter]);
+
+  // Get unique filter values
+  const uniqueModelNumbers = useMemo(() => {
+    const numbers = inventory.map(item => item.item_number).filter(Boolean);
+    return [...new Set(numbers)].sort();
+  }, [inventory]);
+
+  const uniqueLocations = useMemo(() => {
+    const locations = inventory.map(item => item.location).filter(Boolean);
+    return [...new Set(locations)].sort();
+  }, [inventory]);
+
+  const uniqueSeasons = useMemo(() => {
+    const seasons = inventory.map(item => item.season).filter(Boolean);
+    return [...new Set(seasons)].sort();
+  }, [inventory]);
+
+  const uniqueMainGroups = useMemo(() => {
+    const groups = inventory.map(item => item.main_group).filter(Boolean);
+    return [...new Set(groups)].sort();
+  }, [inventory]);
+
+  const uniqueCategories = useMemo(() => {
+    const categories = inventory.map(item => item.category).filter(Boolean);
+    return [...new Set(categories)].sort();
+  }, [inventory]);
 
   const pagination = usePagination({
     totalItems: filteredInventory.length,
@@ -134,14 +176,88 @@ const InventoryNew = () => {
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-        <Input
-          placeholder="Search by name, SKU, or category..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
+      <div className="space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Input
+            placeholder="Search by name, SKU, or category..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        <div className="grid grid-cols-5 gap-4">
+          <Select value={modelNumberFilter} onValueChange={setModelNumberFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Model Number" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Model Numbers</SelectItem>
+              {uniqueModelNumbers.map((num) => (
+                <SelectItem key={num} value={num}>
+                  {num}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Locations</SelectItem>
+              {uniqueLocations.map((loc) => (
+                <SelectItem key={loc} value={loc}>
+                  {loc}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={seasonFilter} onValueChange={setSeasonFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Season" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Seasons</SelectItem>
+              {uniqueSeasons.map((season) => (
+                <SelectItem key={season} value={season}>
+                  {season}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={mainGroupFilter} onValueChange={setMainGroupFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Main Group" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Main Groups</SelectItem>
+              {uniqueMainGroups.map((group) => (
+                <SelectItem key={group} value={group}>
+                  {group}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {uniqueCategories.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="border rounded-lg overflow-x-auto">

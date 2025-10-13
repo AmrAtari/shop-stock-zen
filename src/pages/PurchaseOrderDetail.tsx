@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator";
 import { usePurchaseOrderDetail } from "@/hooks/usePurchaseOrderDetail";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send } from "lucide-react";
+import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
@@ -145,6 +145,53 @@ const PurchaseOrderDetail = () => {
     }
   };
 
+  const handleReceive = async () => {
+    try {
+      // Update all items in inventory
+      for (const item of items) {
+        if (item.item_id) {
+          // Get current quantity
+          const { data: currentItem } = await supabase
+            .from("items")
+            .select("quantity")
+            .eq("id", item.item_id)
+            .single();
+
+          if (currentItem) {
+            // Update quantity
+            await supabase
+              .from("items")
+              .update({ 
+                quantity: currentItem.quantity + item.quantity,
+                last_restocked: new Date().toISOString()
+              })
+              .eq("id", item.item_id);
+          }
+        }
+
+        // Update received quantity in PO items
+        await supabase
+          .from("purchase_order_items")
+          .update({ received_quantity: item.quantity })
+          .eq("id", item.id);
+      }
+
+      // Update PO status to completed
+      await updateStatusMutation.mutateAsync("completed");
+      
+      toast({
+        title: "PO Received",
+        description: "Purchase order has been received and inventory updated.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to receive purchase order.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusVariant = (status: string) => {
     switch (status) {
       case "completed":
@@ -204,6 +251,12 @@ const PurchaseOrderDetail = () => {
                 Reject
               </Button>
             </>
+          )}
+          {po.status === "approved" && isAdmin && (
+            <Button onClick={handleReceive} variant="default">
+              <Package className="mr-2 h-4 w-4" />
+              Receive & Update Stock
+            </Button>
           )}
         </div>
       </div>
