@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, AlertCircle, CheckCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
+import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 
 interface ImportedItem {
   sku: string;
@@ -22,20 +24,10 @@ interface TransferItemImportProps {
 export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps) => {
   const [importedItems, setImportedItems] = useState<ImportedItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsProcessing(true);
-
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-      const items: ImportedItem[] = jsonData.map((row: any) => {
+  const processImportData = (jsonData: any[]) => {
+    const items: ImportedItem[] = jsonData.map((row: any) => {
         const sku = String(row.SKU || row.sku || "").trim();
         const quantity = parseFloat(row.Quantity || row.quantity || 0);
 
@@ -60,12 +52,26 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
           itemName: String(row["Item Name"] || row.itemName || row.name || ""),
           quantity,
           status,
-          message,
-        };
-      });
+        message,
+      };
+    });
 
-      setImportedItems(items);
-      toast.success(`Parsed ${items.length} items from file`);
+    setImportedItems(items);
+    toast.success(`Parsed ${items.length} items`);
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      processImportData(jsonData);
     } catch (error) {
       console.error("Import error:", error);
       toast.error("Failed to parse file. Please check the format.");
@@ -73,6 +79,11 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
       setIsProcessing(false);
       event.target.value = "";
     }
+  };
+
+  const handleGoogleSheetsImport = (sheetData: any[]) => {
+    processImportData(sheetData);
+    setIsProcessing(false);
   };
 
   const handleConfirmImport = () => {
@@ -91,27 +102,44 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <input
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          onChange={handleFileUpload}
-          className="hidden"
-          id="transfer-file-upload"
-          disabled={isProcessing}
-        />
-        <label htmlFor="transfer-file-upload">
-          <Button variant="outline" disabled={isProcessing} asChild>
-            <span>
-              <Upload className="mr-2 h-4 w-4" />
-              {isProcessing ? "Processing..." : "Upload Excel File"}
-            </span>
-          </Button>
-        </label>
-        <div className="text-sm text-muted-foreground">
-          Expected columns: SKU, Quantity (optional: Item Name)
-        </div>
-      </div>
+      <Tabs value={importMethod} onValueChange={(value: any) => setImportMethod(value)}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="file">Upload File</TabsTrigger>
+          <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="file" className="space-y-4">
+          <div className="flex items-center gap-4">
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={handleFileUpload}
+              className="hidden"
+              id="transfer-file-upload"
+              disabled={isProcessing}
+            />
+            <label htmlFor="transfer-file-upload">
+              <Button variant="outline" disabled={isProcessing} asChild>
+                <span>
+                  <Upload className="mr-2 h-4 w-4" />
+                  {isProcessing ? "Processing..." : "Upload Excel File"}
+                </span>
+              </Button>
+            </label>
+            <div className="text-sm text-muted-foreground">
+              Expected columns: SKU, Quantity (optional: Item Name)
+            </div>
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="sheets">
+          <GoogleSheetsInput 
+            onImport={handleGoogleSheetsImport}
+            isProcessing={isProcessing}
+            setIsProcessing={setIsProcessing}
+          />
+        </TabsContent>
+      </Tabs>
 
       {importedItems.length > 0 && (
         <>

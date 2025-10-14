@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Upload, FileSpreadsheet, Download, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import { Item } from "@/types/database";
 import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
+import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 
 interface FileImportProps {
   open: boolean;
@@ -60,6 +62,7 @@ const quantityUpdateSchema = z.object({
 const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) => {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
+  const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
@@ -122,6 +125,11 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     });
   };
 
+  const handleGoogleSheetsImport = async (sheetData: any[]) => {
+    setIsUploading(true);
+    await processImportData(sheetData, "Google Sheets");
+  };
+
   const handleImport = async () => {
     if (!file) {
       toast.error("Please select a file to import");
@@ -129,6 +137,36 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     }
 
     setIsUploading(true);
+
+    try {
+      let data: any[];
+      
+      if (file.type === "text/csv") {
+        data = await parseCSVFile(file);
+      } else {
+        data = await parseExcelFile(file);
+      }
+
+      if (data.length === 0) {
+        setImportErrors({
+          type: "Empty File",
+          message: "The selected file contains no data. Please check your file and try again.",
+          validationErrors: []
+        });
+        setErrorDialogOpen(true);
+        setIsUploading(false);
+        return;
+      }
+
+      await processImportData(data, file.name);
+    } catch (error) {
+      console.error("Import error:", error);
+      toast.error("Failed to process file");
+      setIsUploading(false);
+    }
+  };
+
+  const processImportData = async (data: any[], fileName: string) => {
 
     // Helper to auto-create attribute if it doesn't exist
     const ensureAttributeExists = async (table: string, name: string): Promise<void> => {
@@ -164,27 +202,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       return undefined;
     };
 
-    try {
-      let data: any[];
-      
-      if (file.type === "text/csv") {
-        data = await parseCSVFile(file);
-      } else {
-        data = await parseExcelFile(file);
-      }
-
-      if (data.length === 0) {
-        setImportErrors({
-          type: "Empty File",
-          message: "The selected file contains no data. Please check your file and try again.",
-          validationErrors: []
-        });
-        setErrorDialogOpen(true);
-        setIsUploading(false);
-        return;
-      }
-
-      let successCount = 0;
+    let successCount = 0;
       let failCount = 0;
       let duplicatesFound = 0;
       const validationErrors: any[] = [];
@@ -375,7 +393,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
       // Create import log
       await supabase.from("import_logs").insert({
-        file_name: file.name,
+        file_name: fileName,
         import_type: importType,
         total_rows: data.length,
         successful_rows: successCount,
@@ -415,16 +433,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       onImportComplete();
       onOpenChange(false);
       setFile(null);
-    } catch (error: any) {
-      setImportErrors({
-        type: "Import Failed",
-        message: error.message || "An unexpected error occurred during import. Please check your file format and try again.",
-        validationErrors: []
-      });
-      setErrorDialogOpen(true);
-    } finally {
-      setIsUploading(false);
-    }
+
+    setIsUploading(false);
+    queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
   };
 
   const exportDuplicateLog = () => {
