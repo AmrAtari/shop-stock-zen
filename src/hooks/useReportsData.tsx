@@ -29,32 +29,38 @@ interface RecentAdjustment {
   adjustment: number;
   reason: string;
 }
+const [inventoryOnHand, setInventoryOnHand] = useState<any[]>([]);
+const [inventoryValuation, setInventoryValuation] = useState<any[]>([]);
+const [lowStock, setLowStock] = useState<any[]>([]);
+const [inventoryAging, setInventoryAging] = useState<any[]>([]);
+const [stockMovement, setStockMovement] = useState<any[]>([]);
+const [abcAnalysis, setAbcAnalysis] = useState<any[]>([]);
+const [salesPerformance, setSalesPerformance] = useState<any[]>([]);
+const [cogs, setCogs] = useState<any[]>([]);
 
 export const useReportsData = () => {
   const categoryValueQuery = useQuery({
     queryKey: ["reports", "categoryValue"],
     queryFn: async () => {
-      const { data: items, error: itemsError } = await supabase
-        .from("items")
-        .select("category, quantity, id");
-      
+      const { data: items, error: itemsError } = await supabase.from("items").select("category, quantity, id");
+
       if (itemsError) throw itemsError;
 
       const { data: prices, error: pricesError } = await supabase
         .from("price_levels")
         .select("item_id, selling_price")
         .eq("is_current", true);
-      
+
       if (pricesError) throw pricesError;
 
       // Group by category
       const categoryMap = new Map<string, { total_value: number; total_items: number }>();
-      
+
       items?.forEach((item) => {
         const price = prices?.find((p) => p.item_id === item.id);
         const sellingPrice = price?.selling_price || 0;
         const value = item.quantity * sellingPrice;
-        
+
         const existing = categoryMap.get(item.category) || { total_value: 0, total_items: 0 };
         categoryMap.set(item.category, {
           total_value: existing.total_value + value,
@@ -97,9 +103,7 @@ export const useReportsData = () => {
   const profitMarginsQuery = useQuery({
     queryKey: ["reports", "profitMargins"],
     queryFn: async () => {
-      const { data: items, error: itemsError } = await supabase
-        .from("items")
-        .select("id, name");
+      const { data: items, error: itemsError } = await supabase.from("items").select("id, name");
 
       if (itemsError) throw itemsError;
 
@@ -169,9 +173,6 @@ export const useReportsData = () => {
       profitMarginsQuery.isLoading ||
       recentAdjustmentsQuery.isLoading,
     error:
-      categoryValueQuery.error ||
-      stockMovementQuery.error ||
-      profitMarginsQuery.error ||
-      recentAdjustmentsQuery.error,
+      categoryValueQuery.error || stockMovementQuery.error || profitMarginsQuery.error || recentAdjustmentsQuery.error,
   };
 };
