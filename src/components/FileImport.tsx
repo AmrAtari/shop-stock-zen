@@ -463,7 +463,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         <DialogHeader>
           <DialogTitle>Import Inventory Data</DialogTitle>
           <DialogDescription>
-            Upload an Excel or CSV file to import or update your inventory. Works with files downloaded from Google Sheets.
+            Upload a file or import directly from Google Sheets to add or update your inventory items.
           </DialogDescription>
         </DialogHeader>
 
@@ -486,61 +486,90 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label>File</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileChange}
-                className="flex-1"
-              />
-              <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
-            </div>
-            {file && (
-              <p className="text-sm text-muted-foreground">
-                Selected: {file.name}
-              </p>
-            )}
-          </div>
+          <Tabs value={importMethod} onValueChange={(value: any) => setImportMethod(value)} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="file">Upload File</TabsTrigger>
+              <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
+            </TabsList>
 
-          <div className="space-y-3">
-            <div className="bg-primary/5 border border-primary/20 p-3 rounded-lg text-sm">
-              <p className="font-medium mb-2 text-primary">📊 Using Google Sheets?</p>
-              <p className="text-muted-foreground">
-                Download your sheet as Excel (.xlsx) or CSV: File → Download → Microsoft Excel or Comma Separated Values (.csv)
-              </p>
-            </div>
-
-            <div className="bg-muted p-3 rounded-lg text-sm">
-              <p className="font-medium mb-2">Expected columns:</p>
-              {importType === "full" ? (
-                <div className="space-y-2">
-                  <p className="text-muted-foreground text-xs">
-                    <strong>Required:</strong> Name, Pos Description, Item Number, SKU, Supplier, Department, Main Group, Category, Origin, Season, Size, Color, Color Id, Item Color Code, Price, Cost, Tax
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, Location
-                  </p>
-                  <p className="text-xs text-muted-foreground italic">
-                    Note: Quantity defaults to 0 if not provided
-                  </p>
+            <TabsContent value="file" className="space-y-4">
+              <div className="space-y-2">
+                <Label>File</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleFileChange}
+                    className="flex-1"
+                  />
+                  <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
                 </div>
-              ) : (
-                <p className="text-muted-foreground">SKU, Quantity</p>
-              )}
-            </div>
-          </div>
+                {file && (
+                  <p className="text-sm text-muted-foreground">
+                    Selected: {file.name}
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-muted p-3 rounded-lg text-sm">
+                <p className="font-medium mb-2">Expected columns:</p>
+                {importType === "full" ? (
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground text-xs">
+                      <strong>Required:</strong> Name, Pos Description, Item Number, SKU, Supplier, Department, Main Group, Category, Origin, Season, Size, Color, Color Id, Item Color Code, Price, Cost, Tax
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, Location
+                    </p>
+                    <p className="text-xs text-muted-foreground italic">
+                      Note: Quantity defaults to 0 if not provided
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">SKU, Quantity</p>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="sheets" className="space-y-4">
+              <GoogleSheetsInput
+                onImport={handleGoogleSheetsImport}
+                isProcessing={isUploading}
+                setIsProcessing={setIsUploading}
+              />
+
+              <div className="bg-muted p-3 rounded-lg text-sm">
+                <p className="font-medium mb-2">Expected columns:</p>
+                {importType === "full" ? (
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground text-xs">
+                      <strong>Required:</strong> Name, Pos Description, Item Number, SKU, Supplier, Department, Main Group, Category, Origin, Season, Size, Color, Color Id, Item Color Code, Price, Cost, Tax
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, Location
+                    </p>
+                    <p className="text-xs text-muted-foreground italic">
+                      Note: Quantity defaults to 0 if not provided
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">SKU, Quantity</p>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleImport} disabled={!file || isUploading}>
-            <Upload className="w-4 h-4 mr-2" />
-            {isUploading ? "Importing..." : "Import"}
-          </Button>
+          {importMethod === "file" && (
+            <Button onClick={handleImport} disabled={!file || isUploading}>
+              <Upload className="w-4 h-4 mr-2" />
+              {isUploading ? "Importing..." : "Import"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
