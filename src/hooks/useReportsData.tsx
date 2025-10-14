@@ -29,14 +29,6 @@ interface RecentAdjustment {
   adjustment: number;
   reason: string;
 }
-const [inventoryOnHand, setInventoryOnHand] = useState<any[]>([]);
-const [inventoryValuation, setInventoryValuation] = useState<any[]>([]);
-const [lowStock, setLowStock] = useState<any[]>([]);
-const [inventoryAging, setInventoryAging] = useState<any[]>([]);
-const [stockMovement, setStockMovement] = useState<any[]>([]);
-const [abcAnalysis, setAbcAnalysis] = useState<any[]>([]);
-const [salesPerformance, setSalesPerformance] = useState<any[]>([]);
-const [cogs, setCogs] = useState<any[]>([]);
 
 export const useReportsData = () => {
   const categoryValueQuery = useQuery({
@@ -175,4 +167,144 @@ export const useReportsData = () => {
     error:
       categoryValueQuery.error || stockMovementQuery.error || profitMarginsQuery.error || recentAdjustmentsQuery.error,
   };
+
+  import { useState, useEffect } from "react";
+  import { supabase } from "@/lib/supabaseClient";
+
+  export function useReportsData() {
+    const [inventoryOnHand, setInventoryOnHand] = useState<any[]>([]);
+    const [inventoryValuation, setInventoryValuation] = useState<any[]>([]);
+    const [lowStock, setLowStock] = useState<any[]>([]);
+    const [inventoryAging, setInventoryAging] = useState<any[]>([]);
+    const [stockMovement, setStockMovement] = useState<any[]>([]);
+    const [abcAnalysis, setAbcAnalysis] = useState<any[]>([]);
+    const [salesPerformance, setSalesPerformance] = useState<any[]>([]);
+    const [cogs, setCogs] = useState<any[]>([]);
+    const [categoryValue, setCategoryValue] = useState<any[]>([]);
+
+    const [profitMargins, setProfitMargins] = useState<any[]>([]);
+    const [recentAdjustments, setRecentAdjustments] = useState<any[]>([]);
+
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
+
+    useEffect(() => {
+      const fetchReports = async () => {
+        try {
+          setIsLoading(true);
+
+          // Example: Inventory On-Hand
+          const { data: onHandData, error: onHandError } = await supabase.from("inventory").select("*");
+          if (onHandError) throw onHandError;
+          setInventoryOnHand(onHandData || []);
+
+          // Inventory Valuation (example)
+          const { data: valuationData, error: valuationError } = await supabase
+            .from("inventory")
+            .select("id, name, quantity, cost");
+          if (valuationError) throw valuationError;
+          setInventoryValuation(
+            (valuationData || []).map((item: any) => ({
+              ...item,
+              total_value: item.quantity * item.cost,
+            })),
+          );
+
+          // Low Stock
+          const { data: lowStockData, error: lowStockError } = await supabase
+            .from("inventory")
+            .select("*")
+            .lte("quantity", "reorder_point");
+          if (lowStockError) throw lowStockError;
+          setLowStock(lowStockData || []);
+
+          // Inventory Aging (example)
+          const { data: agingData } = await supabase.from("inventory").select("*");
+          setInventoryAging(
+            (agingData || []).map((item: any) => ({
+              ...item,
+              age_days: Math.floor((new Date().getTime() - new Date(item.created_at).getTime()) / (1000 * 3600 * 24)),
+            })),
+          );
+
+          // Stock Movement
+          const { data: movementData } = await supabase.from("stock_movements").select("*");
+          setStockMovement(movementData || []);
+
+          // ABC Analysis
+          const { data: abcData } = await supabase.from("inventory").select("id, name, quantity, cost");
+          const sorted = (abcData || []).sort((a: any, b: any) => b.quantity * b.cost - a.quantity * a.cost);
+          setAbcAnalysis(
+            sorted.map((item: any, idx: number) => ({
+              ...item,
+              category: idx < sorted.length * 0.2 ? "A" : idx < sorted.length * 0.7 ? "B" : "C",
+            })),
+          );
+
+          // Sales Performance
+          const { data: salesData } = await supabase.from("sales").select("*");
+          setSalesPerformance(salesData || []);
+
+          // COGS
+          const { data: cogsData } = await supabase.from("sales").select("id, total_cost, created_at");
+          setCogs(cogsData || []);
+
+          // Category Value
+          const { data: catValData } = await supabase.from("inventory").select("category, quantity, cost");
+          const categoryValueMap: Record<string, any> = {};
+          (catValData || []).forEach((item: any) => {
+            if (!categoryValueMap[item.category]) categoryValueMap[item.category] = { total_items: 0, total_value: 0 };
+            categoryValueMap[item.category].total_items += item.quantity;
+            categoryValueMap[item.category].total_value += item.quantity * item.cost;
+          });
+          setCategoryValue(
+            Object.entries(categoryValueMap).map(([category, val]) => ({
+              category,
+              ...val,
+            })),
+          );
+
+          // Profit Margins
+          const { data: profitData } = await supabase.from("inventory").select("id, name, price, cost");
+          setProfitMargins(
+            (profitData || []).map((item: any) => ({
+              ...item,
+              margin: item.price - item.cost,
+            })),
+          );
+
+          // Recent Adjustments
+          const { data: adjData } = await supabase
+            .from("adjustments")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(20);
+          setRecentAdjustments(adjData || []);
+
+          setIsLoading(false);
+        } catch (err: any) {
+          setError(err);
+          setIsLoading(false);
+        }
+      };
+
+      fetchReports();
+    }, []);
+
+    return {
+      inventoryOnHand,
+      inventoryValuation,
+      lowStock,
+      inventoryAging,
+      stockMovement,
+      abcAnalysis,
+      salesPerformance,
+      cogs,
+      categoryValue,
+      profitMargins,
+      recentAdjustments,
+      isLoading,
+      error,
+    };
+  }
 };
