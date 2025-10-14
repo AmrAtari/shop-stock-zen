@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { LayoutDashboard, TrendingUp, DollarSign, Repeat2, BarChart } from "lucide-react";
 
 // Import the individual components (you'll need to create these)
-import { ProfitMarginTable } from "@/components/ProfitMarginTable"; // Example component
+// import { ProfitMarginTable } from "@/components/ProfitMarginTable";
 // import { StockMovementChart } from "@/components/StockMovementChart";
 // import { AdjustmentsTable } from "@/components/AdjustmentsTable";
 // import { CategoryValueChart } from "@/components/CategoryValueChart";
@@ -57,8 +57,14 @@ const Reports = () => {
   const renderActiveReport = () => {
     switch (activeReport) {
       case "PROFIT_MARGINS":
-        // Pass the relevant data down
-        return <ProfitMarginTable profitMargins={profitMargins} />;
+        return (
+          <div className="p-6 text-center text-muted-foreground">
+            <DollarSign className="mx-auto h-8 w-8 mb-4" />
+            <h2 className="text-xl font-semibold">Profit Margin Analysis</h2>
+            <p>Displaying {profitMargins?.length || 0} items with profit data.</p>
+            <p className="text-sm mt-2">Component coming soon...</p>
+          </div>
+        );
 
       // NOTE: You would implement and link other components here
       // case 'STOCK_MOVEMENT':
