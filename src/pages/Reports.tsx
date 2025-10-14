@@ -67,8 +67,8 @@ const Reports = () => {
         );
 
       // NOTE: You would implement and link other components here
-      case "STOCK_MOVEMENT":
-        return <StockMovementChart stockMovement={stockMovement} />;
+      // case "STOCK_MOVEMENT":
+      //  return <StockMovementChart stockMovement={stockMovement} />;
 
       case "DASHBOARD":
       default:
