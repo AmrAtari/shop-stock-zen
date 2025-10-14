@@ -11,7 +11,7 @@ import {
 interface PaginationControlsProps {
   currentPage: number;
   totalPages: number;
-  onPageChange: (page: number) => void;
+  goToPage: (page: number) => void;
   canGoPrev: boolean;
   canGoNext: boolean;
   totalItems: number;
@@ -22,7 +22,7 @@ interface PaginationControlsProps {
 export const PaginationControls = ({
   currentPage,
   totalPages,
-  onPageChange,
+  goToPage,
   canGoPrev,
   canGoNext,
   totalItems,
@@ -60,7 +60,7 @@ export const PaginationControls = ({
         <PaginationContent>
           <PaginationItem>
             <PaginationPrevious
-              onClick={() => canGoPrev && onPageChange(currentPage - 1)}
+              onClick={() => canGoPrev && goToPage(currentPage - 1)}
               className={!canGoPrev ? "pointer-events-none opacity-50" : "cursor-pointer"}
             />
           </PaginationItem>
@@ -71,7 +71,7 @@ export const PaginationControls = ({
                 <PaginationEllipsis />
               ) : (
                 <PaginationLink
-                  onClick={() => onPageChange(page as number)}
+                  onClick={() => goToPage(page as number)}
                   isActive={currentPage === page}
                   className="cursor-pointer"
                 >
@@ -83,7 +83,7 @@ export const PaginationControls = ({
           
           <PaginationItem>
             <PaginationNext
-              onClick={() => canGoNext && onPageChange(currentPage + 1)}
+              onClick={() => canGoNext && goToPage(currentPage + 1)}
               className={!canGoNext ? "pointer-events-none opacity-50" : "cursor-pointer"}
             />
           </PaginationItem>

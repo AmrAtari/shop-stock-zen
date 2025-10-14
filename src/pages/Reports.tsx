@@ -85,7 +85,7 @@ const usePagination = ({ totalItems, itemsPerPage, initialPage }: UsePaginationP
 const PaginationControls = ({
   currentPage,
   totalPages,
-  onPageChange,
+  goToPage,
   canGoPrev,
   canGoNext,
   totalItems,
@@ -97,10 +97,10 @@ const PaginationControls = ({
       Showing {totalItems === 0 ? 0 : startIndex + 1} to {endIndex} of {totalItems} entries
     </div>
     <div className="space-x-2">
-      <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage - 1)} disabled={!canGoPrev}>
+      <Button variant="outline" size="sm" onClick={() => goToPage(currentPage - 1)} disabled={!canGoPrev}>
         Previous
       </Button>
-      <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage + 1)} disabled={!canGoNext}>
+      <Button variant="outline" size="sm" onClick={() => goToPage(currentPage + 1)} disabled={!canGoNext}>
         Next
       </Button>
     </div>
@@ -324,7 +324,7 @@ const Reports = () => {
           <PaginationControls
             currentPage={profitMarginsPagination.currentPage}
             totalPages={profitMarginsPagination.totalPages}
-            onPageChange={profitMarginsPagination.goToPage}
+            goToPage={profitMarginsPagination.goToPage}
             canGoPrev={profitMarginsPagination.canGoPrev}
             canGoNext={profitMarginsPagination.canGoNext}
             totalItems={profitMargins.length}
@@ -372,7 +372,7 @@ const Reports = () => {
           <PaginationControls
             currentPage={adjustmentsPagination.currentPage}
             totalPages={adjustmentsPagination.totalPages}
-            onPageChange={adjustmentsPagination.goToPage}
+            goToPage={adjustmentsPagination.goToPage}
             canGoPrev={adjustmentsPagination.canGoPrev}
             canGoNext={adjustmentsPagination.canGoNext}
             totalItems={recentAdjustments.length}

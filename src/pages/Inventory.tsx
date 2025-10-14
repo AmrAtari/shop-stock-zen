@@ -353,7 +353,7 @@ const InventoryNew = () => {
       <PaginationControls
         currentPage={pagination.currentPage}
         totalPages={pagination.totalPages}
-        onPageChange={pagination.goToPage}
+        goToPage={pagination.goToPage}
         canGoPrev={pagination.canGoPrev}
         canGoNext={pagination.canGoNext}
         totalItems={filteredInventory.length}
