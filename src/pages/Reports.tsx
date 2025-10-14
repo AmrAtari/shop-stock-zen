@@ -6,12 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js"; // Import Supabase client creation
 import { Button } from "@/components/ui/button"; // Assuming you use shadcn/ui Button for Pagination
-import { useReportsData } from "@/hooks/useReportsData
+import { useReportsData } from "@/hooks/useReportsData";
 // =================================================================
 // 1. SUPABASE CLIENT CONFIGURATION (Move this to a dedicated file in a real app!)
 // =================================================================
 // NOTE: These credentials must be kept secure, ideally in environment variables.
-
 
 // =================================================================
 // 2. TYPES/INTERFACES for Data Structures
@@ -107,7 +106,6 @@ const PaginationControls = ({
 // =================================================================
 // 5. DATA FETCHING HOOK (Replaces mock data with Supabase calls)
 // =================================================================
-
 
 // =================================================================
 // 6. MAIN REPORTS COMPONENT (Your original UI logic)
