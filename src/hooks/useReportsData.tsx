@@ -206,6 +206,36 @@ export const useReportsData = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const storesQuery = useQuery({
+    queryKey: ["reports", "stores"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("items").select("location");
+      if (error) throw error;
+      return Array.from(new Set(data?.map((item) => item.location).filter(Boolean) || []));
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const categoriesQuery = useQuery({
+    queryKey: ["reports", "categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("items").select("category");
+      if (error) throw error;
+      return Array.from(new Set(data?.map((item) => item.category).filter(Boolean) || []));
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const brandsQuery = useQuery({
+    queryKey: ["reports", "brands"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("items").select("brand");
+      if (error) throw error;
+      return Array.from(new Set(data?.map((item) => item.brand).filter(Boolean) || []));
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
     inventoryValuation: categoryValueQuery.data || [],
@@ -216,6 +246,9 @@ export const useReportsData = () => {
     recentAdjustments: recentAdjustmentsQuery.data || [],
     salesPerformance: [], // Placeholder - requires sales tracking
     cogs: [], // Placeholder - requires sales tracking
+    stores: storesQuery.data || [],
+    categories: categoriesQuery.data || [],
+    brands: brandsQuery.data || [],
     isLoading:
       inventoryOnHandQuery.isLoading ||
       categoryValueQuery.isLoading ||
@@ -223,7 +256,10 @@ export const useReportsData = () => {
       inventoryAgingQuery.isLoading ||
       stockMovementQuery.isLoading ||
       abcAnalysisQuery.isLoading ||
-      recentAdjustmentsQuery.isLoading,
+      recentAdjustmentsQuery.isLoading ||
+      storesQuery.isLoading ||
+      categoriesQuery.isLoading ||
+      brandsQuery.isLoading,
     error:
       inventoryOnHandQuery.error ||
       categoryValueQuery.error ||
@@ -231,6 +267,9 @@ export const useReportsData = () => {
       inventoryAgingQuery.error ||
       stockMovementQuery.error ||
       abcAnalysisQuery.error ||
-      recentAdjustmentsQuery.error,
+      recentAdjustmentsQuery.error ||
+      storesQuery.error ||
+      categoriesQuery.error ||
+      brandsQuery.error,
   };
 };

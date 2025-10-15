@@ -28,6 +28,9 @@ export default function Reports() {
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [selectedStore, setSelectedStore] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedBrand, setSelectedBrand] = useState<string>("all");
 
   const {
     inventoryOnHand = [],
@@ -39,6 +42,9 @@ export default function Reports() {
     salesPerformance = [],
     cogs = [],
     recentAdjustments = [],
+    stores = [],
+    categories = [],
+    brands = [],
     isLoading,
     error,
   } = useReportsData();
@@ -86,6 +92,21 @@ export default function Reports() {
       );
     }
 
+    // Apply store filter
+    if (selectedStore !== "all") {
+      data = (data || []).filter((item) => item.location === selectedStore || item.store_name === selectedStore);
+    }
+
+    // Apply category filter
+    if (selectedCategory !== "all") {
+      data = (data || []).filter((item) => item.category === selectedCategory);
+    }
+
+    // Apply brand filter
+    if (selectedBrand !== "all") {
+      data = (data || []).filter((item) => item.brand === selectedBrand);
+    }
+
     // Apply date filter
     if (startDate || endDate) {
       const start = startDate ? new Date(startDate) : null;
@@ -104,6 +125,9 @@ export default function Reports() {
     search,
     startDate,
     endDate,
+    selectedStore,
+    selectedCategory,
+    selectedBrand,
     inventoryOnHand,
     inventoryValuation,
     lowStock,
@@ -199,29 +223,92 @@ export default function Reports() {
 
     return (
       <div>
-        <div className="flex justify-between mb-4 flex-wrap gap-2">
-          <div className="flex gap-2">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="border p-2 rounded"
-            />
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="border p-2 rounded"
-            />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="border p-2 rounded"
-            />
+        <div className="mb-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full border border-border rounded-md p-2 bg-background"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full border border-border rounded-md p-2 bg-background"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Store</label>
+              <select
+                value={selectedStore}
+                onChange={(e) => setSelectedStore(e.target.value)}
+                className="w-full border border-border rounded-md p-2 bg-background"
+              >
+                <option value="all">All Stores</option>
+                {stores.map((store) => (
+                  <option key={store} value={store}>
+                    {store}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Search</label>
+              <input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full border border-border rounded-md p-2 bg-background"
+              />
+            </div>
           </div>
-          <Button onClick={exportCSV}>Export CSV</Button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Category</label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full border border-border rounded-md p-2 bg-background"
+              >
+                <option value="all">All Categories</option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Brand</label>
+              <select
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+                className="w-full border border-border rounded-md p-2 bg-background"
+              >
+                <option value="all">All Brands</option>
+                {brands.map((brand) => (
+                  <option key={brand} value={brand}>
+                    {brand}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <Button onClick={exportCSV} className="w-full">
+                Export CSV
+              </Button>
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            Showing {filteredData.length} results
+          </div>
         </div>
         {renderTable(filteredData)}
       </div>
