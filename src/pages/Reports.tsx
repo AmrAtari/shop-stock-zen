@@ -19,6 +19,8 @@ const REPORT_TABS = [
   "ABC_ANALYSIS",
   "COGS",
   "SALES_PERFORMANCE",
+  "PIVOT_REPORT",
+  "STOCK_MOVEMENT_TRANSACTION",
 ] as const;
 
 type ReportTab = (typeof REPORT_TABS)[number];
@@ -33,6 +35,11 @@ export default function Reports() {
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 20;
+  
+  // Pivot report specific states
+  const [pivotGroupBy, setPivotGroupBy] = useState<string>("category");
+  const [pivotMetric, setPivotMetric] = useState<string>("quantity");
+  const [pivotAggregation, setPivotAggregation] = useState<string>("sum");
 
   const {
     inventoryOnHand = [],
@@ -44,6 +51,7 @@ export default function Reports() {
     salesPerformance = [],
     cogs = [],
     recentAdjustments = [],
+    stockMovementTransaction = [],
     stores = [],
     categories = [],
     brands = [],
@@ -82,6 +90,12 @@ export default function Reports() {
         break;
       case "SALES_PERFORMANCE":
         data = salesPerformance || [];
+        break;
+      case "STOCK_MOVEMENT_TRANSACTION":
+        data = stockMovementTransaction || [];
+        break;
+      case "PIVOT_REPORT":
+        data = generatePivotData();
         break;
       default:
         data = [];
@@ -139,7 +153,61 @@ export default function Reports() {
     salesPerformance,
     cogs,
     recentAdjustments,
+    stockMovementTransaction,
+    pivotGroupBy,
+    pivotMetric,
+    pivotAggregation,
   ]);
+  
+  // Generate pivot data based on selections
+  const generatePivotData = () => {
+    if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
+    
+    const grouped: Record<string, any> = {};
+    
+    inventoryOnHand.forEach((item: any) => {
+      const groupKey = item[pivotGroupBy] || "Unknown";
+      
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          [pivotGroupBy]: groupKey,
+          count: 0,
+          total_quantity: 0,
+          total_cost: 0,
+          total_value: 0,
+          avg_quantity: 0,
+          avg_cost: 0,
+          avg_selling: 0,
+          max_quantity: 0,
+          min_quantity: Infinity,
+        };
+      }
+      
+      grouped[groupKey].count += 1;
+      grouped[groupKey].total_quantity += item.quantity || 0;
+      grouped[groupKey].total_cost += (item.quantity || 0) * (item.cost_price || 0);
+      grouped[groupKey].total_value += (item.quantity || 0) * (item.selling_price || 0);
+      grouped[groupKey].max_quantity = Math.max(grouped[groupKey].max_quantity, item.quantity || 0);
+      grouped[groupKey].min_quantity = Math.min(grouped[groupKey].min_quantity, item.quantity || 0);
+    });
+    
+    // Calculate averages
+    Object.keys(grouped).forEach(key => {
+      if (grouped[key].count > 0) {
+        grouped[key].avg_quantity = grouped[key].total_quantity / grouped[key].count;
+        grouped[key].avg_cost = grouped[key].total_cost / grouped[key].total_quantity || 0;
+        grouped[key].avg_selling = grouped[key].total_value / grouped[key].total_quantity || 0;
+      }
+      // Round values
+      grouped[key].total_cost = grouped[key].total_cost.toFixed(2);
+      grouped[key].total_value = grouped[key].total_value.toFixed(2);
+      grouped[key].avg_quantity = grouped[key].avg_quantity.toFixed(2);
+      grouped[key].avg_cost = grouped[key].avg_cost.toFixed(2);
+      grouped[key].avg_selling = grouped[key].avg_selling.toFixed(2);
+    });
+    
+    return Object.values(grouped);
+  };
 
   // Reset pagination when filters change
   React.useEffect(() => {
@@ -293,6 +361,63 @@ export default function Reports() {
         </div>
       );
     }
+    
+    if (activeTab === "PIVOT_REPORT") {
+      return (
+        <div>
+          <div className="mb-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Group By</label>
+                <select
+                  value={pivotGroupBy}
+                  onChange={(e) => setPivotGroupBy(e.target.value)}
+                  className="w-full border border-border rounded-md p-2 bg-background"
+                >
+                  <option value="category">Category</option>
+                  <option value="brand">Brand</option>
+                  <option value="location">Store/Location</option>
+                  <option value="supplier">Supplier</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Metric</label>
+                <select
+                  value={pivotMetric}
+                  onChange={(e) => setPivotMetric(e.target.value)}
+                  className="w-full border border-border rounded-md p-2 bg-background"
+                >
+                  <option value="quantity">Quantity</option>
+                  <option value="cost_price">Cost Price</option>
+                  <option value="selling_price">Selling Price</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Aggregation</label>
+                <select
+                  value={pivotAggregation}
+                  onChange={(e) => setPivotAggregation(e.target.value)}
+                  className="w-full border border-border rounded-md p-2 bg-background"
+                >
+                  <option value="sum">Sum</option>
+                  <option value="count">Count</option>
+                  <option value="average">Average</option>
+                  <option value="max">Max</option>
+                  <option value="min">Min</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Showing {paginatedData.length} of {filteredData.length} results
+              </div>
+              <Button onClick={exportCSV}>Export CSV</Button>
+            </div>
+          </div>
+          {renderTable(paginatedData)}
+        </div>
+      );
+    }
 
     return (
       <div>
@@ -399,6 +524,8 @@ export default function Reports() {
     { key: "ABC_ANALYSIS", label: "ABC Analysis", icon: <BarChart className="w-4 h-4 mr-2" /> },
     { key: "COGS", label: "COGS", icon: <DollarSign className="w-4 h-4 mr-2" /> },
     { key: "SALES_PERFORMANCE", label: "Sales", icon: <TrendingUp className="w-4 h-4 mr-2" /> },
+    { key: "PIVOT_REPORT", label: "Pivot Report", icon: <BarChart className="w-4 h-4 mr-2" /> },
+    { key: "STOCK_MOVEMENT_TRANSACTION", label: "Stock Transactions", icon: <Repeat2 className="w-4 h-4 mr-2" /> },
   ];
 
   return (

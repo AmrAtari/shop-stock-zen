@@ -236,6 +236,57 @@ export const useReportsData = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const stockMovementTransactionQuery = useQuery({
+    queryKey: ["reports", "stockMovementTransaction"],
+    queryFn: async () => {
+      // Fetch stock adjustments
+      const { data: adjustments, error: adjError } = await supabase
+        .from("stock_adjustments")
+        .select(`
+          id,
+          item_id,
+          adjustment,
+          reason,
+          reference_number,
+          created_at,
+          previous_quantity,
+          new_quantity
+        `)
+        .order("created_at", { ascending: false });
+
+      if (adjError) throw adjError;
+
+      // Fetch items to get item names
+      const { data: items, error: itemsError } = await supabase
+        .from("items")
+        .select("id, name, sku, location");
+
+      if (itemsError) throw itemsError;
+
+      const itemMap = new Map(items?.map((item) => [item.id, item]) || []);
+
+      // Format adjustments
+      const formattedAdjustments = (adjustments || []).map((adj) => {
+        const item = itemMap.get(adj.item_id);
+        return {
+          date: new Date(adj.created_at).toLocaleDateString(),
+          item_name: item?.name || "Unknown",
+          sku: item?.sku || "",
+          location: item?.location || "",
+          transaction_type: "Adjustment",
+          quantity_change: adj.adjustment,
+          previous_qty: adj.previous_quantity,
+          new_qty: adj.new_quantity,
+          reason: adj.reason,
+          reference: adj.reference_number || "",
+        };
+      });
+
+      return formattedAdjustments;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
     inventoryValuation: categoryValueQuery.data || [],
@@ -244,6 +295,7 @@ export const useReportsData = () => {
     stockMovement: stockMovementQuery.data || [],
     abcAnalysis: abcAnalysisQuery.data || [],
     recentAdjustments: recentAdjustmentsQuery.data || [],
+    stockMovementTransaction: stockMovementTransactionQuery.data || [],
     salesPerformance: [], // Placeholder - requires sales tracking
     cogs: [], // Placeholder - requires sales tracking
     stores: storesQuery.data || [],
@@ -257,6 +309,7 @@ export const useReportsData = () => {
       stockMovementQuery.isLoading ||
       abcAnalysisQuery.isLoading ||
       recentAdjustmentsQuery.isLoading ||
+      stockMovementTransactionQuery.isLoading ||
       storesQuery.isLoading ||
       categoriesQuery.isLoading ||
       brandsQuery.isLoading,
@@ -268,6 +321,7 @@ export const useReportsData = () => {
       stockMovementQuery.error ||
       abcAnalysisQuery.error ||
       recentAdjustmentsQuery.error ||
+      stockMovementTransactionQuery.error ||
       storesQuery.error ||
       categoriesQuery.error ||
       brandsQuery.error,
