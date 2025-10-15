@@ -35,6 +35,8 @@ export default function Reports() {
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 20;
+
+  // Reset to page 1 when filters change
   const resetPagination = () => setCurrentPage(1);
 
   // Pivot report specific states
@@ -59,6 +61,56 @@ export default function Reports() {
     isLoading,
     error,
   } = useReportsData();
+
+  // Generate pivot data based on selections - MOVED BEFORE filteredData
+  const generatePivotData = () => {
+    if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
+
+    const grouped: Record<string, any> = {};
+
+    inventoryOnHand.forEach((item: any) => {
+      const groupKey = item[pivotGroupBy] || "Unknown";
+
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          [pivotGroupBy]: groupKey,
+          count: 0,
+          total_quantity: 0,
+          total_cost: 0,
+          total_value: 0,
+          avg_quantity: 0,
+          avg_cost: 0,
+          avg_selling: 0,
+          max_quantity: 0,
+          min_quantity: Infinity,
+        };
+      }
+
+      grouped[groupKey].count += 1;
+      grouped[groupKey].total_quantity += item.quantity || 0;
+      grouped[groupKey].total_cost += (item.quantity || 0) * (item.cost_price || 0);
+      grouped[groupKey].total_value += (item.quantity || 0) * (item.selling_price || 0);
+      grouped[groupKey].max_quantity = Math.max(grouped[groupKey].max_quantity, item.quantity || 0);
+      grouped[groupKey].min_quantity = Math.min(grouped[groupKey].min_quantity, item.quantity || 0);
+    });
+
+    // Calculate averages
+    Object.keys(grouped).forEach((key) => {
+      if (grouped[key].count > 0) {
+        grouped[key].avg_quantity = grouped[key].total_quantity / grouped[key].count;
+        grouped[key].avg_cost = grouped[key].total_cost / grouped[key].total_quantity || 0;
+        grouped[key].avg_selling = grouped[key].total_value / grouped[key].total_quantity || 0;
+      }
+      // Round values
+      grouped[key].total_cost = grouped[key].total_cost.toFixed(2);
+      grouped[key].total_value = grouped[key].total_value.toFixed(2);
+      grouped[key].avg_quantity = grouped[key].avg_quantity.toFixed(2);
+      grouped[key].avg_cost = grouped[key].avg_cost.toFixed(2);
+      grouped[key].avg_selling = grouped[key].avg_selling.toFixed(2);
+    });
+
+    return Object.values(grouped);
+  };
 
   // Filtered data based on active tab, search, and date
   const filteredData = useMemo(() => {
@@ -160,55 +212,14 @@ export default function Reports() {
     pivotAggregation,
   ]);
 
-  // Generate pivot data based on selections
-  const generatePivotData = () => {
-    if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
+  // Paginated data - MOVED BEFORE early returns
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    const endIndex = startIndex + rowsPerPage;
+    return filteredData.slice(startIndex, endIndex);
+  }, [filteredData, currentPage]);
 
-    const grouped: Record<string, any> = {};
-
-    inventoryOnHand.forEach((item: any) => {
-      const groupKey = item[pivotGroupBy] || "Unknown";
-
-      if (!grouped[groupKey]) {
-        grouped[groupKey] = {
-          [pivotGroupBy]: groupKey,
-          count: 0,
-          total_quantity: 0,
-          total_cost: 0,
-          total_value: 0,
-          avg_quantity: 0,
-          avg_cost: 0,
-          avg_selling: 0,
-          max_quantity: 0,
-          min_quantity: Infinity,
-        };
-      }
-
-      grouped[groupKey].count += 1;
-      grouped[groupKey].total_quantity += item.quantity || 0;
-      grouped[groupKey].total_cost += (item.quantity || 0) * (item.cost_price || 0);
-      grouped[groupKey].total_value += (item.quantity || 0) * (item.selling_price || 0);
-      grouped[groupKey].max_quantity = Math.max(grouped[groupKey].max_quantity, item.quantity || 0);
-      grouped[groupKey].min_quantity = Math.min(grouped[groupKey].min_quantity, item.quantity || 0);
-    });
-
-    // Calculate averages
-    Object.keys(grouped).forEach((key) => {
-      if (grouped[key].count > 0) {
-        grouped[key].avg_quantity = grouped[key].total_quantity / grouped[key].count;
-        grouped[key].avg_cost = grouped[key].total_cost / grouped[key].total_quantity || 0;
-        grouped[key].avg_selling = grouped[key].total_value / grouped[key].total_quantity || 0;
-      }
-      // Round values
-      grouped[key].total_cost = grouped[key].total_cost.toFixed(2);
-      grouped[key].total_value = grouped[key].total_value.toFixed(2);
-      grouped[key].avg_quantity = grouped[key].avg_quantity.toFixed(2);
-      grouped[key].avg_cost = grouped[key].avg_cost.toFixed(2);
-      grouped[key].avg_selling = grouped[key].avg_selling.toFixed(2);
-    });
-
-    return Object.values(grouped);
-  };
+  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
 
   // Reset pagination when filters change
   React.useEffect(() => {
@@ -233,6 +244,7 @@ export default function Reports() {
     document.body.removeChild(link);
   };
 
+  // NOW we can do early returns AFTER all hooks are defined
   if (isLoading) {
     return (
       <div className="p-8 space-y-6">
@@ -254,17 +266,6 @@ export default function Reports() {
       </div>
     );
   }
-
-  // Reset to page 1 when filters change
-  //const resetPagination = () => setCurrentPage(1);
-  // Paginated data
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * rowsPerPage;
-    const endIndex = startIndex + rowsPerPage;
-    return filteredData.slice(startIndex, endIndex);
-  }, [filteredData, currentPage]);
-
-  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
 
   // Render table helper
   const renderTable = (data: any[]) => {
