@@ -255,10 +255,10 @@ export default function Reports() {
   }
 
   // Reset to page 1 when filters change
-  const resetPagination = () => setCurrentPage(1);
-  useEffect(() => {
-    resetPagination(); // Now it's safe to call
-  }, [resetPagination]);
+  // const resetPagination = () => setCurrentPage(1);
+  // useEffect(() => {
+  //resetPagination(); // Now it's safe to call
+  // }, [resetPagination]);
   // Paginated data
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * rowsPerPage;
