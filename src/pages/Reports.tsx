@@ -35,7 +35,7 @@ export default function Reports() {
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 20;
-  
+
   // Pivot report specific states
   const [pivotGroupBy, setPivotGroupBy] = useState<string>("category");
   const [pivotMetric, setPivotMetric] = useState<string>("quantity");
@@ -158,16 +158,16 @@ export default function Reports() {
     pivotMetric,
     pivotAggregation,
   ]);
-  
+
   // Generate pivot data based on selections
   const generatePivotData = () => {
     if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
-    
+
     const grouped: Record<string, any> = {};
-    
+
     inventoryOnHand.forEach((item: any) => {
       const groupKey = item[pivotGroupBy] || "Unknown";
-      
+
       if (!grouped[groupKey]) {
         grouped[groupKey] = {
           [pivotGroupBy]: groupKey,
@@ -182,7 +182,7 @@ export default function Reports() {
           min_quantity: Infinity,
         };
       }
-      
+
       grouped[groupKey].count += 1;
       grouped[groupKey].total_quantity += item.quantity || 0;
       grouped[groupKey].total_cost += (item.quantity || 0) * (item.cost_price || 0);
@@ -190,9 +190,9 @@ export default function Reports() {
       grouped[groupKey].max_quantity = Math.max(grouped[groupKey].max_quantity, item.quantity || 0);
       grouped[groupKey].min_quantity = Math.min(grouped[groupKey].min_quantity, item.quantity || 0);
     });
-    
+
     // Calculate averages
-    Object.keys(grouped).forEach(key => {
+    Object.keys(grouped).forEach((key) => {
       if (grouped[key].count > 0) {
         grouped[key].avg_quantity = grouped[key].total_quantity / grouped[key].count;
         grouped[key].avg_cost = grouped[key].total_cost / grouped[key].total_quantity || 0;
@@ -205,7 +205,7 @@ export default function Reports() {
       grouped[key].avg_cost = grouped[key].avg_cost.toFixed(2);
       grouped[key].avg_selling = grouped[key].avg_selling.toFixed(2);
     });
-    
+
     return Object.values(grouped);
   };
 
@@ -256,7 +256,9 @@ export default function Reports() {
 
   // Reset to page 1 when filters change
   const resetPagination = () => setCurrentPage(1);
-
+  useEffect(() => {
+    resetPagination(); // Now it's safe to call
+  }, [resetPagination]);
   // Paginated data
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * rowsPerPage;
@@ -269,10 +271,10 @@ export default function Reports() {
   // Render table helper
   const renderTable = (data: any[]) => {
     if (!data || data.length === 0) return <p>No data available.</p>;
-    
+
     // Filter out columns with "id" in the name (case insensitive)
-    const columns = Object.keys(data[0]).filter(key => !key.toLowerCase().includes('id'));
-    
+    const columns = Object.keys(data[0]).filter((key) => !key.toLowerCase().includes("id"));
+
     return (
       <div className="space-y-4">
         <div className="overflow-x-auto">
@@ -281,7 +283,7 @@ export default function Reports() {
               <tr>
                 {columns.map((key) => (
                   <th key={key} className="border border-border p-3 text-left font-semibold">
-                    {key.replace(/_/g, ' ').toUpperCase()}
+                    {key.replace(/_/g, " ").toUpperCase()}
                   </th>
                 ))}
               </tr>
@@ -299,7 +301,7 @@ export default function Reports() {
             </tbody>
           </table>
         </div>
-        
+
         {totalPages > 1 && (
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">
@@ -309,7 +311,7 @@ export default function Reports() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 Previous
@@ -339,7 +341,7 @@ export default function Reports() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
               >
                 Next
@@ -361,7 +363,7 @@ export default function Reports() {
         </div>
       );
     }
-    
+
     if (activeTab === "PIVOT_REPORT") {
       return (
         <div>
