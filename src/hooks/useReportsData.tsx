@@ -31,6 +31,31 @@ interface RecentAdjustment {
 }
 
 export const useReportsData = () => {
+  const inventoryOnHandQuery = useQuery({
+    queryKey: ["reports", "inventoryOnHand"],
+    queryFn: async () => {
+      const { data: items, error: itemsError } = await supabase.from("items").select("*");
+      if (itemsError) throw itemsError;
+
+      const { data: prices, error: pricesError } = await supabase
+        .from("price_levels")
+        .select("item_id, cost_price, selling_price")
+        .eq("is_current", true);
+      if (pricesError) throw pricesError;
+
+      return items?.map((item) => {
+        const price = prices?.find((p) => p.item_id === item.id);
+        return {
+          ...item,
+          cost_price: price?.cost_price || 0,
+          selling_price: price?.selling_price || 0,
+          value: item.quantity * (price?.selling_price || 0),
+        };
+      }) || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const categoryValueQuery = useQuery({
     queryKey: ["reports", "categoryValue"],
     queryFn: async () => {
@@ -45,7 +70,6 @@ export const useReportsData = () => {
 
       if (pricesError) throw pricesError;
 
-      // Group by category
       const categoryMap = new Map<string, { total_value: number; total_items: number }>();
 
       items?.forEach((item) => {
@@ -66,7 +90,38 @@ export const useReportsData = () => {
         total_items: data.total_items,
       }));
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const lowStockQuery = useQuery({
+    queryKey: ["reports", "lowStock"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("items").select("*");
+      
+      if (error) throw error;
+      return data?.filter((item) => item.quantity <= item.min_stock) || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const inventoryAgingQuery = useQuery({
+    queryKey: ["reports", "inventoryAging"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("items")
+        .select("name, sku, quantity, last_restocked, category")
+        .order("last_restocked", { ascending: true, nullsFirst: false });
+      
+      if (error) throw error;
+      
+      return data?.map((item) => ({
+        ...item,
+        days_in_stock: item.last_restocked 
+          ? Math.floor((Date.now() - new Date(item.last_restocked).getTime()) / (1000 * 60 * 60 * 24))
+          : null,
+      })) || [];
+    },
+    staleTime: 5 * 60 * 1000,
   });
 
   const stockMovementQuery = useQuery({
@@ -92,41 +147,38 @@ export const useReportsData = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const profitMarginsQuery = useQuery({
-    queryKey: ["reports", "profitMargins"],
+  const abcAnalysisQuery = useQuery({
+    queryKey: ["reports", "abcAnalysis"],
     queryFn: async () => {
-      const { data: items, error: itemsError } = await supabase.from("items").select("id, name");
-
+      const { data: items, error: itemsError } = await supabase.from("items").select("id, name, quantity, sku");
       if (itemsError) throw itemsError;
 
       const { data: prices, error: pricesError } = await supabase
         .from("price_levels")
-        .select("item_id, cost_price, selling_price")
-        .eq("is_current", true)
-        .gt("selling_price", 0);
-
+        .select("item_id, selling_price")
+        .eq("is_current", true);
       if (pricesError) throw pricesError;
 
-      const margins = items
-        ?.map((item) => {
-          const price = prices?.find((p) => p.item_id === item.id);
-          if (!price) return null;
+      const itemsWithValue = items?.map((item) => {
+        const price = prices?.find((p) => p.item_id === item.id);
+        return {
+          ...item,
+          value: item.quantity * (price?.selling_price || 0),
+        };
+      }).sort((a, b) => b.value - a.value) || [];
 
-          const profit = price.selling_price - price.cost_price;
-          const margin = (profit / price.selling_price) * 100;
+      const totalValue = itemsWithValue.reduce((sum, item) => sum + item.value, 0);
+      let cumulative = 0;
 
-          return {
-            name: item.name,
-            cost_price: price.cost_price,
-            selling_price: price.selling_price,
-            profit,
-            margin,
-          };
-        })
-        .filter(Boolean)
-        .sort((a, b) => (b?.margin || 0) - (a?.margin || 0));
-
-      return margins as ProfitMargin[];
+      return itemsWithValue.map((item) => {
+        cumulative += item.value;
+        const cumulativePercent = (cumulative / totalValue) * 100;
+        let classification = 'C';
+        if (cumulativePercent <= 80) classification = 'A';
+        else if (cumulativePercent <= 95) classification = 'B';
+        
+        return { ...item, classification };
+      });
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -155,16 +207,30 @@ export const useReportsData = () => {
   });
 
   return {
-    categoryValue: categoryValueQuery.data || [],
+    inventoryOnHand: inventoryOnHandQuery.data || [],
+    inventoryValuation: categoryValueQuery.data || [],
+    lowStock: lowStockQuery.data || [],
+    inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
-    profitMargins: profitMarginsQuery.data || [],
+    abcAnalysis: abcAnalysisQuery.data || [],
     recentAdjustments: recentAdjustmentsQuery.data || [],
+    salesPerformance: [], // Placeholder - requires sales tracking
+    cogs: [], // Placeholder - requires sales tracking
     isLoading:
+      inventoryOnHandQuery.isLoading ||
       categoryValueQuery.isLoading ||
+      lowStockQuery.isLoading ||
+      inventoryAgingQuery.isLoading ||
       stockMovementQuery.isLoading ||
-      profitMarginsQuery.isLoading ||
+      abcAnalysisQuery.isLoading ||
       recentAdjustmentsQuery.isLoading,
     error:
-      categoryValueQuery.error || stockMovementQuery.error || profitMarginsQuery.error || recentAdjustmentsQuery.error,
+      inventoryOnHandQuery.error ||
+      categoryValueQuery.error ||
+      lowStockQuery.error ||
+      inventoryAgingQuery.error ||
+      stockMovementQuery.error ||
+      abcAnalysisQuery.error ||
+      recentAdjustmentsQuery.error,
   };
 };

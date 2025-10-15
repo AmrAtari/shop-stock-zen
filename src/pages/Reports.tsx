@@ -38,6 +38,7 @@ export default function Reports() {
     abcAnalysis = [],
     salesPerformance = [],
     cogs = [],
+    recentAdjustments = [],
     isLoading,
     error,
   } = useReportsData();
@@ -63,10 +64,7 @@ export default function Reports() {
         data = stockMovement || [];
         break;
       case "INVENTORY_DISCREPANCY":
-        data = (inventoryOnHand || []).map((item) => ({
-          ...item,
-          discrepancy: item.quantity - (item.physical_count || item.quantity),
-        }));
+        data = recentAdjustments || [];
         break;
       case "ABC_ANALYSIS":
         data = abcAnalysis || [];
@@ -114,6 +112,7 @@ export default function Reports() {
     abcAnalysis,
     salesPerformance,
     cogs,
+    recentAdjustments,
   ]);
 
   // CSV export
