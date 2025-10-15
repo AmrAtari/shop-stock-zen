@@ -35,6 +35,7 @@ export default function Reports() {
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 20;
+  const resetPagination = () => setCurrentPage(1);
 
   // Pivot report specific states
   const [pivotGroupBy, setPivotGroupBy] = useState<string>("category");
@@ -255,7 +256,7 @@ export default function Reports() {
   }
 
   // Reset to page 1 when filters change
-  const resetPagination = () => setCurrentPage(1);
+  //const resetPagination = () => setCurrentPage(1);
   // Paginated data
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * rowsPerPage;
