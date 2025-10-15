@@ -39,11 +39,10 @@ export default function Reports() {
   // Reset to page 1 when filters change
   const resetPagination = () => setCurrentPage(1);
 
- // Pivot report specific states
+  // Pivot report specific states
   const [pivotGroupBy, setPivotGroupBy] = useState<string>("category");
-  const [pivotMetric, setPivotMetric] = useState<string>("stock_level");
-  const [pivotTimeframe, setPivotTimeframe] = useState<string>("30d");
-  const [showChart, setShowChart] = useState(true);
+  const [pivotMetric, setPivotMetric] = useState<string>("quantity");
+  const [pivotAggregation, setPivotAggregation] = useState<string>("sum");
 
   const {
     inventoryOnHand = [],
@@ -62,6 +61,79 @@ export default function Reports() {
     isLoading,
     error,
   } = useReportsData();
+
+  // Pivot report specific states
+  const [pivotGroupBy, setPivotGroupBy] = useState<string>("category");
+  const [pivotMetric, setPivotMetric] = useState<string>("quantity");
+  const [pivotAggregation, setPivotAggregation] = useState<string>("sum");
+
+  const {
+    inventoryOnHand = [],
+    inventoryValuation = [],
+    lowStock = [],
+    inventoryAging = [],
+    stockMovement = [],
+    abcAnalysis = [],
+    salesPerformance = [],
+    cogs = [],
+    recentAdjustments = [],
+    stockMovementTransaction = [],
+    stores = [],
+    categories = [],
+    brands = [],
+    isLoading,
+    error,
+  } = useReportsData();
+
+  // Generate pivot data based on selections - MOVED BEFORE filteredData
+  const generatePivotData = () => {
+    if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
+
+    const grouped: Record<string, any> = {};
+
+    inventoryOnHand.forEach((item: any) => {
+      const groupKey = item[pivotGroupBy] || "Unknown";
+
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          [pivotGroupBy]: groupKey,
+          count: 0,
+          total_quantity: 0,
+          total_cost: 0,
+          total_value: 0,
+          avg_quantity: 0,
+          avg_cost: 0,
+          avg_selling: 0,
+          max_quantity: 0,
+          min_quantity: Infinity,
+        };
+      }
+
+      grouped[groupKey].count += 1;
+      grouped[groupKey].total_quantity += item.quantity || 0;
+      grouped[groupKey].total_cost += (item.quantity || 0) * (item.cost_price || 0);
+      grouped[groupKey].total_value += (item.quantity || 0) * (item.selling_price || 0);
+      grouped[groupKey].max_quantity = Math.max(grouped[groupKey].max_quantity, item.quantity || 0);
+      grouped[groupKey].min_quantity = Math.min(grouped[groupKey].min_quantity, item.quantity || 0);
+    });
+
+    // Calculate averages
+    Object.keys(grouped).forEach((key) => {
+      if (grouped[key].count > 0) {
+        grouped[key].avg_quantity = grouped[key].total_quantity / grouped[key].count;
+        grouped[key].avg_cost = grouped[key].total_cost / grouped[key].total_quantity || 0;
+        grouped[key].avg_selling = grouped[key].total_value / grouped[key].total_quantity || 0;
+      }
+      // Round values
+      grouped[key].total_cost = grouped[key].total_cost.toFixed(2);
+      grouped[key].total_value = grouped[key].total_value.toFixed(2);
+      grouped[key].avg_quantity = grouped[key].avg_quantity.toFixed(2);
+      grouped[key].avg_cost = grouped[key].avg_cost.toFixed(2);
+      grouped[key].avg_selling = grouped[key].avg_selling.toFixed(2);
+    });
+
+    return Object.values(grouped);
+  };
 
   // Filtered data based on active tab, search, and date
   const filteredData = useMemo(() => {
@@ -160,50 +232,9 @@ export default function Reports() {
     stockMovementTransaction,
     pivotGroupBy,
     pivotMetric,
-    pivotTimeframe,
+    pivotAggregation,
   ]);
 
-  // Generate comprehensive pivot data based on selections
-  const generatePivotData = () => {
-    if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
-
-    const grouped: Record<string, any> = {};
-
-    // Combine inventory and sales data for comprehensive metrics
-    inventoryOnHand.forEach((item: any) => {
-      const groupKey = item[pivotGroupBy] || "Unknown";
-
-      if (!grouped[groupKey]) {
-        grouped[groupKey] = {
-          [pivotGroupBy]: groupKey,
-          // Stock Levels
-          item_count: 0,
-          current_stock: 0,
-          reorder_threshold: 0,
-          
-          // Stock Value
-          total_cost_value: 0,
-          total_selling_value: 0,
-          potential_profit: 0,
-          
-          // Sales Data
-          units_sold_30d: 0,
-          units_sold_90d: 0,
-          sales_velocity: 0,
-          
-          // Purchase Data
-          purchase_orders: 0,
-          units_restocked: 0,
-          
-          // Turnover Rate
-          turnover_rate_30d: 0,
-          days_of_stock: 0,
-          
-          // Demand Forecast
-          projected_demand_30d: 0,
-          stock_status: "Healthy",
-        };
-      }
   // Paginated data - MOVED BEFORE early returns
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * rowsPerPage;
