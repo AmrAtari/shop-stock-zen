@@ -31,6 +31,8 @@ export default function Reports() {
   const [selectedStore, setSelectedStore] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 20;
 
   const {
     inventoryOnHand = [],
@@ -139,6 +141,11 @@ export default function Reports() {
     recentAdjustments,
   ]);
 
+  // Reset pagination when filters change
+  React.useEffect(() => {
+    resetPagination();
+  }, [activeTab, search, startDate, endDate, selectedStore, selectedCategory, selectedBrand]);
+
   // CSV export
   const exportCSV = () => {
     if (!filteredData || filteredData.length === 0) return;
@@ -179,33 +186,99 @@ export default function Reports() {
     );
   }
 
+  // Reset to page 1 when filters change
+  const resetPagination = () => setCurrentPage(1);
+
+  // Paginated data
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    const endIndex = startIndex + rowsPerPage;
+    return filteredData.slice(startIndex, endIndex);
+  }, [filteredData, currentPage]);
+
+  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+
   // Render table helper
   const renderTable = (data: any[]) => {
     if (!data || data.length === 0) return <p>No data available.</p>;
+    
+    // Filter out columns with "id" in the name (case insensitive)
+    const columns = Object.keys(data[0]).filter(key => !key.toLowerCase().includes('id'));
+    
     return (
-      <div className="overflow-x-auto">
-        <table className="w-full border border-gray-300">
-          <thead>
-            <tr>
-              {Object.keys(data[0]).map((key) => (
-                <th key={key} className="border p-2">
-                  {key}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(data || []).map((row, idx) => (
-              <tr key={idx}>
-                {Object.values(row).map((val, i) => (
-                  <td key={i} className="border p-2">
-                    {val?.toString() ?? ""}
-                  </td>
+      <div className="space-y-4">
+        <div className="overflow-x-auto">
+          <table className="w-full border border-border">
+            <thead className="bg-muted">
+              <tr>
+                {columns.map((key) => (
+                  <th key={key} className="border border-border p-3 text-left font-semibold">
+                    {key.replace(/_/g, ' ').toUpperCase()}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.map((row, idx) => (
+                <tr key={idx} className="hover:bg-muted/50">
+                  {columns.map((key, i) => (
+                    <td key={i} className="border border-border p-3">
+                      {row[key]?.toString() ?? "-"}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Page {currentPage} of {totalPages}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -307,10 +380,10 @@ export default function Reports() {
             </div>
           </div>
           <div className="text-sm text-muted-foreground">
-            Showing {filteredData.length} results
+            Showing {paginatedData.length} of {filteredData.length} results
           </div>
         </div>
-        {renderTable(filteredData)}
+        {renderTable(paginatedData)}
       </div>
     );
   };
