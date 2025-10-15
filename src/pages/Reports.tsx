@@ -62,29 +62,6 @@ export default function Reports() {
     error,
   } = useReportsData();
 
-  // Pivot report specific states
-  const [pivotGroupBy, setPivotGroupBy] = useState<string>("category");
-  const [pivotMetric, setPivotMetric] = useState<string>("quantity");
-  const [pivotAggregation, setPivotAggregation] = useState<string>("sum");
-
-  const {
-    inventoryOnHand = [],
-    inventoryValuation = [],
-    lowStock = [],
-    inventoryAging = [],
-    stockMovement = [],
-    abcAnalysis = [],
-    salesPerformance = [],
-    cogs = [],
-    recentAdjustments = [],
-    stockMovementTransaction = [],
-    stores = [],
-    categories = [],
-    brands = [],
-    isLoading,
-    error,
-  } = useReportsData();
-
   // Generate pivot data based on selections - MOVED BEFORE filteredData
   const generatePivotData = () => {
     if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
