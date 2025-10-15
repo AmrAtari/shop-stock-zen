@@ -254,9 +254,9 @@ export default function Reports() {
     );
   }
 
-   Reset to page 1 when filters change
+  // Reset to page 1 when filters change
   const resetPagination = () => setCurrentPage(1);
-   // Paginated data
+  // Paginated data
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * rowsPerPage;
     const endIndex = startIndex + rowsPerPage;
