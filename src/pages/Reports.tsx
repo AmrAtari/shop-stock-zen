@@ -1,6 +1,6 @@
 // src/pages/Reports.tsx
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useReportsData } from "@/hooks/useReportsData";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { LayoutDashboard, TrendingUp, DollarSign, Repeat2, BarChart } from "lucide-react";
 import { format, subDays, startOfMonth, startOfDay } from "date-fns";
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { useSearchParams } from "react-router-dom";
 
 const REPORT_TABS = [
   "DASHBOARD",
@@ -30,6 +31,7 @@ const REPORT_TABS = [
 type ReportTab = (typeof REPORT_TABS)[number];
 
 export default function Reports() {
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ReportTab>("DASHBOARD");
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState<string>("");
@@ -39,6 +41,14 @@ export default function Reports() {
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 20;
+
+  // Handle tab query parameter on mount
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && REPORT_TABS.includes(tabParam as ReportTab)) {
+      setActiveTab(tabParam as ReportTab);
+    }
+  }, [searchParams]);
 
   // Reset to page 1 when filters change
   const resetPagination = () => setCurrentPage(1);

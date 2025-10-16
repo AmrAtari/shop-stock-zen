@@ -23,6 +23,16 @@ interface LowStockItem {
   minStock: number;
 }
 
+interface StockMovementTrend {
+  date: string;
+  adjustments: number;
+}
+
+interface ABCDistribution {
+  name: string;
+  value: number;
+}
+
 export const useDashboardData = () => {
   // Fetch dashboard metrics
   const { data: metrics, isLoading: metricsLoading } = useQuery({
@@ -138,11 +148,93 @@ export const useDashboardData = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Fetch stock movement trends (last 30 days)
+  const { data: stockMovementTrends, isLoading: trendsLoading } = useQuery({
+    queryKey: ['dashboard-stock-trends'],
+    queryFn: async (): Promise<StockMovementTrend[]> => {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const { data, error } = await supabase
+        .from("stock_adjustments")
+        .select("created_at, adjustment")
+        .gte("created_at", thirtyDaysAgo.toISOString())
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      // Group by date
+      const trendMap: Record<string, number> = {};
+      data.forEach(adj => {
+        const date = new Date(adj.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        trendMap[date] = (trendMap[date] || 0) + Math.abs(adj.adjustment);
+      });
+
+      return Object.entries(trendMap).map(([date, adjustments]) => ({
+        date,
+        adjustments,
+      }));
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch ABC analysis distribution
+  const { data: abcDistribution, isLoading: abcLoading } = useQuery({
+    queryKey: ['dashboard-abc-distribution'],
+    queryFn: async (): Promise<ABCDistribution[]> => {
+      const { data: items, error: itemsError } = await supabase
+        .from("items")
+        .select("id, quantity");
+
+      if (itemsError) throw itemsError;
+
+      const { data: priceLevels, error: priceError } = await supabase
+        .from("price_levels")
+        .select("item_id, cost_price")
+        .eq("is_current", true);
+
+      if (priceError) throw priceError;
+
+      const priceMap = new Map(priceLevels.map(pl => [pl.item_id, pl.cost_price]));
+
+      // Calculate value for each item
+      const itemValues = items.map(item => ({
+        value: item.quantity * (priceMap.get(item.id) || 0),
+      })).sort((a, b) => b.value - a.value);
+
+      const totalValue = itemValues.reduce((sum, item) => sum + item.value, 0);
+      let cumulativeValue = 0;
+      let aCount = 0, bCount = 0, cCount = 0;
+
+      itemValues.forEach(item => {
+        cumulativeValue += item.value;
+        const percentage = (cumulativeValue / totalValue) * 100;
+        
+        if (percentage <= 80) {
+          aCount++;
+        } else if (percentage <= 95) {
+          bCount++;
+        } else {
+          cCount++;
+        }
+      });
+
+      return [
+        { name: 'A Items', value: aCount },
+        { name: 'B Items', value: bCount },
+        { name: 'C Items', value: cCount },
+      ];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   return {
     metrics: metrics || { totalItems: 0, totalValue: 0, lowStockCount: 0, totalProducts: 0 },
     categoryQuantity: categoryData?.categoryQuantity || [],
     categoryValue: categoryData?.categoryValue || [],
     lowStockItems: lowStockItems || [],
-    isLoading: metricsLoading || categoryLoading || lowStockLoading,
+    stockMovementTrends: stockMovementTrends || [],
+    abcDistribution: abcDistribution || [],
+    isLoading: metricsLoading || categoryLoading || lowStockLoading || trendsLoading || abcLoading,
   };
 };
