@@ -154,7 +154,7 @@ const Configuration = () => {
     { key: "locations", label: "Location Catalog", icon: MapPin },
     { key: "user_groups", label: "User Groups", icon: Users },
     { key: "employees", label: "Employee Catalog", icon: Briefcase },
-    { key: "Sizes", label: "Size Catalog", icon: Ruler },
+    { key: "certificates", label: "Certificate Catalog", icon: FileText },
     { key: "stores", label: "Store Catalog", icon: Warehouse },
   ] as { key: AttributeTable; label: string; icon: any }[];
 
