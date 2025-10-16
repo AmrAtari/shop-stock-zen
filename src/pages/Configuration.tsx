@@ -10,7 +10,6 @@ import {
   MapPin,
   Users,
   Briefcase,
-  FileText,
   Warehouse,
   Plus,
   Trash2,
@@ -38,7 +37,7 @@ type AttributeTable =
   | "locations"
   | "user_groups"
   | "employees"
-  | "certificates"
+  | "sizes"
   | "stores";
 
 interface Attribute {
@@ -64,7 +63,6 @@ const Configuration = () => {
       navigate("/");
       toast.error("Access denied. Admin privileges required.");
     }
-    const [newValue, setNewValue] = useState("");
   }, [isAdmin, isLoading, navigate]);
 
   useEffect(() => {
@@ -155,7 +153,7 @@ const Configuration = () => {
     { key: "locations", label: "Location Catalog", icon: MapPin },
     { key: "user_groups", label: "User Groups", icon: Users },
     { key: "employees", label: "Employee Catalog", icon: Briefcase },
-    { key: "certificates", label: "Certificate Catalog", icon: FileText },
+    { key: "sizes", label: "Size Catalog", icon: Ruler },
     { key: "stores", label: "Store Catalog", icon: Warehouse },
   ] as { key: AttributeTable; label: string; icon: any }[];
 
@@ -218,10 +216,11 @@ const Configuration = () => {
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
               <Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>
                 Previous
               </Button>
+              <span className="text-gray-600">Page {page}</span>
               <Button variant="outline" onClick={() => setPage(page + 1)}>
                 Next
               </Button>
