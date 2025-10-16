@@ -14,6 +14,7 @@ import {
   Warehouse,
   Plus,
   Trash2,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,23 +47,12 @@ const Configuration = () => {
   const { isAdmin, isLoading } = useIsAdmin();
   const navigate = useNavigate();
 
-  const [attributes, setAttributes] = useState<Record<AttributeTable, Attribute[]>>({
-    categories: [],
-    units: [],
-    colors: [],
-    genders: [],
-    departments: [],
-    suppliers: [],
-    seasons: [],
-    locations: [],
-    user_groups: [],
-    employees: [],
-    certificates: [],
-    stores: [],
-  });
-
-  const [newValue, setNewValue] = useState("");
+  const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [activeTable, setActiveTable] = useState<AttributeTable | null>("categories");
+  const [newValue, setNewValue] = useState("");
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const pageSize = 20;
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -72,37 +62,39 @@ const Configuration = () => {
   }, [isAdmin, isLoading, navigate]);
 
   useEffect(() => {
-    if (isAdmin) fetchAllAttributes();
-  }, [isAdmin]);
+    if (activeTable && isAdmin) {
+      loadTableData();
+    }
+  }, [activeTable, page, search, isAdmin]);
 
-  const fetchAllAttributes = async () => {
-    const tables: AttributeTable[] = Object.keys(attributes) as AttributeTable[];
-    const promises = tables.map(async (table) => {
-      const { data, error } = await supabase.from(table).select("*").order("name");
-      return { table, data: data || [] };
-    });
+  const loadTableData = async () => {
+    if (!activeTable) return;
+    try {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
 
-    const results = await Promise.all(promises);
-    const newAttributes = results.reduce(
-      (acc, { table, data }) => {
-        acc[table] = data as Attribute[];
-        return acc;
-      },
-      {} as Record<AttributeTable, Attribute[]>,
-    );
-    setAttributes(newAttributes);
+      let query = supabase.from(activeTable).select("*").order("name").range(from, to);
+
+      if (search.trim()) {
+        query = query.ilike("name", `%${search.trim()}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setAttributes(data || []);
+    } catch (err: any) {
+      toast.error(err.message || "Error loading data");
+    }
   };
 
   const handleAdd = async () => {
-    if (!activeTable) return;
-    if (!newValue.trim()) return toast.error("Please enter a name");
-
+    if (!activeTable || !newValue.trim()) return toast.error("Please enter a value");
     try {
       const { error } = await supabase.from(activeTable).insert({ name: newValue.trim() });
       if (error) throw error;
       toast.success("Added successfully");
       setNewValue("");
-      fetchAllAttributes();
+      loadTableData();
     } catch (err: any) {
       toast.error(err.message || "Error adding item");
     }
@@ -110,13 +102,13 @@ const Configuration = () => {
 
   const handleDelete = async (id: string) => {
     if (!activeTable) return;
-    if (!confirm("Delete this item?")) return;
+    if (!confirm("Are you sure you want to delete this item?")) return;
 
     try {
       const { error } = await supabase.from(activeTable).delete().eq("id", id);
       if (error) throw error;
       toast.success("Deleted successfully");
-      fetchAllAttributes();
+      loadTableData();
     } catch (err: any) {
       toast.error(err.message || "Error deleting item");
     }
@@ -144,7 +136,7 @@ const Configuration = () => {
     <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold text-gray-800 mb-4">System Catalogs</h1>
 
-      {/* === Horizontal Button Bar === */}
+      {/* Toolbar */}
       <div className="flex flex-wrap gap-2">
         {catalogs.map((cat) => (
           <Button
@@ -153,7 +145,11 @@ const Configuration = () => {
             className={`flex items-center gap-2 ${
               activeTable === cat.key ? "bg-indigo-500 text-white" : "bg-white text-gray-700 hover:bg-gray-100"
             }`}
-            onClick={() => setActiveTable(cat.key)}
+            onClick={() => {
+              setActiveTable(cat.key);
+              setPage(1);
+              setSearch("");
+            }}
           >
             <cat.icon className="w-4 h-4" />
             {cat.label}
@@ -161,9 +157,10 @@ const Configuration = () => {
         ))}
       </div>
 
-      {/* === Selected Table === */}
+      {/* Selected Catalog Table */}
       {activeTable && (
-        <div className="mt-6 space-y-4">
+        <div className="space-y-4 mt-6">
+          {/* Add new item */}
           <div className="flex gap-2">
             <Input
               placeholder={`Add new ${activeTable.slice(0, -1)}...`}
@@ -176,6 +173,32 @@ const Configuration = () => {
             </Button>
           </div>
 
+          {/* Search + Pagination */}
+          <div className="flex justify-between items-center mt-4">
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-gray-500" />
+              <Input
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => {
+                  setPage(1);
+                  setSearch(e.target.value);
+                }}
+                className="w-64"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>
+                Previous
+              </Button>
+              <Button variant="outline" onClick={() => setPage(page + 1)}>
+                Next
+              </Button>
+            </div>
+          </div>
+
+          {/* Table */}
           <div className="border rounded-lg">
             <Table>
               <TableHeader>
@@ -185,21 +208,21 @@ const Configuration = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(attributes[activeTable] || []).map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-
-                {(attributes[activeTable] || []).length === 0 && (
+                {attributes.length > 0 ? (
+                  attributes.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
                   <TableRow>
                     <TableCell colSpan={2} className="text-center text-muted-foreground">
-                      No {activeTable} added yet
+                      No data found
                     </TableCell>
                   </TableRow>
                 )}
