@@ -10,6 +10,7 @@ import {
   MapPin,
   Users,
   Briefcase,
+  FileText,
   Warehouse,
   Plus,
   Trash2,
@@ -26,7 +27,6 @@ import { toast } from "sonner";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useNavigate } from "react-router-dom";
 
-// 👇 this defines what catalog tables you have
 type AttributeTable =
   | "categories"
   | "units"
@@ -38,7 +38,7 @@ type AttributeTable =
   | "locations"
   | "user_groups"
   | "employees"
-  | "sizes"
+  | "certificates"
   | "stores";
 
 interface Attribute {
@@ -50,23 +50,8 @@ const Configuration = () => {
   const { isAdmin, isLoading } = useIsAdmin();
   const navigate = useNavigate();
 
-  // 👇 This is the part you were asking about:
-  const [attributes, setAttributes] = useState<Record<AttributeTable, Attribute[]>>({
-    categories: [],
-    units: [],
-    colors: [],
-    genders: [],
-    departments: [],
-    suppliers: [],
-    seasons: [],
-    locations: [],
-    user_groups: [],
-    employees: [],
-    sizes: [],
-    stores: [],
-  });
-
-  // 👇 These states come next (so if you see them, you’re in the right spot)
+  const [attributes, setAttributes] = useState<Attribute[]>([]);
+  const [activeTable, setActiveTable] = useState<AttributeTable | null>("categories");
   const [newValue, setNewValue] = useState("");
   const [editValue, setEditValue] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,12 +59,12 @@ const Configuration = () => {
   const [search, setSearch] = useState("");
   const pageSize = 20;
 
-  // Then your useEffects follow below...
   useEffect(() => {
     if (!isLoading && !isAdmin) {
       navigate("/");
       toast.error("Access denied. Admin privileges required.");
     }
+    const [newValue, setNewValue] = useState("");
   }, [isAdmin, isLoading, navigate]);
 
   useEffect(() => {
