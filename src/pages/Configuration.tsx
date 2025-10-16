@@ -10,7 +10,6 @@ import {
   MapPin,
   Users,
   Briefcase,
-  FileText,
   Warehouse,
   Plus,
   Trash2,
@@ -27,6 +26,7 @@ import { toast } from "sonner";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useNavigate } from "react-router-dom";
 
+// 👇 this defines what catalog tables you have
 type AttributeTable =
   | "categories"
   | "units"
@@ -38,7 +38,7 @@ type AttributeTable =
   | "locations"
   | "user_groups"
   | "employees"
-  | "Sizes"
+  | "sizes"
   | "stores";
 
 interface Attribute {
@@ -50,8 +50,23 @@ const Configuration = () => {
   const { isAdmin, isLoading } = useIsAdmin();
   const navigate = useNavigate();
 
-  const [attributes, setAttributes] = useState<Attribute[]>([]);
-  const [activeTable, setActiveTable] = useState<AttributeTable | null>("categories");
+  // 👇 This is the part you were asking about:
+  const [attributes, setAttributes] = useState<Record<AttributeTable, Attribute[]>>({
+    categories: [],
+    units: [],
+    colors: [],
+    genders: [],
+    departments: [],
+    suppliers: [],
+    seasons: [],
+    locations: [],
+    user_groups: [],
+    employees: [],
+    sizes: [],
+    stores: [],
+  });
+
+  // 👇 These states come next (so if you see them, you’re in the right spot)
   const [newValue, setNewValue] = useState("");
   const [editValue, setEditValue] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -59,6 +74,7 @@ const Configuration = () => {
   const [search, setSearch] = useState("");
   const pageSize = 20;
 
+  // Then your useEffects follow below...
   useEffect(() => {
     if (!isLoading && !isAdmin) {
       navigate("/");
@@ -154,7 +170,7 @@ const Configuration = () => {
     { key: "locations", label: "Location Catalog", icon: MapPin },
     { key: "user_groups", label: "User Groups", icon: Users },
     { key: "employees", label: "Employee Catalog", icon: Briefcase },
-    { key: "Sizes", label: "Sizes Catalog", icon: Ruler },
+    { key: "certificates", label: "Certificate Catalog", icon: FileText },
     { key: "stores", label: "Store Catalog", icon: Warehouse },
   ] as { key: AttributeTable; label: string; icon: any }[];
 
