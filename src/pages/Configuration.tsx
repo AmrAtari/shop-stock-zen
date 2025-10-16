@@ -1,5 +1,20 @@
 import { useState, useEffect } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import {
+  Boxes,
+  Ruler,
+  Tags,
+  User,
+  Building,
+  Package,
+  CloudSun,
+  MapPin,
+  Users,
+  Briefcase,
+  FileText,
+  Warehouse,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,17 +25,17 @@ import { useNavigate } from "react-router-dom";
 
 type AttributeTable =
   | "categories"
-  | "sizes"
+  | "units"
   | "colors"
   | "genders"
-  | "seasons"
-  | "suppliers"
-  | "locations"
-  | "units"
   | "departments"
-  | "main_groups"
-  | "origins"
-  | "themes";
+  | "suppliers"
+  | "seasons"
+  | "locations"
+  | "user_groups"
+  | "employees"
+  | "certificates"
+  | "stores";
 
 interface Attribute {
   id: string;
@@ -33,21 +48,21 @@ const Configuration = () => {
 
   const [attributes, setAttributes] = useState<Record<AttributeTable, Attribute[]>>({
     categories: [],
-    sizes: [],
+    units: [],
     colors: [],
     genders: [],
-    seasons: [],
-    suppliers: [],
-    locations: [],
-    units: [],
     departments: [],
-    main_groups: [],
-    origins: [],
-    themes: [],
+    suppliers: [],
+    seasons: [],
+    locations: [],
+    user_groups: [],
+    employees: [],
+    certificates: [],
+    stores: [],
   });
 
   const [newValue, setNewValue] = useState("");
-  const [activeTable, setActiveTable] = useState<AttributeTable | null>(null);
+  const [activeTable, setActiveTable] = useState<AttributeTable | null>("categories");
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -61,21 +76,7 @@ const Configuration = () => {
   }, [isAdmin]);
 
   const fetchAllAttributes = async () => {
-    const tables: AttributeTable[] = [
-      "categories",
-      "sizes",
-      "colors",
-      "genders",
-      "seasons",
-      "suppliers",
-      "locations",
-      "units",
-      "departments",
-      "main_groups",
-      "origins",
-      "themes",
-    ];
-
+    const tables: AttributeTable[] = Object.keys(attributes) as AttributeTable[];
     const promises = tables.map(async (table) => {
       const { data, error } = await supabase.from(table).select("*").order("name");
       return { table, data: data || [] };
@@ -84,18 +85,17 @@ const Configuration = () => {
     const results = await Promise.all(promises);
     const newAttributes = results.reduce(
       (acc, { table, data }) => {
-        acc[table as AttributeTable] = data as Attribute[];
+        acc[table] = data as Attribute[];
         return acc;
       },
       {} as Record<AttributeTable, Attribute[]>,
     );
-
-    setAttributes((prev) => ({ ...prev, ...newAttributes }));
+    setAttributes(newAttributes);
   };
 
   const handleAdd = async () => {
-    if (!activeTable) return toast.error("Select a catalog first");
-    if (!newValue.trim()) return toast.error("Please enter a value");
+    if (!activeTable) return;
+    if (!newValue.trim()) return toast.error("Please enter a name");
 
     try {
       const { error } = await supabase.from(activeTable).insert({ name: newValue.trim() });
@@ -110,7 +110,7 @@ const Configuration = () => {
 
   const handleDelete = async (id: string) => {
     if (!activeTable) return;
-    if (!confirm("Are you sure you want to delete this item?")) return;
+    if (!confirm("Delete this item?")) return;
 
     try {
       const { error } = await supabase.from(activeTable).delete().eq("id", id);
@@ -122,52 +122,48 @@ const Configuration = () => {
     }
   };
 
+  const catalogs = [
+    { key: "categories", label: "Item Catalog", icon: Boxes },
+    { key: "units", label: "UOM Catalog", icon: Ruler },
+    { key: "colors", label: "Attributes Catalog", icon: Tags },
+    { key: "genders", label: "Gender Catalog", icon: User },
+    { key: "departments", label: "Department Catalog", icon: Building },
+    { key: "suppliers", label: "Supplier Catalog", icon: Package },
+    { key: "seasons", label: "Season", icon: CloudSun },
+    { key: "locations", label: "Location Catalog", icon: MapPin },
+    { key: "user_groups", label: "User Groups", icon: Users },
+    { key: "employees", label: "Employee Catalog", icon: Briefcase },
+    { key: "certificates", label: "Certificate Catalog", icon: FileText },
+    { key: "stores", label: "Store Catalog", icon: Warehouse },
+  ] as { key: AttributeTable; label: string; icon: any }[];
+
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!isAdmin) return null;
 
-  // These will appear as the catalog buttons
-  const catalogs = [
-    { name: "Categories", key: "categories" },
-    { name: "Sizes", key: "sizes" },
-    { name: "Colors", key: "colors" },
-    { name: "Genders", key: "genders" },
-    { name: "Seasons", key: "seasons" },
-    { name: "Suppliers", key: "suppliers" },
-    { name: "Locations", key: "locations" },
-    { name: "Units", key: "units" },
-    { name: "Departments", key: "departments" },
-    { name: "Main Groups", key: "main_groups" },
-    { name: "Origins", key: "origins" },
-    { name: "Themes", key: "themes" },
-  ] as { name: string; key: AttributeTable }[];
-
   return (
-    <div className="p-8 space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">System Catalogs</h1>
-      <p className="text-gray-500">Select a catalog to manage its values</p>
+    <div className="p-6 space-y-6">
+      <h1 className="text-3xl font-bold text-gray-800 mb-4">System Catalogs</h1>
 
-      {/* Grid of Catalog Buttons */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* === Horizontal Button Bar === */}
+      <div className="flex flex-wrap gap-2">
         {catalogs.map((cat) => (
-          <div
+          <Button
             key={cat.key}
-            onClick={() => setActiveTable(cat.key)}
-            className={`p-6 rounded-lg border text-center shadow-sm cursor-pointer transition ${
-              activeTable === cat.key ? "bg-blue-100 border-blue-500" : "hover:bg-gray-100"
+            variant={activeTable === cat.key ? "default" : "outline"}
+            className={`flex items-center gap-2 ${
+              activeTable === cat.key ? "bg-indigo-500 text-white" : "bg-white text-gray-700 hover:bg-gray-100"
             }`}
+            onClick={() => setActiveTable(cat.key)}
           >
-            <h2 className="text-lg font-semibold text-gray-800">{cat.name}</h2>
-          </div>
+            <cat.icon className="w-4 h-4" />
+            {cat.label}
+          </Button>
         ))}
       </div>
 
-      {/* Display the selected catalog table */}
+      {/* === Selected Table === */}
       {activeTable && (
-        <div className="space-y-4 mt-6">
-          <h2 className="text-xl font-semibold text-gray-700">
-            Manage: {activeTable.charAt(0).toUpperCase() + activeTable.slice(1)}
-          </h2>
-
+        <div className="mt-6 space-y-4">
           <div className="flex gap-2">
             <Input
               placeholder={`Add new ${activeTable.slice(0, -1)}...`}
@@ -199,10 +195,11 @@ const Configuration = () => {
                     </TableCell>
                   </TableRow>
                 ))}
+
                 {(attributes[activeTable] || []).length === 0 && (
                   <TableRow>
                     <TableCell colSpan={2} className="text-center text-muted-foreground">
-                      No data yet
+                      No {activeTable} added yet
                     </TableCell>
                   </TableRow>
                 )}
