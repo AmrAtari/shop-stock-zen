@@ -5,8 +5,12 @@ import { useReportsData } from "@/hooks/useReportsData";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { LayoutDashboard, TrendingUp, DollarSign, Repeat2, BarChart } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays, startOfMonth, startOfDay } from "date-fns";
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 const REPORT_TABS = [
   "DASHBOARD",
@@ -40,9 +44,18 @@ export default function Reports() {
   const resetPagination = () => setCurrentPage(1);
 
   // Pivot report specific states
-  const [pivotGroupBy, setPivotGroupBy] = useState<string>("category");
-  const [pivotMetric, setPivotMetric] = useState<string>("quantity");
-  const [pivotAggregation, setPivotAggregation] = useState<string>("sum");
+  const [pivotTab, setPivotTab] = useState<string>("criteria");
+  const [pivotDatePreset, setPivotDatePreset] = useState<string>("last90days");
+  const [pivotStartDate, setPivotStartDate] = useState<string>(format(subDays(new Date(), 90), "yyyy-MM-dd"));
+  const [pivotEndDate, setPivotEndDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [pivotSelectedStores, setPivotSelectedStores] = useState<string[]>([]);
+  const [pivotSelectedCategories, setPivotSelectedCategories] = useState<string[]>([]);
+  const [pivotSelectedBrands, setPivotSelectedBrands] = useState<string[]>([]);
+  const [pivotShowZeroValues, setPivotShowZeroValues] = useState<boolean>(true);
+  const [pivotRowField, setPivotRowField] = useState<string>("category");
+  const [pivotColumnField, setPivotColumnField] = useState<string>("size");
+  const [pivotChartType, setPivotChartType] = useState<"bar" | "pie">("bar");
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const {
     inventoryOnHand = [],
@@ -62,55 +75,161 @@ export default function Reports() {
     error,
   } = useReportsData();
 
-  // Generate pivot data based on selections - MOVED BEFORE filteredData
-  const generatePivotData = () => {
-    if (!inventoryOnHand || inventoryOnHand.length === 0) return [];
+  // Date preset handler
+  const handleDatePreset = (preset: string) => {
+    setPivotDatePreset(preset);
+    const today = new Date();
+    switch (preset) {
+      case "today":
+        setPivotStartDate(format(startOfDay(today), "yyyy-MM-dd"));
+        setPivotEndDate(format(today, "yyyy-MM-dd"));
+        break;
+      case "last7days":
+        setPivotStartDate(format(subDays(today, 7), "yyyy-MM-dd"));
+        setPivotEndDate(format(today, "yyyy-MM-dd"));
+        break;
+      case "thismonth":
+        setPivotStartDate(format(startOfMonth(today), "yyyy-MM-dd"));
+        setPivotEndDate(format(today, "yyyy-MM-dd"));
+        break;
+      case "last90days":
+        setPivotStartDate(format(subDays(today, 90), "yyyy-MM-dd"));
+        setPivotEndDate(format(today, "yyyy-MM-dd"));
+        break;
+    }
+  };
 
-    const grouped: Record<string, any> = {};
+  // Generate advanced pivot data
+  const generateAdvancedPivotData = () => {
+    if (!inventoryOnHand || inventoryOnHand.length === 0) return { data: [], chartData: [] };
 
-    inventoryOnHand.forEach((item: any) => {
-      const groupKey = item[pivotGroupBy] || "Unknown";
+    // Apply filters
+    let filteredItems = inventoryOnHand.filter((item: any) => {
+      if (pivotSelectedStores.length > 0 && !pivotSelectedStores.includes(item.location)) return false;
+      if (pivotSelectedCategories.length > 0 && !pivotSelectedCategories.includes(item.category)) return false;
+      if (pivotSelectedBrands.length > 0 && !pivotSelectedBrands.includes(item.brand)) return false;
+      return true;
+    });
 
-      if (!grouped[groupKey]) {
-        grouped[groupKey] = {
-          [pivotGroupBy]: groupKey,
-          count: 0,
-          total_quantity: 0,
-          total_cost: 0,
-          total_value: 0,
-          avg_quantity: 0,
-          avg_cost: 0,
-          avg_selling: 0,
-          max_quantity: 0,
-          min_quantity: Infinity,
+    // Group by row field and column field
+    const pivotMap: Record<string, Record<string, any>> = {};
+    const brandData: Record<string, Record<string, any>> = {};
+
+    filteredItems.forEach((item: any) => {
+      const rowKey = item[pivotRowField] || "Unknown";
+      const colKey = item[pivotColumnField] || "N/A";
+      const brandKey = item.brand || "Unknown Brand";
+
+      // Initialize row
+      if (!pivotMap[rowKey]) {
+        pivotMap[rowKey] = {
+          rowField: rowKey,
+          columns: {},
+          totalQty: 0,
+          totalSales: 0,
+          totalCost: 0,
+          totalRefund: 0,
+          brands: {},
         };
       }
 
-      grouped[groupKey].count += 1;
-      grouped[groupKey].total_quantity += item.quantity || 0;
-      grouped[groupKey].total_cost += (item.quantity || 0) * (item.cost_price || 0);
-      grouped[groupKey].total_value += (item.quantity || 0) * (item.selling_price || 0);
-      grouped[groupKey].max_quantity = Math.max(grouped[groupKey].max_quantity, item.quantity || 0);
-      grouped[groupKey].min_quantity = Math.min(grouped[groupKey].min_quantity, item.quantity || 0);
-    });
-
-    // Calculate averages
-    Object.keys(grouped).forEach((key) => {
-      if (grouped[key].count > 0) {
-        grouped[key].avg_quantity = grouped[key].total_quantity / grouped[key].count;
-        grouped[key].avg_cost = grouped[key].total_cost / grouped[key].total_quantity || 0;
-        grouped[key].avg_selling = grouped[key].total_value / grouped[key].total_quantity || 0;
+      // Initialize column
+      if (!pivotMap[rowKey].columns[colKey]) {
+        pivotMap[rowKey].columns[colKey] = {
+          qty: 0,
+          sales: 0,
+          cost: 0,
+          refund: 0,
+          count: 0,
+        };
       }
-      // Round values
-      grouped[key].total_cost = grouped[key].total_cost.toFixed(2);
-      grouped[key].total_value = grouped[key].total_value.toFixed(2);
-      grouped[key].avg_quantity = grouped[key].avg_quantity.toFixed(2);
-      grouped[key].avg_cost = grouped[key].avg_cost.toFixed(2);
-      grouped[key].avg_selling = grouped[key].avg_selling.toFixed(2);
+
+      // Initialize brand under row
+      if (!pivotMap[rowKey].brands[brandKey]) {
+        pivotMap[rowKey].brands[brandKey] = {
+          brandName: brandKey,
+          columns: {},
+          totalQty: 0,
+          totalSales: 0,
+          totalCost: 0,
+          totalRefund: 0,
+        };
+      }
+
+      // Initialize brand column
+      if (!pivotMap[rowKey].brands[brandKey].columns[colKey]) {
+        pivotMap[rowKey].brands[brandKey].columns[colKey] = {
+          qty: 0,
+          sales: 0,
+          cost: 0,
+          refund: 0,
+          count: 0,
+        };
+      }
+
+      // Aggregate data
+      const qty = item.quantity || 0;
+      const costPrice = parseFloat(item.cost_price) || 0;
+      const sellingPrice = parseFloat(item.selling_price) || 0;
+      const sales = qty * sellingPrice;
+      const cost = qty * costPrice;
+      const refund = sales * 0.02; // Simulated 2% refund rate
+
+      // Row totals
+      pivotMap[rowKey].totalQty += qty;
+      pivotMap[rowKey].totalSales += sales;
+      pivotMap[rowKey].totalCost += cost;
+      pivotMap[rowKey].totalRefund += refund;
+
+      // Column data
+      pivotMap[rowKey].columns[colKey].qty += qty;
+      pivotMap[rowKey].columns[colKey].sales += sales;
+      pivotMap[rowKey].columns[colKey].cost += cost;
+      pivotMap[rowKey].columns[colKey].refund += refund;
+      pivotMap[rowKey].columns[colKey].count += 1;
+
+      // Brand totals
+      pivotMap[rowKey].brands[brandKey].totalQty += qty;
+      pivotMap[rowKey].brands[brandKey].totalSales += sales;
+      pivotMap[rowKey].brands[brandKey].totalCost += cost;
+      pivotMap[rowKey].brands[brandKey].totalRefund += refund;
+
+      // Brand column data
+      pivotMap[rowKey].brands[brandKey].columns[colKey].qty += qty;
+      pivotMap[rowKey].brands[brandKey].columns[colKey].sales += sales;
+      pivotMap[rowKey].brands[brandKey].columns[colKey].cost += cost;
+      pivotMap[rowKey].brands[brandKey].columns[colKey].refund += refund;
+      pivotMap[rowKey].brands[brandKey].columns[colKey].count += 1;
     });
 
-    return Object.values(grouped);
+    // Convert to array and filter zero values
+    const data = Object.values(pivotMap).filter((row) => 
+      pivotShowZeroValues || row.totalSales > 0
+    );
+
+    // Generate chart data
+    const chartData = data.map((row) => ({
+      name: row.rowField,
+      grossMargin: row.totalSales - row.totalCost,
+      sales: row.totalSales,
+      cost: row.totalCost,
+    }));
+
+    return { data, chartData };
   };
+
+  const { data: pivotData, chartData: pivotChartData } = useMemo(
+    () => generateAdvancedPivotData(),
+    [
+      inventoryOnHand,
+      pivotRowField,
+      pivotColumnField,
+      pivotSelectedStores,
+      pivotSelectedCategories,
+      pivotSelectedBrands,
+      pivotShowZeroValues,
+    ]
+  );
 
   // Filtered data based on active tab, search, and date
   const filteredData = useMemo(() => {
@@ -148,7 +267,7 @@ export default function Reports() {
         data = stockMovementTransaction || [];
         break;
       case "PIVOT_REPORT":
-        data = generatePivotData();
+        data = pivotData;
         break;
       default:
         data = [];
@@ -207,9 +326,7 @@ export default function Reports() {
     cogs,
     recentAdjustments,
     stockMovementTransaction,
-    pivotGroupBy,
-    pivotMetric,
-    pivotAggregation,
+    pivotData,
   ]);
 
   // Paginated data - MOVED BEFORE early returns
@@ -364,58 +481,375 @@ export default function Reports() {
     }
 
     if (activeTab === "PIVOT_REPORT") {
+      const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+      
+      const toggleRowExpansion = (rowKey: string) => {
+        setExpandedRows((prev) => {
+          const newSet = new Set(prev);
+          if (newSet.has(rowKey)) {
+            newSet.delete(rowKey);
+          } else {
+            newSet.add(rowKey);
+          }
+          return newSet;
+        });
+      };
+
+      const uniqueColumns = [...new Set(
+        pivotData.flatMap((row: any) => Object.keys(row.columns))
+      )].sort();
+
       return (
-        <div>
-          <div className="mb-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-6">
+          <Tabs value={pivotTab} onValueChange={setPivotTab}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="criteria">Criteria</TabsTrigger>
+              <TabsTrigger value="fields">Fields</TabsTrigger>
+              <TabsTrigger value="results">Search Results</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="criteria" className="space-y-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h3 className="font-semibold">Date Range</h3>
+                  <div className="flex gap-2 flex-wrap">
+                    {["today", "last7days", "thismonth", "last90days"].map((preset) => (
+                      <Button
+                        key={preset}
+                        variant={pivotDatePreset === preset ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleDatePreset(preset)}
+                      >
+                        {preset === "today" && "Today"}
+                        {preset === "last7days" && "Last 7 Days"}
+                        {preset === "thismonth" && "This Month"}
+                        {preset === "last90days" && "Last 90 Days"}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Start Date</Label>
+                      <input
+                        type="date"
+                        value={pivotStartDate}
+                        onChange={(e) => setPivotStartDate(e.target.value)}
+                        className="w-full border border-border rounded-md p-2 bg-background"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>End Date</Label>
+                      <input
+                        type="date"
+                        value={pivotEndDate}
+                        onChange={(e) => setPivotEndDate(e.target.value)}
+                        className="w-full border border-border rounded-md p-2 bg-background"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="font-semibold">Store Filter</Label>
+                    <div className="border border-border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                      {stores.map((store) => (
+                        <div key={store} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`store-${store}`}
+                            checked={pivotSelectedStores.includes(store)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setPivotSelectedStores([...pivotSelectedStores, store]);
+                              } else {
+                                setPivotSelectedStores(pivotSelectedStores.filter((s) => s !== store));
+                              }
+                            }}
+                          />
+                          <label htmlFor={`store-${store}`} className="text-sm cursor-pointer">
+                            {store}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="font-semibold">Category Filter</Label>
+                  <div className="border border-border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                    {categories.map((category) => (
+                      <div key={category} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`category-${category}`}
+                          checked={pivotSelectedCategories.includes(category)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setPivotSelectedCategories([...pivotSelectedCategories, category]);
+                            } else {
+                              setPivotSelectedCategories(pivotSelectedCategories.filter((c) => c !== category));
+                            }
+                          }}
+                        />
+                        <label htmlFor={`category-${category}`} className="text-sm cursor-pointer">
+                          {category}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="font-semibold">Brand Filter</Label>
+                  <div className="border border-border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                    {brands.map((brand) => (
+                      <div key={brand} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`brand-${brand}`}
+                          checked={pivotSelectedBrands.includes(brand)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setPivotSelectedBrands([...pivotSelectedBrands, brand]);
+                            } else {
+                              setPivotSelectedBrands(pivotSelectedBrands.filter((b) => b !== brand));
+                            }
+                          }}
+                        />
+                        <label htmlFor={`brand-${brand}`} className="text-sm cursor-pointer">
+                          {brand}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="show-zero"
+                  checked={pivotShowZeroValues}
+                  onCheckedChange={(checked) => setPivotShowZeroValues(checked as boolean)}
+                />
+                <label htmlFor="show-zero" className="text-sm cursor-pointer">
+                  Display zero values
+                </label>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="fields" className="space-y-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="font-semibold">Row Fields (Primary Grouping)</Label>
+                  <select
+                    value={pivotRowField}
+                    onChange={(e) => setPivotRowField(e.target.value)}
+                    className="w-full border border-border rounded-md p-2 bg-background"
+                  >
+                    <option value="category">Category</option>
+                    <option value="department">Department</option>
+                    <option value="main_group">Main Group</option>
+                    <option value="location">Location</option>
+                    <option value="supplier">Supplier</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Items will be grouped by this field, with drill-down by Brand
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="font-semibold">Column Fields (Comparative Analysis)</Label>
+                  <select
+                    value={pivotColumnField}
+                    onChange={(e) => setPivotColumnField(e.target.value)}
+                    className="w-full border border-border rounded-md p-2 bg-background"
+                  >
+                    <option value="size">Size</option>
+                    <option value="color">Color</option>
+                    <option value="season">Season</option>
+                    <option value="gender">Gender</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Data will be compared side-by-side across these attributes
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <label className="text-sm font-medium">Group By</label>
-                <select
-                  value={pivotGroupBy}
-                  onChange={(e) => setPivotGroupBy(e.target.value)}
-                  className="w-full border border-border rounded-md p-2 bg-background"
-                >
-                  <option value="category">Category</option>
-                  <option value="brand">Brand</option>
-                  <option value="location">Store/Location</option>
-                  <option value="supplier">Supplier</option>
-                </select>
+                <Label className="font-semibold">Data Fields (Calculations)</Label>
+                <div className="border border-border rounded-md p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="font-medium">Primary Metrics (SUM):</p>
+                      <ul className="list-disc list-inside text-muted-foreground mt-1">
+                        <li>Qty Sold</li>
+                        <li>Sales Amount</li>
+                        <li>Refund Amount</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-medium">Advanced Metrics:</p>
+                      <ul className="list-disc list-inside text-muted-foreground mt-1">
+                        <li>Gross Margin (SUM)</li>
+                        <li>Margin % (AVERAGE)</li>
+                        <li>Avg Selling Price (AVERAGE)</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Metric</label>
-                <select
-                  value={pivotMetric}
-                  onChange={(e) => setPivotMetric(e.target.value)}
-                  className="w-full border border-border rounded-md p-2 bg-background"
-                >
-                  <option value="quantity">Quantity</option>
-                  <option value="cost_price">Cost Price</option>
-                  <option value="selling_price">Selling Price</option>
-                </select>
+            </TabsContent>
+
+            <TabsContent value="results" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-muted-foreground">
+                  {pivotData.length} group(s) found
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant={pivotChartType === "bar" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPivotChartType("bar")}
+                  >
+                    Bar Chart
+                  </Button>
+                  <Button
+                    variant={pivotChartType === "pie" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPivotChartType("pie")}
+                  >
+                    Pie Chart
+                  </Button>
+                  <Button onClick={exportCSV} size="sm">Export CSV</Button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Aggregation</label>
-                <select
-                  value={pivotAggregation}
-                  onChange={(e) => setPivotAggregation(e.target.value)}
-                  className="w-full border border-border rounded-md p-2 bg-background"
-                >
-                  <option value="sum">Sum</option>
-                  <option value="count">Count</option>
-                  <option value="average">Average</option>
-                  <option value="max">Max</option>
-                  <option value="min">Min</option>
-                </select>
+
+              {/* Chart Visualization */}
+              <Card>
+                <CardContent className="p-6">
+                  <h3 className="font-semibold mb-4">Gross Margin by {pivotRowField}</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    {pivotChartType === "bar" ? (
+                      <RechartsBarChart data={pivotChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="grossMargin" fill="#8884d8" name="Gross Margin" />
+                        <Bar dataKey="sales" fill="#82ca9d" name="Sales" />
+                        <Bar dataKey="cost" fill="#ffc658" name="Cost" />
+                      </RechartsBarChart>
+                    ) : (
+                      <PieChart>
+                        <Pie
+                          data={pivotChartData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={(entry) => `${entry.name}: $${entry.grossMargin.toFixed(0)}`}
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="grossMargin"
+                        >
+                          {pivotChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    )}
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Interactive Data Grid */}
+              <div className="overflow-x-auto border border-border rounded-md">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="border border-border p-3 text-left font-semibold sticky left-0 bg-muted">
+                        {pivotRowField.toUpperCase()}
+                      </th>
+                      {uniqueColumns.map((col) => (
+                        <th key={col} className="border border-border p-3 text-center font-semibold">
+                          {col}
+                        </th>
+                      ))}
+                      <th className="border border-border p-3 text-center font-semibold">Total Qty</th>
+                      <th className="border border-border p-3 text-center font-semibold">Sales</th>
+                      <th className="border border-border p-3 text-center font-semibold">Cost</th>
+                      <th className="border border-border p-3 text-center font-semibold">Gross Margin</th>
+                      <th className="border border-border p-3 text-center font-semibold">Margin %</th>
+                      <th className="border border-border p-3 text-center font-semibold">Avg Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pivotData.map((row: any, idx: number) => {
+                      const isExpanded = expandedRows.has(row.rowField);
+                      const grossMargin = row.totalSales - row.totalCost;
+                      const marginPercent = row.totalSales > 0 ? ((grossMargin / row.totalSales) * 100) : 0;
+                      const avgPrice = row.totalQty > 0 ? (row.totalSales / row.totalQty) : 0;
+
+                      return (
+                        <React.Fragment key={idx}>
+                          <tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleRowExpansion(row.rowField)}>
+                            <td className="border border-border p-3 font-medium sticky left-0 bg-background">
+                              <span className="inline-block mr-2">{isExpanded ? "▼" : "►"}</span>
+                              {row.rowField}
+                            </td>
+                            {uniqueColumns.map((col) => (
+                              <td key={col} className="border border-border p-3 text-center">
+                                {row.columns[col]?.qty || 0}
+                              </td>
+                            ))}
+                            <td className="border border-border p-3 text-center font-medium">{row.totalQty}</td>
+                            <td className="border border-border p-3 text-center">${row.totalSales.toFixed(2)}</td>
+                            <td className="border border-border p-3 text-center">${row.totalCost.toFixed(2)}</td>
+                            <td className="border border-border p-3 text-center font-medium text-green-600">
+                              ${grossMargin.toFixed(2)}
+                            </td>
+                            <td className="border border-border p-3 text-center">{marginPercent.toFixed(1)}%</td>
+                            <td className="border border-border p-3 text-center">${avgPrice.toFixed(2)}</td>
+                          </tr>
+
+                          {/* Brand drill-down rows */}
+                          {isExpanded &&
+                            Object.values(row.brands).map((brand: any, brandIdx: number) => {
+                              const brandGrossMargin = brand.totalSales - brand.totalCost;
+                              const brandMarginPercent = brand.totalSales > 0 ? ((brandGrossMargin / brand.totalSales) * 100) : 0;
+                              const brandAvgPrice = brand.totalQty > 0 ? (brand.totalSales / brand.totalQty) : 0;
+
+                              return (
+                                <tr key={brandIdx} className="bg-muted/30">
+                                  <td className="border border-border p-3 pl-8 text-sm sticky left-0 bg-muted/30">
+                                    {brand.brandName}
+                                  </td>
+                                  {uniqueColumns.map((col) => (
+                                    <td key={col} className="border border-border p-3 text-center text-sm">
+                                      {brand.columns[col]?.qty || 0}
+                                    </td>
+                                  ))}
+                                  <td className="border border-border p-3 text-center text-sm">{brand.totalQty}</td>
+                                  <td className="border border-border p-3 text-center text-sm">${brand.totalSales.toFixed(2)}</td>
+                                  <td className="border border-border p-3 text-center text-sm">${brand.totalCost.toFixed(2)}</td>
+                                  <td className="border border-border p-3 text-center text-sm text-green-600">
+                                    ${brandGrossMargin.toFixed(2)}
+                                  </td>
+                                  <td className="border border-border p-3 text-center text-sm">{brandMarginPercent.toFixed(1)}%</td>
+                                  <td className="border border-border p-3 text-center text-sm">${brandAvgPrice.toFixed(2)}</td>
+                                </tr>
+                              );
+                            })}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {paginatedData.length} of {filteredData.length} results
-              </div>
-              <Button onClick={exportCSV}>Export CSV</Button>
-            </div>
-          </div>
-          {renderTable(paginatedData)}
+            </TabsContent>
+          </Tabs>
         </div>
       );
     }
