@@ -15,6 +15,9 @@ import {
   Plus,
   Trash2,
   Search,
+  Edit2,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +53,8 @@ const Configuration = () => {
   const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [activeTable, setActiveTable] = useState<AttributeTable | null>("categories");
   const [newValue, setNewValue] = useState("");
+  const [editValue, setEditValue] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const pageSize = 20;
@@ -111,6 +116,30 @@ const Configuration = () => {
       loadTableData();
     } catch (err: any) {
       toast.error(err.message || "Error deleting item");
+    }
+  };
+
+  const handleEditStart = (id: string, name: string) => {
+    setEditingId(id);
+    setEditValue(name);
+  };
+
+  const handleEditCancel = () => {
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  const handleEditSave = async (id: string) => {
+    if (!activeTable || !editValue.trim()) return toast.error("Please enter a name");
+    try {
+      const { error } = await supabase.from(activeTable).update({ name: editValue.trim() }).eq("id", id);
+      if (error) throw error;
+      toast.success("Updated successfully");
+      setEditingId(null);
+      setEditValue("");
+      loadTableData();
+    } catch (err: any) {
+      toast.error(err.message || "Error updating item");
     }
   };
 
@@ -211,11 +240,33 @@ const Configuration = () => {
                 {attributes.length > 0 ? (
                   attributes.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell>{item.name}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                      <TableCell>
+                        {editingId === item.id ? (
+                          <Input value={editValue} onChange={(e) => setEditValue(e.target.value)} className="w-full" />
+                        ) : (
+                          item.name
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right flex justify-end gap-2">
+                        {editingId === item.id ? (
+                          <>
+                            <Button size="icon" variant="ghost" onClick={() => handleEditSave(item.id)}>
+                              <Check className="w-4 h-4 text-green-600" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={handleEditCancel}>
+                              <X className="w-4 h-4 text-red-600" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button size="icon" variant="ghost" onClick={() => handleEditStart(item.id, item.name)}>
+                              <Edit2 className="w-4 h-4 text-blue-600" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDelete(item.id)}>
+                              <Trash2 className="w-4 h-4 text-red-600" />
+                            </Button>
+                          </>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
