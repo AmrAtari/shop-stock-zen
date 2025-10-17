@@ -36,7 +36,8 @@ type AttributeTable =
   | "seasons"
   | "locations"
   | "sizes"
-  | "stores";
+  | "stores"
+  | string;
 
 interface Attribute {
   id: string;
@@ -59,6 +60,34 @@ const Configuration = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
+  // Attribute type management
+  const [catalogs, setCatalogs] = useState<{ key: string; label: string; icon: any }[]>([
+    { key: "categories", label: "Item Catalog", icon: Boxes },
+    { key: "units", label: "UOM Catalog", icon: Ruler },
+    { key: "colors", label: "Attributes Catalog", icon: Tags },
+    { key: "genders", label: "Gender Catalog", icon: User },
+    { key: "departments", label: "Department Catalog", icon: Building },
+    { key: "suppliers", label: "Supplier Catalog", icon: Package },
+    { key: "seasons", label: "Season", icon: CloudSun },
+    { key: "locations", label: "Location Catalog", icon: MapPin },
+    { key: "sizes", label: "Size Catalog", icon: Ruler },
+    { key: "stores", label: "Store Catalog", icon: Warehouse },
+  ]);
+
+  const [attrModalOpen, setAttrModalOpen] = useState(false);
+  const [newAttrName, setNewAttrName] = useState("");
+
+  // Persist attribute types in localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("customCatalogs");
+    if (saved) setCatalogs(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("customCatalogs", JSON.stringify(catalogs));
+  }, [catalogs]);
+
+  // Redirect non-admin users
   useEffect(() => {
     if (!isLoading && !isAdmin) {
       navigate("/");
@@ -66,6 +95,7 @@ const Configuration = () => {
     }
   }, [isAdmin, isLoading, navigate]);
 
+  // Load attributes for current table
   const loadData = async (table: AttributeTable, currentPage = 1, term = "") => {
     try {
       const from = (currentPage - 1) * PAGE_SIZE;
@@ -153,44 +183,89 @@ const Configuration = () => {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const catalogs = [
-    { key: "categories", label: "Item Catalog", icon: Boxes },
-    { key: "units", label: "UOM Catalog", icon: Ruler },
-    { key: "colors", label: "Colors Catalog", icon: Tags },
-    { key: "genders", label: "Gender Catalog", icon: User },
-    { key: "departments", label: "Department Catalog", icon: Building },
-    { key: "suppliers", label: "Supplier Catalog", icon: Package },
-    { key: "seasons", label: "Season", icon: CloudSun },
-    { key: "locations", label: "Location Catalog", icon: MapPin },
-    { key: "sizes", label: "Size Catalog", icon: Ruler },
-    { key: "stores", label: "Store Catalog", icon: Warehouse },
-  ] as { key: AttributeTable; label: string; icon: any }[];
-
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!isAdmin) return null;
 
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">System Catalogs</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">System Catalogs</h1>
+        <Button onClick={() => setAttrModalOpen(true)}>+ Add Attribute Type</Button>
+      </div>
 
-      {/* Catalog Buttons */}
+      {/* Attribute Type List */}
       <div className="flex flex-wrap gap-2">
         {catalogs.map((cat) => (
-          <Button
-            key={cat.key}
-            onClick={() => handleOpen(cat)}
-            variant="outline"
-            className={`flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-100 ${
-              activeCatalog?.key === cat.key ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-gray-700"
-            }`}
-          >
-            <cat.icon className="w-4 h-4" />
-            {cat.label}
-          </Button>
+          <div key={cat.key} className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-100 text-gray-700"
+              onClick={() => handleOpen(cat)}
+            >
+              <cat.icon className="w-4 h-4" />
+              {cat.label}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const newLabel = prompt("Edit attribute name:", cat.label);
+                if (newLabel) {
+                  setCatalogs((prev) => prev.map((c) => (c.key === cat.key ? { ...c, label: newLabel } : c)));
+                  toast.success("Attribute updated!");
+                }
+              }}
+            >
+              <Edit2 className="w-4 h-4 text-blue-500" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (confirm("Delete this attribute type?")) {
+                  setCatalogs((prev) => prev.filter((c) => c.key !== cat.key));
+                  toast.success("Deleted successfully");
+                }
+              }}
+            >
+              <Trash2 className="w-4 h-4 text-red-500" />
+            </Button>
+          </div>
         ))}
       </div>
 
-      {/* Modal */}
+      {/* Add Attribute Type Modal */}
+      <Dialog open={attrModalOpen} onOpenChange={setAttrModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Attribute Type</DialogTitle>
+          </DialogHeader>
+          <Input
+            placeholder="Enter attribute type name (e.g. Brand)"
+            value={newAttrName}
+            onChange={(e) => setNewAttrName(e.target.value)}
+          />
+          <DialogFooter className="flex justify-end mt-4">
+            <Button variant="outline" onClick={() => setAttrModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!newAttrName.trim()) return toast.error("Enter a name");
+                const newKey = newAttrName.toLowerCase().replace(/\s+/g, "_");
+                setCatalogs([...catalogs, { key: newKey, label: newAttrName, icon: Tags }]);
+                setAttrModalOpen(false);
+                setNewAttrName("");
+                toast.success("Attribute type added!");
+              }}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Catalog Items Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
