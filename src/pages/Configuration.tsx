@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Boxes,
   Ruler,
@@ -8,21 +8,21 @@ import {
   Package,
   CloudSun,
   MapPin,
-  Users,
-  Briefcase,
   Warehouse,
   Plus,
   Trash2,
-  Search,
   Edit2,
+  Download,
   Check,
   X,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useNavigate } from "react-router-dom";
 
@@ -47,14 +47,13 @@ const Configuration = () => {
   const { isAdmin, isLoading } = useIsAdmin();
   const navigate = useNavigate();
 
+  const [open, setOpen] = useState(false);
+  const [activeCatalog, setActiveCatalog] = useState<{ key: AttributeTable; label: string } | null>(null);
   const [attributes, setAttributes] = useState<Attribute[]>([]);
-  const [activeTable, setActiveTable] = useState<AttributeTable | null>("categories");
   const [newValue, setNewValue] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const pageSize = 20;
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -63,82 +62,84 @@ const Configuration = () => {
     }
   }, [isAdmin, isLoading, navigate]);
 
-  useEffect(() => {
-    if (activeTable && isAdmin) {
-      loadTableData();
-    }
-  }, [activeTable, page, search, isAdmin]);
-
-  const loadTableData = async () => {
-    if (!activeTable) return;
+  const loadData = async (table: AttributeTable) => {
     try {
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      let query = supabase.from(activeTable as any).select("*").order("name").range(from, to);
-
-      if (search.trim()) {
-        query = query.ilike("name", `%${search.trim()}%`);
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await supabase
+        .from(table as any)
+        .select("*")
+        .order("name");
       if (error) throw error;
-      setAttributes((data as any) || []);
+      setAttributes(data || []);
     } catch (err: any) {
       toast.error(err.message || "Error loading data");
     }
   };
 
+  const handleOpen = async (catalog: { key: AttributeTable; label: string }) => {
+    setActiveCatalog(catalog);
+    await loadData(catalog.key);
+    setOpen(true);
+    setSearchTerm("");
+  };
+
   const handleAdd = async () => {
-    if (!activeTable || !newValue.trim()) return toast.error("Please enter a value");
+    if (!activeCatalog || !newValue.trim()) return toast.error("Please enter a value");
     try {
-      const { error } = await supabase.from(activeTable as any).insert({ name: newValue.trim() });
+      const { error } = await supabase.from(activeCatalog.key as any).insert({ name: newValue.trim() });
       if (error) throw error;
       toast.success("Added successfully");
       setNewValue("");
-      loadTableData();
+      loadData(activeCatalog.key);
     } catch (err: any) {
       toast.error(err.message || "Error adding item");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!activeTable) return;
-    if (!confirm("Are you sure you want to delete this item?")) return;
-
+    if (!activeCatalog) return;
+    if (!confirm("Delete this item?")) return;
     try {
-      const { error } = await supabase.from(activeTable as any).delete().eq("id", id);
+      const { error } = await supabase
+        .from(activeCatalog.key as any)
+        .delete()
+        .eq("id", id);
       if (error) throw error;
       toast.success("Deleted successfully");
-      loadTableData();
+      loadData(activeCatalog.key);
     } catch (err: any) {
-      toast.error(err.message || "Error deleting item");
+      toast.error(err.message || "Error deleting");
     }
   };
 
-  const handleEditStart = (id: string, name: string) => {
-    setEditingId(id);
-    setEditValue(name);
-  };
-
-  const handleEditCancel = () => {
-    setEditingId(null);
-    setEditValue("");
-  };
-
   const handleEditSave = async (id: string) => {
-    if (!activeTable || !editValue.trim()) return toast.error("Please enter a name");
+    if (!activeCatalog || !editValue.trim()) return toast.error("Please enter a name");
     try {
-      const { error } = await supabase.from(activeTable as any).update({ name: editValue.trim() }).eq("id", id);
+      const { error } = await supabase
+        .from(activeCatalog.key as any)
+        .update({ name: editValue.trim() })
+        .eq("id", id);
       if (error) throw error;
       toast.success("Updated successfully");
-      setEditingId(null);
+      setEditId(null);
       setEditValue("");
-      loadTableData();
+      loadData(activeCatalog.key);
     } catch (err: any) {
       toast.error(err.message || "Error updating item");
     }
   };
+
+  const handleExport = () => {
+    if (!attributes.length) return toast.error("No data to export");
+    const ws = XLSX.utils.json_to_sheet(attributes);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, activeCatalog?.label || "Data");
+    XLSX.writeFile(wb, `${activeCatalog?.label || "data"}.xlsx`);
+  };
+
+  const filteredAttributes = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return term ? attributes.filter((a) => a.name.toLowerCase().includes(term)) : attributes;
+  }, [searchTerm, attributes]);
 
   const catalogs = [
     { key: "categories", label: "Item Catalog", icon: Boxes },
@@ -157,127 +158,111 @@ const Configuration = () => {
   if (!isAdmin) return null;
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800 mb-4">System Catalogs</h1>
+    <div className="p-8">
+      <h1 className="text-3xl font-bold text-gray-800 mb-6">System Catalogs</h1>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-2">
+      {/* Catalog Buttons Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {catalogs.map((cat) => (
           <Button
             key={cat.key}
-            variant={activeTable === cat.key ? "default" : "outline"}
-            className={`flex items-center gap-2 ${
-              activeTable === cat.key ? "bg-indigo-500 text-white" : "bg-white text-gray-700 hover:bg-gray-100"
-            }`}
-            onClick={() => {
-              setActiveTable(cat.key);
-              setPage(1);
-              setSearch("");
-            }}
+            onClick={() => handleOpen(cat)}
+            className="flex items-center justify-center gap-2 h-24 rounded-2xl shadow hover:shadow-md transition-all text-lg font-medium"
           >
-            <cat.icon className="w-4 h-4" />
+            <cat.icon className="w-5 h-5" />
             {cat.label}
           </Button>
         ))}
       </div>
 
-      {/* Selected Catalog Table */}
-      {activeTable && (
-        <div className="space-y-4 mt-6">
-          {/* Add new item */}
-          <div className="flex gap-2">
+      {/* Modal for Editing */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{activeCatalog?.label}</DialogTitle>
+          </DialogHeader>
+
+          {/* Search Bar */}
+          <div className="flex items-center gap-2 mb-3">
+            <Search className="w-4 h-4 text-gray-500" />
             <Input
-              placeholder={`Add new ${activeTable.slice(0, -1)}...`}
+              placeholder="Search items..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1"
+            />
+          </div>
+
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+            {filteredAttributes.length > 0 ? (
+              filteredAttributes.map((attr) => (
+                <div
+                  key={attr.id}
+                  className="flex items-center justify-between border rounded-lg px-3 py-2 hover:bg-gray-50"
+                >
+                  {editId === attr.id ? (
+                    <Input value={editValue} onChange={(e) => setEditValue(e.target.value)} className="mr-2" />
+                  ) : (
+                    <span>{attr.name}</span>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    {editId === attr.id ? (
+                      <>
+                        <Button size="icon" variant="ghost" onClick={() => handleEditSave(attr.id)}>
+                          <Check className="w-4 h-4 text-green-600" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => setEditId(null)}>
+                          <X className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditId(attr.id);
+                            setEditValue(attr.name);
+                          }}
+                        >
+                          <Edit2 className="w-4 h-4 text-blue-600" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => handleDelete(attr.id)}>
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-gray-500 py-8">No items found</p>
+            )}
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <Input
+              placeholder={`Add new ${activeCatalog?.label?.toLowerCase()}...`}
               value={newValue}
               onChange={(e) => setNewValue(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             />
             <Button onClick={handleAdd}>
-              <Plus className="w-4 h-4 mr-2" /> Add
+              <Plus className="w-4 h-4 mr-1" /> Add
             </Button>
           </div>
 
-          {/* Search + Pagination */}
-          <div className="flex justify-between items-center mt-4">
-            <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-gray-500" />
-              <Input
-                placeholder="Search..."
-                value={search}
-                onChange={(e) => {
-                  setPage(1);
-                  setSearch(e.target.value);
-                }}
-                className="w-64"
-              />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>
-                Previous
-              </Button>
-              <span className="text-gray-600">Page {page}</span>
-              <Button variant="outline" onClick={() => setPage(page + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {attributes.length > 0 ? (
-                  attributes.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        {editingId === item.id ? (
-                          <Input value={editValue} onChange={(e) => setEditValue(e.target.value)} className="w-full" />
-                        ) : (
-                          item.name
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right flex justify-end gap-2">
-                        {editingId === item.id ? (
-                          <>
-                            <Button size="icon" variant="ghost" onClick={() => handleEditSave(item.id)}>
-                              <Check className="w-4 h-4 text-green-600" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={handleEditCancel}>
-                              <X className="w-4 h-4 text-red-600" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button size="icon" variant="ghost" onClick={() => handleEditStart(item.id, item.name)}>
-                              <Edit2 className="w-4 h-4 text-blue-600" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => handleDelete(item.id)}>
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </Button>
-                          </>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={2} className="text-center text-muted-foreground">
-                      No data found
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
+          <DialogFooter className="flex justify-between mt-6">
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={handleExport}>
+              <Download className="w-4 h-4 mr-2" /> Export as Excel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
