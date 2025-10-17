@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download, History } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,6 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 
 const InventoryNew = () => {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -156,6 +158,10 @@ const InventoryNew = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate("/inventory/physical")}>
+            <Clipboard className="w-4 h-4 mr-2" />
+            Physical Inventory
+          </Button>
           <Button variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
             Export

@@ -334,6 +334,99 @@ export type Database = {
         }
         Relationships: []
       }
+      physical_inventory_counts: {
+        Row: {
+          counted_quantity: number
+          created_at: string
+          id: string
+          item_id: string | null
+          item_name: string
+          notes: string | null
+          session_id: string
+          sku: string
+          status: string
+          system_quantity: number
+          variance: number | null
+          variance_percentage: number | null
+        }
+        Insert: {
+          counted_quantity: number
+          created_at?: string
+          id?: string
+          item_id?: string | null
+          item_name: string
+          notes?: string | null
+          session_id: string
+          sku: string
+          status?: string
+          system_quantity: number
+          variance?: number | null
+          variance_percentage?: number | null
+        }
+        Update: {
+          counted_quantity?: number
+          created_at?: string
+          id?: string
+          item_id?: string | null
+          item_name?: string
+          notes?: string | null
+          session_id?: string
+          sku?: string
+          status?: string
+          system_quantity?: number
+          variance?: number | null
+          variance_percentage?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "physical_inventory_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      physical_inventory_sessions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          session_number: string
+          started_at: string
+          started_by: string | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          session_number: string
+          started_at?: string
+          started_by?: string | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          session_number?: string
+          started_at?: string
+          started_by?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       price_levels: {
         Row: {
           cost_price: number
@@ -846,6 +939,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_pi_session_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       generate_po_number: {
         Args: { supplier_name: string }
         Returns: string

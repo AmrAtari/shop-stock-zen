@@ -18,6 +18,7 @@ import Configuration from "./pages/Configuration";
 import Duplicates from "./pages/Duplicates";
 import Transfers from "./pages/Transfers";
 import TransferDetail from "./pages/TransferDetail";
+import PhysicalInventoryPage from "./pages/PhysicalInventoryPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -147,6 +148,16 @@ const App = () => (
               <ProtectedRoute>
                 <Layout>
                   <TransferDetail />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory/physical"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <PhysicalInventoryPage />
                 </Layout>
               </ProtectedRoute>
             }
