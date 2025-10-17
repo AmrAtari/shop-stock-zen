@@ -35,8 +35,6 @@ type AttributeTable =
   | "suppliers"
   | "seasons"
   | "locations"
-  | "user_groups"
-  | "employees"
   | "sizes"
   | "stores";
 
@@ -77,7 +75,7 @@ const Configuration = () => {
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      let query = supabase.from(activeTable).select("*").order("name").range(from, to);
+      let query = supabase.from(activeTable as any).select("*").order("name").range(from, to);
 
       if (search.trim()) {
         query = query.ilike("name", `%${search.trim()}%`);
@@ -85,7 +83,7 @@ const Configuration = () => {
 
       const { data, error } = await query;
       if (error) throw error;
-      setAttributes(data || []);
+      setAttributes((data as any) || []);
     } catch (err: any) {
       toast.error(err.message || "Error loading data");
     }
@@ -94,7 +92,7 @@ const Configuration = () => {
   const handleAdd = async () => {
     if (!activeTable || !newValue.trim()) return toast.error("Please enter a value");
     try {
-      const { error } = await supabase.from(activeTable).insert({ name: newValue.trim() });
+      const { error } = await supabase.from(activeTable as any).insert({ name: newValue.trim() });
       if (error) throw error;
       toast.success("Added successfully");
       setNewValue("");
@@ -109,7 +107,7 @@ const Configuration = () => {
     if (!confirm("Are you sure you want to delete this item?")) return;
 
     try {
-      const { error } = await supabase.from(activeTable).delete().eq("id", id);
+      const { error } = await supabase.from(activeTable as any).delete().eq("id", id);
       if (error) throw error;
       toast.success("Deleted successfully");
       loadTableData();
@@ -131,7 +129,7 @@ const Configuration = () => {
   const handleEditSave = async (id: string) => {
     if (!activeTable || !editValue.trim()) return toast.error("Please enter a name");
     try {
-      const { error } = await supabase.from(activeTable).update({ name: editValue.trim() }).eq("id", id);
+      const { error } = await supabase.from(activeTable as any).update({ name: editValue.trim() }).eq("id", id);
       if (error) throw error;
       toast.success("Updated successfully");
       setEditingId(null);
@@ -151,8 +149,6 @@ const Configuration = () => {
     { key: "suppliers", label: "Supplier Catalog", icon: Package },
     { key: "seasons", label: "Season", icon: CloudSun },
     { key: "locations", label: "Location Catalog", icon: MapPin },
-    { key: "user_groups", label: "User Groups", icon: Users },
-    { key: "employees", label: "Employee Catalog", icon: Briefcase },
     { key: "sizes", label: "Size Catalog", icon: Ruler },
     { key: "stores", label: "Store Catalog", icon: Warehouse },
   ] as { key: AttributeTable; label: string; icon: any }[];
