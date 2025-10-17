@@ -156,7 +156,7 @@ const Configuration = () => {
   const catalogs = [
     { key: "categories", label: "Item Catalog", icon: Boxes },
     { key: "units", label: "UOM Catalog", icon: Ruler },
-    { key: "colors", label: "Attributes Catalog", icon: Tags },
+    { key: "colors", label: "Colors Catalog", icon: Tags },
     { key: "genders", label: "Gender Catalog", icon: User },
     { key: "departments", label: "Department Catalog", icon: Building },
     { key: "suppliers", label: "Supplier Catalog", icon: Package },
