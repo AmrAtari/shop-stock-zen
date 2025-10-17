@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard, List } from "lucide-react"; // Added List icon for Inventory List
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ const InventoryNew = () => {
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | undefined>();
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
-  
+
   // Filter states
   const [modelNumberFilter, setModelNumberFilter] = useState<string>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
@@ -38,10 +38,7 @@ const InventoryNew = () => {
   const { data: inventory = [], isLoading } = useQuery({
     queryKey: queryKeys.inventory.all,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("items")
-        .select("*")
-        .order("name");
+      const { data, error } = await supabase.from("items").select("*").order("name");
 
       if (error) {
         toast.error("Failed to load inventory");
@@ -58,40 +55,42 @@ const InventoryNew = () => {
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.category.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
       const matchesLocation = locationFilter === "all" || item.location === locationFilter;
       const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
-      
-      return matchesSearch && matchesModelNumber && matchesLocation && matchesSeason && matchesMainGroup && matchesCategory;
+
+      return (
+        matchesSearch && matchesModelNumber && matchesLocation && matchesSeason && matchesMainGroup && matchesCategory
+      );
     });
   }, [inventory, searchTerm, modelNumberFilter, locationFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
   // Get unique filter values
   const uniqueModelNumbers = useMemo(() => {
-    const numbers = inventory.map(item => item.item_number).filter(Boolean);
+    const numbers = inventory.map((item) => item.item_number).filter(Boolean);
     return [...new Set(numbers)].sort();
   }, [inventory]);
 
   const uniqueLocations = useMemo(() => {
-    const locations = inventory.map(item => item.location).filter(Boolean);
+    const locations = inventory.map((item) => item.location).filter(Boolean);
     return [...new Set(locations)].sort();
   }, [inventory]);
 
   const uniqueSeasons = useMemo(() => {
-    const seasons = inventory.map(item => item.season).filter(Boolean);
+    const seasons = inventory.map((item) => item.season).filter(Boolean);
     return [...new Set(seasons)].sort();
   }, [inventory]);
 
   const uniqueMainGroups = useMemo(() => {
-    const groups = inventory.map(item => item.main_group).filter(Boolean);
+    const groups = inventory.map((item) => item.main_group).filter(Boolean);
     return [...new Set(groups)].sort();
   }, [inventory]);
 
   const uniqueCategories = useMemo(() => {
-    const categories = inventory.map(item => item.category).filter(Boolean);
+    const categories = inventory.map((item) => item.category).filter(Boolean);
     return [...new Set(categories)].sort();
   }, [inventory]);
 
@@ -111,13 +110,13 @@ const InventoryNew = () => {
     try {
       // Delete associated price levels first
       await supabase.from("price_levels").delete().eq("item_id", id);
-      
+
       // Then delete the item
       const { error } = await supabase.from("items").delete().eq("id", id);
 
       if (error) throw error;
       toast.success("Item deleted successfully");
-      
+
       // Invalidate all related queries
       await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
@@ -137,10 +136,8 @@ const InventoryNew = () => {
   };
 
   const getStockStatus = (item: Item) => {
-    if (item.quantity === 0)
-      return { label: "Out of Stock", variant: "destructive" as const };
-    if (item.quantity <= item.min_stock)
-      return { label: "Low Stock", variant: "warning" as const };
+    if (item.quantity === 0) return { label: "Out of Stock", variant: "destructive" as const };
+    if (item.quantity <= item.min_stock) return { label: "Low Stock", variant: "warning" as const };
     return { label: "In Stock", variant: "success" as const };
   };
 
@@ -153,45 +150,59 @@ const InventoryNew = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Inventory</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your clothing and shoes inventory
-          </p>
+          <p className="text-muted-foreground mt-1">Manage your clothing and shoes inventory</p>
         </div>
+        {/* MODIFIED: Display only two buttons here: Inventory List and Physical Inventory */}
         <div className="flex gap-2">
+          {/* Inventory List Button - Highlighted as the current page/primary action */}
+          <Button>
+            <List className="w-4 h-4 mr-2" />
+            Inventory List
+          </Button>
+          {/* Physical Inventory Button - Retained */}
           <Button variant="outline" onClick={() => navigate("/inventory/physical")}>
             <Clipboard className="w-4 h-4 mr-2" />
             Physical Inventory
           </Button>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Import
-          </Button>
-          <Button
-            onClick={() => {
-              setEditingItem(undefined);
-              setDialogOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Item
-          </Button>
         </div>
+        {/* END MODIFIED SECTION */}
       </div>
 
       <div className="space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Search by name, SKU, or category..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+        {/* ADDED: A new action row for other inventory actions like Search, Add, Import, Export */}
+        <div className="flex justify-between items-center gap-4">
+          <div className="relative flex-grow">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Search by name, SKU, or category..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 max-w-sm"
+            />
+          </div>
+
+          {/* Grouped additional actions */}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Import
+            </Button>
+            <Button
+              onClick={() => {
+                setEditingItem(undefined);
+                setDialogOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Item
+            </Button>
+          </div>
         </div>
+        {/* END ADDED SECTION */}
 
         <div className="grid grid-cols-5 gap-4">
           <Select value={modelNumberFilter} onValueChange={setModelNumberFilter}>
@@ -340,11 +351,7 @@ const InventoryNew = () => {
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(item.id)}
-                      >
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -367,18 +374,9 @@ const InventoryNew = () => {
         endIndex={pagination.endIndex}
       />
 
-      <ProductDialogNew
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        item={editingItem}
-        onSave={() => {}}
-      />
+      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} item={editingItem} onSave={() => {}} />
 
-      <FileImport
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        onImportComplete={() => {}}
-      />
+      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
 
       {selectedItemForHistory && (
         <PriceHistoryDialog
