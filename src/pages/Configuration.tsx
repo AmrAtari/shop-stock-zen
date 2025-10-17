@@ -121,10 +121,11 @@ const Configuration = () => {
         .range(from, to);
       if (term.trim()) query = query.ilike("name", `%${term.trim()}%`);
 
-      const { data, count, error } = await query;
+      const { data, count, error } = (await query) as any;
       if (error) throw error;
 
-      setAttributes(data || []);
+      // explicitly cast to Attribute[]
+      setAttributes((data as Attribute[]) || []);
       setTotal(count || 0);
     } catch (err: any) {
       toast.error(err.message || "Error loading data");
