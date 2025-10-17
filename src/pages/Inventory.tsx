@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard, List } from "lucide-react"; // Added List icon for Inventory List
+import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard, List } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,9 @@ const InventoryNew = () => {
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | undefined>();
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
+
+  // NEW STATE: Control visibility of the inventory list
+  const [isInventoryListVisible, setIsInventoryListVisible] = useState(true);
 
   // Filter states
   const [modelNumberFilter, setModelNumberFilter] = useState<string>("all");
@@ -141,7 +144,7 @@ const InventoryNew = () => {
     return { label: "In Stock", variant: "success" as const };
   };
 
-  if (isLoading) {
+  if (isLoading && isInventoryListVisible) {
     return <div className="p-8">Loading...</div>;
   }
 
@@ -152,227 +155,236 @@ const InventoryNew = () => {
           <h1 className="text-3xl font-bold">Inventory</h1>
           <p className="text-muted-foreground mt-1">Manage your clothing and shoes inventory</p>
         </div>
-        {/* MODIFIED: Display only two buttons here: Inventory List and Physical Inventory */}
         <div className="flex gap-2">
-          {/* Inventory List Button - Highlighted as the current page/primary action */}
-          <Button>
+          {/* Inventory List Button - Sets visibility to true */}
+          <Button
+            onClick={() => setIsInventoryListVisible(true)}
+            variant={isInventoryListVisible ? "default" : "outline"}
+          >
             <List className="w-4 h-4 mr-2" />
             Inventory List
           </Button>
-          {/* Physical Inventory Button - Retained */}
-          <Button variant="outline" onClick={() => navigate("/inventory/physical")}>
+          {/* Physical Inventory Button - Hides list and navigates */}
+          <Button
+            variant={isInventoryListVisible ? "outline" : "default"}
+            onClick={() => {
+              setIsInventoryListVisible(false); // Hide the list
+              navigate("/inventory/physical"); // Navigate to the physical inventory page
+            }}
+          >
             <Clipboard className="w-4 h-4 mr-2" />
             Physical Inventory
           </Button>
         </div>
-        {/* END MODIFIED SECTION */}
       </div>
 
-      <div className="space-y-4">
-        {/* ADDED: A new action row for other inventory actions like Search, Add, Import, Export */}
-        <div className="flex justify-between items-center gap-4">
-          <div className="relative flex-grow">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Search by name, SKU, or category..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 max-w-sm"
-            />
+      {/* Conditionally render the main content based on isInventoryListVisible */}
+      {isInventoryListVisible && (
+        <>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center gap-4">
+              <div className="relative flex-grow">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Search by name, SKU, or category..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 max-w-sm"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleExport}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export
+                </Button>
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import
+                </Button>
+                <Button
+                  onClick={() => {
+                    setEditingItem(undefined);
+                    setDialogOpen(true);
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-5 gap-4">
+              <Select value={modelNumberFilter} onValueChange={setModelNumberFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Model Number" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Model Numbers</SelectItem>
+                  {uniqueModelNumbers.map((num) => (
+                    <SelectItem key={num} value={num}>
+                      {num}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Location" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {uniqueLocations.map((loc) => (
+                    <SelectItem key={loc} value={loc}>
+                      {loc}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={seasonFilter} onValueChange={setSeasonFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Season" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Seasons</SelectItem>
+                  {uniqueSeasons.map((season) => (
+                    <SelectItem key={season} value={season}>
+                      {season}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={mainGroupFilter} onValueChange={setMainGroupFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Main Group" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Main Groups</SelectItem>
+                  {uniqueMainGroups.map((group) => (
+                    <SelectItem key={group} value={group}>
+                      {group}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {uniqueCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Grouped additional actions */}
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Upload className="w-4 h-4 mr-2" />
-              Import
-            </Button>
-            <Button
-              onClick={() => {
-                setEditingItem(undefined);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Item
-            </Button>
-          </div>
-        </div>
-        {/* END ADDED SECTION */}
-
-        <div className="grid grid-cols-5 gap-4">
-          <Select value={modelNumberFilter} onValueChange={setModelNumberFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Model Number" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Model Numbers</SelectItem>
-              {uniqueModelNumbers.map((num) => (
-                <SelectItem key={num} value={num}>
-                  {num}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={locationFilter} onValueChange={setLocationFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Location" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Locations</SelectItem>
-              {uniqueLocations.map((loc) => (
-                <SelectItem key={loc} value={loc}>
-                  {loc}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={seasonFilter} onValueChange={setSeasonFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Season" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Seasons</SelectItem>
-              {uniqueSeasons.map((season) => (
-                <SelectItem key={season} value={season}>
-                  {season}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={mainGroupFilter} onValueChange={setMainGroupFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Main Group" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Main Groups</SelectItem>
-              {uniqueMainGroups.map((group) => (
-                <SelectItem key={group} value={group}>
-                  {group}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {uniqueCategories.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="border rounded-lg overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>SKU</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Main Group</TableHead>
-              <TableHead>Brand</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Color</TableHead>
-              <TableHead>Gender</TableHead>
-              <TableHead>Season</TableHead>
-              <TableHead>Origin</TableHead>
-              <TableHead>Theme</TableHead>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Quantity</TableHead>
-              <TableHead>Unit</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Prices</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedInventory.map((item) => {
-              const status = getStockStatus(item);
-              return (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.sku}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.category}</TableCell>
-                  <TableCell>{item.department || "-"}</TableCell>
-                  <TableCell>{item.main_group || "-"}</TableCell>
-                  <TableCell>{item.brand || "-"}</TableCell>
-                  <TableCell>{item.size || "-"}</TableCell>
-                  <TableCell>{item.color || "-"}</TableCell>
-                  <TableCell>{item.gender || "-"}</TableCell>
-                  <TableCell>{item.season || "-"}</TableCell>
-                  <TableCell>{item.origin || "-"}</TableCell>
-                  <TableCell>{item.theme || "-"}</TableCell>
-                  <TableCell>{item.supplier || "-"}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
-                  <TableCell>{item.unit}</TableCell>
-                  <TableCell>
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                  </TableCell>
-                  <TableCell>{item.location || "-"}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedItemForHistory({ id: item.id, name: item.name });
-                        setPriceHistoryOpen(true);
-                      }}
-                    >
-                      <History className="w-4 h-4 mr-1" />
-                      History
-                    </Button>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setEditingItem(item);
-                          setDialogOpen(true);
-                        }}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Main Group</TableHead>
+                  <TableHead>Brand</TableHead>
+                  <TableHead>Size</TableHead>
+                  <TableHead>Color</TableHead>
+                  <TableHead>Gender</TableHead>
+                  <TableHead>Season</TableHead>
+                  <TableHead>Origin</TableHead>
+                  <TableHead>Theme</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Quantity</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Prices</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+              </TableHeader>
+              <TableBody>
+                {paginatedInventory.map((item) => {
+                  const status = getStockStatus(item);
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.sku}</TableCell>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell>{item.category}</TableCell>
+                      <TableCell>{item.department || "-"}</TableCell>
+                      <TableCell>{item.main_group || "-"}</TableCell>
+                      <TableCell>{item.brand || "-"}</TableCell>
+                      <TableCell>{item.size || "-"}</TableCell>
+                      <TableCell>{item.color || "-"}</TableCell>
+                      <TableCell>{item.gender || "-"}</TableCell>
+                      <TableCell>{item.season || "-"}</TableCell>
+                      <TableCell>{item.origin || "-"}</TableCell>
+                      <TableCell>{item.theme || "-"}</TableCell>
+                      <TableCell>{item.supplier || "-"}</TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>{item.unit}</TableCell>
+                      <TableCell>
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </TableCell>
+                      <TableCell>{item.location || "-"}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedItemForHistory({ id: item.id, name: item.name });
+                            setPriceHistoryOpen(true);
+                          }}
+                        >
+                          <History className="w-4 h-4 mr-1" />
+                          History
+                        </Button>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setEditingItem(item);
+                              setDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
 
-      <PaginationControls
-        currentPage={pagination.currentPage}
-        totalPages={pagination.totalPages}
-        goToPage={pagination.goToPage}
-        canGoPrev={pagination.canGoPrev}
-        canGoNext={pagination.canGoNext}
-        totalItems={filteredInventory.length}
-        startIndex={pagination.startIndex}
-        endIndex={pagination.endIndex}
-      />
+          <PaginationControls
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            goToPage={pagination.goToPage}
+            canGoPrev={pagination.canGoPrev}
+            canGoNext={pagination.canGoNext}
+            totalItems={filteredInventory.length}
+            startIndex={pagination.startIndex}
+            endIndex={pagination.endIndex}
+          />
+        </>
+      )}
 
       <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} item={editingItem} onSave={() => {}} />
 
