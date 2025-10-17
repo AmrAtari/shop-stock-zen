@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   Boxes,
   Ruler,
@@ -114,7 +114,11 @@ const Configuration = () => {
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      let query = supabase.from(table as any).select("*", { count: "exact" }).order("name").range(from, to);
+      let query = supabase
+        .from(table as any)
+        .select("*", { count: "exact" })
+        .order("name")
+        .range(from, to);
       if (term.trim()) query = query.ilike("name", `%${term.trim()}%`);
 
       const { data, count, error } = await query;
@@ -152,7 +156,10 @@ const Configuration = () => {
     if (!activeCatalog) return;
     if (!confirm("Delete this item?")) return;
     try {
-      const { error } = await supabase.from(activeCatalog.key as any).delete().eq("id", id);
+      const { error } = await supabase
+        .from(activeCatalog.key as any)
+        .delete()
+        .eq("id", id);
       if (error) throw error;
       toast.success("Deleted successfully");
       loadData(activeCatalog.key, page, searchTerm);
@@ -164,7 +171,10 @@ const Configuration = () => {
   const handleEditSave = async (id: string) => {
     if (!activeCatalog || !editValue.trim()) return toast.error("Please enter a name");
     try {
-      const { error } = await supabase.from(activeCatalog.key as any).update({ name: editValue.trim() }).eq("id", id);
+      const { error } = await supabase
+        .from(activeCatalog.key as any)
+        .update({ name: editValue.trim() })
+        .eq("id", id);
       if (error) throw error;
       toast.success("Updated successfully");
       setEditId(null);
@@ -205,11 +215,10 @@ const Configuration = () => {
               className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-100 text-gray-700"
               onClick={() => handleOpen(cat)}
             >
-              {ICONS[cat.icon] ? (
-                <ICONS[cat.icon] className="w-4 h-4" />
-              ) : (
-                <Tags className="w-4 h-4" />
-              )}
+              {(() => {
+                const Icon = ICONS[cat.icon] || Tags;
+                return <Icon className="w-4 h-4" />;
+              })()}
               {cat.label}
             </Button>
             <Button
@@ -218,9 +227,7 @@ const Configuration = () => {
               onClick={() => {
                 const newLabel = prompt("Edit attribute name:", cat.label);
                 if (newLabel) {
-                  setCatalogs((prev) =>
-                    prev.map((c) => (c.key === cat.key ? { ...c, label: newLabel } : c))
-                  );
+                  setCatalogs((prev) => prev.map((c) => (c.key === cat.key ? { ...c, label: newLabel } : c)));
                   toast.success("Attribute updated!");
                 }
               }}
