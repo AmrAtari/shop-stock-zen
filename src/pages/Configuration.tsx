@@ -46,12 +46,25 @@ interface Attribute {
 
 const PAGE_SIZE = 20;
 
+// ✅ Icon lookup map
+const ICONS: Record<string, any> = {
+  Boxes,
+  Ruler,
+  Tags,
+  User,
+  Building,
+  Package,
+  CloudSun,
+  MapPin,
+  Warehouse,
+};
+
 const Configuration = () => {
   const { isAdmin, isLoading } = useIsAdmin();
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
-  const [activeCatalog, setActiveCatalog] = useState<{ key: AttributeTable; label: string } | null>(null);
+  const [activeCatalog, setActiveCatalog] = useState<{ key: AttributeTable; label: string; icon: string } | null>(null);
   const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [newValue, setNewValue] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
@@ -60,24 +73,24 @@ const Configuration = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // Attribute type management
-  const [catalogs, setCatalogs] = useState<{ key: string; label: string; icon: any }[]>([
-    { key: "categories", label: "Item Catalog", icon: Boxes },
-    { key: "units", label: "UOM Catalog", icon: Ruler },
-    { key: "colors", label: "Attributes Catalog", icon: Tags },
-    { key: "genders", label: "Gender Catalog", icon: User },
-    { key: "departments", label: "Department Catalog", icon: Building },
-    { key: "suppliers", label: "Supplier Catalog", icon: Package },
-    { key: "seasons", label: "Season", icon: CloudSun },
-    { key: "locations", label: "Location Catalog", icon: MapPin },
-    { key: "sizes", label: "Size Catalog", icon: Ruler },
-    { key: "stores", label: "Store Catalog", icon: Warehouse },
+  // 🧩 Attribute type management
+  const [catalogs, setCatalogs] = useState<{ key: string; label: string; icon: string }[]>([
+    { key: "categories", label: "Item Catalog", icon: "Boxes" },
+    { key: "units", label: "UOM Catalog", icon: "Ruler" },
+    { key: "colors", label: "Attributes Catalog", icon: "Tags" },
+    { key: "genders", label: "Gender Catalog", icon: "User" },
+    { key: "departments", label: "Department Catalog", icon: "Building" },
+    { key: "suppliers", label: "Supplier Catalog", icon: "Package" },
+    { key: "seasons", label: "Season", icon: "CloudSun" },
+    { key: "locations", label: "Location Catalog", icon: "MapPin" },
+    { key: "sizes", label: "Size Catalog", icon: "Ruler" },
+    { key: "stores", label: "Store Catalog", icon: "Warehouse" },
   ]);
 
   const [attrModalOpen, setAttrModalOpen] = useState(false);
   const [newAttrName, setNewAttrName] = useState("");
 
-  // Persist attribute types in localStorage
+  // 🔐 Persist attribute types locally
   useEffect(() => {
     const saved = localStorage.getItem("customCatalogs");
     if (saved) setCatalogs(JSON.parse(saved));
@@ -87,7 +100,7 @@ const Configuration = () => {
     localStorage.setItem("customCatalogs", JSON.stringify(catalogs));
   }, [catalogs]);
 
-  // Redirect non-admin users
+  // 🔒 Restrict non-admins
   useEffect(() => {
     if (!isLoading && !isAdmin) {
       navigate("/");
@@ -95,18 +108,13 @@ const Configuration = () => {
     }
   }, [isAdmin, isLoading, navigate]);
 
-  // Load attributes for current table
+  // 🔄 Load table items
   const loadData = async (table: AttributeTable, currentPage = 1, term = "") => {
     try {
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      let query = supabase
-        .from(table as any)
-        .select("*", { count: "exact" })
-        .order("name")
-        .range(from, to);
-
+      let query = supabase.from(table as any).select("*", { count: "exact" }).order("name").range(from, to);
       if (term.trim()) query = query.ilike("name", `%${term.trim()}%`);
 
       const { data, count, error } = await query;
@@ -119,7 +127,7 @@ const Configuration = () => {
     }
   };
 
-  const handleOpen = async (catalog: { key: AttributeTable; label: string }) => {
+  const handleOpen = async (catalog: { key: AttributeTable; label: string; icon: string }) => {
     setActiveCatalog(catalog);
     setPage(1);
     await loadData(catalog.key, 1);
@@ -144,10 +152,7 @@ const Configuration = () => {
     if (!activeCatalog) return;
     if (!confirm("Delete this item?")) return;
     try {
-      const { error } = await supabase
-        .from(activeCatalog.key as any)
-        .delete()
-        .eq("id", id);
+      const { error } = await supabase.from(activeCatalog.key as any).delete().eq("id", id);
       if (error) throw error;
       toast.success("Deleted successfully");
       loadData(activeCatalog.key, page, searchTerm);
@@ -159,10 +164,7 @@ const Configuration = () => {
   const handleEditSave = async (id: string) => {
     if (!activeCatalog || !editValue.trim()) return toast.error("Please enter a name");
     try {
-      const { error } = await supabase
-        .from(activeCatalog.key as any)
-        .update({ name: editValue.trim() })
-        .eq("id", id);
+      const { error } = await supabase.from(activeCatalog.key as any).update({ name: editValue.trim() }).eq("id", id);
       if (error) throw error;
       toast.success("Updated successfully");
       setEditId(null);
@@ -188,6 +190,7 @@ const Configuration = () => {
 
   return (
     <div className="p-8">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-800">System Catalogs</h1>
         <Button onClick={() => setAttrModalOpen(true)}>+ Add Attribute Type</Button>
@@ -202,7 +205,11 @@ const Configuration = () => {
               className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-100 text-gray-700"
               onClick={() => handleOpen(cat)}
             >
-              <cat.icon className="w-4 h-4" />
+              {ICONS[cat.icon] ? (
+                <ICONS[cat.icon] className="w-4 h-4" />
+              ) : (
+                <Tags className="w-4 h-4" />
+              )}
               {cat.label}
             </Button>
             <Button
@@ -211,7 +218,9 @@ const Configuration = () => {
               onClick={() => {
                 const newLabel = prompt("Edit attribute name:", cat.label);
                 if (newLabel) {
-                  setCatalogs((prev) => prev.map((c) => (c.key === cat.key ? { ...c, label: newLabel } : c)));
+                  setCatalogs((prev) =>
+                    prev.map((c) => (c.key === cat.key ? { ...c, label: newLabel } : c))
+                  );
                   toast.success("Attribute updated!");
                 }
               }}
@@ -253,7 +262,7 @@ const Configuration = () => {
               onClick={() => {
                 if (!newAttrName.trim()) return toast.error("Enter a name");
                 const newKey = newAttrName.toLowerCase().replace(/\s+/g, "_");
-                setCatalogs([...catalogs, { key: newKey, label: newAttrName, icon: Tags }]);
+                setCatalogs([...catalogs, { key: newKey, label: newAttrName, icon: "Tags" }]);
                 setAttrModalOpen(false);
                 setNewAttrName("");
                 toast.success("Attribute type added!");
@@ -265,7 +274,7 @@ const Configuration = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Catalog Items Modal */}
+      {/* Items Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -365,7 +374,7 @@ const Configuration = () => {
             </div>
           )}
 
-          {/* Add new */}
+          {/* Add New */}
           <div className="flex gap-2 mt-4">
             <Input
               placeholder={`Add new ${activeCatalog?.label?.toLowerCase()}...`}
