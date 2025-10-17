@@ -43,6 +43,8 @@ interface Attribute {
   name: string;
 }
 
+const PAGE_SIZE = 20;
+
 const Configuration = () => {
   const { isAdmin, isLoading } = useIsAdmin();
   const navigate = useNavigate();
@@ -54,6 +56,8 @@ const Configuration = () => {
   const [editId, setEditId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -62,14 +66,24 @@ const Configuration = () => {
     }
   }, [isAdmin, isLoading, navigate]);
 
-  const loadData = async (table: AttributeTable) => {
+  const loadData = async (table: AttributeTable, currentPage = 1, term = "") => {
     try {
-      const { data, error } = await supabase
+      const from = (currentPage - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase
         .from(table as any)
-        .select("*")
-        .order("name");
+        .select("*", { count: "exact" })
+        .order("name")
+        .range(from, to);
+
+      if (term.trim()) query = query.ilike("name", `%${term.trim()}%`);
+
+      const { data, count, error } = await query;
       if (error) throw error;
+
       setAttributes(data || []);
+      setTotal(count || 0);
     } catch (err: any) {
       toast.error(err.message || "Error loading data");
     }
@@ -77,7 +91,8 @@ const Configuration = () => {
 
   const handleOpen = async (catalog: { key: AttributeTable; label: string }) => {
     setActiveCatalog(catalog);
-    await loadData(catalog.key);
+    setPage(1);
+    await loadData(catalog.key, 1);
     setOpen(true);
     setSearchTerm("");
   };
@@ -89,7 +104,7 @@ const Configuration = () => {
       if (error) throw error;
       toast.success("Added successfully");
       setNewValue("");
-      loadData(activeCatalog.key);
+      loadData(activeCatalog.key, page, searchTerm);
     } catch (err: any) {
       toast.error(err.message || "Error adding item");
     }
@@ -105,7 +120,7 @@ const Configuration = () => {
         .eq("id", id);
       if (error) throw error;
       toast.success("Deleted successfully");
-      loadData(activeCatalog.key);
+      loadData(activeCatalog.key, page, searchTerm);
     } catch (err: any) {
       toast.error(err.message || "Error deleting");
     }
@@ -122,7 +137,7 @@ const Configuration = () => {
       toast.success("Updated successfully");
       setEditId(null);
       setEditValue("");
-      loadData(activeCatalog.key);
+      loadData(activeCatalog.key, page, searchTerm);
     } catch (err: any) {
       toast.error(err.message || "Error updating item");
     }
@@ -136,10 +151,7 @@ const Configuration = () => {
     XLSX.writeFile(wb, `${activeCatalog?.label || "data"}.xlsx`);
   };
 
-  const filteredAttributes = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return term ? attributes.filter((a) => a.name.toLowerCase().includes(term)) : attributes;
-  }, [searchTerm, attributes]);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const catalogs = [
     { key: "categories", label: "Item Catalog", icon: Boxes },
@@ -161,41 +173,49 @@ const Configuration = () => {
     <div className="p-8">
       <h1 className="text-3xl font-bold text-gray-800 mb-6">System Catalogs</h1>
 
-      {/* Catalog Buttons Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {/* Catalog Buttons */}
+      <div className="flex flex-wrap gap-2">
         {catalogs.map((cat) => (
           <Button
             key={cat.key}
             onClick={() => handleOpen(cat)}
-            className="flex items-center justify-center gap-2 h-24 rounded-2xl shadow hover:shadow-md transition-all text-lg font-medium"
+            variant="outline"
+            className={`flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-100 ${
+              activeCatalog?.key === cat.key ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-gray-700"
+            }`}
           >
-            <cat.icon className="w-5 h-5" />
+            <cat.icon className="w-4 h-4" />
             {cat.label}
           </Button>
         ))}
       </div>
 
-      {/* Modal for Editing */}
+      {/* Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{activeCatalog?.label}</DialogTitle>
           </DialogHeader>
 
-          {/* Search Bar */}
+          {/* Search */}
           <div className="flex items-center gap-2 mb-3">
             <Search className="w-4 h-4 text-gray-500" />
             <Input
               placeholder="Search items..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                loadData(activeCatalog!.key, 1, e.target.value);
+                setPage(1);
+              }}
               className="flex-1"
             />
           </div>
 
+          {/* List */}
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-            {filteredAttributes.length > 0 ? (
-              filteredAttributes.map((attr) => (
+            {attributes.length > 0 ? (
+              attributes.map((attr) => (
                 <div
                   key={attr.id}
                   className="flex items-center justify-between border rounded-lg px-3 py-2 hover:bg-gray-50"
@@ -241,6 +261,36 @@ const Configuration = () => {
             )}
           </div>
 
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-between items-center mt-4">
+              <Button
+                variant="outline"
+                disabled={page === 1}
+                onClick={() => {
+                  setPage(page - 1);
+                  loadData(activeCatalog!.key, page - 1, searchTerm);
+                }}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                disabled={page >= totalPages}
+                onClick={() => {
+                  setPage(page + 1);
+                  loadData(activeCatalog!.key, page + 1, searchTerm);
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+
+          {/* Add new */}
           <div className="flex gap-2 mt-4">
             <Input
               placeholder={`Add new ${activeCatalog?.label?.toLowerCase()}...`}
