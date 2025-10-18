@@ -34,8 +34,62 @@ interface BulkActionsProps {
   onClearSelection: () => void;
 }
 
+// Confirmation Dialog for Bulk Actions
+interface BulkUpdateConfirmationDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (applyToAll: boolean) => void;
+  selectedCount: number;
+  parentItemsCount: number;
+}
+
+const BulkUpdateConfirmationDialog = ({
+  open,
+  onOpenChange,
+  onConfirm,
+  selectedCount,
+  parentItemsCount,
+}: BulkUpdateConfirmationDialogProps) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bulk Update Scope</DialogTitle>
+          <DialogDescription>
+            How would you like to apply changes to {selectedCount} selected item(s)?
+            {parentItemsCount > 0 && (
+              <div className="mt-2 text-sm">{parentItemsCount} of the selected items belong to product groups.</div>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <h4 className="font-semibold text-blue-800 mb-2">Apply to all related SKUs</h4>
+            <p className="text-sm text-blue-700">
+              Update all products with the same model numbers. This ensures consistency across all variants.
+            </p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <h4 className="font-semibold text-gray-800 mb-2">Apply only to selected SKUs</h4>
+            <p className="text-sm text-gray-700">
+              Update only the specifically selected products. Other variants will remain unchanged.
+            </p>
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onConfirm(false)}>
+            Only Selected SKUs
+          </Button>
+          <Button onClick={() => onConfirm(true)}>All Related SKUs</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActionsProps) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showBulkConfirmation, setShowBulkConfirmation] = useState(false);
   const [bulkFormData, setBulkFormData] = useState<Partial<Item>>({});
 
   const updateRelatedSKUs = async (itemNumber: string, updateData: any) => {
@@ -65,35 +119,66 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
     if (error) throw error;
   };
 
-  const handleBulkUpdate = async () => {
-    try {
-      // Group items by item_number to update all related SKUs
-      const itemsByParent = selectedItems.reduce(
-        (acc, item) => {
-          const parentKey = item.item_number || item.id;
-          if (!acc[parentKey]) {
-            acc[parentKey] = [];
-          }
-          acc[parentKey].push(item);
-          return acc;
-        },
-        {} as Record<string, Item[]>,
-      );
+  const handleBulkUpdateClick = () => {
+    // Check if any selected items have item_numbers
+    const hasParentItems = selectedItems.some((item) => item.item_number);
 
+    if (hasParentItems) {
+      setShowBulkConfirmation(true);
+    } else {
+      // No parent items, proceed directly to bulk update form
+      setIsDialogOpen(true);
+    }
+  };
+
+  const handleBulkConfirmation = (applyToAll: boolean) => {
+    setShowBulkConfirmation(false);
+    if (applyToAll) {
+      // Show bulk update form
+      setIsDialogOpen(true);
+    } else {
+      // Apply only to selected items - show bulk update form
+      setIsDialogOpen(true);
+    }
+  };
+
+  const performBulkUpdate = async (applyToAll: boolean) => {
+    try {
       let totalUpdated = 0;
 
-      // Update each parent group
-      for (const [parentKey, items] of Object.entries(itemsByParent)) {
-        if (items[0].item_number) {
-          // This is a parent item with related SKUs
-          await updateRelatedSKUs(items[0].item_number, bulkFormData);
-          totalUpdated += items.length;
-        } else {
-          // Update individual items
-          for (const item of items) {
-            await supabase.from("items").update(bulkFormData).eq("id", item.id);
-            totalUpdated++;
+      if (applyToAll) {
+        // Group items by item_number to update all related SKUs
+        const itemsByParent = selectedItems.reduce(
+          (acc, item) => {
+            const parentKey = item.item_number || item.id;
+            if (!acc[parentKey]) {
+              acc[parentKey] = [];
+            }
+            acc[parentKey].push(item);
+            return acc;
+          },
+          {} as Record<string, Item[]>,
+        );
+
+        // Update each parent group
+        for (const [parentKey, items] of Object.entries(itemsByParent)) {
+          if (items[0].item_number) {
+            // This is a parent item with related SKUs
+            await updateRelatedSKUs(items[0].item_number, bulkFormData);
+            totalUpdated += items.length;
+          } else {
+            // Update individual items
+            for (const item of items) {
+              await supabase.from("items").update(bulkFormData).eq("id", item.id);
+              totalUpdated++;
+            }
           }
+        }
+      } else {
+        // Apply only to selected items
+        for (const item of selectedItems) {
+          await supabase.from("items").update(bulkFormData).eq("id", item.id);
+          totalUpdated++;
         }
       }
 
@@ -108,11 +193,13 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
 
   if (selectedItems.length === 0) return null;
 
+  const parentItemsCount = selectedItems.filter((item) => item.item_number).length;
+
   return (
     <>
       <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
         <span className="text-sm font-medium">{selectedItems.length} item(s) selected</span>
-        <Button variant="outline" size="sm" onClick={() => setIsDialogOpen(true)}>
+        <Button variant="outline" size="sm" onClick={handleBulkUpdateClick}>
           Bulk Update
         </Button>
         <Button variant="ghost" size="sm" onClick={onClearSelection}>
@@ -120,13 +207,13 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         </Button>
       </div>
 
+      {/* Bulk Update Form Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Bulk Update {selectedItems.length} Items</DialogTitle>
             <DialogDescription>
-              Update shared fields across selected items. Changes will apply to all related SKUs with the same item
-              number.
+              Update shared fields across selected items. Leave fields empty to keep current values.
             </DialogDescription>
           </DialogHeader>
 
@@ -181,10 +268,19 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleBulkUpdate}>Apply Updates</Button>
+            <Button onClick={() => performBulkUpdate(parentItemsCount > 0)}>Apply Updates</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Update Confirmation Dialog */}
+      <BulkUpdateConfirmationDialog
+        open={showBulkConfirmation}
+        onOpenChange={setShowBulkConfirmation}
+        onConfirm={handleBulkConfirmation}
+        selectedCount={selectedItems.length}
+        parentItemsCount={parentItemsCount}
+      />
     </>
   );
 };
@@ -481,6 +577,7 @@ const InventoryNew = () => {
               <TableHead>Unit</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Location</TableHead>
+              <TableHead>Model Number</TableHead>
               <TableHead>Prices</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -514,6 +611,7 @@ const InventoryNew = () => {
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
                   <TableCell>{item.location || "-"}</TableCell>
+                  <TableCell>{item.item_number || "-"}</TableCell>
                   <TableCell>
                     <Button
                       variant="ghost"
