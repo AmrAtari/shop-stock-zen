@@ -353,7 +353,7 @@ const InventoryNew = () => {
                 })}
               </TableBody>
             </Table>
-          </div>
+                  </div>
 
           <PaginationControls
             currentPage={pagination.currentPage}
@@ -365,7 +365,20 @@ const InventoryNew = () => {
             startIndex={pagination.startIndex}
             endIndex={pagination.endIndex}
           />
-        </div>
+      </div>
+
+      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} item={editingItem} onSave={() => {}} />
+      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
+
+      {selectedItemForHistory && (
+        <PriceHistoryDialog
+          open={priceHistoryOpen}
+          onOpenChange={setPriceHistoryOpen}
+          itemId={selectedItemForHistory.id}
+          itemName={selectedItemForHistory.name}
+        />
+      )}
+    </div>
 
       <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} item={editingItem} onSave={() => {}} />
 
