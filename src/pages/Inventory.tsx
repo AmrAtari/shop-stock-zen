@@ -28,9 +28,6 @@ const InventoryNew = () => {
   const [editingItem, setEditingItem] = useState<Item | undefined>();
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
 
-  // NEW STATE: Control visibility of the inventory list
-  const [isInventoryListVisible, setIsInventoryListVisible] = useState(true);
-
   // Filter states
   const [modelNumberFilter, setModelNumberFilter] = useState<string>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
@@ -144,7 +141,7 @@ const InventoryNew = () => {
     return { label: "In Stock", variant: "success" as const };
   };
 
-  if (isLoading && isInventoryListVisible) {
+  if (isLoading) {
     return <div className="p-8">Loading...</div>;
   }
 
@@ -156,21 +153,9 @@ const InventoryNew = () => {
           <p className="text-muted-foreground mt-1">Manage your clothing and shoes inventory</p>
         </div>
         <div className="flex gap-2">
-          {/* Inventory List Button - Sets visibility to true */}
           <Button
-            onClick={() => setIsInventoryListVisible(true)}
-            variant={isInventoryListVisible ? "default" : "outline"}
-          >
-            <List className="w-4 h-4 mr-2" />
-            Inventory List
-          </Button>
-          {/* Physical Inventory Button - Hides list and navigates */}
-          <Button
-            variant={isInventoryListVisible ? "outline" : "default"}
-            onClick={() => {
-              setIsInventoryListVisible(false); // Hide the list
-              navigate("/inventory/physical"); // Navigate to the physical inventory page
-            }}
+            variant="outline"
+            onClick={() => navigate("/inventory/physical")}
           >
             <Clipboard className="w-4 h-4 mr-2" />
             Physical Inventory
@@ -178,12 +163,9 @@ const InventoryNew = () => {
         </div>
       </div>
 
-      {/* Conditionally render the main content based on isInventoryListVisible */}
-      {isInventoryListVisible && (
-        <>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center gap-4">
-              <div className="relative flex-grow">
+      <div className="space-y-4">
+        <div className="flex justify-between items-center gap-4">
+          <div className="relative flex-grow">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
                   placeholder="Search by name, SKU, or category..."
@@ -383,8 +365,7 @@ const InventoryNew = () => {
             startIndex={pagination.startIndex}
             endIndex={pagination.endIndex}
           />
-        </>
-      )}
+        </div>
 
       <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} item={editingItem} onSave={() => {}} />
 

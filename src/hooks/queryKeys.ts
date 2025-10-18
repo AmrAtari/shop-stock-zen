@@ -29,4 +29,9 @@ export const queryKeys = {
   stores: {
     all: ['stores'] as const,
   },
+  physicalInventory: {
+    all: ['physical-inventory-sessions'] as const,
+    detail: (id: string) => ['physical-inventory-sessions', id] as const,
+    counts: (sessionId: string) => ['physical-inventory-counts', sessionId] as const,
+  },
 };

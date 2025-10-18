@@ -18,7 +18,9 @@ import Configuration from "./pages/Configuration";
 import Duplicates from "./pages/Duplicates";
 import Transfers from "./pages/Transfers";
 import TransferDetail from "./pages/TransferDetail";
-import PhysicalInventoryPage from "./pages/PhysicalInventoryPage";
+import PhysicalInventory from "./pages/PhysicalInventory";
+import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
+import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -157,7 +159,27 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <Layout>
-                  <PhysicalInventoryPage />
+                  <PhysicalInventory />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory/physical/new"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <PhysicalInventoryNew />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory/physical/:id"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <PhysicalInventoryDetail />
                 </Layout>
               </ProtectedRoute>
             }

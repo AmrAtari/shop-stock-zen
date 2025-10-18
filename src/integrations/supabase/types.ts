@@ -397,35 +397,67 @@ export type Database = {
       physical_inventory_sessions: {
         Row: {
           completed_at: string | null
+          count_date: string
+          count_type: string
           created_at: string
+          department: string | null
+          expected_items: number | null
           id: string
+          location_filter: string | null
           notes: string | null
+          purpose: string | null
+          responsible_person: string | null
           session_number: string
           started_at: string
           started_by: string | null
           status: string
+          store_id: string | null
         }
         Insert: {
           completed_at?: string | null
+          count_date?: string
+          count_type?: string
           created_at?: string
+          department?: string | null
+          expected_items?: number | null
           id?: string
+          location_filter?: string | null
           notes?: string | null
+          purpose?: string | null
+          responsible_person?: string | null
           session_number: string
           started_at?: string
           started_by?: string | null
           status?: string
+          store_id?: string | null
         }
         Update: {
           completed_at?: string | null
+          count_date?: string
+          count_type?: string
           created_at?: string
+          department?: string | null
+          expected_items?: number | null
           id?: string
+          location_filter?: string | null
           notes?: string | null
+          purpose?: string | null
+          responsible_person?: string | null
           session_number?: string
           started_at?: string
           started_by?: string | null
           status?: string
+          store_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "physical_inventory_sessions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       price_levels: {
         Row: {

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -14,8 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { PlayCircle, CheckCircle, XCircle, ArrowLeft, Scan, Upload, BarChart3 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { CheckCircle, ArrowLeft, Scan, Upload, BarChart3 } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,6 +23,8 @@ import PhysicalInventoryScanner from "@/components/PhysicalInventoryScanner";
 import PhysicalInventoryImport from "@/components/PhysicalInventoryImport";
 import PhysicalInventoryReport from "@/components/PhysicalInventoryReport";
 import { queryKeys } from "@/hooks/queryKeys";
+import { usePhysicalInventorySession } from "@/hooks/usePhysicalInventorySessions";
+import { format } from "date-fns";
 
 interface Session {
   id: string;
@@ -46,130 +48,35 @@ interface PhysicalInventoryCount {
   notes: string | null;
 }
 
-const PhysicalInventoryPage = () => {
+const PhysicalInventoryDetail = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<"entry" | "report">("entry");
-  const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [selectedForUpdate, setSelectedForUpdate] = useState<Set<string>>(new Set());
   const [updateMode, setUpdateMode] = useState<"all" | "selected" | "none">("all");
 
-  // Fetch active session
-  const { data: session, refetch: refetchSession } = useQuery({
-    queryKey: ["physical-inventory-session"],
-    queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data, error } = await supabase
-        .from("physical_inventory_sessions")
-        .select("*")
-        .eq("started_by", user.id)
-        .eq("status", "in_progress")
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data as Session | null;
-    },
-  });
-
-  useEffect(() => {
-    setCurrentSession(session || null);
-  }, [session]);
+  // Fetch session by ID
+  const { data: currentSession, isLoading: sessionLoading } = usePhysicalInventorySession(id);
 
   // Fetch counts for current session
   const { data: counts = [], refetch: refetchCounts } = useQuery({
-    queryKey: ["physical-inventory-counts", currentSession?.id],
+    queryKey: queryKeys.physicalInventory.counts(id || ""),
     queryFn: async () => {
-      if (!currentSession) return [];
+      if (!id) return [];
 
       const { data, error } = await supabase
         .from("physical_inventory_counts")
         .select("*")
-        .eq("session_id", currentSession.id)
+        .eq("session_id", id)
         .order("sku");
 
       if (error) throw error;
       return data as PhysicalInventoryCount[];
     },
-    enabled: !!currentSession,
+    enabled: !!id,
   });
-  const handleStartSession = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // STEP 1: Execute the RPC function to generate the session number and get its value.
-      // We use `data` destructured as `sessionNumResult` to clearly isolate the RPC output.
-      const { data: sessionNumResult, error: funcError } = await supabase.rpc("generate_pi_session_number");
-      if (funcError) throw funcError;
-
-      // Ensure sessionNumResult is a simple value (number) and not an array/object if the RPC returns one.
-      // If the RPC returns a scalar (number/string), sessionNumResult will be that value.
-      const newSessionNumber = sessionNumResult;
-
-      // STEP 2: Insert the new session using the explicitly retrieved value.
-      const { data, error } = await supabase
-        .from("physical_inventory_sessions")
-        .insert({
-          // Pass the value directly to the column
-          session_number: newSessionNumber,
-          started_by: user.id,
-          status: "in_progress",
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setCurrentSession(data);
-      toast.success(`Session ${data.session_number} started`);
-      refetchSession();
-    } catch (error: any) {
-      toast.error(error.message || "Error starting session");
-    }
-  };
-  //const handleStartSession = async () => {
-  // try {
-  //   const {
-  //     data: { user },
-  //   } = await supabase.auth.getUser();
-  //   if (!user) throw new Error("Not authenticated");
-
-  // Generate session number
-  // FIX for "column reference "session_number" is ambiguous":
-  // Renamed 'data' to 'newSessionNumber' to avoid potential ambiguity with column names
-  // in the underlying SQL generated by supabase.rpc followed by .insert().
-  //  const { data: newSessionNumber, error: funcError } = await supabase.rpc("generate_pi_session_number");
-  //  if (funcError) throw funcError;
-
-  //   const { data, error } = await supabase
-  //    .from("physical_inventory_sessions")
-  // .insert({
-  //   session_number: newSessionNumber,
-  //   started_by: user.id,
-  //   status: "in_progress",
-  //  })
-  // .select()
-  //  .single();
-
-  //   if (error) throw error;
-
-  //  setCurrentSession(data);
-  //  toast.success(`Session ${data.session_number} started`);
-  //  refetchSession();
-  //} catch (error: any) {
-  //    toast.error(error.message || "Error starting session");
-  //  }
-  // };
-
   const lookupSku = async (sku: string) => {
     const { data, error } = await supabase.from("items").select("id, sku, name, quantity").eq("sku", sku).maybeSingle();
 
@@ -299,42 +206,44 @@ const PhysicalInventoryPage = () => {
       // Invalidate queries
       await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.physicalInventory.all });
 
       toast.success("Physical inventory session completed");
       setCompleteDialogOpen(false);
-      navigate("/inventory");
+      navigate("/inventory/physical");
     } catch (error: any) {
       toast.error(error.message || "Error completing session");
     }
   };
 
+  if (sessionLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading session...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentSession) {
     return (
       <div className="p-8">
-        <Button variant="ghost" onClick={() => navigate("/inventory")} className="mb-6">
+        <Button variant="ghost" onClick={() => navigate("/inventory/physical")} className="mb-6">
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Inventory
+          Back to Physical Inventory
         </Button>
 
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
-            <CardTitle>Physical Inventory Count</CardTitle>
-            <CardDescription>Start a new physical inventory session to count and verify your stock</CardDescription>
+            <CardTitle>Session Not Found</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-sm text-muted-foreground space-y-2">
-              <p>Physical inventory allows you to:</p>
-              <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Count actual stock using barcode scanner or manual entry</li>
-                <li>Import counts from Excel or Google Sheets</li>
-                <li>Compare counted quantities with system records</li>
-                <li>Identify and resolve discrepancies</li>
-                <li>Update system quantities based on actual counts</li>
-              </ul>
-            </div>
-            <Button onClick={handleStartSession} className="w-full">
-              <PlayCircle className="w-4 h-4 mr-2" />
-              Start New Session
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              The physical inventory session you're looking for doesn't exist or has been deleted.
+            </p>
+            <Button onClick={() => navigate("/inventory/physical")}>
+              View All Sessions
             </Button>
           </CardContent>
         </Card>
@@ -344,9 +253,10 @@ const PhysicalInventoryPage = () => {
 
   return (
     <div className="p-8 space-y-6">
+      {/* Header with Session Details */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate("/inventory")}>
+          <Button variant="ghost" onClick={() => navigate("/inventory/physical")}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
@@ -355,15 +265,62 @@ const PhysicalInventoryPage = () => {
               <h1 className="text-3xl font-bold">Physical Inventory</h1>
               <Badge variant="secondary">Session: {currentSession.session_number}</Badge>
             </div>
-            <p className="text-muted-foreground mt-1">Count and verify your inventory</p>
+            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+              <span>
+                {currentSession.stores?.name || "No Store"} | {format(new Date(currentSession.count_date), "MMM dd, yyyy")}
+              </span>
+              {currentSession.responsible_person && (
+                <span>By: {currentSession.responsible_person}</span>
+              )}
+              {currentSession.count_type && (
+                <Badge variant="outline" className="capitalize">
+                  {currentSession.count_type} Count
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
 
-        <Button onClick={handleCompleteSession} disabled={counts.length === 0}>
+        <Button 
+          onClick={handleCompleteSession} 
+          disabled={counts.length === 0 || currentSession.status === 'completed'}
+        >
           <CheckCircle className="w-4 h-4 mr-2" />
           Complete Session
         </Button>
       </div>
+
+      {/* Progress Summary */}
+      {counts.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{counts.length}</p>
+                <p className="text-sm text-muted-foreground">Items Counted</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-600">
+                  {counts.filter(c => c.variance > 0).length}
+                </p>
+                <p className="text-sm text-muted-foreground">Over</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-600">
+                  {counts.filter(c => c.variance < 0).length}
+                </p>
+                <p className="text-sm text-muted-foreground">Under</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {counts.filter(c => c.variance === 0).length}
+                </p>
+                <p className="text-sm text-muted-foreground">Matched</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -488,4 +445,4 @@ const PhysicalInventoryPage = () => {
   );
 };
 
-export default PhysicalInventoryPage;
+export default PhysicalInventoryDetail;
