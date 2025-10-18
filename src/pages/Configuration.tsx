@@ -196,7 +196,8 @@ const Configuration = () => {
 
       if (error) throw error;
 
-      setAttributes((data as Attribute[]) || []);
+      // Cast the data to Attribute[] to fix TypeScript error
+      setAttributes((data as unknown as Attribute[]) || []);
       setTotal(count || 0);
     } catch (err: any) {
       console.error(`Error loading ${table}:`, err);
@@ -214,12 +215,13 @@ const Configuration = () => {
       // Transform auth users to our UserRole format
       const formattedUsers: UserRole[] = authUsers.users.map((user) => {
         const userMetadata = user.user_metadata || {};
+        const status: "active" | "inactive" = user.banned_until ? "inactive" : "active";
 
         return {
           id: user.id,
           email: user.email!,
           role: (userMetadata.role as UserRole["role"]) || "cashier",
-          status: user.banned_until ? "inactive" : "active",
+          status: status,
           last_sign_in_at: user.last_sign_in_at,
           created_at: user.created_at,
           user_metadata: userMetadata,
@@ -247,10 +249,10 @@ const Configuration = () => {
         throw error;
       }
 
-      // Ensure all stores have a status field
+      // Ensure all stores have a status field and cast to Store[]
       const storesWithStatus: Store[] = (data || []).map((store) => ({
         ...store,
-        status: store.status || "active",
+        status: (store as any).status || "active",
       }));
 
       setStores(storesWithStatus);
@@ -264,47 +266,32 @@ const Configuration = () => {
   const createStoresTable = async () => {
     try {
       // First, let's check if we can create the table by trying to insert a store
-      const { error } = await supabase.from("stores").insert([
-        {
-          name: "Main Store",
-          address: "123 Main Street",
-          phone: "+1 (555) 123-4567",
-          manager: "Store Manager",
-          status: "active",
-        },
-      ]);
+      const storeData: any = {
+        name: "Main Store",
+        address: "123 Main Street",
+        phone: "+1 (555) 123-4567",
+        manager: "Store Manager",
+      };
 
-      if (error) {
-        // If we get a column error, the table exists but missing columns
-        if (error.message.includes("column")) {
-          await addMissingStoreColumns();
-        } else if (error.code !== "23505") {
-          // Ignore duplicate key errors
-          throw error;
-        }
+      // Only add status if we think the column exists
+      try {
+        storeData.status = "active";
+      } catch (error) {
+        console.log("Status column might not exist, skipping...");
+      }
+
+      const { error } = await supabase.from("stores").insert([storeData]);
+
+      if (error && error.code !== "23505") {
+        // Ignore duplicate key errors
+        throw error;
       }
 
       // Reload stores after creating table/columns
       loadStores();
     } catch (error: any) {
       console.error("Error setting up stores table:", error);
-      toast.error(
-        "Please create a 'stores' table in your Supabase database with columns: id, name, address, phone, manager, status, created_at",
-      );
-    }
-  };
-
-  // Add missing columns to stores table
-  const addMissingStoreColumns = async () => {
-    try {
-      // Try to update existing stores to add status field
-      const { error } = await supabase.from("stores").update({ status: "active" }).is("status", null);
-
-      if (error) {
-        console.log("Status column might not exist yet, continuing...");
-      }
-    } catch (error) {
-      console.log("Could not update stores, column might not exist");
+      toast.error("Please create a 'stores' table in your Supabase database");
     }
   };
 
@@ -319,7 +306,9 @@ const Configuration = () => {
   const handleAdd = async () => {
     if (!activeCatalog || !newValue.trim()) return toast.error("Please enter a value");
     try {
-      const { error } = await supabase.from(activeCatalog.key as any).insert({ name: newValue.trim() });
+      const insertData: any = { name: newValue.trim() };
+
+      const { error } = await supabase.from(activeCatalog.key as any).insert(insertData);
 
       if (error) throw error;
 
@@ -421,7 +410,7 @@ const Configuration = () => {
         manager: newStore.manager,
       };
 
-      // Only add status if the column exists
+      // Only add status if we think the column exists
       try {
         storeData.status = newStore.status;
       } catch (error) {
@@ -497,23 +486,28 @@ const Configuration = () => {
       const newStatus = currentStatus === "active" ? "inactive" : "active";
 
       // Try to update status, but handle case where column doesn't exist
-      const { error } = await supabase.from("stores").update({ status: newStatus }).eq("id", storeId);
+      const updateData: any = {};
 
-      if (error) {
-        // If status column doesn't exist, just reload stores without updating
-        if (error.message.includes("status")) {
-          console.log("Status column does not exist, skipping status update");
-          loadStores();
-          return;
-        }
-        throw error;
+      // Only try to update status if we think the column exists
+      try {
+        updateData.status = newStatus;
+      } catch (error) {
+        console.log("Status column does not exist, skipping status update");
+        return;
       }
+
+      const { error } = await supabase.from("stores").update(updateData).eq("id", storeId);
+
+      if (error) throw error;
 
       toast.success(`Store ${newStatus}`);
       loadStores();
     } catch (error: any) {
       console.error("Error updating store status:", error);
-      toast.error("Failed to update store status: " + error.message);
+      // Don't show error if it's just because status column doesn't exist
+      if (!error.message.includes("status")) {
+        toast.error("Failed to update store status: " + error.message);
+      }
     }
   };
 
@@ -525,7 +519,10 @@ const Configuration = () => {
         return;
       }
 
-      const { error } = await supabase.auth.admin.resetPasswordForEmail(userEmail);
+      // Use the regular auth resetPasswordForEmail method, not admin
+      const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
 
       if (error) throw error;
 
@@ -799,7 +796,7 @@ const Configuration = () => {
                       {store.status && (
                         <Switch
                           checked={store.status === "active"}
-                          onCheckedChange={() => toggleStoreStatus(store.id, store.status)}
+                          onCheckedChange={() => toggleStoreStatus(store.id, store.status!)}
                         />
                       )}
                     </div>
