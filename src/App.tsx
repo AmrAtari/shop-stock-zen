@@ -194,17 +194,7 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-           />
-          <Route
-            path="/POS"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <Pos />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
