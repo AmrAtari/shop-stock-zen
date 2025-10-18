@@ -42,6 +42,62 @@ interface Attributes {
   themes: { id: string; name: string }[];
 }
 
+// Confirmation Dialog Component
+interface UpdateConfirmationDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (applyToAll: boolean) => void;
+  itemName: string;
+  itemNumber?: string;
+}
+
+const UpdateConfirmationDialog = ({
+  open,
+  onOpenChange,
+  onConfirm,
+  itemName,
+  itemNumber,
+}: UpdateConfirmationDialogProps) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Update Scope</DialogTitle>
+          <DialogDescription>
+            How would you like to apply the changes to <strong>{itemName}</strong>?
+            {itemNumber && (
+              <div className="mt-2 text-sm">
+                This item belongs to model number: <strong>{itemNumber}</strong>
+              </div>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <h4 className="font-semibold text-blue-800 mb-2">Apply to all related SKUs</h4>
+            <p className="text-sm text-blue-700">
+              Update all products with the same model number. This ensures consistency across all variants (sizes,
+              colors, etc.).
+            </p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <h4 className="font-semibold text-gray-800 mb-2">Apply only to this SKU</h4>
+            <p className="text-sm text-gray-700">
+              Update only this specific product. Other variants with the same model number will remain unchanged.
+            </p>
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onConfirm(false)}>
+            Only This SKU
+          </Button>
+          <Button onClick={() => onConfirm(true)}>All Related SKUs</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNewProps) => {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Partial<Item>>({
@@ -87,6 +143,8 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
   });
 
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
+  const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
+  const [pendingUpdateData, setPendingUpdateData] = useState<any>(null);
 
   useEffect(() => {
     if (open) {
@@ -230,7 +288,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
       }
 
       // Update all items with the same item_number (excluding variant-specific fields)
-      const { error: bulkUpdateError, count } = await supabase
+      const { error: bulkUpdateError } = await supabase
         .from("items")
         .update(sharedUpdateData)
         .eq("item_number", itemNumber);
@@ -272,48 +330,16 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
 
         const updateData: any = { ...formData };
 
-        // Update the current item
-        const { error: itemError } = await supabase.from("items").update(updateData).eq("id", item.id);
-
-        if (itemError) throw itemError;
-
-        // If this item has an item_number and shared fields were modified, update related SKUs
+        // Check if this item has an item_number and shared fields were modified
         if (item.item_number && hasSharedFieldsChanged(item, formData, sharedFields)) {
-          await updateRelatedSKUs(item.item_number, updateData, sharedFields);
+          // Show confirmation dialog instead of automatically updating
+          setPendingUpdateData({ updateData, sharedFields });
+          setShowUpdateConfirmation(true);
+          return;
+        } else {
+          // No shared fields changed or no item_number, proceed with normal update
+          await performItemUpdate(item.id, updateData, false);
         }
-
-        // Handle price updates (existing code remains the same)
-        const { data: currentPrice } = await supabase
-          .from("price_levels")
-          .select("*")
-          .eq("item_id", item.id)
-          .eq("is_current", true)
-          .single();
-
-        if (
-          !currentPrice ||
-          Number(currentPrice.cost_price) !== priceData.cost_price ||
-          Number(currentPrice.selling_price) !== priceData.selling_price ||
-          Number(currentPrice.wholesale_price || 0) !== priceData.wholesale_price
-        ) {
-          if (currentPrice) {
-            await supabase.from("price_levels").update({ is_current: false }).eq("item_id", item.id);
-          }
-
-          await supabase.from("price_levels").insert({
-            item_id: item.id,
-            ...priceData,
-            is_current: true,
-          });
-        }
-
-        toast.success("Product updated successfully");
-
-        // Invalidate all related queries
-        await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
       } else {
         // Create new item
         const insertData: any = { ...formData };
@@ -335,393 +361,481 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
         await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
         await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
-      }
 
-      onSave();
-      onOpenChange(false);
+        onSave();
+        onOpenChange(false);
+      }
     } catch (error: any) {
       toast.error(error.message || "Failed to save product");
     }
   };
 
+  const handleUpdateConfirmation = async (applyToAll: boolean) => {
+    if (!item || !pendingUpdateData) return;
+
+    try {
+      await performItemUpdate(item.id, pendingUpdateData.updateData, applyToAll);
+      setShowUpdateConfirmation(false);
+      setPendingUpdateData(null);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update product");
+    }
+  };
+
+  const performItemUpdate = async (itemId: string, updateData: any, applyToAll: boolean) => {
+    // Update the current item
+    const { error: itemError } = await supabase.from("items").update(updateData).eq("id", itemId);
+
+    if (itemError) throw itemError;
+
+    // If user chose to apply to all related SKUs
+    if (applyToAll && item?.item_number) {
+      const sharedFields = [
+        "name",
+        "category",
+        "brand",
+        "department",
+        "supplier",
+        "season",
+        "main_group",
+        "origin",
+        "theme",
+        "min_stock",
+        "unit",
+      ];
+      await updateRelatedSKUs(item.item_number, updateData, sharedFields);
+    }
+
+    // Handle price updates
+    const { data: currentPrice } = await supabase
+      .from("price_levels")
+      .select("*")
+      .eq("item_id", itemId)
+      .eq("is_current", true)
+      .single();
+
+    if (
+      !currentPrice ||
+      Number(currentPrice.cost_price) !== priceData.cost_price ||
+      Number(currentPrice.selling_price) !== priceData.selling_price ||
+      Number(currentPrice.wholesale_price || 0) !== priceData.wholesale_price
+    ) {
+      if (currentPrice) {
+        await supabase.from("price_levels").update({ is_current: false }).eq("item_id", itemId);
+      }
+
+      await supabase.from("price_levels").insert({
+        item_id: itemId,
+        ...priceData,
+        is_current: true,
+      });
+    }
+
+    toast.success(applyToAll ? "Product and all related SKUs updated successfully" : "Product updated successfully");
+
+    // Invalidate all related queries
+    await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
+
+    onSave();
+    onOpenChange(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{item ? "Edit Product" : "Add New Product"}</DialogTitle>
-          <DialogDescription>
-            {item ? "Update product information and pricing" : "Add a new product to your inventory"}
-            {item?.item_number && (
-              <div className="mt-2 text-sm text-blue-600">
-                This item is part of a product group. Changes to shared fields will update all related SKUs.
-              </div>
-            )}
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="sku">SKU *</Label>
-              <Input
-                id="sku"
-                value={formData.sku}
-                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="name">Product Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <Select
-                value={formData.category}
-                onValueChange={(value) => setFormData({ ...formData, category: value })}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.name}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Select
-                value={formData.department || ""}
-                onValueChange={(value) => setFormData({ ...formData, department: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.departments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.name}>
-                      {dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="main_group">Main Group</Label>
-              <Select
-                value={formData.main_group || ""}
-                onValueChange={(value) => setFormData({ ...formData, main_group: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select main group" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.main_groups.map((group) => (
-                    <SelectItem key={group.id} value={group.name}>
-                      {group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="brand">Brand</Label>
-              <Select
-                value={formData.brand || ""}
-                onValueChange={(value) => setFormData({ ...formData, brand: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select brand" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.brands.map((brand) => (
-                    <SelectItem key={brand.id} value={brand.name}>
-                      {brand.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="origin">Origin</Label>
-              <Select
-                value={formData.origin || ""}
-                onValueChange={(value) => setFormData({ ...formData, origin: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select origin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.origins.map((origin) => (
-                    <SelectItem key={origin.id} value={origin.name}>
-                      {origin.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="theme">Theme</Label>
-              <Select
-                value={formData.theme || ""}
-                onValueChange={(value) => setFormData({ ...formData, theme: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select theme" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.themes.map((theme) => (
-                    <SelectItem key={theme.id} value={theme.name}>
-                      {theme.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="supplier">Supplier</Label>
-              <Select
-                value={formData.supplier || ""}
-                onValueChange={(value) => setFormData({ ...formData, supplier: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select supplier" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.suppliers.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.name}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="size">Size</Label>
-              <Select value={formData.size || ""} onValueChange={(value) => setFormData({ ...formData, size: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select size" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.sizes.map((size) => (
-                    <SelectItem key={size.id} value={size.name}>
-                      {size.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="color">Color</Label>
-              <Select
-                value={formData.color || ""}
-                onValueChange={(value) => setFormData({ ...formData, color: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select color" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.colors.map((color) => (
-                    <SelectItem key={color.id} value={color.name}>
-                      {color.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="gender">Gender</Label>
-              <Select
-                value={formData.gender || ""}
-                onValueChange={(value) => setFormData({ ...formData, gender: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select gender" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.genders.map((gender) => (
-                    <SelectItem key={gender.id} value={gender.name}>
-                      {gender.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="season">Season</Label>
-              <Select
-                value={formData.season || ""}
-                onValueChange={(value) => setFormData({ ...formData, season: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select season" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.seasons.map((season) => (
-                    <SelectItem key={season.id} value={season.name}>
-                      {season.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Current Quantity *</Label>
-              <Input
-                id="quantity"
-                type="number"
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="min_stock">Minimum Stock Level *</Label>
-              <Input
-                id="min_stock"
-                type="number"
-                value={formData.min_stock}
-                onChange={(e) => setFormData({ ...formData, min_stock: Number(e.target.value) })}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="unit">Unit</Label>
-              <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.units.map((unit) => (
-                    <SelectItem key={unit.id} value={unit.name}>
-                      {unit.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="location">Storage Location</Label>
-            <Select
-              value={formData.location || ""}
-              onValueChange={(value) => setFormData({ ...formData, location: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select location" />
-              </SelectTrigger>
-              <SelectContent>
-                {attributes.locations.map((location) => (
-                  <SelectItem key={location.id} value={location.name}>
-                    {location.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="border-t pt-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Pricing Information</h3>
-              {item && (
-                <Button type="button" variant="outline" size="sm" onClick={() => setPriceHistoryOpen(true)}>
-                  <History className="w-4 h-4 mr-2" />
-                  View Price History
-                </Button>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{item ? "Edit Product" : "Add New Product"}</DialogTitle>
+            <DialogDescription>
+              {item ? "Update product information and pricing" : "Add a new product to your inventory"}
+              {item?.item_number && (
+                <div className="mt-2 text-sm text-blue-600">
+                  This item is part of a product group (Model: {item.item_number}). Changes to shared fields can be
+                  applied to all related SKUs.
+                </div>
               )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sku">SKU *</Label>
+                <Input
+                  id="sku"
+                  value={formData.sku}
+                  onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="name">Product Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
             </div>
+
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="cost_price">Cost Price ($) *</Label>
-                <Input
-                  id="cost_price"
-                  type="number"
-                  step="0.01"
-                  value={priceData.cost_price}
-                  onChange={(e) => setPriceData({ ...priceData, cost_price: Number(e.target.value) })}
+                <Label htmlFor="category">Category *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => setFormData({ ...formData, category: value })}
                   required
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="selling_price">Selling Price ($) *</Label>
-                <Input
-                  id="selling_price"
-                  type="number"
-                  step="0.01"
-                  value={priceData.selling_price}
-                  onChange={(e) => setPriceData({ ...priceData, selling_price: Number(e.target.value) })}
-                  required
-                />
+                <Label htmlFor="department">Department</Label>
+                <Select
+                  value={formData.department || ""}
+                  onValueChange={(value) => setFormData({ ...formData, department: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.name}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="wholesale_price">Wholesale Price ($)</Label>
-                <Input
-                  id="wholesale_price"
-                  type="number"
-                  step="0.01"
-                  value={priceData.wholesale_price}
-                  onChange={(e) => setPriceData({ ...priceData, wholesale_price: Number(e.target.value) })}
-                />
+                <Label htmlFor="main_group">Main Group</Label>
+                <Select
+                  value={formData.main_group || ""}
+                  onValueChange={(value) => setFormData({ ...formData, main_group: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select main group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.main_groups.map((group) => (
+                      <SelectItem key={group.id} value={group.name}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit">{item ? "Update Product" : "Add Product"}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="brand">Brand</Label>
+                <Select
+                  value={formData.brand || ""}
+                  onValueChange={(value) => setFormData({ ...formData, brand: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select brand" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.brands.map((brand) => (
+                      <SelectItem key={brand.id} value={brand.name}>
+                        {brand.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-      {item && (
-        <PriceHistoryDialog
-          open={priceHistoryOpen}
-          onOpenChange={setPriceHistoryOpen}
-          itemId={item.id}
-          itemName={item.name}
-        />
-      )}
-    </Dialog>
+              <div className="space-y-2">
+                <Label htmlFor="origin">Origin</Label>
+                <Select
+                  value={formData.origin || ""}
+                  onValueChange={(value) => setFormData({ ...formData, origin: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select origin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.origins.map((origin) => (
+                      <SelectItem key={origin.id} value={origin.name}>
+                        {origin.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="theme">Theme</Label>
+                <Select
+                  value={formData.theme || ""}
+                  onValueChange={(value) => setFormData({ ...formData, theme: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select theme" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.themes.map((theme) => (
+                      <SelectItem key={theme.id} value={theme.name}>
+                        {theme.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="supplier">Supplier</Label>
+                <Select
+                  value={formData.supplier || ""}
+                  onValueChange={(value) => setFormData({ ...formData, supplier: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.suppliers.map((supplier) => (
+                      <SelectItem key={supplier.id} value={supplier.name}>
+                        {supplier.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="size">Size</Label>
+                <Select
+                  value={formData.size || ""}
+                  onValueChange={(value) => setFormData({ ...formData, size: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.sizes.map((size) => (
+                      <SelectItem key={size.id} value={size.name}>
+                        {size.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="color">Color</Label>
+                <Select
+                  value={formData.color || ""}
+                  onValueChange={(value) => setFormData({ ...formData, color: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select color" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.colors.map((color) => (
+                      <SelectItem key={color.id} value={color.name}>
+                        {color.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="gender">Gender</Label>
+                <Select
+                  value={formData.gender || ""}
+                  onValueChange={(value) => setFormData({ ...formData, gender: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.genders.map((gender) => (
+                      <SelectItem key={gender.id} value={gender.name}>
+                        {gender.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="season">Season</Label>
+                <Select
+                  value={formData.season || ""}
+                  onValueChange={(value) => setFormData({ ...formData, season: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select season" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.seasons.map((season) => (
+                      <SelectItem key={season.id} value={season.name}>
+                        {season.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="quantity">Current Quantity *</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="min_stock">Minimum Stock Level *</Label>
+                <Input
+                  id="min_stock"
+                  type="number"
+                  value={formData.min_stock}
+                  onChange={(e) => setFormData({ ...formData, min_stock: Number(e.target.value) })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="unit">Unit</Label>
+                <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attributes.units.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.name}>
+                        {unit.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location">Storage Location</Label>
+              <Select
+                value={formData.location || ""}
+                onValueChange={(value) => setFormData({ ...formData, location: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select location" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attributes.locations.map((location) => (
+                    <SelectItem key={location.id} value={location.name}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Pricing Information</h3>
+                {item && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setPriceHistoryOpen(true)}>
+                    <History className="w-4 h-4 mr-2" />
+                    View Price History
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cost_price">Cost Price ($) *</Label>
+                  <Input
+                    id="cost_price"
+                    type="number"
+                    step="0.01"
+                    value={priceData.cost_price}
+                    onChange={(e) => setPriceData({ ...priceData, cost_price: Number(e.target.value) })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="selling_price">Selling Price ($) *</Label>
+                  <Input
+                    id="selling_price"
+                    type="number"
+                    step="0.01"
+                    value={priceData.selling_price}
+                    onChange={(e) => setPriceData({ ...priceData, selling_price: Number(e.target.value) })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="wholesale_price">Wholesale Price ($)</Label>
+                  <Input
+                    id="wholesale_price"
+                    type="number"
+                    step="0.01"
+                    value={priceData.wholesale_price}
+                    onChange={(e) => setPriceData({ ...priceData, wholesale_price: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">{item ? "Update Product" : "Add Product"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+
+        {item && (
+          <PriceHistoryDialog
+            open={priceHistoryOpen}
+            onOpenChange={setPriceHistoryOpen}
+            itemId={item.id}
+            itemName={item.name}
+          />
+        )}
+      </Dialog>
+
+      {/* Update Confirmation Dialog */}
+      <UpdateConfirmationDialog
+        open={showUpdateConfirmation}
+        onOpenChange={setShowUpdateConfirmation}
+        onConfirm={handleUpdateConfirmation}
+        itemName={item?.name || ""}
+        itemNumber={item?.item_number}
+      />
+    </>
   );
 };
 
