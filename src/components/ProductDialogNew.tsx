@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -134,7 +141,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         departments,
         main_groups,
         origins,
-        themes
+        themes,
       ] = await Promise.all([
         supabase.from("categories").select("*").order("name"),
         supabase.from("brands").select("*").order("name"),
@@ -193,21 +200,89 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
     }
   };
 
+  /**
+   * Check if any shared fields have been modified
+   */
+  const hasSharedFieldsChanged = (originalItem: Item, newFormData: Partial<Item>, sharedFields: string[]): boolean => {
+    return sharedFields.some((field) => {
+      const originalValue = originalItem[field as keyof Item];
+      const newValue = newFormData[field as keyof Item];
+      return originalValue !== newValue;
+    });
+  };
+
+  /**
+   * Update all related SKUs with the same item_number
+   */
+  const updateRelatedSKUs = async (itemNumber: string, updateData: any, sharedFields: string[]) => {
+    try {
+      // Filter update data to only include shared fields
+      const sharedUpdateData: any = {};
+      sharedFields.forEach((field) => {
+        if (updateData[field] !== undefined) {
+          sharedUpdateData[field] = updateData[field];
+        }
+      });
+
+      // If no shared fields to update, return early
+      if (Object.keys(sharedUpdateData).length === 0) {
+        return;
+      }
+
+      // Update all items with the same item_number (excluding variant-specific fields)
+      const { error: bulkUpdateError, count } = await supabase
+        .from("items")
+        .update(sharedUpdateData)
+        .eq("item_number", itemNumber);
+
+      if (bulkUpdateError) throw bulkUpdateError;
+
+      // Get the count of updated items
+      const { count: updatedCount } = await supabase
+        .from("items")
+        .select("*", { count: "exact", head: true })
+        .eq("item_number", itemNumber);
+
+      toast.success(`Updated ${Object.keys(sharedUpdateData).length} field(s) across ${updatedCount} related SKUs`);
+    } catch (error: any) {
+      console.error("Error updating related SKUs:", error);
+      toast.error("Failed to update related SKUs: " + error.message);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
       if (item) {
-        // Update existing item
+        // Determine which fields should be propagated to related SKUs
+        const sharedFields = [
+          "name",
+          "category",
+          "brand",
+          "department",
+          "supplier",
+          "season",
+          "main_group",
+          "origin",
+          "theme",
+          "min_stock",
+          "unit",
+        ];
+
         const updateData: any = { ...formData };
-        const { error: itemError } = await supabase
-          .from("items")
-          .update(updateData)
-          .eq("id", item.id);
+
+        // Update the current item
+        const { error: itemError } = await supabase.from("items").update(updateData).eq("id", item.id);
 
         if (itemError) throw itemError;
 
-        // Check if price changed
+        // If this item has an item_number and shared fields were modified, update related SKUs
+        if (item.item_number && hasSharedFieldsChanged(item, formData, sharedFields)) {
+          await updateRelatedSKUs(item.item_number, updateData, sharedFields);
+        }
+
+        // Handle price updates (existing code remains the same)
         const { data: currentPrice } = await supabase
           .from("price_levels")
           .select("*")
@@ -221,15 +296,10 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
           Number(currentPrice.selling_price) !== priceData.selling_price ||
           Number(currentPrice.wholesale_price || 0) !== priceData.wholesale_price
         ) {
-          // Mark old price as not current
           if (currentPrice) {
-            await supabase
-              .from("price_levels")
-              .update({ is_current: false })
-              .eq("item_id", item.id);
+            await supabase.from("price_levels").update({ is_current: false }).eq("item_id", item.id);
           }
 
-          // Create new price level
           await supabase.from("price_levels").insert({
             item_id: item.id,
             ...priceData,
@@ -238,7 +308,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         }
 
         toast.success("Product updated successfully");
-        
+
         // Invalidate all related queries
         await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
         await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
@@ -247,11 +317,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
       } else {
         // Create new item
         const insertData: any = { ...formData };
-        const { data: newItem, error: itemError } = await supabase
-          .from("items")
-          .insert(insertData)
-          .select()
-          .single();
+        const { data: newItem, error: itemError } = await supabase.from("items").insert(insertData).select().single();
 
         if (itemError) throw itemError;
 
@@ -263,7 +329,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         });
 
         toast.success("Product added successfully");
-        
+
         // Invalidate all related queries
         await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
         await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
@@ -285,6 +351,11 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
           <DialogTitle>{item ? "Edit Product" : "Add New Product"}</DialogTitle>
           <DialogDescription>
             {item ? "Update product information and pricing" : "Add a new product to your inventory"}
+            {item?.item_number && (
+              <div className="mt-2 text-sm text-blue-600">
+                This item is part of a product group. Changes to shared fields will update all related SKUs.
+              </div>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -430,26 +501,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="brand">Brand</Label>
-              <Select
-                value={formData.brand || ""}
-                onValueChange={(value) => setFormData({ ...formData, brand: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select brand" />
-                </SelectTrigger>
-                <SelectContent>
-                  {attributes.brands.map((brand) => (
-                    <SelectItem key={brand.id} value={brand.name}>
-                      {brand.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="supplier">Supplier</Label>
               <Select
@@ -473,10 +525,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
           <div className="grid grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="size">Size</Label>
-              <Select
-                value={formData.size || ""}
-                onValueChange={(value) => setFormData({ ...formData, size: value })}
-              >
+              <Select value={formData.size || ""} onValueChange={(value) => setFormData({ ...formData, size: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select size" />
                 </SelectTrigger>
@@ -573,10 +622,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
 
             <div className="space-y-2">
               <Label htmlFor="unit">Unit</Label>
-              <Select
-                value={formData.unit}
-                onValueChange={(value) => setFormData({ ...formData, unit: value })}
-              >
+              <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -614,12 +660,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold">Pricing Information</h3>
               {item && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPriceHistoryOpen(true)}
-                >
+                <Button type="button" variant="outline" size="sm" onClick={() => setPriceHistoryOpen(true)}>
                   <History className="w-4 h-4 mr-2" />
                   View Price History
                 </Button>
