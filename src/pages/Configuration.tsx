@@ -26,6 +26,7 @@ import {
   Calendar,
   BadgeCheck,
   Ban,
+  Eye, // Add this import
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,6 +99,7 @@ const ICONS: Record<string, any> = {
   CloudSun,
   MapPin,
   Warehouse,
+  Eye,
 };
 
 const Configuration = () => {
