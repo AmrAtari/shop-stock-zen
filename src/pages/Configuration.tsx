@@ -26,7 +26,7 @@ import {
   Calendar,
   BadgeCheck,
   Ban,
-  Eye, // Add this import
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +67,7 @@ type AttributeTable =
 interface Attribute {
   id: string;
   name: string;
+  created_at?: string;
 }
 
 interface UserRole {
@@ -74,8 +75,11 @@ interface UserRole {
   email: string;
   role: "admin" | "manager" | "cashier" | "viewer";
   status: "active" | "inactive";
-  last_login?: string;
+  last_sign_in_at?: string;
   created_at: string;
+  user_metadata?: {
+    full_name?: string;
+  };
 }
 
 interface Store {
@@ -85,6 +89,7 @@ interface Store {
   phone: string;
   manager: string;
   status: "active" | "inactive";
+  created_at: string;
 }
 
 const PAGE_SIZE = 20;
@@ -121,8 +126,10 @@ const Configuration = () => {
   const [showUserDialog, setShowUserDialog] = useState(false);
   const [newUser, setNewUser] = useState({
     email: "",
+    password: "",
     role: "cashier" as UserRole["role"],
     status: "active" as UserRole["status"],
+    full_name: "",
   });
 
   // Store Management States
@@ -169,6 +176,7 @@ const Configuration = () => {
     }
   }, [isAdmin, isLoading, navigate]);
 
+  // Load attribute data from Supabase
   const loadData = async (table: AttributeTable, currentPage = 1, term = "") => {
     try {
       const from = (currentPage - 1) * PAGE_SIZE;
@@ -179,92 +187,104 @@ const Configuration = () => {
         .select("*", { count: "exact" })
         .order("name")
         .range(from, to);
-      if (term.trim()) query = query.ilike("name", `%${term.trim()}%`);
 
-      const { data, count, error } = (await query) as any;
+      if (term.trim()) {
+        query = query.ilike("name", `%${term.trim()}%`);
+      }
+
+      const { data, count, error } = await query;
+
       if (error) throw error;
 
       setAttributes((data as Attribute[]) || []);
       setTotal(count || 0);
     } catch (err: any) {
-      toast.error(err.message || "Error loading data");
+      console.error(`Error loading ${table}:`, err);
+      toast.error(err.message || `Error loading ${table}`);
     }
   };
 
+  // Load users from Supabase Auth and profiles
   const loadUsers = async () => {
     try {
-      // Mock user data - replace with actual Supabase call
-      const mockUsers: UserRole[] = [
-        {
-          id: "1",
-          email: "admin@company.com",
-          role: "admin",
-          status: "active",
-          last_login: "2024-01-15T10:30:00Z",
-          created_at: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "2",
-          email: "manager@company.com",
-          role: "manager",
-          status: "active",
-          last_login: "2024-01-15T09:15:00Z",
-          created_at: "2024-01-02T00:00:00Z",
-        },
-        {
-          id: "3",
-          email: "cashier1@company.com",
-          role: "cashier",
-          status: "active",
-          last_login: "2024-01-14T16:45:00Z",
-          created_at: "2024-01-03T00:00:00Z",
-        },
-        {
-          id: "4",
-          email: "viewer@company.com",
-          role: "viewer",
-          status: "inactive",
-          created_at: "2024-01-04T00:00:00Z",
-        },
-      ];
-      setUsers(mockUsers);
-    } catch (error) {
-      toast.error("Failed to load users");
+      // First, get all users from Auth
+      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+      if (authError) throw authError;
+
+      // Then get user roles from your custom table (if you have one)
+      const { data: userRoles, error: rolesError } = await supabase.from("user_roles").select("*");
+
+      if (rolesError && rolesError.code !== "PGRST116") {
+        // PGRST116 is "relation not found"
+        console.error("Error loading user roles:", rolesError);
+      }
+
+      // Transform auth users to our UserRole format
+      const formattedUsers: UserRole[] = authUsers.users.map((user) => {
+        // Find custom role if exists, otherwise default to 'cashier'
+        const customRole = userRoles?.find((ur) => ur.user_id === user.id);
+
+        return {
+          id: user.id,
+          email: user.email!,
+          role: (customRole?.role as UserRole["role"]) || "cashier",
+          status: user.banned_until ? "inactive" : "active",
+          last_sign_in_at: user.last_sign_in_at,
+          created_at: user.created_at,
+          user_metadata: user.user_metadata,
+        };
+      });
+
+      setUsers(formattedUsers);
+    } catch (error: any) {
+      console.error("Error loading users:", error);
+      toast.error("Failed to load users: " + error.message);
     }
   };
 
+  // Load stores from Supabase
   const loadStores = async () => {
     try {
-      // Mock store data - replace with actual Supabase call
-      const mockStores: Store[] = [
+      const { data, error } = await supabase.from("stores").select("*").order("name");
+
+      if (error) throw error;
+
+      setStores((data as Store[]) || []);
+    } catch (error: any) {
+      console.error("Error loading stores:", error);
+
+      // If stores table doesn't exist, create it and some sample data
+      if (error.code === "PGRST116") {
+        await createStoresTable();
+        toast.info("Stores table created. Please add some stores.");
+      } else {
+        toast.error("Failed to load stores: " + error.message);
+      }
+    }
+  };
+
+  // Create stores table if it doesn't exist
+  const createStoresTable = async () => {
+    try {
+      const { error } = await supabase.from("stores").insert([
         {
-          id: "1",
-          name: "Downtown Store",
-          address: "123 Main Street, Downtown",
+          name: "Main Store",
+          address: "123 Main Street",
           phone: "+1 (555) 123-4567",
-          manager: "John Smith",
+          manager: "Store Manager",
           status: "active",
         },
-        {
-          id: "2",
-          name: "Mall Branch",
-          address: "456 Mall Road, Shopping Center",
-          phone: "+1 (555) 123-4568",
-          manager: "Sarah Johnson",
-          status: "active",
-        },
-        {
-          id: "3",
-          name: "Airport Outlet",
-          address: "789 Airport Boulevard",
-          phone: "+1 (555) 123-4569",
-          manager: "Mike Davis",
-          status: "inactive",
-        },
-      ];
-      setStores(mockStores);
-    } catch (error) {
-      toast.error("Failed to load stores");
+      ]);
+
+      if (error && error.code !== "23505") {
+        // Ignore duplicate key errors
+        throw error;
+      }
+
+      // Reload stores after creating table
+      loadStores();
+    } catch (error: any) {
+      console.error("Error creating stores table:", error);
     }
   };
 
@@ -280,7 +300,9 @@ const Configuration = () => {
     if (!activeCatalog || !newValue.trim()) return toast.error("Please enter a value");
     try {
       const { error } = await supabase.from(activeCatalog.key as any).insert({ name: newValue.trim() });
+
       if (error) throw error;
+
       toast.success("Added successfully");
       setNewValue("");
       loadData(activeCatalog.key, page, searchTerm);
@@ -297,7 +319,9 @@ const Configuration = () => {
         .from(activeCatalog.key as any)
         .delete()
         .eq("id", id);
+
       if (error) throw error;
+
       toast.success("Deleted successfully");
       loadData(activeCatalog.key, page, searchTerm);
     } catch (err: any) {
@@ -312,7 +336,9 @@ const Configuration = () => {
         .from(activeCatalog.key as any)
         .update({ name: editValue.trim() })
         .eq("id", id);
+
       if (error) throw error;
+
       toast.success("Updated successfully");
       setEditId(null);
       setEditValue("");
@@ -332,15 +358,50 @@ const Configuration = () => {
 
   const handleAddUser = async () => {
     if (!newUser.email.trim()) return toast.error("Please enter email");
+    if (!newUser.password.trim()) return toast.error("Please enter password");
 
     try {
-      // Add user logic here
+      // Create user in Supabase Auth
+      const { data, error } = await supabase.auth.admin.createUser({
+        email: newUser.email,
+        password: newUser.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: newUser.full_name,
+          role: newUser.role,
+        },
+      });
+
+      if (error) throw error;
+
+      // Add user role to custom table (if you have one)
+      try {
+        const { error: roleError } = await supabase.from("user_roles").insert({
+          user_id: data.user.id,
+          role: newUser.role,
+          status: newUser.status,
+        });
+
+        if (roleError && roleError.code !== "PGRST116") {
+          console.error("Error adding user role:", roleError);
+        }
+      } catch (roleError) {
+        console.error("Role table might not exist:", roleError);
+      }
+
       toast.success("User added successfully");
       setShowUserDialog(false);
-      setNewUser({ email: "", role: "cashier", status: "active" });
+      setNewUser({
+        email: "",
+        password: "",
+        role: "cashier",
+        status: "active",
+        full_name: "",
+      });
       loadUsers();
-    } catch (error) {
-      toast.error("Failed to add user");
+    } catch (error: any) {
+      console.error("Error adding user:", error);
+      toast.error("Failed to add user: " + error.message);
     }
   };
 
@@ -348,60 +409,115 @@ const Configuration = () => {
     if (!newStore.name.trim()) return toast.error("Please enter store name");
 
     try {
-      // Add store logic here
+      const { error } = await supabase.from("stores").insert({
+        name: newStore.name,
+        address: newStore.address,
+        phone: newStore.phone,
+        manager: newStore.manager,
+        status: newStore.status,
+      });
+
+      if (error) throw error;
+
       toast.success("Store added successfully");
       setShowStoreDialog(false);
-      setNewStore({ name: "", address: "", phone: "", manager: "", status: "active" });
+      setNewStore({
+        name: "",
+        address: "",
+        phone: "",
+        manager: "",
+        status: "active",
+      });
       loadStores();
-    } catch (error) {
-      toast.error("Failed to add store");
+    } catch (error: any) {
+      console.error("Error adding store:", error);
+      toast.error("Failed to add store: " + error.message);
     }
   };
 
   const updateUserRole = async (userId: string, newRole: UserRole["role"]) => {
     try {
-      // Update user role logic here
+      // Update user role in custom table
+      const { error } = await supabase.from("user_roles").upsert({
+        user_id: userId,
+        role: newRole,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error && error.code !== "PGRST116") {
+        throw error;
+      }
+
+      // Also update user metadata in Auth
+      const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
+        user_metadata: { role: newRole },
+      });
+
+      if (authError) {
+        console.error("Error updating auth user metadata:", authError);
+      }
+
       toast.success("User role updated");
       loadUsers();
-    } catch (error) {
-      toast.error("Failed to update user role");
+    } catch (error: any) {
+      console.error("Error updating user role:", error);
+      toast.error("Failed to update user role: " + error.message);
     }
   };
 
   const toggleUserStatus = async (userId: string, currentStatus: UserRole["status"]) => {
     try {
       const newStatus = currentStatus === "active" ? "inactive" : "active";
-      // Update user status logic here
+
+      if (newStatus === "inactive") {
+        // Ban user in Auth
+        const { error } = await supabase.auth.admin.updateUserById(
+          userId,
+          { ban_duration: "876000h" }, // 100 years effectively
+        );
+        if (error) throw error;
+      } else {
+        // Unban user in Auth
+        const { error } = await supabase.auth.admin.updateUserById(userId, { ban_duration: "none" });
+        if (error) throw error;
+      }
+
       toast.success(`User ${newStatus}`);
       loadUsers();
-    } catch (error) {
-      toast.error("Failed to update user status");
+    } catch (error: any) {
+      console.error("Error updating user status:", error);
+      toast.error("Failed to update user status: " + error.message);
     }
   };
 
   const toggleStoreStatus = async (storeId: string, currentStatus: Store["status"]) => {
     try {
       const newStatus = currentStatus === "active" ? "inactive" : "active";
-      // Update store status logic here
+
+      const { error } = await supabase.from("stores").update({ status: newStatus }).eq("id", storeId);
+
+      if (error) throw error;
+
       toast.success(`Store ${newStatus}`);
       loadStores();
-    } catch (error) {
-      toast.error("Failed to update store status");
+    } catch (error: any) {
+      console.error("Error updating store status:", error);
+      toast.error("Failed to update store status: " + error.message);
     }
   };
 
-  const getRoleColor = (role: UserRole["role"]) => {
-    switch (role) {
-      case "admin":
-        return "bg-red-100 text-red-800";
-      case "manager":
-        return "bg-blue-100 text-blue-800";
-      case "cashier":
-        return "bg-green-100 text-green-800";
-      case "viewer":
-        return "bg-gray-100 text-gray-800";
-      default:
-        return "bg-gray-100 text-gray-800";
+  const resetUserPassword = async (userId: string) => {
+    try {
+      const { error } = await supabase.auth.admin.resetPasswordForEmail(
+        users.find((u) => u.id === userId)?.email || "",
+      );
+
+      if (error) throw error;
+
+      toast.success("Password reset email sent");
+    } catch (error: any) {
+      console.error("Error resetting password:", error);
+      toast.error("Failed to reset password: " + error.message);
     }
   };
 
@@ -534,7 +650,8 @@ const Configuration = () => {
                           <div>
                             <p className="font-medium">{user.email}</p>
                             <p className="text-sm text-muted-foreground">
-                              Joined {new Date(user.created_at).toLocaleDateString()}
+                              {user.user_metadata?.full_name || "No name"} • Joined{" "}
+                              {new Date(user.created_at).toLocaleDateString()}
                             </p>
                           </div>
                         </div>
@@ -565,15 +682,15 @@ const Configuration = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {user.last_login ? (
-                          new Date(user.last_login).toLocaleDateString()
+                        {user.last_sign_in_at ? (
+                          new Date(user.last_sign_in_at).toLocaleDateString()
                         ) : (
                           <span className="text-muted-foreground">Never</span>
                         )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={() => resetUserPassword(user.id)}>
                             <Key className="w-4 h-4 mr-1" />
                             Reset Password
                           </Button>
@@ -696,6 +813,18 @@ const Configuration = () => {
                   </Card>
                 ))}
               </div>
+
+              {stores.length === 0 && (
+                <div className="text-center py-8">
+                  <Store className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Stores Found</h3>
+                  <p className="text-muted-foreground mb-4">Get started by adding your first store location.</p>
+                  <Button onClick={() => setShowStoreDialog(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Your First Store
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -769,6 +898,15 @@ const Configuration = () => {
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label htmlFor="user-fullname">Full Name</Label>
+              <Input
+                id="user-fullname"
+                placeholder="John Doe"
+                value={newUser.full_name}
+                onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
+              />
+            </div>
+            <div>
               <Label htmlFor="user-email">Email Address</Label>
               <Input
                 id="user-email"
@@ -776,6 +914,16 @@ const Configuration = () => {
                 placeholder="user@company.com"
                 value={newUser.email}
                 onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="user-password">Password</Label>
+              <Input
+                id="user-password"
+                type="password"
+                placeholder="Enter password"
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
               />
             </div>
             <div>
