@@ -6,6 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
@@ -17,6 +26,168 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
+import { Label } from "@/components/ui/label";
+
+interface BulkActionsProps {
+  selectedItems: Item[];
+  onBulkUpdate: () => void;
+  onClearSelection: () => void;
+}
+
+const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActionsProps) => {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [bulkFormData, setBulkFormData] = useState<Partial<Item>>({});
+
+  const updateRelatedSKUs = async (itemNumber: string, updateData: any) => {
+    const sharedFields = [
+      "name",
+      "category",
+      "brand",
+      "department",
+      "supplier",
+      "season",
+      "main_group",
+      "origin",
+      "theme",
+    ];
+
+    const sharedUpdateData: any = {};
+    sharedFields.forEach((field) => {
+      if (updateData[field] !== undefined && updateData[field] !== "") {
+        sharedUpdateData[field] = updateData[field];
+      }
+    });
+
+    if (Object.keys(sharedUpdateData).length === 0) return;
+
+    const { error } = await supabase.from("items").update(sharedUpdateData).eq("item_number", itemNumber);
+
+    if (error) throw error;
+  };
+
+  const handleBulkUpdate = async () => {
+    try {
+      // Group items by item_number to update all related SKUs
+      const itemsByParent = selectedItems.reduce(
+        (acc, item) => {
+          const parentKey = item.item_number || item.id;
+          if (!acc[parentKey]) {
+            acc[parentKey] = [];
+          }
+          acc[parentKey].push(item);
+          return acc;
+        },
+        {} as Record<string, Item[]>,
+      );
+
+      let totalUpdated = 0;
+
+      // Update each parent group
+      for (const [parentKey, items] of Object.entries(itemsByParent)) {
+        if (items[0].item_number) {
+          // This is a parent item with related SKUs
+          await updateRelatedSKUs(items[0].item_number, bulkFormData);
+          totalUpdated += items.length;
+        } else {
+          // Update individual items
+          for (const item of items) {
+            await supabase.from("items").update(bulkFormData).eq("id", item.id);
+            totalUpdated++;
+          }
+        }
+      }
+
+      toast.success(`Updated ${totalUpdated} item(s)`);
+      setIsDialogOpen(false);
+      onBulkUpdate();
+      onClearSelection();
+    } catch (error: any) {
+      toast.error("Failed to bulk update: " + error.message);
+    }
+  };
+
+  if (selectedItems.length === 0) return null;
+
+  return (
+    <>
+      <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+        <span className="text-sm font-medium">{selectedItems.length} item(s) selected</span>
+        <Button variant="outline" size="sm" onClick={() => setIsDialogOpen(true)}>
+          Bulk Update
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onClearSelection}>
+          Clear Selection
+        </Button>
+      </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bulk Update {selectedItems.length} Items</DialogTitle>
+            <DialogDescription>
+              Update shared fields across selected items. Changes will apply to all related SKUs with the same item
+              number.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Product Name</Label>
+              <Input
+                value={bulkFormData.name || ""}
+                onChange={(e) => setBulkFormData({ ...bulkFormData, name: e.target.value })}
+                placeholder="Leave empty to keep current value"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Input
+                value={bulkFormData.category || ""}
+                onChange={(e) => setBulkFormData({ ...bulkFormData, category: e.target.value })}
+                placeholder="Leave empty to keep current value"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Brand</Label>
+              <Input
+                value={bulkFormData.brand || ""}
+                onChange={(e) => setBulkFormData({ ...bulkFormData, brand: e.target.value })}
+                placeholder="Leave empty to keep current value"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Supplier</Label>
+              <Input
+                value={bulkFormData.supplier || ""}
+                onChange={(e) => setBulkFormData({ ...bulkFormData, supplier: e.target.value })}
+                placeholder="Leave empty to keep current value"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Season</Label>
+              <Input
+                value={bulkFormData.season || ""}
+                onChange={(e) => setBulkFormData({ ...bulkFormData, season: e.target.value })}
+                placeholder="Leave empty to keep current value"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleBulkUpdate}>Apply Updates</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
 
 const InventoryNew = () => {
   const navigate = useNavigate();
@@ -27,6 +198,7 @@ const InventoryNew = () => {
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | undefined>();
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
+  const [selectedItems, setSelectedItems] = useState<Item[]>([]);
 
   // Filter states
   const [modelNumberFilter, setModelNumberFilter] = useState<string>("all");
@@ -96,6 +268,29 @@ const InventoryNew = () => {
   const paginatedInventory = useMemo(() => {
     return filteredInventory.slice(pagination.startIndex, pagination.endIndex);
   }, [filteredInventory, pagination.startIndex, pagination.endIndex]);
+
+  const toggleItemSelection = (item: Item) => {
+    setSelectedItems((prev) => {
+      const isSelected = prev.some((selected) => selected.id === item.id);
+      if (isSelected) {
+        return prev.filter((selected) => selected.id !== item.id);
+      } else {
+        return [...prev, item];
+      }
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedItems(paginatedInventory);
+    } else {
+      setSelectedItems([]);
+    }
+  };
+
+  const handleBulkUpdateComplete = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
@@ -253,10 +448,22 @@ const InventoryNew = () => {
         </div>
       </div>
 
+      <BulkActions
+        selectedItems={selectedItems}
+        onBulkUpdate={handleBulkUpdateComplete}
+        onClearSelection={() => setSelectedItems([])}
+      />
+
       <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={selectedItems.length === paginatedInventory.length && paginatedInventory.length > 0}
+                  onCheckedChange={handleSelectAll}
+                />
+              </TableHead>
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
@@ -281,8 +488,13 @@ const InventoryNew = () => {
           <TableBody>
             {paginatedInventory.map((item) => {
               const status = getStockStatus(item);
+              const isSelected = selectedItems.some((selected) => selected.id === item.id);
+
               return (
                 <TableRow key={item.id}>
+                  <TableCell>
+                    <Checkbox checked={isSelected} onCheckedChange={() => toggleItemSelection(item)} />
+                  </TableCell>
                   <TableCell className="font-medium">{item.sku}</TableCell>
                   <TableCell>{item.name}</TableCell>
                   <TableCell>{item.category}</TableCell>
@@ -350,7 +562,14 @@ const InventoryNew = () => {
         endIndex={pagination.endIndex}
       />
 
-      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} item={editingItem} onSave={() => {}} />
+      <ProductDialogNew
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        item={editingItem}
+        onSave={() => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+        }}
+      />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
 
       {selectedItemForHistory && (
