@@ -85,10 +85,10 @@ interface UserRole {
 interface Store {
   id: string;
   name: string;
-  address: string;
-  phone: string;
-  manager: string;
-  status: "active" | "inactive";
+  address?: string;
+  phone?: string;
+  manager?: string;
+  status?: "active" | "inactive";
   created_at: string;
 }
 
@@ -211,27 +211,18 @@ const Configuration = () => {
       const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
       if (authError) throw authError;
 
-      // Then get user roles from your custom table (if you have one)
-      const { data: userRoles, error: rolesError } = await supabase.from("user_roles").select("*");
-
-      if (rolesError && rolesError.code !== "PGRST116") {
-        // PGRST116 is "relation not found"
-        console.error("Error loading user roles:", rolesError);
-      }
-
       // Transform auth users to our UserRole format
       const formattedUsers: UserRole[] = authUsers.users.map((user) => {
-        // Find custom role if exists, otherwise default to 'cashier'
-        const customRole = userRoles?.find((ur) => ur.user_id === user.id);
+        const userMetadata = user.user_metadata || {};
 
         return {
           id: user.id,
           email: user.email!,
-          role: (customRole?.role as UserRole["role"]) || "cashier",
+          role: (userMetadata.role as UserRole["role"]) || "cashier",
           status: user.banned_until ? "inactive" : "active",
           last_sign_in_at: user.last_sign_in_at,
           created_at: user.created_at,
-          user_metadata: user.user_metadata,
+          user_metadata: userMetadata,
         };
       });
 
@@ -247,25 +238,32 @@ const Configuration = () => {
     try {
       const { data, error } = await supabase.from("stores").select("*").order("name");
 
-      if (error) throw error;
+      if (error) {
+        // If stores table doesn't exist, create it
+        if (error.code === "PGRST116") {
+          await createStoresTable();
+          return;
+        }
+        throw error;
+      }
 
-      setStores((data as Store[]) || []);
+      // Ensure all stores have a status field
+      const storesWithStatus: Store[] = (data || []).map((store) => ({
+        ...store,
+        status: store.status || "active",
+      }));
+
+      setStores(storesWithStatus);
     } catch (error: any) {
       console.error("Error loading stores:", error);
-
-      // If stores table doesn't exist, create it and some sample data
-      if (error.code === "PGRST116") {
-        await createStoresTable();
-        toast.info("Stores table created. Please add some stores.");
-      } else {
-        toast.error("Failed to load stores: " + error.message);
-      }
+      toast.error("Failed to load stores: " + error.message);
     }
   };
 
   // Create stores table if it doesn't exist
   const createStoresTable = async () => {
     try {
+      // First, let's check if we can create the table by trying to insert a store
       const { error } = await supabase.from("stores").insert([
         {
           name: "Main Store",
@@ -276,15 +274,37 @@ const Configuration = () => {
         },
       ]);
 
-      if (error && error.code !== "23505") {
-        // Ignore duplicate key errors
-        throw error;
+      if (error) {
+        // If we get a column error, the table exists but missing columns
+        if (error.message.includes("column")) {
+          await addMissingStoreColumns();
+        } else if (error.code !== "23505") {
+          // Ignore duplicate key errors
+          throw error;
+        }
       }
 
-      // Reload stores after creating table
+      // Reload stores after creating table/columns
       loadStores();
     } catch (error: any) {
-      console.error("Error creating stores table:", error);
+      console.error("Error setting up stores table:", error);
+      toast.error(
+        "Please create a 'stores' table in your Supabase database with columns: id, name, address, phone, manager, status, created_at",
+      );
+    }
+  };
+
+  // Add missing columns to stores table
+  const addMissingStoreColumns = async () => {
+    try {
+      // Try to update existing stores to add status field
+      const { error } = await supabase.from("stores").update({ status: "active" }).is("status", null);
+
+      if (error) {
+        console.log("Status column might not exist yet, continuing...");
+      }
+    } catch (error) {
+      console.log("Could not update stores, column might not exist");
     }
   };
 
@@ -374,21 +394,6 @@ const Configuration = () => {
 
       if (error) throw error;
 
-      // Add user role to custom table (if you have one)
-      try {
-        const { error: roleError } = await supabase.from("user_roles").insert({
-          user_id: data.user.id,
-          role: newUser.role,
-          status: newUser.status,
-        });
-
-        if (roleError && roleError.code !== "PGRST116") {
-          console.error("Error adding user role:", roleError);
-        }
-      } catch (roleError) {
-        console.error("Role table might not exist:", roleError);
-      }
-
       toast.success("User added successfully");
       setShowUserDialog(false);
       setNewUser({
@@ -409,13 +414,21 @@ const Configuration = () => {
     if (!newStore.name.trim()) return toast.error("Please enter store name");
 
     try {
-      const { error } = await supabase.from("stores").insert({
+      const storeData: any = {
         name: newStore.name,
         address: newStore.address,
         phone: newStore.phone,
         manager: newStore.manager,
-        status: newStore.status,
-      });
+      };
+
+      // Only add status if the column exists
+      try {
+        storeData.status = newStore.status;
+      } catch (error) {
+        console.log("Status column might not exist, skipping...");
+      }
+
+      const { error } = await supabase.from("stores").insert(storeData);
 
       if (error) throw error;
 
@@ -437,18 +450,7 @@ const Configuration = () => {
 
   const updateUserRole = async (userId: string, newRole: UserRole["role"]) => {
     try {
-      // Update user role in custom table
-      const { error } = await supabase.from("user_roles").upsert({
-        user_id: userId,
-        role: newRole,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (error && error.code !== "PGRST116") {
-        throw error;
-      }
-
-      // Also update user metadata in Auth
+      // Update user metadata in Auth
       const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
         user_metadata: { role: newRole },
       });
@@ -494,9 +496,18 @@ const Configuration = () => {
     try {
       const newStatus = currentStatus === "active" ? "inactive" : "active";
 
+      // Try to update status, but handle case where column doesn't exist
       const { error } = await supabase.from("stores").update({ status: newStatus }).eq("id", storeId);
 
-      if (error) throw error;
+      if (error) {
+        // If status column doesn't exist, just reload stores without updating
+        if (error.message.includes("status")) {
+          console.log("Status column does not exist, skipping status update");
+          loadStores();
+          return;
+        }
+        throw error;
+      }
 
       toast.success(`Store ${newStatus}`);
       loadStores();
@@ -508,9 +519,13 @@ const Configuration = () => {
 
   const resetUserPassword = async (userId: string) => {
     try {
-      const { error } = await supabase.auth.admin.resetPasswordForEmail(
-        users.find((u) => u.id === userId)?.email || "",
-      );
+      const userEmail = users.find((u) => u.id === userId)?.email;
+      if (!userEmail) {
+        toast.error("User email not found");
+        return;
+      }
+
+      const { error } = await supabase.auth.admin.resetPasswordForEmail(userEmail);
 
       if (error) throw error;
 
@@ -776,28 +791,38 @@ const Configuration = () => {
                         <Store className="w-6 h-6 text-blue-600" />
                         <div>
                           <h4 className="font-semibold">{store.name}</h4>
-                          <Badge variant={store.status === "active" ? "success" : "secondary"}>{store.status}</Badge>
+                          {store.status && (
+                            <Badge variant={store.status === "active" ? "success" : "secondary"}>{store.status}</Badge>
+                          )}
                         </div>
                       </div>
-                      <Switch
-                        checked={store.status === "active"}
-                        onCheckedChange={() => toggleStoreStatus(store.id, store.status)}
-                      />
+                      {store.status && (
+                        <Switch
+                          checked={store.status === "active"}
+                          onCheckedChange={() => toggleStoreStatus(store.id, store.status)}
+                        />
+                      )}
                     </div>
 
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <LocateIcon className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">{store.address}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Phone className="w-4 h-4 text-muted-foreground" />
-                        <span>{store.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                        <span>Manager: {store.manager}</span>
-                      </div>
+                      {store.address && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <LocateIcon className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">{store.address}</span>
+                        </div>
+                      )}
+                      {store.phone && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Phone className="w-4 h-4 text-muted-foreground" />
+                          <span>{store.phone}</span>
+                        </div>
+                      )}
+                      {store.manager && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <span>Manager: {store.manager}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex gap-2 mt-4">
