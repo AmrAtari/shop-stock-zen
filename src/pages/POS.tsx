@@ -4,8 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { QRCodeSVG } from "qrcode.react";
-
 import {
   ShoppingCart,
   Trash2,
@@ -20,7 +18,7 @@ import {
   XCircle,
   Send,
 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import QRCode from "react-qr-code"; // ✅ new library
 import ReceiptPrint from "./Receipt";
 
 interface Item {
@@ -82,22 +80,14 @@ const POS = () => {
   };
 
   const removeFromCart = (id: number) => setCart(cart.filter((c) => c.id !== id));
-
-  const updateQuantity = (id: number, qty: number) => {
+  const updateQuantity = (id: number, qty: number) =>
     setCart(cart.map((c) => (c.id === id ? { ...c, quantity: Math.max(1, qty) } : c)));
-  };
 
   const total = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
 
   const checkout = async () => {
-    if (!paymentMethod) {
-      toast.warning("Please select a payment method");
-      return;
-    }
-    if (cart.length === 0) {
-      toast.warning("Cart is empty");
-      return;
-    }
+    if (!paymentMethod) return toast.warning("Select a payment method");
+    if (cart.length === 0) return toast.warning("Cart is empty");
 
     setLoading(true);
     const saleRecord: SaleRecord = {
@@ -109,29 +99,24 @@ const POS = () => {
     };
 
     try {
-      const { error } = await supabase.from("sales").insert(saleRecord);
+      const { error } = await supabase.from("sales").insert([saleRecord]);
       if (error) throw error;
 
-      toast.success(`Sale completed with ${paymentMethod}`);
+      toast.success(`Sale completed (${paymentMethod})`);
       setLastSale(saleRecord);
       setCart([]);
       setShowCheckout(false);
       setPaymentMethod("");
       fetchItems();
-    } catch (err: any) {
+    } catch {
       toast.error("Checkout failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRefund = async (item: CartItem) => {
-    toast.info(`Refund processed for ${item.name}`);
-  };
-
-  const handleStockTransfer = async () => {
-    toast.info("Transfer request sent to warehouse");
-  };
+  const handleRefund = (item: CartItem) => toast.info(`Refund processed for ${item.name}`);
+  const handleStockTransfer = () => toast.info("Transfer request sent to warehouse");
 
   return (
     <div className="flex flex-col min-h-screen bg-background p-4">
@@ -147,7 +132,7 @@ const POS = () => {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-grow">
-        {/* Left Section - Search & Items */}
+        {/* Products */}
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle>Products</CardTitle>
@@ -191,7 +176,7 @@ const POS = () => {
           </CardContent>
         </Card>
 
-        {/* Right Section - Cart */}
+        {/* Cart */}
         <Card>
           <CardHeader>
             <CardTitle>Cart</CardTitle>
@@ -290,7 +275,7 @@ const POS = () => {
       {lastSale && (
         <div className="fixed bottom-4 right-4 bg-card p-3 rounded-xl shadow-xl border">
           <p className="font-bold">Invoice #{lastSale.id}</p>
-          <QRCode value={lastSale.id} size={80} />
+          <QRCode value={lastSale.id} size={80} /> {/* ✅ updated */}
           <div className="flex gap-2 mt-2">
             <Button size="sm" onClick={() => window.print()}>
               <Printer className="w-4 h-4 mr-1" /> Print
