@@ -8,6 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { Package, ShoppingCart, Boxes } from "lucide-react";
 
+// Define the type for your user_roles table
+interface UserRoleAccess {
+  platform: "POS" | "Inventory"; // must match your table column
+  role: "admin" | "cashier" | "inventory_man" | "supervisor" | "user";
+}
+
 const Auth = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -15,6 +21,7 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<"POS" | "Inventory" | null>(null);
 
+  // Redirect if already logged in
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate("/");
@@ -23,28 +30,33 @@ const Auth = () => {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!selectedPlatform) {
       toast.error("Please select a platform first");
       return;
     }
+
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Sign in with Supabase
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (authError || !authData.user) throw authError || new Error("Failed to sign in");
 
-      const user = data.user;
+      const userId = authData.user.id;
 
-      // Example: Fetch access rights from Supabase
-      const { data: access } = await supabase
-        .from("user_roles")
-        .select("platform")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // Fetch platform access from Supabase
+      const { data: access, error: accessError } = await supabase
+        .from<UserRoleAccess>("user_roles")
+        .select("platform, role")
+        .eq("user_id", userId)
+        .maybeSingle(); // returns null if no record
+
+      if (accessError) throw accessError;
 
       if (!access || access.platform !== selectedPlatform) {
         toast.error(`You do not have access to the ${selectedPlatform} system.`);
@@ -52,7 +64,7 @@ const Auth = () => {
         return;
       }
 
-      // Redirect based on platform
+      // Redirect based on selected platform
       if (selectedPlatform === "POS") {
         navigate("/pos");
       } else {
@@ -65,6 +77,7 @@ const Auth = () => {
     }
   };
 
+  // Platform selection screen
   if (!selectedPlatform) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -95,6 +108,7 @@ const Auth = () => {
     );
   }
 
+  // Sign-in form screen
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
