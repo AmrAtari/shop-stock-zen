@@ -1,6 +1,6 @@
 import React from "react";
 import { QRCodeSVG } from "qrcode.react";
-
+import QRCode from "react-qr-code";
 interface ReceiptProps {
   saleId: string;
   items: any[];
@@ -33,7 +33,7 @@ const ReceiptPrint: React.FC<ReceiptProps> = ({ saleId, items, total, method }) 
         </tbody>
       </table>
       <h2 className="font-bold mt-2">Total: ${total.toFixed(2)}</h2>
-      <QRCodeSVG value={saleId} size={100} className="mx-auto mt-2" />
+      <QRCode value={saleId} size={100} className="mx-auto mt-2" />
       <p className="text-xs mt-3">Thank you for your purchase!</p>
     </div>
   );
