@@ -73,7 +73,7 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-          />
+
           <Route
             path="/POS"
             element={
