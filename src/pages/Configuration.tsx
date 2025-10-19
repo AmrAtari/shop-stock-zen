@@ -70,18 +70,6 @@ interface Attribute {
   created_at?: string;
 }
 
-interface UserRole {
-  id: string;
-  email: string;
-  role: "admin" | "manager" | "cashier" | "viewer";
-  status: "active" | "inactive";
-  last_sign_in_at?: string;
-  created_at: string;
-  user_metadata?: {
-    full_name?: string;
-  };
-}
-
 interface Store {
   id: string;
   name: string;
@@ -121,17 +109,6 @@ const Configuration = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // User Management States
-  const [users, setUsers] = useState<UserRole[]>([]);
-  const [showUserDialog, setShowUserDialog] = useState(false);
-  const [newUser, setNewUser] = useState({
-    email: "",
-    password: "",
-    role: "cashier" as UserRole["role"],
-    status: "active" as UserRole["status"],
-    full_name: "",
-  });
-
   // Store Management States
   const [stores, setStores] = useState<Store[]>([]);
   const [showStoreDialog, setShowStoreDialog] = useState(false);
@@ -161,7 +138,6 @@ const Configuration = () => {
   useEffect(() => {
     const saved = localStorage.getItem("customCatalogs");
     if (saved) setCatalogs(JSON.parse(saved));
-    loadUsers();
     loadStores();
   }, []);
 
@@ -202,82 +178,6 @@ const Configuration = () => {
     } catch (err: any) {
       console.error(`Error loading ${table}:`, err);
       toast.error(err.message || `Error loading ${table}`);
-    }
-  };
-
-  // Load users from custom user_profiles table
-  const loadUsers = async () => {
-    try {
-      // First, try to get users from a custom user_profiles table
-      const { data: profiles, error: profilesError } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (!profilesError && profiles) {
-        // If we have a custom profiles table, use that
-        const formattedUsers: UserRole[] = profiles.map((profile) => ({
-          id: profile.id,
-          email: profile.email,
-          role: profile.role || "cashier",
-          status: profile.status || "active",
-          last_sign_in_at: profile.last_sign_in_at,
-          created_at: profile.created_at,
-          user_metadata: {
-            full_name: profile.full_name,
-          },
-        }));
-        setUsers(formattedUsers);
-        return;
-      }
-
-      // Fallback: Use mock data since we can't access Auth users directly
-      console.log("No user_profiles table, using mock data");
-      const mockUsers: UserRole[] = [
-        {
-          id: "1",
-          email: "admin@company.com",
-          role: "admin",
-          status: "active",
-          last_sign_in_at: "2024-01-15T10:30:00Z",
-          created_at: "2024-01-01T00:00:00Z",
-          user_metadata: { full_name: "System Administrator" },
-        },
-        {
-          id: "2",
-          email: "manager@company.com",
-          role: "manager",
-          status: "active",
-          last_sign_in_at: "2024-01-15T09:15:00Z",
-          created_at: "2024-01-02T00:00:00Z",
-          user_metadata: { full_name: "Store Manager" },
-        },
-        {
-          id: "3",
-          email: "cashier@company.com",
-          role: "cashier",
-          status: "active",
-          last_sign_in_at: "2024-01-14T16:45:00Z",
-          created_at: "2024-01-03T00:00:00Z",
-          user_metadata: { full_name: "Cashier User" },
-        },
-      ];
-      setUsers(mockUsers);
-    } catch (error: any) {
-      console.error("Error loading users:", error);
-      // Fallback to mock data
-      const mockUsers: UserRole[] = [
-        {
-          id: "1",
-          email: "admin@company.com",
-          role: "admin",
-          status: "active",
-          created_at: "2024-01-01T00:00:00Z",
-          user_metadata: { full_name: "System Administrator" },
-        },
-      ];
-      setUsers(mockUsers);
-      toast.error("Using demo user data. Create a 'user_profiles' table for real user management.");
     }
   };
 
@@ -410,67 +310,6 @@ const Configuration = () => {
     XLSX.writeFile(wb, `${activeCatalog?.label || "data"}.xlsx`);
   };
 
-  const handleAddUser = async () => {
-    if (!newUser.email.trim()) return toast.error("Please enter email");
-    if (!newUser.password.trim()) return toast.error("Please enter password");
-
-    try {
-      // Try to create user in custom user_profiles table instead of Auth
-      const { data, error } = await supabase
-        .from("user_profiles")
-        .insert({
-          email: newUser.email,
-          full_name: newUser.full_name,
-          role: newUser.role,
-          status: newUser.status,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) {
-        // If user_profiles table doesn't exist, show instructions
-        if (error.code === "PGRST116") {
-          toast.error("Please create a 'user_profiles' table in Supabase. See instructions in console.");
-          console.log(`
-            To enable user management, create this table in your Supabase SQL editor:
-            
-            CREATE TABLE user_profiles (
-              id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-              email TEXT UNIQUE NOT NULL,
-              full_name TEXT,
-              role TEXT DEFAULT 'cashier',
-              status TEXT DEFAULT 'active',
-              last_sign_in_at TIMESTAMP WITH TIME ZONE,
-              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-            
-            -- Insert sample admin user
-            INSERT INTO user_profiles (email, full_name, role, status) 
-            VALUES ('admin@company.com', 'System Administrator', 'admin', 'active');
-          `);
-          return;
-        }
-        throw error;
-      }
-
-      toast.success("User added successfully to user_profiles table");
-      setShowUserDialog(false);
-      setNewUser({
-        email: "",
-        password: "",
-        role: "cashier",
-        status: "active",
-        full_name: "",
-      });
-      loadUsers();
-    } catch (error: any) {
-      console.error("Error adding user:", error);
-      toast.error("Failed to add user: " + error.message);
-    }
-  };
-
   const handleAddStore = async () => {
     if (!newStore.name.trim()) return toast.error("Please enter store name");
 
@@ -509,62 +348,6 @@ const Configuration = () => {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: UserRole["role"]) => {
-    try {
-      // Update user role in custom user_profiles table
-      const { error } = await supabase
-        .from("user_profiles")
-        .update({
-          role: newRole,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId);
-
-      if (error) {
-        if (error.code === "PGRST116") {
-          toast.info("User roles updated in demo mode (no database persistence)");
-          return;
-        }
-        throw error;
-      }
-
-      toast.success("User role updated");
-      loadUsers();
-    } catch (error: any) {
-      console.error("Error updating user role:", error);
-      toast.error("Failed to update user role: " + error.message);
-    }
-  };
-
-  const toggleUserStatus = async (userId: string, currentStatus: UserRole["status"]) => {
-    try {
-      const newStatus = currentStatus === "active" ? "inactive" : "active";
-
-      // Update user status in custom user_profiles table
-      const { error } = await supabase
-        .from("user_profiles")
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId);
-
-      if (error) {
-        if (error.code === "PGRST116") {
-          toast.info("User status updated in demo mode (no database persistence)");
-          return;
-        }
-        throw error;
-      }
-
-      toast.success(`User ${newStatus}`);
-      loadUsers();
-    } catch (error: any) {
-      console.error("Error updating user status:", error);
-      toast.error("Failed to update user status: " + error.message);
-    }
-  };
-
   const toggleStoreStatus = async (storeId: string, currentStatus: Store["status"]) => {
     try {
       const newStatus = currentStatus === "active" ? "inactive" : "active";
@@ -595,28 +378,6 @@ const Configuration = () => {
     }
   };
 
-  const resetUserPassword = async (userId: string) => {
-    try {
-      const userEmail = users.find((u) => u.id === userId)?.email;
-      if (!userEmail) {
-        toast.error("User email not found");
-        return;
-      }
-
-      // Use the regular auth resetPasswordForEmail method
-      const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-
-      if (error) throw error;
-
-      toast.success("Password reset email sent");
-    } catch (error: any) {
-      console.error("Error resetting password:", error);
-      toast.error("Password reset requires real user authentication setup");
-    }
-  };
-
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
@@ -633,14 +394,10 @@ const Configuration = () => {
       </div>
 
       <Tabs defaultValue="stock" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="stock" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
             Stock Attributes
-          </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Users & Roles
           </TabsTrigger>
           <TabsTrigger value="stores" className="flex items-center gap-2">
             <Store className="w-4 h-4" />
@@ -702,158 +459,6 @@ const Configuration = () => {
                   </Card>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Users & Roles Section */}
-        <TabsContent value="users" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                User Management & Roles
-              </CardTitle>
-              <CardDescription>Manage system users and assign roles and permissions</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">System Users</h3>
-                <Button onClick={() => setShowUserDialog(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add User
-                </Button>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                <div className="flex items-center">
-                  <Shield className="w-5 h-5 text-yellow-600 mr-2" />
-                  <div>
-                    <h4 className="font-semibold text-yellow-800">User Management Setup</h4>
-                    <p className="text-yellow-700 text-sm">
-                      For full user management, create a 'user_profiles' table in your Supabase database. Currently
-                      showing demo data.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Last Login</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <User className="w-4 h-4 text-blue-600" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{user.email}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {user.user_metadata?.full_name || "No name"} • Joined{" "}
-                              {new Date(user.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={user.role}
-                          onValueChange={(value: UserRole["role"]) => updateUserRole(user.id, value)}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="cashier">Cashier</SelectItem>
-                            <SelectItem value="viewer">Viewer</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={user.status === "active"}
-                            onCheckedChange={() => toggleUserStatus(user.id, user.status)}
-                          />
-                          <Badge variant={user.status === "active" ? "success" : "secondary"}>{user.status}</Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {user.last_sign_in_at ? (
-                          new Date(user.last_sign_in_at).toLocaleDateString()
-                        ) : (
-                          <span className="text-muted-foreground">Never</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => resetUserPassword(user.id)}>
-                            <Key className="w-4 h-4 mr-1" />
-                            Reset Password
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              {/* Role Permissions Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Role Permissions</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="space-y-2 p-4 border rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4 text-red-600" />
-                        <h4 className="font-semibold">Admin</h4>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Full system access, user management, all configurations
-                      </p>
-                    </div>
-                    <div className="space-y-2 p-4 border rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-blue-600" />
-                        <h4 className="font-semibold">Manager</h4>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Inventory management, reports, basic configurations
-                      </p>
-                    </div>
-                    <div className="space-y-2 p-4 border rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Package className="w-4 h-4 text-green-600" />
-                        <h4 className="font-semibold">Cashier</h4>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        POS operations, sales, refunds, basic inventory view
-                      </p>
-                    </div>
-                    <div className="space-y-2 p-4 border rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Eye className="w-4 h-4 text-gray-600" />
-                        <h4 className="font-semibold">Viewer</h4>
-                      </div>
-                      <p className="text-sm text-muted-foreground">Read-only access to inventory and reports</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1004,77 +609,6 @@ const Configuration = () => {
             >
               Save Attribute
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add User Modal */}
-      <Dialog open={showUserDialog} onOpenChange={setShowUserDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
-            <DialogDescription>Create a new user account and assign permissions</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="user-fullname">Full Name</Label>
-              <Input
-                id="user-fullname"
-                placeholder="John Doe"
-                value={newUser.full_name}
-                onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="user-email">Email Address</Label>
-              <Input
-                id="user-email"
-                type="email"
-                placeholder="user@company.com"
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="user-password">Password</Label>
-              <Input
-                id="user-password"
-                type="password"
-                placeholder="Enter password"
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="user-role">Role</Label>
-              <Select
-                value={newUser.role}
-                onValueChange={(value: UserRole["role"]) => setNewUser({ ...newUser, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Administrator</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="cashier">Cashier</SelectItem>
-                  <SelectItem value="viewer">Viewer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={newUser.status === "active"}
-                onCheckedChange={(checked) => setNewUser({ ...newUser, status: checked ? "active" : "inactive" })}
-              />
-              <Label>Active User</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUserDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddUser}>Create User</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
