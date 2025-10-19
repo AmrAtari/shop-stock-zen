@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { Package, ShoppingCart, Boxes } from "lucide-react";
 
-// Define the type for your user_roles table
 interface UserRoleAccess {
-  platform: "POS" | "Inventory"; // must match your table column
+  user_id: string;
+  platform: "POS" | "Inventory";
   role: "admin" | "cashier" | "inventory_man" | "supervisor" | "user";
 }
 
@@ -21,7 +21,6 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<"POS" | "Inventory" | null>(null);
 
-  // Redirect if already logged in
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate("/");
@@ -30,7 +29,6 @@ const Auth = () => {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!selectedPlatform) {
       toast.error("Please select a platform first");
       return;
@@ -39,37 +37,29 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // Sign in with Supabase
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-
       if (authError || !authData.user) throw authError || new Error("Failed to sign in");
 
       const userId = authData.user.id;
 
-      // Fetch platform access from Supabase
       const { data: access, error: accessError } = await supabase
-        .from<UserRoleAccess>("user_roles")
+        .from<UserRoleAccess, UserRoleAccess>("user_roles")
         .select("platform, role")
         .eq("user_id", userId)
-        .maybeSingle(); // returns null if no record
+        .maybeSingle();
 
       if (accessError) throw accessError;
-
       if (!access || access.platform !== selectedPlatform) {
         toast.error(`You do not have access to the ${selectedPlatform} system.`);
         await supabase.auth.signOut();
         return;
       }
 
-      // Redirect based on selected platform
-      if (selectedPlatform === "POS") {
-        navigate("/pos");
-      } else {
-        navigate("/inventory");
-      }
+      if (selectedPlatform === "POS") navigate("/pos");
+      else navigate("/inventory");
     } catch (error: any) {
       toast.error(error.message || "Failed to sign in");
     } finally {
@@ -77,7 +67,6 @@ const Auth = () => {
     }
   };
 
-  // Platform selection screen
   if (!selectedPlatform) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -91,16 +80,14 @@ const Auth = () => {
               onClick={() => setSelectedPlatform("POS")}
               className="flex items-center justify-center gap-2 text-lg py-6"
             >
-              <ShoppingCart className="w-6 h-6" />
-              Point of Sale (POS)
+              <ShoppingCart className="w-6 h-6" /> Point of Sale (POS)
             </Button>
             <Button
               variant="secondary"
               onClick={() => setSelectedPlatform("Inventory")}
               className="flex items-center justify-center gap-2 text-lg py-6"
             >
-              <Boxes className="w-6 h-6" />
-              Inventory System
+              <Boxes className="w-6 h-6" /> Inventory System
             </Button>
           </CardContent>
         </Card>
@@ -108,7 +95,6 @@ const Auth = () => {
     );
   }
 
-  // Sign-in form screen
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
