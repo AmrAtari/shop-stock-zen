@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import QRCode from "react-qr-code"; // make sure to npm install react-qr-code
+import QRCode from "react-qr-code"; // Make sure it's installed
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-// Item type
+// Types
 interface Item {
   id: string;
   name: string;
@@ -13,7 +13,6 @@ interface Item {
   sku: string;
 }
 
-// Sale type
 interface SaleRecord {
   id: string;
   item_id: string;
@@ -27,12 +26,12 @@ interface SaleRecord {
 const POS = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [sales, setSales] = useState<SaleRecord[]>([]);
-  const [isLoadingItems, setIsLoadingItems] = useState(false);
-  const [isLoadingSales, setIsLoadingSales] = useState(false);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [loadingSales, setLoadingSales] = useState(false);
 
-  // Fetch items from Supabase
+  // Fetch Items
   const fetchItems = async () => {
-    setIsLoadingItems(true);
+    setLoadingItems(true);
     try {
       const { data, error } = await supabase.from<Item>("items").select("*");
       if (error) throw error;
@@ -40,18 +39,17 @@ const POS = () => {
     } catch (err: any) {
       toast.error("Failed to fetch items: " + err.message);
     } finally {
-      setIsLoadingItems(false);
+      setLoadingItems(false);
     }
   };
 
-  // Fetch sales from Supabase
+  // Fetch Sales
   const fetchSales = async () => {
-    setIsLoadingSales(true);
+    setLoadingSales(true);
     try {
       const { data, error } = await supabase.from<SaleRecord>("sales").select("*");
       if (error) throw error;
       if (data) {
-        // Ensure role and user_id exist
         const fixedData = data.map((s) => ({
           ...s,
           role: s.role ?? "cashier",
@@ -62,7 +60,7 @@ const POS = () => {
     } catch (err: any) {
       toast.error("Failed to fetch sales: " + err.message);
     } finally {
-      setIsLoadingSales(false);
+      setLoadingSales(false);
     }
   };
 
@@ -77,7 +75,7 @@ const POS = () => {
 
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-2">Items</h2>
-        {isLoadingItems ? (
+        {loadingItems ? (
           <p>Loading items...</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -95,7 +93,7 @@ const POS = () => {
 
       <section>
         <h2 className="text-xl font-semibold mb-2">Sales</h2>
-        {isLoadingSales ? (
+        {loadingSales ? (
           <p>Loading sales...</p>
         ) : (
           <table className="w-full border-collapse border">
