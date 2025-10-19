@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
+
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
@@ -21,10 +22,7 @@ import TransferDetail from "./pages/TransferDetail";
 import PhysicalInventory from "./pages/PhysicalInventory";
 import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
 import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Auth from "@/pages/Auth";
-import POS from "@/pages/POS";
-import Inventory from "@/pages/Inventory";
+import POS from "./pages/POS";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,7 +34,10 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          {/* --- Public Route --- */}
           <Route path="/auth" element={<Auth />} />
+
+          {/* --- Protected Main Routes --- */}
           <Route
             path="/"
             element={
@@ -47,6 +48,18 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+
+          {/* --- POS Route (Protected) --- */}
+          <Route
+            path="/pos"
+            element={
+              <ProtectedRoute>
+                <POS />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* --- Inventory Management --- */}
           <Route
             path="/inventory"
             element={
@@ -58,26 +71,37 @@ const App = () => (
             }
           />
           <Route
-            path="/alerts"
+            path="/inventory/physical"
             element={
               <ProtectedRoute>
                 <Layout>
-                  <Alerts />
+                  <PhysicalInventory />
                 </Layout>
               </ProtectedRoute>
             }
           />
           <Route
-            path="/reports"
+            path="/inventory/physical/new"
             element={
               <ProtectedRoute>
                 <Layout>
-                  <Reports />
+                  <PhysicalInventoryNew />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory/physical/:id"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <PhysicalInventoryDetail />
                 </Layout>
               </ProtectedRoute>
             }
           />
 
+          {/* --- Purchases --- */}
           <Route
             path="/purchase-orders"
             element={
@@ -118,27 +142,8 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/stores"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <Stores />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
 
-          <Route
-            path="/duplicates"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <Duplicates />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
+          {/* --- Transfers --- */}
           <Route
             path="/transfers"
             element={
@@ -159,32 +164,44 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+
+          {/* --- Other Sections --- */}
           <Route
-            path="/inventory/physical"
+            path="/alerts"
             element={
               <ProtectedRoute>
                 <Layout>
-                  <PhysicalInventory />
+                  <Alerts />
                 </Layout>
               </ProtectedRoute>
             }
           />
           <Route
-            path="/inventory/physical/new"
+            path="/reports"
             element={
               <ProtectedRoute>
                 <Layout>
-                  <PhysicalInventoryNew />
+                  <Reports />
                 </Layout>
               </ProtectedRoute>
             }
           />
           <Route
-            path="/inventory/physical/:id"
+            path="/stores"
             element={
               <ProtectedRoute>
                 <Layout>
-                  <PhysicalInventoryDetail />
+                  <Stores />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/duplicates"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Duplicates />
                 </Layout>
               </ProtectedRoute>
             }
@@ -200,18 +217,7 @@ const App = () => (
             }
           />
 
-    <Router>
-      <Routes>
-        <Route path="/" element={<Auth />} />
-        <Route path="/pos" element={<POS />} />
-        <Route path="/inventory" element={<Inventory />} />
-      </Routes>
-    </Router>
-  );
-}
-
-export default App;
-
+          {/* --- Fallback --- */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
