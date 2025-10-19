@@ -70,6 +70,15 @@ interface Attribute {
   created_at?: string;
 }
 
+interface UserWithRole {
+  id: string;
+  email: string;
+  role: "admin" | "supervisor" | "inventory_man" | "cashier" | null;
+  created_at: string;
+  last_sign_in_at?: string;
+  email_confirmed_at?: string;
+}
+
 interface Store {
   id: string;
   name: string;
@@ -109,6 +118,12 @@ const Configuration = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
+  // User Management States
+  const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [showUserDialog, setShowUserDialog] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"admin" | "supervisor" | "inventory_man" | "cashier">("cashier");
+
   // Store Management States
   const [stores, setStores] = useState<Store[]>([]);
   const [showStoreDialog, setShowStoreDialog] = useState(false);
@@ -138,6 +153,7 @@ const Configuration = () => {
   useEffect(() => {
     const saved = localStorage.getItem("customCatalogs");
     if (saved) setCatalogs(JSON.parse(saved));
+    loadUsers();
     loadStores();
   }, []);
 
@@ -178,6 +194,20 @@ const Configuration = () => {
     } catch (err: any) {
       console.error(`Error loading ${table}:`, err);
       toast.error(err.message || `Error loading ${table}`);
+    }
+  };
+
+  // Load users via edge function
+  const loadUsers = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-list-users");
+      
+      if (error) throw error;
+      
+      setUsers(data.users || []);
+    } catch (error: any) {
+      console.error("Error loading users:", error);
+      toast.error("Failed to load users: " + error.message);
     }
   };
 
@@ -310,6 +340,61 @@ const Configuration = () => {
     XLSX.writeFile(wb, `${activeCatalog?.label || "data"}.xlsx`);
   };
 
+  const handleInviteUser = async () => {
+    if (!newUserEmail.trim()) return toast.error("Please enter email address");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-invite-user", {
+        body: { email: newUserEmail, role: newUserRole }
+      });
+
+      if (error) throw error;
+
+      toast.success(data.message);
+      setShowUserDialog(false);
+      setNewUserEmail("");
+      setNewUserRole("cashier");
+      loadUsers();
+    } catch (error: any) {
+      console.error("Error inviting user:", error);
+      toast.error("Failed to invite user: " + error.message);
+    }
+  };
+
+  const updateUserRole = async (userId: string, newRole: UserWithRole["role"]) => {
+    try {
+      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
+        body: { userId, role: newRole, action: "update" }
+      });
+
+      if (error) throw error;
+
+      toast.success("User role updated");
+      loadUsers();
+    } catch (error: any) {
+      console.error("Error updating user role:", error);
+      toast.error("Failed to update user role: " + error.message);
+    }
+  };
+
+  const deleteUserRole = async (userId: string) => {
+    if (!confirm("Remove role from this user?")) return;
+
+    try {
+      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
+        body: { userId, action: "delete" }
+      });
+
+      if (error) throw error;
+
+      toast.success("User role removed");
+      loadUsers();
+    } catch (error: any) {
+      console.error("Error deleting user role:", error);
+      toast.error("Failed to remove user role: " + error.message);
+    }
+  };
+
   const handleAddStore = async () => {
     if (!newStore.name.trim()) return toast.error("Please enter store name");
 
@@ -394,10 +479,14 @@ const Configuration = () => {
       </div>
 
       <Tabs defaultValue="stock" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="stock" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
             Stock Attributes
+          </TabsTrigger>
+          <TabsTrigger value="users" className="flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            Users & Roles
           </TabsTrigger>
           <TabsTrigger value="stores" className="flex items-center gap-2">
             <Store className="w-4 h-4" />
@@ -459,6 +548,144 @@ const Configuration = () => {
                   </Card>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Users & Roles Section */}
+        <TabsContent value="users" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                User Management & Roles
+              </CardTitle>
+              <CardDescription>Manage system users and assign roles and permissions</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">System Users</h3>
+                <Button onClick={() => setShowUserDialog(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Invite User
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Last Login</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <User className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{user.email}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Joined {new Date(user.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={user.role || ""}
+                          onValueChange={(value) => updateUserRole(user.id, value as UserWithRole["role"])}
+                        >
+                          <SelectTrigger className="w-40">
+                            <SelectValue placeholder="No role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="supervisor">Supervisor</SelectItem>
+                            <SelectItem value="inventory_man">Inventory Manager</SelectItem>
+                            <SelectItem value="cashier">Cashier</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        {user.email_confirmed_at ? (
+                          <Badge variant="default">Active</Badge>
+                        ) : (
+                          <Badge variant="secondary">Pending</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {user.last_sign_in_at ? (
+                          new Date(user.last_sign_in_at).toLocaleDateString()
+                        ) : (
+                          <span className="text-muted-foreground">Never</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => deleteUserRole(user.id)}
+                          disabled={!user.role}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Role Permissions Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Role Permissions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="space-y-2 p-4 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-red-600" />
+                        <h4 className="font-semibold">Admin</h4>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Full system access, user management, all configurations
+                      </p>
+                    </div>
+                    <div className="space-y-2 p-4 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-blue-600" />
+                        <h4 className="font-semibold">Supervisor</h4>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Approve POs, manage physical inventory, view reports
+                      </p>
+                    </div>
+                    <div className="space-y-2 p-4 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Package className="w-4 h-4 text-green-600" />
+                        <h4 className="font-semibold">Inventory Manager</h4>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Create POs, conduct counts, manage transfers
+                      </p>
+                    </div>
+                    <div className="space-y-2 p-4 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-gray-600" />
+                        <h4 className="font-semibold">Cashier</h4>
+                      </div>
+                      <p className="text-sm text-muted-foreground">View-only access to inventory</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </CardContent>
           </Card>
         </TabsContent>
@@ -609,6 +836,51 @@ const Configuration = () => {
             >
               Save Attribute
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite User Modal */}
+      <Dialog open={showUserDialog} onOpenChange={setShowUserDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite New User</DialogTitle>
+            <DialogDescription>Send an invitation to a new user and assign their role</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="user-email">Email Address</Label>
+              <Input
+                id="user-email"
+                type="email"
+                placeholder="user@company.com"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="user-role">Role</Label>
+              <Select
+                value={newUserRole}
+                onValueChange={(value) => setNewUserRole(value as typeof newUserRole)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="supervisor">Supervisor</SelectItem>
+                  <SelectItem value="inventory_man">Inventory Manager</SelectItem>
+                  <SelectItem value="cashier">Cashier</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUserDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleInviteUser}>Send Invitation</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
