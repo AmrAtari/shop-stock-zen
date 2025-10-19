@@ -50,6 +50,7 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useNavigate } from "react-router-dom";
+import { UserPermissionsDialog } from "@/components/UserPermissionsDialog";
 
 type AttributeTable =
   | "categories"
@@ -123,6 +124,8 @@ const Configuration = () => {
   const [showUserDialog, setShowUserDialog] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "supervisor" | "inventory_man" | "cashier">("cashier");
+  const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
+  const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
 
   // Store Management States
   const [stores, setStores] = useState<Store[]>([]);
@@ -628,14 +631,27 @@ const Configuration = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => deleteUserRole(user.id)}
-                          disabled={!user.role}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowPermissionsDialog(true);
+                            }}
+                          >
+                            <Shield className="w-4 h-4 mr-1" />
+                            Permissions
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => deleteUserRole(user.id)}
+                            disabled={!user.role}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1065,6 +1081,14 @@ const Configuration = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* User Permissions Dialog */}
+      <UserPermissionsDialog
+        open={showPermissionsDialog}
+        onOpenChange={setShowPermissionsDialog}
+        user={selectedUser}
+        onSave={updateUserRole}
+      />
     </div>
   );
 };
