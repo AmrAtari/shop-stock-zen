@@ -1,40 +1,91 @@
-import React from "react";
-import QRCode from "react-qr-code";
+import { useEffect, useState } from "react";
+import QRCode from "react-qr-code"; // make sure it's installed
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
-interface ReceiptProps {
-  saleId: string;
-  items: any[];
-  total: number;
-  method: string;
+// Receipt / Sale type
+interface SaleRecord {
+  id: string;
+  item_id: string;
+  quantity: number;
+  price: number;
+  created_at: string;
+  role: "admin" | "cashier" | "inventory_man" | "supervisor" | "user";
+  user_id: string;
+  sku?: string; // optional if we want to show QR code
 }
 
-const ReceiptPrint: React.FC<ReceiptProps> = ({ saleId, items, total, method }) => (
-  <div className="p-4 text-center">
-    <h1 className="text-xl font-bold">Store Receipt</h1>
-    <p>Invoice: {saleId}</p>
-    <p>Payment: {method}</p>
-    <table className="w-full text-left text-sm mt-4 border-t border-b">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th>Qty</th>
-          <th>Price</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((i) => (
-          <tr key={i.id}>
-            <td>{i.name}</td>
-            <td>{i.quantity}</td>
-            <td>${(i.price * i.quantity).toFixed(2)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-    <h2 className="font-bold mt-2">Total: ${total.toFixed(2)}</h2>
-    <QRCode value={saleId} size={100} className="mx-auto mt-2" /> {/* ✅ updated */}
-    <p className="text-xs mt-3">Thank you for your purchase!</p>
-  </div>
-);
+const Receipt = () => {
+  const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-export default ReceiptPrint;
+  // Fetch sales / receipts
+  const fetchSales = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.from<SaleRecord>("sales").select("*");
+      if (error) throw error;
+
+      if (data) {
+        const fixedData = data.map((s) => ({
+          ...s,
+          role: s.role ?? "cashier",
+          user_id: s.user_id ?? "unknown",
+        }));
+        setSales(fixedData);
+      }
+    } catch (err: any) {
+      toast.error("Failed to fetch receipts: " + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSales();
+  }, []);
+
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Receipts</h1>
+
+      {isLoading ? (
+        <p>Loading receipts...</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {sales.map((sale) => (
+            <div key={sale.id} className="p-4 border rounded flex flex-col gap-2">
+              <h2 className="font-semibold">Receipt ID: {sale.id}</h2>
+              <p>Item ID: {sale.item_id}</p>
+              <p>Quantity: {sale.quantity}</p>
+              <p>Price: ${sale.price}</p>
+              <p>Role: {sale.role}</p>
+              <p>User ID: {sale.user_id}</p>
+              <p>Date: {new Date(sale.created_at).toLocaleString()}</p>
+
+              {/* QR code for receipt */}
+              <div className="mt-2 flex justify-center">
+                <QRCode
+                  value={JSON.stringify({
+                    receipt_id: sale.id,
+                    item_id: sale.item_id,
+                    quantity: sale.quantity,
+                    price: sale.price,
+                  })}
+                  size={128}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Button className="mt-4" onClick={fetchSales}>
+        Refresh Receipts
+      </Button>
+    </div>
+  );
+};
+
+export default Receipt;
