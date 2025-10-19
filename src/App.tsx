@@ -21,6 +21,10 @@ import TransferDetail from "./pages/TransferDetail";
 import PhysicalInventory from "./pages/PhysicalInventory";
 import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
 import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Auth from "@/pages/Auth";
+import POS from "@/pages/POS";
+import Inventory from "@/pages/Inventory";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -195,6 +199,18 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+
+    <Router>
+      <Routes>
+        <Route path="/" element={<Auth />} />
+        <Route path="/pos" element={<POS />} />
+        <Route path="/inventory" element={<Inventory />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;
 
           <Route path="*" element={<NotFound />} />
         </Routes>
