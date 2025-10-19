@@ -75,16 +75,6 @@ const App = () => (
           />
 
           <Route
-            path="/POS"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <POS />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/purchase-orders"
             element={
               <ProtectedRoute>
