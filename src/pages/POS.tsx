@@ -290,7 +290,7 @@ const POS = () => {
       {lastSale && (
         <div className="fixed bottom-4 right-4 bg-card p-3 rounded-xl shadow-xl border">
           <p className="font-bold">Invoice #{lastSale.id}</p>
-          <QRCodeSVG value={lastSale.id} size={80} />
+          <QRCode value={lastSale.id} size={80} />
           <div className="flex gap-2 mt-2">
             <Button size="sm" onClick={() => window.print()}>
               <Printer className="w-4 h-4 mr-1" /> Print
