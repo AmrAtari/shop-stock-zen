@@ -8,8 +8,7 @@ import { toast } from "sonner";
 interface Item {
   id: string;
   name: string;
-  price: number;
-  stock: number;
+  quantity: number;
   sku: string;
 }
 
@@ -19,8 +18,8 @@ interface SaleRecord {
   quantity: number;
   price: number;
   created_at: string;
-  role: "admin" | "cashier" | "inventory_man" | "supervisor" | "user";
   user_id: string;
+  sku?: string;
 }
 
 const POS = () => {
@@ -33,9 +32,9 @@ const POS = () => {
   const fetchItems = async () => {
     setLoadingItems(true);
     try {
-      const { data, error } = await supabase.from<Item>("items").select("*");
+      const { data, error } = await supabase.from("items").select("*");
       if (error) throw error;
-      if (data) setItems(data);
+      if (data) setItems(data as Item[]);
     } catch (err: any) {
       toast.error("Failed to fetch items: " + err.message);
     } finally {
@@ -47,16 +46,9 @@ const POS = () => {
   const fetchSales = async () => {
     setLoadingSales(true);
     try {
-      const { data, error } = await supabase.from<SaleRecord>("sales").select("*");
+      const { data, error } = await supabase.from("sales").select("*");
       if (error) throw error;
-      if (data) {
-        const fixedData = data.map((s) => ({
-          ...s,
-          role: s.role ?? "cashier",
-          user_id: s.user_id ?? "unknown",
-        }));
-        setSales(fixedData);
-      }
+      if (data) setSales(data as SaleRecord[]);
     } catch (err: any) {
       toast.error("Failed to fetch sales: " + err.message);
     } finally {
@@ -82,8 +74,7 @@ const POS = () => {
             {items.map((item) => (
               <div key={item.id} className="p-4 border rounded flex flex-col items-center gap-2">
                 <h3 className="font-medium">{item.name}</h3>
-                <p>Price: ${item.price}</p>
-                <p>Stock: {item.stock}</p>
+                <p>Stock: {item.quantity}</p>
                 <QRCode value={item.sku} size={128} />
               </div>
             ))}
@@ -102,8 +93,6 @@ const POS = () => {
                 <th className="border px-2 py-1">Item ID</th>
                 <th className="border px-2 py-1">Quantity</th>
                 <th className="border px-2 py-1">Price</th>
-                <th className="border px-2 py-1">Role</th>
-                <th className="border px-2 py-1">User ID</th>
                 <th className="border px-2 py-1">Date</th>
               </tr>
             </thead>
@@ -113,8 +102,6 @@ const POS = () => {
                   <td className="border px-2 py-1">{sale.item_id}</td>
                   <td className="border px-2 py-1">{sale.quantity}</td>
                   <td className="border px-2 py-1">${sale.price}</td>
-                  <td className="border px-2 py-1">{sale.role}</td>
-                  <td className="border px-2 py-1">{sale.user_id}</td>
                   <td className="border px-2 py-1">{new Date(sale.created_at).toLocaleString()}</td>
                 </tr>
               ))}

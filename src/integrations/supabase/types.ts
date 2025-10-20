@@ -664,6 +664,44 @@ export type Database = {
           },
         ]
       }
+      sales: {
+        Row: {
+          created_at: string
+          id: string
+          item_id: string
+          price: number
+          quantity: number
+          sku: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_id: string
+          price: number
+          quantity?: number
+          sku?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_id?: string
+          price?: number
+          quantity?: number
+          sku?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       seasons: {
         Row: {
           created_at: string

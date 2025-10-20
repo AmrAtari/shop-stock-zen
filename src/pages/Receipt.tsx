@@ -11,9 +11,8 @@ interface SaleRecord {
   quantity: number;
   price: number;
   created_at: string;
-  role: "admin" | "cashier" | "inventory_man" | "supervisor" | "user";
   user_id: string;
-  sku?: string; // optional if we want to show QR code
+  sku?: string;
 }
 
 const Receipt = () => {
@@ -24,17 +23,10 @@ const Receipt = () => {
   const fetchSales = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.from<SaleRecord>("sales").select("*");
+      const { data, error } = await supabase.from("sales").select("*");
       if (error) throw error;
 
-      if (data) {
-        const fixedData = data.map((s) => ({
-          ...s,
-          role: s.role ?? "cashier",
-          user_id: s.user_id ?? "unknown",
-        }));
-        setSales(fixedData);
-      }
+      if (data) setSales(data as SaleRecord[]);
     } catch (err: any) {
       toast.error("Failed to fetch receipts: " + err.message);
     } finally {
@@ -60,8 +52,6 @@ const Receipt = () => {
               <p>Item ID: {sale.item_id}</p>
               <p>Quantity: {sale.quantity}</p>
               <p>Price: ${sale.price}</p>
-              <p>Role: {sale.role}</p>
-              <p>User ID: {sale.user_id}</p>
               <p>Date: {new Date(sale.created_at).toLocaleString()}</p>
 
               {/* QR code for receipt */}
