@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, Plus, List, Loader2, ArrowRight, X } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
 
 // --- Simplified UI Components (Replaced external imports) ---
 
@@ -91,14 +95,18 @@ const Badge = ({ children, variant = "default", className = "" }) => {
   return <span className={`${style} ${className}`}>{children}</span>;
 };
 
-// --- Mock Supabase Data Layer & Types ---
+// --- Database Types ---
 
 interface Product {
   id: string;
   name: string;
   price: number;
-  stock: number;
+  quantity: number;
+  min_stock: number;
   category: string;
+  sku: string;
+  size?: string;
+  color?: string;
 }
 
 interface CartItem extends Product {
@@ -113,157 +121,50 @@ interface Transaction {
   items: CartItem[];
 }
 
-const MOCK_PRODUCTS: Product[] = [
-  { id: "prod_1", name: "Premium Coffee Beans (1lb)", price: 15.99, stock: 45, category: "Coffee" },
-  { id: "prod_2", name: "Espresso Maker (Manual)", price: 89.99, stock: 12, category: "Equipment" },
-  { id: "prod_3", name: "Matcha Latte Powder (500g)", price: 29.5, stock: 20, category: "Beverages" },
-  { id: "prod_4", name: "Croissant (Butter)", price: 3.5, stock: 100, category: "Pastries" },
-  { id: "prod_5", name: "Cold Brew Concentrate (32oz)", price: 12.0, stock: 30, category: "Beverages" },
-  { id: "prod_6", name: "Ceramic Mug (Logo)", price: 18.75, stock: 55, category: "Merchandise" },
-  { id: "prod_7", name: "Chocolate Chip Cookie", price: 2.75, stock: 60, category: "Pastries" },
-  { id: "prod_8", name: "Pour Over Kettle", price: 55.0, stock: 8, category: "Equipment" },
-];
-
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: "txn_a1b2c3d4",
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-    total_amount: 22.99,
-    status: "completed",
-    items: [
-      { id: "prod_1", name: "Coffee Beans", price: 15.99, stock: 45, category: "Coffee", quantity: 1 },
-      { id: "prod_7", name: "Cookie", price: 2.75, stock: 60, category: "Pastries", quantity: 2 },
-    ],
-  },
-  {
-    id: "txn_e5f6g7h8",
-    created_at: new Date(Date.now() - 7200000).toISOString(),
-    total_amount: 89.99,
-    status: "completed",
-    items: [{ id: "prod_2", name: "Espresso Maker", price: 89.99, stock: 12, category: "Equipment", quantity: 1 }],
-  },
-  {
-    id: "txn_i9j0k1l2",
-    created_at: new Date(Date.now() - 10800000).toISOString(),
-    total_amount: 45.0,
-    status: "completed",
-    items: [
-      { id: "prod_5", name: "Cold Brew", price: 12.0, stock: 30, category: "Beverages", quantity: 3 },
-      { id: "prod_4", name: "Croissant", price: 3.5, stock: 100, category: "Pastries", quantity: 3 },
-    ],
-  },
-];
-
-let globalProducts = [...MOCK_PRODUCTS];
-let globalTransactions = [...MOCK_TRANSACTIONS];
-
-const mockSupabase = {
-  fetchProducts: (): Promise<Product[]> =>
-    new Promise((resolve) => {
-      setTimeout(() => resolve(globalProducts.filter((p) => p.stock > 0)), 500);
-    }),
-
-  // FIX: This mock ensures data is sorted, simulating the correct Supabase behavior
-  fetchTransactions: (): Promise<Transaction[]> =>
-    new Promise((resolve) => {
-      setTimeout(() => {
-        const sorted = [...globalTransactions].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-        resolve(sorted.slice(0, 10));
-      }, 500);
-    }),
-
-  insertTransaction: (newTransaction: Partial<Transaction>): Promise<Transaction> =>
-    new Promise((resolve) => {
-      setTimeout(() => {
-        // 1. Create transaction
-        const txn: Transaction = {
-          ...newTransaction,
-          id: "txn_" + Math.random().toString(36).substring(2, 10),
-          created_at: new Date().toISOString(),
-          status: "completed",
-          items: newTransaction.items || [],
-        } as Transaction;
-
-        globalTransactions.unshift(txn);
-
-        // 2. Update global stock for mock
-        txn.items.forEach((item) => {
-          const productIndex = globalProducts.findIndex((p) => p.id === item.id);
-          if (productIndex !== -1) {
-            globalProducts[productIndex].stock -= item.quantity;
-          }
-        });
-
-        resolve(txn);
-      }, 700);
-    }),
-};
-
-// --- Toast Mock (FIXED for success variant) ---
-const toast = ({
-  title,
-  description,
-  variant = "default",
-}: {
-  title: string;
-  description: string;
-  variant?: "default" | "destructive" | "success";
-}) => {
-  const emoji = variant === "destructive" ? "❌" : variant === "success" ? "🎉" : "✅";
-  console.log(`${emoji} TOAST (${variant.toUpperCase()}): ${title} - ${description}`);
-  // In a real app, this would show a notification overlay
-};
-
 // --- Main POS Component ---
 
 const POS = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
-
+  const queryClient = useQueryClient();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
-  // --- Initial Data Fetch ---
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Products
-        setIsLoadingProducts(true);
-        const productData = await mockSupabase.fetchProducts();
-        setProducts(productData);
-      } catch (e) {
-        console.error("Error loading products:", e);
-      } finally {
-        setIsLoadingProducts(false);
+  // Fetch products from database using React Query
+  const { data: products = [], isLoading: isLoadingProducts } = useQuery({
+    queryKey: queryKeys.inventory.all,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("items")
+        .select("id, name, price, quantity, min_stock, category, sku, size, color")
+        .order("name");
+
+      if (error) {
+        toast.error("Failed to load products");
+        throw error;
       }
 
-      // Transactions
-      const loadTransactions = async () => {
-        try {
-          setIsLoadingTransactions(true);
-          const txnData = await mockSupabase.fetchTransactions();
-          setRecentTransactions(txnData);
-        } catch (e) {
-          console.error("Error loading transactions:", e);
-        } finally {
-          setIsLoadingTransactions(false);
-        }
-      };
+      return data || [];
+    },
+  });
 
-      await loadTransactions();
+  // Fetch recent transactions from database
+  const { data: recentTransactions = [], isLoading: isLoadingTransactions } = useQuery({
+    queryKey: ["pos-transactions"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(10);
 
-      // Set up a simple interval to mock real-time updates for transactions
-      const intervalId = setInterval(loadTransactions, 5000);
-      return () => clearInterval(intervalId); // Cleanup interval
-    };
+      if (error) {
+        console.error("Error loading transactions:", error);
+        return [];
+      }
 
-    loadData();
-  }, []);
+      return data || [];
+    },
+  });
 
   // --- Derived Data: Categories & Filtered Items ---
   const categories = useMemo(() => {
@@ -273,7 +174,7 @@ const POS = () => {
 
   const filteredProducts = useMemo(() => {
     return products
-      .filter((p) => p.stock > 0) // Only show in-stock products
+      .filter((p) => p.quantity > 0) // Only show in-stock products
       .filter((p) => selectedCategory === "All" || p.category === selectedCategory)
       .filter((p) => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [products, searchTerm, selectedCategory]);
@@ -282,24 +183,19 @@ const POS = () => {
 
   const addToCart = useCallback(
     (product: Product) => {
-      const currentStock = products.find((p) => p.id === product.id)?.stock || 0;
+      const currentStock = products.find((p) => p.id === product.id)?.quantity || 0;
 
       setCart((prevCart) => {
         const existingItem = prevCart.find((item) => item.id === product.id);
 
         if (existingItem) {
           if (existingItem.quantity + 1 > currentStock) {
-            toast({
-              title: "Stock Limit Reached",
-              description: `Only ${currentStock} of ${product.name} are available.`,
-              variant: "destructive",
-            });
+            toast.error(`Only ${currentStock} of ${product.name} are available.`);
             return prevCart;
           }
           return prevCart.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
         }
-        // FIX: Ensure 'category' is included when adding new item
-        return [...prevCart, { ...product, quantity: 1, category: product.category }];
+        return [...prevCart, { ...product, quantity: 1 }];
       });
     },
     [products],
@@ -310,14 +206,10 @@ const POS = () => {
       const itemToUpdate = prevCart.find((item) => item.id === id);
       if (!itemToUpdate) return prevCart;
 
-      const currentStock = products.find((p) => p.id === id)?.stock || 0;
+      const currentStock = products.find((p) => p.id === id)?.quantity || 0;
 
       if (newQuantity > currentStock) {
-        toast({
-          title: "Stock Limit Reached",
-          description: `Only ${currentStock} of ${itemToUpdate.name} are available.`,
-          variant: "destructive",
-        });
+        toast.error(`Only ${currentStock} of ${itemToUpdate.name} are available.`);
         return prevCart;
       }
 
@@ -339,56 +231,48 @@ const POS = () => {
 
   const handleCheckout = async () => {
     if (cart.length === 0) {
-      toast({
-        title: "Cart Empty",
-        description: "Please add items to the cart before checking out.",
-        variant: "destructive",
-      });
+      toast.error("Please add items to the cart before checking out.");
       return;
     }
 
-    const newTransaction: Partial<Transaction> = {
-      total_amount: cartTotal,
-      status: "completed",
-      items: cart,
-    };
-
     try {
-      const resultTxn = await mockSupabase.insertTransaction(newTransaction);
+      // Create transaction record
+      const { data: transaction, error: transactionError } = await supabase
+        .from("transactions")
+        .insert({
+          total_amount: cartTotal,
+          status: "completed",
+          items: cart,
+        })
+        .select()
+        .single();
 
-      // Update local product state to reflect stock changes
-      setProducts((prevProducts) =>
-        prevProducts.map((p) => {
-          const purchasedItem = cart.find((item) => item.id === p.id);
-          if (purchasedItem) {
-            return { ...p, stock: p.stock - purchasedItem.quantity };
-          }
-          return p;
-        }),
+      if (transactionError) throw transactionError;
+
+      // Update inventory quantities
+      for (const item of cart) {
+        const { error: updateError } = await supabase
+          .from("items")
+          .update({ quantity: item.quantity - item.quantity }) // Subtract sold quantity
+          .eq("id", item.id);
+
+        if (updateError) {
+          console.error(`Error updating inventory for item ${item.id}:`, updateError);
+        }
+      }
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      queryClient.invalidateQueries({ queryKey: ["pos-transactions"] });
+
+      toast.success(
+        `Transaction Complete! Sale ID: ${transaction.id.substring(0, 8)} | Total: $${cartTotal.toFixed(2)}`,
       );
 
-      // Update local transactions list immediately
-      setRecentTransactions((prevTxns) => {
-        const updatedList = [resultTxn, ...prevTxns].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-        return updatedList.slice(0, 10);
-      });
-
-      toast({
-        title: "Transaction Complete!",
-        description: `Sale ID: ${resultTxn.id.substring(4)} | Total: $${cartTotal.toFixed(2)}`,
-        variant: "success", // FIX: This is now correctly handled by the mock toast
-      });
-
       setCart([]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Checkout error:", error);
-      toast({
-        title: "Checkout Failed",
-        description: "Could not complete the transaction. See console for details.",
-        variant: "destructive",
-      });
+      toast.error("Checkout failed: " + error.message);
     }
   };
 
@@ -403,6 +287,12 @@ const POS = () => {
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
+  };
+
+  const getStockStatus = (quantity: number, minStock: number) => {
+    if (quantity === 0) return { label: "Out of Stock", variant: "destructive" as const };
+    if (quantity <= minStock) return { label: "Low Stock", variant: "warning" as const };
+    return { label: "In Stock", variant: "success" as const };
   };
 
   // --- Render ---
@@ -447,24 +337,35 @@ const POS = () => {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {filteredProducts.map((product) => (
-                <Card
-                  key={product.id}
-                  className={`transition-shadow duration-200 transform hover:scale-[1.02] ${product.stock === 0 ? "opacity-50" : "hover:shadow-lg hover:shadow-indigo-300/50"}`}
-                  onClick={() => product.stock > 0 && addToCart(product)}
-                >
-                  <CardContent className="p-3 text-center">
-                    <h3 className="font-semibold truncate text-gray-800">{product.name}</h3>
-                    <p className="text-xl font-bold text-indigo-600 mt-1 mb-1">${product.price.toFixed(2)}</p>
-                    <Badge
-                      variant={product.stock > 10 ? "success" : product.stock > 0 ? "default" : "destructive"}
-                      className="text-[10px]"
-                    >
-                      {product.stock > 0 ? `In Stock: ${product.stock}` : "Out of Stock"}
-                    </Badge>
-                  </CardContent>
-                </Card>
-              ))}
+              {filteredProducts.map((product) => {
+                const status = getStockStatus(product.quantity, product.min_stock);
+                return (
+                  <Card
+                    key={product.id}
+                    className={`transition-shadow duration-200 transform hover:scale-[1.02] ${product.quantity === 0 ? "opacity-50" : "hover:shadow-lg hover:shadow-indigo-300/50"}`}
+                    onClick={() => product.quantity > 0 && addToCart(product)}
+                  >
+                    <CardContent className="p-3 text-center">
+                      <h3 className="font-semibold truncate text-gray-800">{product.name}</h3>
+                      <p className="text-xl font-bold text-indigo-600 mt-1 mb-1">${product.price.toFixed(2)}</p>
+                      <Badge
+                        variant={
+                          status.variant === "success"
+                            ? "success"
+                            : status.variant === "destructive"
+                              ? "destructive"
+                              : "default"
+                        }
+                        className="text-[10px]"
+                      >
+                        {status.label}
+                      </Badge>
+                      {product.size && <p className="text-xs text-gray-600 mt-1">Size: {product.size}</p>}
+                      {product.color && <p className="text-xs text-gray-600">Color: {product.color}</p>}
+                    </CardContent>
+                  </Card>
+                );
+              })}
               {filteredProducts.length === 0 && (
                 <div className="col-span-full text-center text-gray-500 py-12">
                   No in-stock products found matching your search.
@@ -508,7 +409,7 @@ const POS = () => {
                         <Input
                           type="number"
                           min={1}
-                          max={item.stock} // Constraint based on current stock
+                          max={item.quantity}
                           value={item.quantity}
                           onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value) || 0)}
                           className="h-8 w-16 text-center p-1"
@@ -571,7 +472,9 @@ const POS = () => {
                 <TableBody>
                   {recentTransactions.map((tx) => (
                     <TableRow key={tx.id}>
-                      <TableCell className="font-medium text-xs max-w-[80px] truncate">{tx.id.substring(4)}</TableCell>
+                      <TableCell className="font-medium text-xs max-w-[80px] truncate">
+                        {tx.id.substring(0, 8)}
+                      </TableCell>
                       <TableCell>{getStatusBadge(tx.status)}</TableCell>
                       <TableCell className="text-right font-semibold">${tx.total_amount.toFixed(2)}</TableCell>
                     </TableRow>
