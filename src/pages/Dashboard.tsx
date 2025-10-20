@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Package, DollarSign, AlertTriangle, TrendingUp, ExternalLink, Plus, GripVertical, X } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +25,8 @@ import {
 } from "recharts";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useNavigate } from "react-router-dom";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import QRCode from "react-qr-code";
 
 interface ChartConfig {
   id: string;
@@ -102,10 +106,38 @@ const Dashboard = () => {
   const { metrics, categoryQuantity, categoryValue, lowStockItems, stockMovementTrends, abcDistribution, isLoading } =
     useDashboardData();
   const navigate = useNavigate();
+  const { isAdmin } = useIsAdmin();
   const [isEditMode, setIsEditMode] = useState(false);
   const [dashboardCharts, setDashboardCharts] = useState<DashboardChart[]>([]);
   const [isAddChartOpen, setIsAddChartOpen] = useState(false);
   const [selectedChart, setSelectedChart] = useState<string>("");
+  const [posItems, setPosItems] = useState<any[]>([]);
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [loadingPos, setLoadingPos] = useState(false);
+
+  // Fetch POS data for admin users
+  useEffect(() => {
+    if (isAdmin) {
+      fetchPosData();
+    }
+  }, [isAdmin]);
+
+  const fetchPosData = async () => {
+    setLoadingPos(true);
+    try {
+      const [itemsRes, salesRes] = await Promise.all([
+        supabase.from("items").select("*").limit(6),
+        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(5),
+      ]);
+
+      if (itemsRes.data) setPosItems(itemsRes.data);
+      if (salesRes.data) setRecentSales(salesRes.data);
+    } catch (err: any) {
+      toast.error("Failed to fetch POS data");
+    } finally {
+      setLoadingPos(false);
+    }
+  };
 
   // Initialize dashboard charts from localStorage
   useEffect(() => {
@@ -473,6 +505,75 @@ const Dashboard = () => {
               <Plus className="w-4 h-4 mr-2" />
               Add Your First Chart
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* POS Section - Admin Only */}
+      {isAdmin && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle>Point of Sale</CardTitle>
+            <Button variant="outline" onClick={() => navigate("/pos")}>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Open Full POS
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {loadingPos ? (
+              <Skeleton className="h-64" />
+            ) : (
+              <div className="space-y-6">
+                {/* Items with QR Codes */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Quick Access Items</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    {posItems.map((item) => (
+                      <div key={item.id} className="border rounded-lg p-3 flex flex-col items-center gap-2">
+                        <QRCode value={item.sku} size={80} />
+                        <p className="font-medium text-sm text-center truncate w-full">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">Stock: {item.quantity}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Recent Sales */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Recent Sales</h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-muted">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-sm font-medium">Item ID</th>
+                          <th className="px-4 py-2 text-left text-sm font-medium">Quantity</th>
+                          <th className="px-4 py-2 text-left text-sm font-medium">Price</th>
+                          <th className="px-4 py-2 text-left text-sm font-medium">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentSales.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                              No sales recorded yet
+                            </td>
+                          </tr>
+                        ) : (
+                          recentSales.map((sale) => (
+                            <tr key={sale.id} className="border-t">
+                              <td className="px-4 py-2 text-sm">{sale.item_id.slice(0, 8)}...</td>
+                              <td className="px-4 py-2 text-sm">{sale.quantity}</td>
+                              <td className="px-4 py-2 text-sm">${sale.price}</td>
+                              <td className="px-4 py-2 text-sm">{new Date(sale.created_at).toLocaleString()}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
