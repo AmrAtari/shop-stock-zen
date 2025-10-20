@@ -3,11 +3,10 @@ import { Search, Plus, List, Loader2, ArrowRight, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
 
-// --- Simplified UI Components (Replaced external imports) ---
+// --- Simplified UI Components ---
 
-const Button = ({ children, onClick, disabled = false, className = "", size = "md" }) => {
+const Button = ({ children, onClick, disabled = false, className = "", size = "md" }: any) => {
   const baseStyle = "rounded-lg font-semibold transition-all duration-300 active:scale-[0.98]";
   const sizeClasses = size === "lg" ? "py-4 text-lg" : "py-2 px-3 text-sm";
   const disabledClasses = disabled
@@ -25,7 +24,7 @@ const Button = ({ children, onClick, disabled = false, className = "", size = "m
   );
 };
 
-const Input = ({ placeholder, value, onChange, className = "", type = "text", min = 0, max }) => (
+const Input = ({ placeholder, value, onChange, className = "", type = "text", min = 0, max }: any) => (
   <input
     type={type}
     min={min}
@@ -37,7 +36,7 @@ const Input = ({ placeholder, value, onChange, className = "", type = "text", mi
   />
 );
 
-const Card = ({ children, className = "", onClick = undefined }) => (
+const Card = ({ children, className = "", onClick = undefined }: any) => (
   <div
     onClick={onClick}
     className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className} ${onClick ? "cursor-pointer" : ""}`}
@@ -46,23 +45,27 @@ const Card = ({ children, className = "", onClick = undefined }) => (
   </div>
 );
 
-const CardHeader = ({ children, className = "" }) => (
+const CardHeader = ({ children, className = "" }: any) => (
   <div className={`p-4 border-b border-gray-100 ${className}`}>{children}</div>
 );
 
-const CardTitle = ({ children, className = "" }) => (
+const CardTitle = ({ children, className = "" }: any) => (
   <h2 className={`text-xl font-bold text-gray-800 ${className}`}>{children}</h2>
 );
 
-const CardContent = ({ children, className = "" }) => <div className={`p-4 ${className}`}>{children}</div>;
+const CardContent = ({ children, className = "" }: any) => <div className={`p-4 ${className}`}>{children}</div>;
 
-const Table = ({ children }) => (
+const Table = ({ children }: any) => (
   <div className="w-full overflow-x-auto">
     <table className="min-w-full divide-y divide-gray-200">{children}</table>
   </div>
 );
-const TableHeader = ({ children, className = "" }) => <thead className={`bg-gray-50 ${className}`}>{children}</thead>;
-const TableHead = ({ children, className = "" }) => (
+
+const TableHeader = ({ children, className = "" }: any) => (
+  <thead className={`bg-gray-50 ${className}`}>{children}</thead>
+);
+
+const TableHead = ({ children, className = "" }: any) => (
   <th
     scope="col"
     className={`px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${className}`}
@@ -70,8 +73,10 @@ const TableHead = ({ children, className = "" }) => (
     {children}
   </th>
 );
-const TableBody = ({ children }) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>;
-const TableRow = ({ children, onClick = undefined, className = "" }) => (
+
+const TableBody = ({ children }: any) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>;
+
+const TableRow = ({ children, onClick = undefined, className = "" }: any) => (
   <tr
     onClick={onClick}
     className={`hover:bg-indigo-50 transition duration-150 ${onClick ? "cursor-pointer" : ""} ${className}`}
@@ -79,13 +84,14 @@ const TableRow = ({ children, onClick = undefined, className = "" }) => (
     {children}
   </tr>
 );
-const TableCell = ({ children, className = "", colSpan = 1 }) => (
+
+const TableCell = ({ children, className = "", colSpan = 1 }: any) => (
   <td colSpan={colSpan} className={`px-4 py-2 whitespace-nowrap text-sm text-gray-900 ${className}`}>
     {children}
   </td>
 );
 
-const Badge = ({ children, variant = "default", className = "" }) => {
+const Badge = ({ children, variant = "default", className = "" }: any) => {
   let style = "px-2.5 py-0.5 rounded-full text-xs font-medium";
   if (variant === "default") style += " bg-indigo-100 text-indigo-800";
   if (variant === "secondary") style += " bg-gray-200 text-gray-800";
@@ -110,7 +116,7 @@ interface Product {
 }
 
 interface CartItem extends Product {
-  quantity: number;
+  cartQuantity: number;
 }
 
 interface Transaction {
@@ -123,7 +129,7 @@ interface Transaction {
 
 // --- Main POS Component ---
 
-const POS = () => {
+const POSHome = () => {
   const queryClient = useQueryClient();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -131,16 +137,17 @@ const POS = () => {
 
   // Fetch products from database using React Query
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
-    queryKey: queryKeys.inventory.all,
-    queryFn: async () => {
+    queryKey: ["pos-products"],
+    queryFn: async (): Promise<Product[]> => {
       const { data, error } = await supabase
         .from("items")
         .select("id, name, price, quantity, min_stock, category, sku, size, color")
         .order("name");
 
       if (error) {
+        console.error("Error loading products:", error);
         toast.error("Failed to load products");
-        throw error;
+        return [];
       }
 
       return data || [];
@@ -150,7 +157,7 @@ const POS = () => {
   // Fetch recent transactions from database
   const { data: recentTransactions = [], isLoading: isLoadingTransactions } = useQuery({
     queryKey: ["pos-transactions"],
-    queryFn: async () => {
+    queryFn: async (): Promise<Transaction[]> => {
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
@@ -183,19 +190,21 @@ const POS = () => {
 
   const addToCart = useCallback(
     (product: Product) => {
-      const currentStock = products.find((p) => p.id === product.id)?.quantity || 0;
+      const currentStock = product.quantity;
 
       setCart((prevCart) => {
         const existingItem = prevCart.find((item) => item.id === product.id);
 
         if (existingItem) {
-          if (existingItem.quantity + 1 > currentStock) {
+          if (existingItem.cartQuantity + 1 > currentStock) {
             toast.error(`Only ${currentStock} of ${product.name} are available.`);
             return prevCart;
           }
-          return prevCart.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
+          return prevCart.map((item) =>
+            item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item,
+          );
         }
-        return [...prevCart, { ...product, quantity: 1 }];
+        return [...prevCart, { ...product, cartQuantity: 1 }];
       });
     },
     [products],
@@ -216,7 +225,7 @@ const POS = () => {
       if (newQuantity <= 0) {
         return prevCart.filter((item) => item.id !== id);
       } else {
-        return prevCart.map((item) => (item.id === id ? { ...item, quantity: newQuantity } : item));
+        return prevCart.map((item) => (item.id === id ? { ...item, cartQuantity: newQuantity } : item));
       }
     });
   };
@@ -225,7 +234,7 @@ const POS = () => {
     setCart((prevCart) => prevCart.filter((item) => item.id !== id));
   };
 
-  const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
+  const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.cartQuantity, 0), [cart]);
 
   // --- Checkout Logic ---
 
@@ -251,18 +260,23 @@ const POS = () => {
 
       // Update inventory quantities
       for (const item of cart) {
-        const { error: updateError } = await supabase
-          .from("items")
-          .update({ quantity: item.quantity - item.quantity }) // Subtract sold quantity
-          .eq("id", item.id);
+        const currentProduct = products.find((p) => p.id === item.id);
+        if (currentProduct) {
+          const newQuantity = currentProduct.quantity - item.cartQuantity;
 
-        if (updateError) {
-          console.error(`Error updating inventory for item ${item.id}:`, updateError);
+          const { error: updateError } = await supabase
+            .from("items")
+            .update({ quantity: newQuantity })
+            .eq("id", item.id);
+
+          if (updateError) {
+            console.error(`Error updating inventory for item ${item.id}:`, updateError);
+          }
         }
       }
 
       // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      queryClient.invalidateQueries({ queryKey: ["pos-products"] });
       queryClient.invalidateQueries({ queryKey: ["pos-transactions"] });
 
       toast.success(
@@ -291,7 +305,7 @@ const POS = () => {
 
   const getStockStatus = (quantity: number, minStock: number) => {
     if (quantity === 0) return { label: "Out of Stock", variant: "destructive" as const };
-    if (quantity <= minStock) return { label: "Low Stock", variant: "warning" as const };
+    if (quantity <= minStock) return { label: "Low Stock", variant: "default" as const };
     return { label: "In Stock", variant: "success" as const };
   };
 
@@ -326,7 +340,7 @@ const POS = () => {
               placeholder="Search product name..."
               className="pl-9"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e: any) => setSearchTerm(e.target.value)}
             />
           </div>
         </CardHeader>
@@ -342,22 +356,13 @@ const POS = () => {
                 return (
                   <Card
                     key={product.id}
-                    className={`transition-shadow duration-200 transform hover:scale-[1.02] ${product.quantity === 0 ? "opacity-50" : "hover:shadow-lg hover:shadow-indigo-300/50"}`}
+                    className={`transition-shadow duration-200 transform hover:scale-[1.02] ${product.quantity === 0 ? "opacity-50" : "hover:shadow-lg hover:shadow-indigo-300/50 cursor-pointer"}`}
                     onClick={() => product.quantity > 0 && addToCart(product)}
                   >
                     <CardContent className="p-3 text-center">
                       <h3 className="font-semibold truncate text-gray-800">{product.name}</h3>
-                      <p className="text-xl font-bold text-indigo-600 mt-1 mb-1">${product.price.toFixed(2)}</p>
-                      <Badge
-                        variant={
-                          status.variant === "success"
-                            ? "success"
-                            : status.variant === "destructive"
-                              ? "destructive"
-                              : "default"
-                        }
-                        className="text-[10px]"
-                      >
+                      <p className="text-xl font-bold text-indigo-600 mt-1 mb-1">${product.price?.toFixed(2)}</p>
+                      <Badge variant={status.variant} className="text-[10px]">
                         {status.label}
                       </Badge>
                       {product.size && <p className="text-xs text-gray-600 mt-1">Size: {product.size}</p>}
@@ -410,13 +415,14 @@ const POS = () => {
                           type="number"
                           min={1}
                           max={item.quantity}
-                          value={item.quantity}
-                          onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value) || 0)}
+                          value={item.cartQuantity}
+                          onChange={(e: any) => updateCartQuantity(item.id, parseInt(e.target.value) || 0)}
                           className="h-8 w-16 text-center p-1"
+                          placeholder="Qty"
                         />
                       </TableCell>
                       <TableCell className="text-right font-bold text-indigo-600">
-                        ${(item.price * item.quantity).toFixed(2)}
+                        ${(item.price * item.cartQuantity).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -496,4 +502,4 @@ const POS = () => {
   );
 };
 
-export default POS;
+export default POSHome;
