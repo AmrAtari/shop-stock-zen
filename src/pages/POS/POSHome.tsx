@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Search, Plus, List, Loader2, ArrowRight, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -139,18 +139,27 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      const { data, error } = await supabase
-        .from("items")
-        .select("id, name, price, quantity, min_stock, category, sku, size, color")
-        .order("name");
+      try {
+        const { data, error } = await supabase
+          .from("items")
+          .select("id, name, price, quantity, min_stock, category, sku, size, color")
+          .order("name");
 
-      if (error) {
-        console.error("Error loading products:", error);
-        toast.error("Failed to load products");
+        if (error) {
+          console.error("Error loading products:", error);
+          toast.error("Failed to load products");
+          return [];
+        }
+
+        // Ensure all products have a price, default to 0 if missing
+        return (data || []).map((item) => ({
+          ...item,
+          price: item.price || 0,
+        }));
+      } catch (error) {
+        console.error("Error in products query:", error);
         return [];
       }
-
-      return data || [];
     },
   });
 
@@ -158,18 +167,23 @@ const POSHome = () => {
   const { data: recentTransactions = [], isLoading: isLoadingTransactions } = useQuery({
     queryKey: ["pos-transactions"],
     queryFn: async (): Promise<Transaction[]> => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(10);
+      try {
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(10);
 
-      if (error) {
-        console.error("Error loading transactions:", error);
+        if (error) {
+          console.error("Error loading transactions:", error);
+          return [];
+        }
+
+        return data || [];
+      } catch (error) {
+        console.error("Error in transactions query:", error);
         return [];
       }
-
-      return data || [];
     },
   });
 
@@ -188,27 +202,24 @@ const POSHome = () => {
 
   // --- Cart Logic ---
 
-  const addToCart = useCallback(
-    (product: Product) => {
-      const currentStock = product.quantity;
+  const addToCart = useCallback((product: Product) => {
+    const currentStock = product.quantity;
 
-      setCart((prevCart) => {
-        const existingItem = prevCart.find((item) => item.id === product.id);
+    setCart((prevCart) => {
+      const existingItem = prevCart.find((item) => item.id === product.id);
 
-        if (existingItem) {
-          if (existingItem.cartQuantity + 1 > currentStock) {
-            toast.error(`Only ${currentStock} of ${product.name} are available.`);
-            return prevCart;
-          }
-          return prevCart.map((item) =>
-            item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item,
-          );
+      if (existingItem) {
+        if (existingItem.cartQuantity + 1 > currentStock) {
+          toast.error(`Only ${currentStock} of ${product.name} are available.`);
+          return prevCart;
         }
-        return [...prevCart, { ...product, cartQuantity: 1 }];
-      });
-    },
-    [products],
-  );
+        return prevCart.map((item) =>
+          item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item,
+        );
+      }
+      return [...prevCart, { ...product, cartQuantity: 1 }];
+    });
+  }, []);
 
   const updateCartQuantity = (id: string, newQuantity: number) => {
     setCart((prevCart) => {
@@ -234,7 +245,7 @@ const POSHome = () => {
     setCart((prevCart) => prevCart.filter((item) => item.id !== id));
   };
 
-  const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.cartQuantity, 0), [cart]);
+  const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price || 0) * item.cartQuantity, 0), [cart]);
 
   // --- Checkout Logic ---
 
@@ -256,24 +267,30 @@ const POSHome = () => {
         .select()
         .single();
 
-      if (transactionError) throw transactionError;
+      if (transactionError) {
+        console.error("Transaction error:", transactionError);
+        throw transactionError;
+      }
 
       // Update inventory quantities
-      for (const item of cart) {
+      const updatePromises = cart.map(async (item) => {
         const currentProduct = products.find((p) => p.id === item.id);
         if (currentProduct) {
           const newQuantity = currentProduct.quantity - item.cartQuantity;
 
           const { error: updateError } = await supabase
             .from("items")
-            .update({ quantity: newQuantity })
+            .update({ quantity: Math.max(0, newQuantity) })
             .eq("id", item.id);
 
           if (updateError) {
             console.error(`Error updating inventory for item ${item.id}:`, updateError);
+            throw updateError;
           }
         }
-      }
+      });
+
+      await Promise.all(updatePromises);
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ["pos-products"] });
@@ -290,7 +307,7 @@ const POSHome = () => {
     }
   };
 
-  const getStatusBadge = (status: Transaction["status"]) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
         return <Badge variant="success">Completed</Badge>;
@@ -361,12 +378,13 @@ const POSHome = () => {
                   >
                     <CardContent className="p-3 text-center">
                       <h3 className="font-semibold truncate text-gray-800">{product.name}</h3>
-                      <p className="text-xl font-bold text-indigo-600 mt-1 mb-1">${product.price?.toFixed(2)}</p>
+                      <p className="text-xl font-bold text-indigo-600 mt-1 mb-1">${(product.price || 0).toFixed(2)}</p>
                       <Badge variant={status.variant} className="text-[10px]">
                         {status.label}
                       </Badge>
                       {product.size && <p className="text-xs text-gray-600 mt-1">Size: {product.size}</p>}
                       {product.color && <p className="text-xs text-gray-600">Color: {product.color}</p>}
+                      <p className="text-xs text-gray-500 mt-1">SKU: {product.sku}</p>
                     </CardContent>
                   </Card>
                 );
@@ -422,7 +440,7 @@ const POSHome = () => {
                         />
                       </TableCell>
                       <TableCell className="text-right font-bold text-indigo-600">
-                        ${(item.price * item.cartQuantity).toFixed(2)}
+                        ${((item.price || 0) * item.cartQuantity).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
