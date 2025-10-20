@@ -22,9 +22,8 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
     { name: "Transfers", href: "/transfers", icon: Store },
-    { name: "Reports", href: "/reports", icon: BarChart3 }
-    { name: "POS", href: "/POS", icon: posmachine}
-    
+    { name: "Reports", href: "/reports", icon: BarChart3 },
+    { name: "POS", href: "/POS", icon: posmachine },
   ];
 
   const handleLogout = async () => {
@@ -45,12 +44,12 @@ const Layout = ({ children }: LayoutProps) => {
           <h1 className="text-2xl font-bold text-sidebar-foreground">StockFlow</h1>
           <p className="text-sm text-sidebar-foreground/70 mt-1">Inventory Manager</p>
         </div>
-        
+
         <nav className="flex-1 p-4 space-y-2">
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.href;
-            
+
             return (
               <Link
                 key={item.name}
@@ -59,7 +58,7 @@ const Layout = ({ children }: LayoutProps) => {
                   "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
                   isActive
                     ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent",
                 )}
               >
                 <Icon className="w-5 h-5" />
@@ -82,9 +81,7 @@ const Layout = ({ children }: LayoutProps) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
+      <main className="flex-1 overflow-auto">{children}</main>
     </div>
   );
 };
