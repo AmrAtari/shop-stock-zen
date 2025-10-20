@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, Plus, List, Loader2, ArrowRight, X } from "lucide-react";
 
-// --- Simplified UI Components (Replaced shadcn/ui imports) ---
+// --- Simplified UI Components (Replaced external imports) ---
 
-const Button = ({ children, onClick, disabled, className = "", size = "md" }) => {
+const Button = ({ children, onClick, disabled = false, className = "", size = "md" }) => {
   const baseStyle = "rounded-lg font-semibold transition-all duration-300 active:scale-[0.98]";
-  const sizeClasses = size === "lg" ? "py-4 text-lg" : "py-2 text-sm";
+  const sizeClasses = size === "lg" ? "py-4 text-lg" : "py-2 px-3 text-sm";
   const disabledClasses = disabled
     ? "opacity-50 cursor-not-allowed bg-gray-400"
     : "bg-indigo-600 hover:bg-indigo-700 text-white";
@@ -21,10 +21,11 @@ const Button = ({ children, onClick, disabled, className = "", size = "md" }) =>
   );
 };
 
-const Input = ({ placeholder, value, onChange, className = "", type = "text", min = 0 }) => (
+const Input = ({ placeholder, value, onChange, className = "", type = "text", min = 0, max }) => (
   <input
     type={type}
     min={min}
+    max={max}
     placeholder={placeholder}
     value={value}
     onChange={onChange}
@@ -32,8 +33,13 @@ const Input = ({ placeholder, value, onChange, className = "", type = "text", mi
   />
 );
 
-const Card = ({ children, className = "" }) => (
-  <div className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className}`}>{children}</div>
+const Card = ({ children, className = "", onClick = undefined }) => (
+  <div
+    onClick={onClick}
+    className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className} ${onClick ? "cursor-pointer" : ""}`}
+  >
+    {children}
+  </div>
 );
 
 const CardHeader = ({ children, className = "" }) => (
@@ -61,7 +67,7 @@ const TableHead = ({ children, className = "" }) => (
   </th>
 );
 const TableBody = ({ children }) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>;
-const TableRow = ({ children, onClick, className = "" }) => (
+const TableRow = ({ children, onClick = undefined, className = "" }) => (
   <tr
     onClick={onClick}
     className={`hover:bg-indigo-50 transition duration-150 ${onClick ? "cursor-pointer" : ""} ${className}`}
@@ -75,8 +81,6 @@ const TableCell = ({ children, className = "", colSpan = 1 }) => (
   </td>
 );
 
-const Separator = ({ className = "" }) => <div className={`h-px w-full bg-gray-200 ${className}`} />;
-
 const Badge = ({ children, variant = "default", className = "" }) => {
   let style = "px-2.5 py-0.5 rounded-full text-xs font-medium";
   if (variant === "default") style += " bg-indigo-100 text-indigo-800";
@@ -87,8 +91,28 @@ const Badge = ({ children, variant = "default", className = "" }) => {
   return <span className={`${style} ${className}`}>{children}</span>;
 };
 
-// --- Mock Supabase Data Layer ---
-// In a real app, this data would come from Supabase via API calls.
+// --- Mock Supabase Data Layer & Types ---
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+  category: string;
+}
+
+interface CartItem extends Product {
+  quantity: number;
+}
+
+interface Transaction {
+  id: string;
+  created_at: string;
+  total_amount: number;
+  status: "completed" | "pending" | "cancelled";
+  items: CartItem[];
+}
+
 const MOCK_PRODUCTS: Product[] = [
   { id: "prod_1", name: "Premium Coffee Beans (1lb)", price: 15.99, stock: 45, category: "Coffee" },
   { id: "prod_2", name: "Espresso Maker (Manual)", price: 89.99, stock: 12, category: "Equipment" },
@@ -107,8 +131,8 @@ const MOCK_TRANSACTIONS: Transaction[] = [
     total_amount: 22.99,
     status: "completed",
     items: [
-      { id: "prod_1", name: "Coffee Beans", price: 15.99, stock: 45, quantity: 1 },
-      { id: "prod_7", name: "Cookie", price: 2.75, stock: 60, quantity: 2 },
+      { id: "prod_1", name: "Coffee Beans", price: 15.99, stock: 45, category: "Coffee", quantity: 1 },
+      { id: "prod_7", name: "Cookie", price: 2.75, stock: 60, category: "Pastries", quantity: 2 },
     ],
   },
   {
@@ -116,7 +140,7 @@ const MOCK_TRANSACTIONS: Transaction[] = [
     created_at: new Date(Date.now() - 7200000).toISOString(),
     total_amount: 89.99,
     status: "completed",
-    items: [{ id: "prod_2", name: "Espresso Maker", price: 89.99, stock: 12, quantity: 1 }],
+    items: [{ id: "prod_2", name: "Espresso Maker", price: 89.99, stock: 12, category: "Equipment", quantity: 1 }],
   },
   {
     id: "txn_i9j0k1l2",
@@ -124,8 +148,8 @@ const MOCK_TRANSACTIONS: Transaction[] = [
     total_amount: 45.0,
     status: "completed",
     items: [
-      { id: "prod_5", name: "Cold Brew", price: 12.0, stock: 30, quantity: 3 },
-      { id: "prod_4", name: "Croissant", price: 3.5, stock: 100, quantity: 3 },
+      { id: "prod_5", name: "Cold Brew", price: 12.0, stock: 30, category: "Beverages", quantity: 3 },
+      { id: "prod_4", name: "Croissant", price: 3.5, stock: 100, category: "Pastries", quantity: 3 },
     ],
   },
 ];
@@ -134,13 +158,12 @@ let globalProducts = [...MOCK_PRODUCTS];
 let globalTransactions = [...MOCK_TRANSACTIONS];
 
 const mockSupabase = {
-  // Mock function to simulate data fetching (products)
   fetchProducts: (): Promise<Product[]> =>
     new Promise((resolve) => {
       setTimeout(() => resolve(globalProducts.filter((p) => p.stock > 0)), 500);
     }),
 
-  // Mock function to simulate data fetching (transactions)
+  // FIX: This mock ensures data is sorted, simulating the correct Supabase behavior
   fetchTransactions: (): Promise<Transaction[]> =>
     new Promise((resolve) => {
       setTimeout(() => {
@@ -151,7 +174,6 @@ const mockSupabase = {
       }, 500);
     }),
 
-  // Mock function to simulate a new transaction and stock update
   insertTransaction: (newTransaction: Partial<Transaction>): Promise<Transaction> =>
     new Promise((resolve) => {
       setTimeout(() => {
@@ -179,8 +201,7 @@ const mockSupabase = {
     }),
 };
 
-// --- Toast Mock (Replaced use-toast) ---
-// Since we don't have a component to display toasts, we'll use console.log
+// --- Toast Mock (FIXED for success variant) ---
 const toast = ({
   title,
   description,
@@ -188,33 +209,12 @@ const toast = ({
 }: {
   title: string;
   description: string;
-  variant?: "default" | "destructive";
+  variant?: "default" | "destructive" | "success";
 }) => {
-  const emoji = variant === "destructive" ? "❌" : "✅";
+  const emoji = variant === "destructive" ? "❌" : variant === "success" ? "🎉" : "✅";
   console.log(`${emoji} TOAST (${variant.toUpperCase()}): ${title} - ${description}`);
   // In a real app, this would show a notification overlay
 };
-
-// --- Types ---
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  stock: number;
-  category: string;
-}
-
-interface CartItem extends Product {
-  quantity: number;
-}
-
-interface Transaction {
-  id: string;
-  created_at: string;
-  total_amount: number;
-  status: "completed" | "pending" | "cancelled";
-  items: CartItem[]; // Stored as JSON
-}
 
 // --- Main POS Component ---
 
@@ -228,40 +228,41 @@ const POS = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
-  // --- Initial Data Fetch (Replaces React Query) ---
+  // --- Initial Data Fetch ---
   useEffect(() => {
-    // Fetch Products
-    setIsLoadingProducts(true);
-    mockSupabase
-      .fetchProducts()
-      .then((data) => {
-        setProducts(data);
+    const loadData = async () => {
+      try {
+        // Products
+        setIsLoadingProducts(true);
+        const productData = await mockSupabase.fetchProducts();
+        setProducts(productData);
+      } catch (e) {
+        console.error("Error loading products:", e);
+      } finally {
         setIsLoadingProducts(false);
-      })
-      .catch((e) => {
-        console.error(e);
-        setIsLoadingProducts(false);
-      });
+      }
 
-    // Fetch Transactions
-    setIsLoadingTransactions(true);
-    mockSupabase
-      .fetchTransactions()
-      .then((data) => {
-        setRecentTransactions(data);
-        setIsLoadingTransactions(false);
-      })
-      .catch((e) => {
-        console.error(e);
-        setIsLoadingTransactions(false);
-      });
+      // Transactions
+      const loadTransactions = async () => {
+        try {
+          setIsLoadingTransactions(true);
+          const txnData = await mockSupabase.fetchTransactions();
+          setRecentTransactions(txnData);
+        } catch (e) {
+          console.error("Error loading transactions:", e);
+        } finally {
+          setIsLoadingTransactions(false);
+        }
+      };
 
-    // Set up a simple interval to mock real-time updates for transactions
-    const intervalId = setInterval(() => {
-      mockSupabase.fetchTransactions().then(setRecentTransactions);
-    }, 5000);
+      await loadTransactions();
 
-    return () => clearInterval(intervalId); // Cleanup interval
+      // Set up a simple interval to mock real-time updates for transactions
+      const intervalId = setInterval(loadTransactions, 5000);
+      return () => clearInterval(intervalId); // Cleanup interval
+    };
+
+    loadData();
   }, []);
 
   // --- Derived Data: Categories & Filtered Items ---
@@ -289,7 +290,7 @@ const POS = () => {
         if (existingItem) {
           if (existingItem.quantity + 1 > currentStock) {
             toast({
-              title: "Stock Limit",
+              title: "Stock Limit Reached",
               description: `Only ${currentStock} of ${product.name} are available.`,
               variant: "destructive",
             });
@@ -297,7 +298,8 @@ const POS = () => {
           }
           return prevCart.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
         }
-        return [...prevCart, { ...product, quantity: 1 }];
+        // FIX: Ensure 'category' is included when adding new item
+        return [...prevCart, { ...product, quantity: 1, category: product.category }];
       });
     },
     [products],
@@ -312,7 +314,7 @@ const POS = () => {
 
       if (newQuantity > currentStock) {
         toast({
-          title: "Stock Limit",
+          title: "Stock Limit Reached",
           description: `Only ${currentStock} of ${itemToUpdate.name} are available.`,
           variant: "destructive",
         });
@@ -352,7 +354,6 @@ const POS = () => {
     };
 
     try {
-      // Simulate inserting transaction and updating stock
       const resultTxn = await mockSupabase.insertTransaction(newTransaction);
 
       // Update local product state to reflect stock changes
@@ -377,7 +378,7 @@ const POS = () => {
       toast({
         title: "Transaction Complete!",
         description: `Sale ID: ${resultTxn.id.substring(4)} | Total: $${cartTotal.toFixed(2)}`,
-        variant: "success",
+        variant: "success", // FIX: This is now correctly handled by the mock toast
       });
 
       setCart([]);
@@ -407,13 +408,13 @@ const POS = () => {
   // --- Render ---
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen lg:max-h-screen overflow-hidden p-4 space-y-4 lg:space-y-0 lg:space-x-4 bg-gray-50">
+    <div className="flex flex-col lg:flex-row h-screen lg:max-h-screen overflow-hidden p-4 space-y-4 lg:space-y-0 lg:space-x-4 bg-gray-50 font-sans">
       {/* Product Search & List (Left Pane) */}
       <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-2xl font-extrabold text-indigo-600 mb-2 sm:mb-0">Products</CardTitle>
-            <div className="flex overflow-x-auto space-x-2">
+            <div className="flex overflow-x-auto space-x-2 pb-1">
               {categories.map((cat) => (
                 <Button
                   key={cat}
@@ -430,7 +431,7 @@ const POS = () => {
             </div>
           </div>
           <div className="relative mt-3">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               placeholder="Search product name..."
               className="pl-9"
@@ -445,12 +446,12 @@ const POS = () => {
               <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filteredProducts.map((product) => (
                 <Card
                   key={product.id}
-                  className={`cursor-pointer transition-shadow duration-200 transform hover:scale-[1.02] ${product.stock === 0 ? "opacity-50" : "hover:shadow-indigo-300/50"}`}
-                  onClick={() => addToCart(product)}
+                  className={`transition-shadow duration-200 transform hover:scale-[1.02] ${product.stock === 0 ? "opacity-50" : "hover:shadow-lg hover:shadow-indigo-300/50"}`}
+                  onClick={() => product.stock > 0 && addToCart(product)}
                 >
                   <CardContent className="p-3 text-center">
                     <h3 className="font-semibold truncate text-gray-800">{product.name}</h3>
@@ -477,7 +478,7 @@ const POS = () => {
       {/* Cart and Recent Transactions (Right Column) */}
       <div className="flex flex-col space-y-4 w-full lg:w-96 min-w-[350px]">
         {/* Current Sale Card */}
-        <Card className="flex flex-col h-1/2 min-h-[400px]">
+        <Card className="flex flex-col lg:h-1/2 min-h-[400px]">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-2xl font-bold text-indigo-600">Current Sale</CardTitle>
             <List className="h-6 w-6 text-indigo-400" />
@@ -506,8 +507,8 @@ const POS = () => {
                       <TableCell className="text-center">
                         <Input
                           type="number"
-                          min="1"
-                          max={item.stock}
+                          min={1}
+                          max={item.stock} // Constraint based on current stock
                           value={item.quantity}
                           onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value) || 0)}
                           className="h-8 w-16 text-center p-1"
