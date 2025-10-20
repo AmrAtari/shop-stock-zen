@@ -22,7 +22,9 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
     { name: "Transfers", href: "/transfers", icon: Store },
-    { name: "Reports", href: "/reports", icon: BarChart3 },
+    { name: "Reports", href: "/reports", icon: BarChart3 }
+    { name: "POS", href: "/POS", icon: posmachine}
+    ,
   ];
 
   const handleLogout = async () => {
