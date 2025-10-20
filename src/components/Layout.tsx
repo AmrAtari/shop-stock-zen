@@ -24,7 +24,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "Transfers", href: "/transfers", icon: Store },
     { name: "Reports", href: "/reports", icon: BarChart3 }
     { name: "POS", href: "/POS", icon: posmachine}
-    ,
+    
   ];
 
   const handleLogout = async () => {
