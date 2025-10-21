@@ -29,11 +29,11 @@ import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
 import NotFound from "./pages/NotFound";
 
 // POS Pages
-import POSHome from "./pos/POSHome";
-import POSReceipts from "./pos/POSReceipts";
-import POSRefunds from "./pos/POSRefunds";
-import ClosingCash from "./pos/ClosingCash";
-import { POSProvider } from "./pos/POSContext";
+import POSHome from "./pages/POS/POSHome";
+import POSReceipts from "./pages/POS/POSReceipts";
+import POSRefunds from "./pages/POS/POSRefunds";
+import ClosingCash from "./pages/POS/ClosingCash";
+import { POSProvider } from "./pages/POS/POSContext";
 
 const queryClient = new QueryClient();
 
