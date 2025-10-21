@@ -1,105 +1,22 @@
-import React, { useState, useMemo, useCallback } from "react";
-import { Search, Plus, List, Loader2, ArrowRight, X } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import { ShoppingCart, List, Loader2, X, Receipt as ReceiptIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
-// --- Simplified UI Components ---
-
-const Button = ({ children, onClick, disabled = false, className = "", size = "md" }: any) => {
-  const baseStyle = "rounded-lg font-semibold transition-all duration-300 active:scale-[0.98]";
-  const sizeClasses = size === "lg" ? "py-4 text-lg" : "py-2 px-3 text-sm";
-  const disabledClasses = disabled
-    ? "opacity-50 cursor-not-allowed bg-gray-400"
-    : "bg-indigo-600 hover:bg-indigo-700 text-white";
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseStyle} ${sizeClasses} ${disabledClasses} ${className}`}
-    >
-      {children}
-    </button>
-  );
-};
-
-const Input = ({ placeholder, value, onChange, className = "", type = "text", min = 0, max }: any) => (
-  <input
-    type={type}
-    min={min}
-    max={max}
-    placeholder={placeholder}
-    value={value}
-    onChange={onChange}
-    className={`w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 ${className}`}
-  />
-);
-
-const Card = ({ children, className = "", onClick = undefined }: any) => (
-  <div
-    onClick={onClick}
-    className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className} ${onClick ? "cursor-pointer" : ""}`}
-  >
-    {children}
-  </div>
-);
-
-const CardHeader = ({ children, className = "" }: any) => (
-  <div className={`p-4 border-b border-gray-100 ${className}`}>{children}</div>
-);
-
-const CardTitle = ({ children, className = "" }: any) => (
-  <h2 className={`text-xl font-bold text-gray-800 ${className}`}>{children}</h2>
-);
-
-const CardContent = ({ children, className = "" }: any) => <div className={`p-4 ${className}`}>{children}</div>;
-
-const Table = ({ children }: any) => (
-  <div className="w-full overflow-x-auto">
-    <table className="min-w-full divide-y divide-gray-200">{children}</table>
-  </div>
-);
-
-const TableHeader = ({ children, className = "" }: any) => (
-  <thead className={`bg-gray-50 ${className}`}>{children}</thead>
-);
-
-const TableHead = ({ children, className = "" }: any) => (
-  <th
-    scope="col"
-    className={`px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${className}`}
-  >
-    {children}
-  </th>
-);
-
-const TableBody = ({ children }: any) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>;
-
-const TableRow = ({ children, onClick = undefined, className = "" }: any) => (
-  <tr
-    onClick={onClick}
-    className={`hover:bg-indigo-50 transition duration-150 ${onClick ? "cursor-pointer" : ""} ${className}`}
-  >
-    {children}
-  </tr>
-);
-
-const TableCell = ({ children, className = "", colSpan = 1 }: any) => (
-  <td colSpan={colSpan} className={`px-4 py-2 whitespace-nowrap text-sm text-gray-900 ${className}`}>
-    {children}
-  </td>
-);
-
-const Badge = ({ children, variant = "default", className = "" }: any) => {
-  let style = "px-2.5 py-0.5 rounded-full text-xs font-medium";
-  if (variant === "default") style += " bg-indigo-100 text-indigo-800";
-  if (variant === "secondary") style += " bg-gray-200 text-gray-800";
-  if (variant === "destructive") style += " bg-red-100 text-red-800";
-  if (variant === "success") style += " bg-green-100 text-green-800";
-
-  return <span className={`${style} ${className}`}>{children}</span>;
-};
+import { POSBarcodeInput } from "@/components/POSBarcodeInput";
+import { POSPaymentDialog } from "@/components/POSPaymentDialog";
+import { POSReceipt } from "@/components/POSReceipt";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // --- Database Types ---
 
@@ -119,21 +36,21 @@ interface CartItem extends Product {
   cartQuantity: number;
 }
 
-interface Transaction {
-  id: string;
-  created_at: string;
-  total_amount: number;
-  status: "completed" | "pending" | "cancelled";
-  items: CartItem[];
-}
-
 // --- Main POS Component ---
 
 const POSHome = () => {
   const queryClient = useQueryClient();
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [lastTransaction, setLastTransaction] = useState<{
+    items: CartItem[];
+    total: number;
+    paymentMethod: "cash" | "card";
+    amountPaid?: number;
+    date: Date;
+    id: string;
+  } | null>(null);
 
   // Fetch products from database using React Query
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
@@ -171,77 +88,30 @@ const POSHome = () => {
     },
   });
 
-  // Fetch recent sales from database
-  const { data: recentTransactions = [], isLoading: isLoadingTransactions } = useQuery({
-    queryKey: ["pos-sales"],
-    queryFn: async (): Promise<Transaction[]> => {
-      try {
-        const { data, error } = await supabase
-          .from("sales")
-          .select("*, items(name)")
-          .order("created_at", { ascending: false })
-          .limit(10);
-
-        if (error) {
-          console.error("Error loading sales:", error);
-          return [];
-        }
-
-        // Group sales by a timeframe to simulate transactions
-        const grouped = (data || []).reduce((acc: any, sale: any) => {
-          const key = sale.created_at;
-          if (!acc[key]) {
-            acc[key] = {
-              id: sale.id,
-              created_at: sale.created_at,
-              total_amount: sale.price * sale.quantity,
-              status: "completed" as const,
-              items: [],
-            };
-          } else {
-            acc[key].total_amount += sale.price * sale.quantity;
-          }
-          return acc;
-        }, {});
-
-        return Object.values(grouped);
-      } catch (error) {
-        console.error("Error in sales query:", error);
-        return [];
-      }
-    },
-  });
-
-  // --- Derived Data: Categories & Filtered Items ---
-  const categories = useMemo(() => {
-    const uniqueCategories = new Set(products.map((p) => p.category).filter(Boolean));
-    return ["All", ...Array.from(uniqueCategories)];
-  }, [products]);
-
-  const filteredProducts = useMemo(() => {
-    return products
-      .filter((p) => p.quantity > 0) // Only show in-stock products
-      .filter((p) => selectedCategory === "All" || p.category === selectedCategory)
-      .filter((p) => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [products, searchTerm, selectedCategory]);
 
   // --- Cart Logic ---
 
-  const addToCart = useCallback((product: Product) => {
-    const currentStock = product.quantity;
+  const handleProductSelect = useCallback((product: Product) => {
+    if (product.quantity === 0) {
+      toast.error(`${product.name} is out of stock`);
+      return;
+    }
 
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.id === product.id);
 
       if (existingItem) {
-        if (existingItem.cartQuantity + 1 > currentStock) {
-          toast.error(`Only ${currentStock} of ${product.name} are available.`);
+        if (existingItem.cartQuantity + 1 > product.quantity) {
+          toast.error(`Only ${product.quantity} of ${product.name} available`);
           return prevCart;
         }
+        toast.success(`Added ${product.name} to cart`);
         return prevCart.map((item) =>
-          item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item,
+          item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
         );
       }
+      
+      toast.success(`Added ${product.name} to cart`);
       return [...prevCart, { ...product, cartQuantity: 1 }];
     });
   }, []);
@@ -274,268 +144,253 @@ const POSHome = () => {
 
   // --- Checkout Logic ---
 
-  const handleCheckout = async () => {
-    if (cart.length === 0) {
-      toast.error("Please add items to the cart before checking out.");
-      return;
-    }
-
+  const handlePaymentComplete = async (
+    paymentMethod: "cash" | "card",
+    amountPaid?: number
+  ) => {
     try {
+      const transactionId = `TXN-${Date.now()}`;
+      
       // Insert sales records
       for (const item of cart) {
-        const { error: saleError } = await supabase
-          .from("sales")
-          .insert({
-            item_id: item.id,
-            sku: item.sku,
-            quantity: item.cartQuantity,
-            price: item.price,
-          });
+        const { error: saleError } = await supabase.from("sales").insert({
+          item_id: item.id,
+          sku: item.sku,
+          quantity: item.cartQuantity,
+          price: item.price,
+        });
 
-        if (saleError) {
-          console.error("Sale error:", saleError);
-          throw saleError;
-        }
+        if (saleError) throw saleError;
 
         // Update inventory quantity
         const currentProduct = products.find((p) => p.id === item.id);
         if (currentProduct) {
           const newQuantity = currentProduct.quantity - item.cartQuantity;
-
           const { error: updateError } = await supabase
             .from("items")
             .update({ quantity: Math.max(0, newQuantity) })
             .eq("id", item.id);
 
-          if (updateError) {
-            console.error(`Error updating inventory for item ${item.id}:`, updateError);
-            throw updateError;
-          }
+          if (updateError) throw updateError;
         }
       }
 
+      // Store transaction for receipt
+      setLastTransaction({
+        items: [...cart],
+        total: cartTotal,
+        paymentMethod,
+        amountPaid,
+        date: new Date(),
+        id: transactionId,
+      });
+
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ["pos-products"] });
-      queryClient.invalidateQueries({ queryKey: ["pos-sales"] });
 
-      toast.success(`Sale Complete! Total: $${cartTotal.toFixed(2)}`);
+      toast.success(`Sale completed! Total: $${cartTotal.toFixed(2)}`);
 
+      // Clear cart and show receipt
       setCart([]);
+      setShowPaymentDialog(false);
+      setShowReceipt(true);
     } catch (error: any) {
-      console.error("Checkout error:", error);
       toast.error("Checkout failed: " + error.message);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <Badge variant="success">Completed</Badge>;
-      case "pending":
-        return <Badge variant="secondary">Pending</Badge>;
-      case "cancelled":
-        return <Badge variant="destructive">Cancelled</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
-
-  const getStockStatus = (quantity: number, minStock: number) => {
-    if (quantity === 0) return { label: "Out of Stock", variant: "destructive" as const };
-    if (quantity <= minStock) return { label: "Low Stock", variant: "default" as const };
-    return { label: "In Stock", variant: "success" as const };
-  };
-
-  // --- Render ---
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen lg:max-h-screen overflow-hidden p-4 space-y-4 lg:space-y-0 lg:space-x-4 bg-gray-50 font-sans">
-      {/* Product Search & List (Left Pane) */}
-      <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-2xl font-extrabold text-indigo-600 mb-2 sm:mb-0">Products</CardTitle>
-            <div className="flex overflow-x-auto space-x-2 pb-1">
-              {categories.map((cat) => (
-                <Button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`whitespace-nowrap ${
-                    selectedCategory === cat
-                      ? "bg-indigo-600 hover:bg-indigo-700"
-                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
-                >
-                  {cat}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="relative mt-3">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search product name..."
-              className="pl-9"
-              value={searchTerm}
-              onChange={(e: any) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto p-4">
-          {isLoadingProducts ? (
-            <div className="flex justify-center items-center h-full min-h-[200px]">
-              <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {filteredProducts.map((product) => {
-                const status = getStockStatus(product.quantity, product.min_stock);
-                return (
-                  <Card
-                    key={product.id}
-                    className={`transition-shadow duration-200 transform hover:scale-[1.02] ${product.quantity === 0 ? "opacity-50" : "hover:shadow-lg hover:shadow-indigo-300/50 cursor-pointer"}`}
-                    onClick={() => product.quantity > 0 && addToCart(product)}
-                  >
-                    <CardContent className="p-3 text-center">
-                      <h3 className="font-semibold truncate text-gray-800">{product.name}</h3>
-                      <p className="text-xl font-bold text-indigo-600 mt-1 mb-1">${(product.price || 0).toFixed(2)}</p>
-                      <Badge variant={status.variant} className="text-[10px]">
-                        {status.label}
-                      </Badge>
-                      {product.size && <p className="text-xs text-gray-600 mt-1">Size: {product.size}</p>}
-                      {product.color && <p className="text-xs text-gray-600">Color: {product.color}</p>}
-                      <p className="text-xs text-gray-500 mt-1">SKU: {product.sku}</p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-              {filteredProducts.length === 0 && (
-                <div className="col-span-full text-center text-gray-500 py-12">
-                  No in-stock products found matching your search.
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+    <div className="container mx-auto p-4 max-w-6xl">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <ShoppingCart className="h-8 w-8" />
+          Point of Sale
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Scan items or search products to add to cart
+        </p>
+      </div>
 
-      {/* Cart and Recent Transactions (Right Column) */}
-      <div className="flex flex-col space-y-4 w-full lg:w-96 min-w-[350px]">
-        {/* Current Sale Card */}
-        <Card className="flex flex-col lg:h-1/2 min-h-[400px]">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-2xl font-bold text-indigo-600">Current Sale</CardTitle>
-            <List className="h-6 w-6 text-indigo-400" />
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto p-0">
-            <Table>
-              <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="w-16 text-center">Qty</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="w-10 text-right"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cart.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-gray-500 py-8">
-                      Start a sale by adding products.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  cart.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium text-sm max-w-[120px] truncate">{item.name}</TableCell>
-                      <TableCell className="text-center">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Barcode Scanner & Product Search */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Add Items</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoadingProducts ? (
+                <div className="flex justify-center items-center h-32">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : (
+                <POSBarcodeInput
+                  products={products}
+                  onProductSelect={handleProductSelect}
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          {cart.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Cart Items</span>
+                  <span className="text-sm font-normal text-muted-foreground">
+                    {cart.length} item{cart.length !== 1 ? "s" : ""}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {cart.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{item.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          SKU: {item.sku} • ${item.price.toFixed(2)} each
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 ml-4">
                         <Input
                           type="number"
                           min={1}
                           max={item.quantity}
                           value={item.cartQuantity}
-                          onChange={(e: any) => updateCartQuantity(item.id, parseInt(e.target.value) || 0)}
-                          className="h-8 w-16 text-center p-1"
-                          placeholder="Qty"
+                          onChange={(e) =>
+                            updateCartQuantity(item.id, parseInt(e.target.value) || 0)
+                          }
+                          className="h-9 w-16 text-center"
                         />
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-indigo-600">
-                        ${((item.price || 0) * item.cartQuantity).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right">
+                        <span className="font-bold min-w-[70px] text-right">
+                          ${(item.price * item.cartQuantity).toFixed(2)}
+                        </span>
                         <Button
-                          className="h-6 w-6 p-0 bg-transparent text-red-500 hover:bg-red-50 hover:text-red-700"
+                          variant="ghost"
+                          size="icon"
                           onClick={() => removeFromCart(item.id)}
+                          className="h-9 w-9 text-destructive hover:text-destructive"
                         >
                           <X className="h-4 w-4" />
                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-
-          <div className="p-4 border-t sticky bottom-0 bg-white">
-            <div className="flex justify-between items-center text-2xl font-extrabold mb-3">
-              <span className="text-gray-700">Total:</span>
-              <span className="text-indigo-600">${cartTotal.toFixed(2)}</span>
-            </div>
-            <Button
-              size="lg"
-              className="w-full text-lg py-6 shadow-lg shadow-indigo-500/50"
-              onClick={handleCheckout}
-              disabled={cart.length === 0}
-            >
-              <ArrowRight className="mr-2 h-5 w-5" />
-              Process Payment
-            </Button>
-          </div>
-        </Card>
-
-        {/* Recent Transactions Card */}
-        <Card className="flex flex-col flex-1">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold">Recent Sales</CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto p-0">
-            {isLoadingTransactions ? (
-              <div className="flex justify-center items-center h-full min-h-[100px]">
-                <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentTransactions.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="font-medium text-xs max-w-[80px] truncate">
-                        {tx.id.substring(0, 8)}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(tx.status)}</TableCell>
-                      <TableCell className="text-right font-semibold">${tx.total_amount.toFixed(2)}</TableCell>
-                    </TableRow>
+                      </div>
+                    </div>
                   ))}
-                  {recentTransactions.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center text-gray-500 py-4">
-                        No recent sales data.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Right Column: Cart Summary */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Order Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {cart.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No items in cart</p>
+                  <p className="text-sm mt-1">Scan or search to add items</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal:</span>
+                      <span className="font-medium">${cartTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Items:</span>
+                      <span className="font-medium">{cart.length}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Total Quantity:</span>
+                      <span className="font-medium">
+                        {cart.reduce((sum, item) => sum + item.cartQuantity, 0)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-lg font-semibold">Total:</span>
+                      <span className="text-3xl font-bold">${cartTotal.toFixed(2)}</span>
+                    </div>
+
+                    <Button
+                      onClick={() => setShowPaymentDialog(true)}
+                      size="lg"
+                      className="w-full h-12 text-lg"
+                    >
+                      <ReceiptIcon className="mr-2 h-5 w-5" />
+                      Proceed to Payment
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {lastTransaction && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Last Transaction</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ID:</span>
+                    <span className="font-mono">{lastTransaction.id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total:</span>
+                    <span className="font-bold">${lastTransaction.total.toFixed(2)}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowReceipt(true)}
+                    className="w-full mt-2"
+                  >
+                    <ReceiptIcon className="mr-2 h-4 w-4" />
+                    View Receipt
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
+
+      {/* Payment Dialog */}
+      <POSPaymentDialog
+        open={showPaymentDialog}
+        onOpenChange={setShowPaymentDialog}
+        totalAmount={cartTotal}
+        onPaymentComplete={handlePaymentComplete}
+      />
+
+      {/* Receipt Dialog */}
+      {lastTransaction && (
+        <POSReceipt
+          open={showReceipt}
+          onOpenChange={setShowReceipt}
+          items={lastTransaction.items}
+          total={lastTransaction.total}
+          paymentMethod={lastTransaction.paymentMethod}
+          amountPaid={lastTransaction.amountPaid}
+          transactionDate={lastTransaction.date}
+          transactionId={lastTransaction.id}
+        />
+      )}
     </div>
   );
 };
