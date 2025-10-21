@@ -28,12 +28,12 @@ import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
 import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
 import NotFound from "./pages/NotFound";
 
-// POS Page Components (Dedicated pages for professional flow)
-import POSHome from "./pages/POS/POSHome"; // Main sales/cashier screen
-import POSTransactions from "./pages/POS/POSTransactions"; // View transactions/history
-import POSTransactionDetail from "./pages/POS/POSTransactionDetail"; // Receipt, reprint, email, refund entry
-import POSRefund from "./pages/POS/POSRefund"; // Dedicated refund processing flow
-import POSSettings from "./pages/POS/POSSettings"; // POS hardware/user settings
+// POS Pages
+import POSHome from "./pos/POSHome";
+import POSReceipts from "./pos/POSReceipts";
+import POSRefunds from "./pos/POSRefunds";
+import ClosingCash from "./pos/ClosingCash";
+import { POSProvider } from "./pos/POSContext";
 
 const queryClient = new QueryClient();
 
@@ -44,63 +44,58 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* --- Public Route --- */}
+          {/* --- Public Auth --- */}
           <Route path="/auth" element={<Auth />} />
 
           {/* =======================================================
-            --- POS Routes (Full-Screen/Kiosk Mode) ---
-            These routes DO NOT use the <Layout> component for a 
-            professional, uninterrupted cash register experience.
-            =======================================================
-          */}
-          <Route path="/pos">
-            <Route
-              index // /pos - Main Sales/Cashier View
-              element={
-                <ProtectedRoute>
-                  <POSHome />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="transactions" // /pos/transactions - View completed transactions
-              element={
-                <ProtectedRoute>
-                  <POSTransactions />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="transactions/:id" // /pos/transactions/:id - Receipt/Refund detail view
-              element={
-                <ProtectedRoute>
-                  <POSTransactionDetail />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="refund" // /pos/refund - Dedicated refund processing flow
-              element={
-                <ProtectedRoute>
-                  <POSRefund />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="settings" // /pos/settings - POS-specific configuration
-              element={
-                <ProtectedRoute>
-                  <POSSettings />
-                </ProtectedRoute>
-              }
-            />
-          </Route>
+              POS ROUTES (Full Screen / No Layout)
+              Wrapped with POSProvider to share cashier session state
+          ======================================================= */}
+          <Route
+            path="/pos/*"
+            element={
+              <POSProvider>
+                <Routes>
+                  <Route
+                    path=""
+                    element={
+                      <ProtectedRoute>
+                        <POSHome />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="receipts"
+                    element={
+                      <ProtectedRoute>
+                        <POSReceipts />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="refunds"
+                    element={
+                      <ProtectedRoute>
+                        <POSRefunds />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="closing"
+                    element={
+                      <ProtectedRoute>
+                        <ClosingCash />
+                      </ProtectedRoute>
+                    }
+                  />
+                </Routes>
+              </POSProvider>
+            }
+          />
 
           {/* =======================================================
-            --- Protected Main Routes (Standard Layout) ---
-            These routes use the <Layout> component for navigation.
-            =======================================================
-          */}
+              MAIN APP ROUTES (With Sidebar Layout)
+          ======================================================= */}
           <Route
             path="/"
             element={
@@ -112,7 +107,6 @@ const App = () => (
             }
           />
 
-          {/* --- Inventory Management --- */}
           <Route
             path="/inventory"
             element={
@@ -123,6 +117,7 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/inventory/physical"
             element={
@@ -218,7 +213,7 @@ const App = () => (
             }
           />
 
-          {/* --- Other Sections (Alerts, Reports, Stores, etc.) --- */}
+          {/* --- Misc Pages --- */}
           <Route
             path="/alerts"
             element={
