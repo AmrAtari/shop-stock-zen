@@ -142,7 +142,8 @@ const POSHome = () => {
       try {
         const { data, error } = await supabase
           .from("items")
-          .select("id, name, price, quantity, min_stock, category, sku, size, color")
+          .select("*, price_levels!inner(selling_price, is_current)")
+          .eq("price_levels.is_current", true)
           .order("name");
 
         if (error) {
@@ -151,10 +152,17 @@ const POSHome = () => {
           return [];
         }
 
-        // Ensure all products have a price, default to 0 if missing
-        return (data || []).map((item) => ({
-          ...item,
-          price: item.price || 0,
+        // Map price from price_levels
+        return (data || []).map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price_levels?.[0]?.selling_price || 0,
+          quantity: item.quantity,
+          min_stock: item.min_stock,
+          category: item.category,
+          sku: item.sku,
+          size: item.size,
+          color: item.color,
         }));
       } catch (error) {
         console.error("Error in products query:", error);
@@ -163,25 +171,42 @@ const POSHome = () => {
     },
   });
 
-  // Fetch recent transactions from database
+  // Fetch recent sales from database
   const { data: recentTransactions = [], isLoading: isLoadingTransactions } = useQuery({
-    queryKey: ["pos-transactions"],
+    queryKey: ["pos-sales"],
     queryFn: async (): Promise<Transaction[]> => {
       try {
         const { data, error } = await supabase
-          .from("transactions")
-          .select("*")
+          .from("sales")
+          .select("*, items(name)")
           .order("created_at", { ascending: false })
           .limit(10);
 
         if (error) {
-          console.error("Error loading transactions:", error);
+          console.error("Error loading sales:", error);
           return [];
         }
 
-        return data || [];
+        // Group sales by a timeframe to simulate transactions
+        const grouped = (data || []).reduce((acc: any, sale: any) => {
+          const key = sale.created_at;
+          if (!acc[key]) {
+            acc[key] = {
+              id: sale.id,
+              created_at: sale.created_at,
+              total_amount: sale.price * sale.quantity,
+              status: "completed" as const,
+              items: [],
+            };
+          } else {
+            acc[key].total_amount += sale.price * sale.quantity;
+          }
+          return acc;
+        }, {});
+
+        return Object.values(grouped);
       } catch (error) {
-        console.error("Error in transactions query:", error);
+        console.error("Error in sales query:", error);
         return [];
       }
     },
@@ -256,24 +281,23 @@ const POSHome = () => {
     }
 
     try {
-      // Create transaction record
-      const { data: transaction, error: transactionError } = await supabase
-        .from("transactions")
-        .insert({
-          total_amount: cartTotal,
-          status: "completed",
-          items: cart,
-        })
-        .select()
-        .single();
+      // Insert sales records
+      for (const item of cart) {
+        const { error: saleError } = await supabase
+          .from("sales")
+          .insert({
+            item_id: item.id,
+            sku: item.sku,
+            quantity: item.cartQuantity,
+            price: item.price,
+          });
 
-      if (transactionError) {
-        console.error("Transaction error:", transactionError);
-        throw transactionError;
-      }
+        if (saleError) {
+          console.error("Sale error:", saleError);
+          throw saleError;
+        }
 
-      // Update inventory quantities
-      const updatePromises = cart.map(async (item) => {
+        // Update inventory quantity
         const currentProduct = products.find((p) => p.id === item.id);
         if (currentProduct) {
           const newQuantity = currentProduct.quantity - item.cartQuantity;
@@ -288,17 +312,13 @@ const POSHome = () => {
             throw updateError;
           }
         }
-      });
-
-      await Promise.all(updatePromises);
+      }
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ["pos-products"] });
-      queryClient.invalidateQueries({ queryKey: ["pos-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["pos-sales"] });
 
-      toast.success(
-        `Transaction Complete! Sale ID: ${transaction.id.substring(0, 8)} | Total: $${cartTotal.toFixed(2)}`,
-      );
+      toast.success(`Sale Complete! Total: $${cartTotal.toFixed(2)}`);
 
       setCart([]);
     } catch (error: any) {
