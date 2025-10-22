@@ -159,25 +159,27 @@ const Dashboard = () => {
         "items",
         "stock",
         "inventory",
-        "products_inventory",
         "store_inventory",
+        "product_inventory",
       ];
 
       for (const tableName of tables) {
         try {
-          const { data, error } = await supabase
-            .from(tableName as any)
-            .select("*")
-            .limit(2);
+          const { data, error } = await supabase.from(tableName).select("*").limit(5);
 
-          console.log(`Table "${tableName}":`, data);
-          console.log(`Error for "${tableName}":`, error);
+          console.log(`=== Table: ${tableName} ===`);
+          console.log(`Data:`, data);
+          console.log(`Error:`, error);
 
           if (data && data.length > 0) {
-            console.log(`Columns in "${tableName}":`, Object.keys(data[0]));
+            console.log(`Columns:`, Object.keys(data[0]));
+            console.log(`Sample row:`, data[0]);
+          } else {
+            console.log(`No data in table ${tableName}`);
           }
+          console.log(`\n`);
         } catch (err) {
-          console.log(`Table "${tableName}" doesn't exist or can't be accessed`);
+          console.log(`Table "${tableName}" doesn't exist or can't be accessed:`, err);
         }
       }
     } catch (error) {
@@ -185,20 +187,18 @@ const Dashboard = () => {
     }
   };
 
-  // NEW: Get real store metrics from your actual database
+  // Fixed: Get real store metrics from your actual database
   const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
       console.log("🔍 Fetching REAL store metrics from database...");
 
       // Get all stores
-      const { data: stores, error: storesError } = await supabase
-        .from("stores" as any)
-        .select("id, name")
-        .order("name");
+      const { data: stores, error: storesError } = await supabase.from("stores").select("id, name").order("name");
 
       if (storesError) {
         console.error("❌ Error fetching stores:", storesError);
+        toast.error("Failed to load stores");
         return;
       }
 
@@ -212,126 +212,143 @@ const Dashboard = () => {
 
       const storeMetricsData: StoreMetrics[] = [];
 
-      // Get ALL inventory data to work with
-      const { data: allInventory, error: inventoryError } = await supabase.from("inventory_items" as any).select("*");
+      // Try multiple possible table names for inventory data
+      const possibleInventoryTables = ["inventory_items", "products", "items", "stock", "inventory"];
 
-      console.log("📦 All inventory items:", allInventory);
-      console.log("📦 Inventory error:", inventoryError);
+      let allInventory: any[] = [];
+      let inventoryError = null;
 
-      if (inventoryError) {
-        console.error("❌ Error fetching inventory:", inventoryError);
-        return;
+      // Try each possible table name
+      for (const tableName of possibleInventoryTables) {
+        console.log(`🔍 Trying to fetch from table: ${tableName}`);
+        const { data, error } = await supabase.from(tableName).select("*").limit(1000); // Increase limit to get more data
+
+        if (!error && data && data.length > 0) {
+          console.log(`✅ Found data in table: ${tableName}`, data.length, "items");
+          allInventory = data;
+          break;
+        } else {
+          console.log(`❌ No data in table: ${tableName}`, error);
+        }
       }
 
-      // If we have inventory data, let's analyze it
-      if (allInventory && allInventory.length > 0) {
-        console.log("✅ Found inventory data, analyzing structure...");
-        const firstItem = allInventory[0] as any;
-        console.log("📊 First item structure:", firstItem);
-        console.log("🔑 First item keys:", Object.keys(firstItem));
-
-        // Check what fields we have
-        const hasStoreId = "store_id" in firstItem;
-        const hasLocation = "location" in firstItem;
-        const hasQuantity = "quantity" in firstItem;
-        const hasPrice = "price" in firstItem;
-        const hasCost = "cost_price" in firstItem;
-        const hasMinStock = "min_stock" in firstItem;
-
-        console.log(
-          "🔍 Field check - store_id:",
-          hasStoreId,
-          "location:",
-          hasLocation,
-          "quantity:",
-          hasQuantity,
-          "price:",
-          hasPrice,
-          "cost_price:",
-          hasCost,
-          "min_stock:",
-          hasMinStock,
-        );
-
-        for (const store of stores) {
-          const storeData = store as any;
-          console.log(`\n📊 Processing store: ${storeData.name}`);
-
-          let storeItems: any[] = [];
-          let totalItems = 0;
-          let inventoryValue = 0;
-          let lowStockCount = 0;
-
-          // METHOD 1: If items have store_id, filter by it
-          if (hasStoreId) {
-            storeItems = allInventory.filter((item: any) => item.store_id === storeData.id);
-            console.log(`📍 Found ${storeItems.length} items for store ${storeData.name} by store_id`);
-          }
-          // METHOD 2: If items have location field, try to match by store name
-          else if (hasLocation) {
-            storeItems = allInventory.filter(
-              (item: any) => item.location && item.location.toLowerCase().includes(storeData.name.toLowerCase()),
-            );
-            console.log(`📍 Found ${storeItems.length} items for store ${storeData.name} by location`);
-          }
-          // METHOD 3: If no store linking, distribute items evenly (fallback)
-          else {
-            console.log("⚠️ No store linking field found, using fallback distribution");
-            const itemsPerStore = Math.floor(allInventory.length / stores.length);
-            const storeIndex = stores.findIndex((s: any) => s.id === storeData.id);
-            const startIndex = storeIndex * itemsPerStore;
-            const endIndex = storeIndex === stores.length - 1 ? allInventory.length : startIndex + itemsPerStore;
-            storeItems = allInventory.slice(startIndex, endIndex);
-          }
-
-          // Calculate metrics for this store
-          if (storeItems.length > 0) {
-            storeItems.forEach((item: any) => {
-              totalItems += 1;
-
-              // Calculate value - try different possible price fields
-              const quantity = hasQuantity ? item.quantity || 0 : 1;
-              let price = 0;
-
-              if (hasPrice) price = item.price || 0;
-              else if (hasCost) price = item.cost_price || 0;
-              else price = 10; // Default price if no price field
-
-              const value = quantity * price;
-              inventoryValue += value;
-
-              // Check low stock - try different possible min_stock fields
-              const minStock = hasMinStock ? item.min_stock || item.minimum_stock || 5 : 5;
-              if (quantity <= minStock) {
-                lowStockCount += 1;
-              }
-            });
-          }
-
-          console.log(`📈 Store ${storeData.name} metrics:`, {
-            totalItems,
-            inventoryValue,
-            lowStockCount,
-          });
-
-          storeMetricsData.push({
-            storeName: storeData.name,
-            totalItems,
-            inventoryValue,
-            lowStockCount,
-          });
-        }
-      } else {
-        // No inventory data found
-        console.log("❌ No inventory data found in database");
+      // If no inventory data found in any table
+      if (allInventory.length === 0) {
+        console.log("❌ No inventory data found in any table");
+        // Create empty metrics for each store
         for (const store of stores) {
           storeMetricsData.push({
-            storeName: (store as any).name,
+            storeName: store.name,
             totalItems: 0,
             inventoryValue: 0,
             lowStockCount: 0,
           });
         }
+        setStoreMetrics(storeMetricsData);
+        return;
+      }
+
+      console.log("📦 Inventory data structure:", allInventory[0]);
+      console.log("🔑 Inventory item keys:", Object.keys(allInventory[0]));
+
+      // Analyze the first item to understand the structure
+      const firstItem = allInventory[0];
+      const hasStoreId = "store_id" in firstItem;
+      const hasLocation = "location" in firstItem;
+      const hasQuantity = "quantity" in firstItem || "stock_quantity" in firstItem || "qty" in firstItem;
+      const hasPrice = "price" in firstItem || "unit_price" in firstItem || "cost" in firstItem;
+      const hasCost = "cost_price" in firstItem || "cost" in firstItem || "unit_cost" in firstItem;
+      const hasMinStock = "min_stock" in firstItem || "minimum_stock" in firstItem || "reorder_level" in firstItem;
+
+      console.log("🔍 Field analysis:", {
+        hasStoreId,
+        hasLocation,
+        hasQuantity,
+        hasPrice,
+        hasCost,
+        hasMinStock,
+      });
+
+      // Process each store
+      for (const store of stores) {
+        console.log(`\n📊 Processing store: ${store.name}`);
+
+        let storeItems: any[] = [];
+        let totalItems = 0;
+        let inventoryValue = 0;
+        let lowStockCount = 0;
+
+        // Method 1: Filter by store_id (exact match)
+        if (hasStoreId) {
+          storeItems = allInventory.filter((item: any) => item.store_id === store.id);
+          console.log(`📍 Found ${storeItems.length} items by store_id`);
+        }
+
+        // Method 2: Filter by location (partial match)
+        else if (hasLocation) {
+          storeItems = allInventory.filter(
+            (item: any) => item.location && item.location.toString().toLowerCase().includes(store.name.toLowerCase()),
+          );
+          console.log(`📍 Found ${storeItems.length} items by location match`);
+        }
+
+        // Method 3: If no store linking, assign items randomly for demo
+        else {
+          console.log("⚠️ No store linking field found, using demo distribution");
+          // Simple demo: assign items randomly to stores
+          storeItems = allInventory.filter((_, index) => index % stores.length === stores.indexOf(store));
+          console.log(`📍 Assigned ${storeItems.length} items for demo`);
+        }
+
+        // Calculate metrics for this store
+        if (storeItems.length > 0) {
+          storeItems.forEach((item: any) => {
+            totalItems += 1;
+
+            // Get quantity from various possible field names
+            let quantity = 1;
+            if (hasQuantity) {
+              quantity = item.quantity || item.stock_quantity || item.qty || 1;
+            }
+
+            // Get price from various possible field names
+            let price = 0;
+            if (hasPrice) {
+              price = item.price || item.unit_price || item.cost || 0;
+            } else if (hasCost) {
+              price = item.cost_price || item.cost || item.unit_cost || 0;
+            } else {
+              price = 10; // Default price for demo
+            }
+
+            const value = quantity * price;
+            inventoryValue += value;
+
+            // Get min stock from various possible field names
+            let minStock = 5; // Default
+            if (hasMinStock) {
+              minStock = item.min_stock || item.minimum_stock || item.reorder_level || 5;
+            }
+
+            // Check if item is low stock
+            if (quantity <= minStock) {
+              lowStockCount += 1;
+            }
+          });
+        }
+
+        console.log(`📈 Store ${store.name} metrics:`, {
+          totalItems,
+          inventoryValue,
+          lowStockCount,
+        });
+
+        storeMetricsData.push({
+          storeName: store.name,
+          totalItems,
+          inventoryValue,
+          lowStockCount,
+        });
       }
 
       console.log("🎯 Final store metrics:", storeMetricsData);
@@ -358,7 +375,7 @@ const Dashboard = () => {
       // Try to get real notifications
       try {
         const { data: approvals, error: approvalsError } = await supabase
-          .from("inventory_approvals" as any)
+          .from("inventory_approvals")
           .select("*")
           .order("created_at", { ascending: false })
           .limit(10);
@@ -440,10 +457,7 @@ const Dashboard = () => {
   const markAsRead = async (notificationId: string) => {
     try {
       if (!notificationId.startsWith("sample-")) {
-        await supabase
-          .from("inventory_approvals" as any)
-          .update({ is_read: true } as any)
-          .eq("id", notificationId);
+        await supabase.from("inventory_approvals").update({ is_read: true }).eq("id", notificationId);
       }
 
       setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
@@ -497,7 +511,6 @@ const Dashboard = () => {
     };
   }, [isAdmin]);
 
-  // Rest of the component remains the same...
   useEffect(() => {
     if (dashboardCharts.length > 0) {
       localStorage.setItem("dashboard-charts", JSON.stringify(dashboardCharts));
