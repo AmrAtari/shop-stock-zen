@@ -146,12 +146,10 @@ const Dashboard = () => {
   const [storeMetrics, setStoreMetrics] = useState<StoreMetrics[]>([]);
   const [storeMetricsLoading, setStoreMetricsLoading] = useState(true);
 
-  // Debug function to check database structure
   const debugDatabaseStructure = async () => {
     console.log("=== DATABASE STRUCTURE DEBUG ===");
 
     try {
-      // Check stores table
       const { data: stores, error: storesError } = await supabase
         .from("stores" as any)
         .select("*")
@@ -160,7 +158,6 @@ const Dashboard = () => {
       console.log("Stores:", stores);
       console.log("Stores Error:", storesError);
 
-      // Check inventory_items table structure
       const { data: items, error: itemsError } = await supabase
         .from("inventory_items" as any)
         .select("*")
@@ -173,7 +170,6 @@ const Dashboard = () => {
         console.log("Inventory Items Columns:", Object.keys(items[0]));
       }
 
-      // Check if we have any inventory data at all
       const { count: totalItems, error: countError } = await supabase
         .from("inventory_items" as any)
         .select("*", { count: "exact", head: true });
@@ -185,14 +181,12 @@ const Dashboard = () => {
     }
   };
 
-  // Enhanced store metrics with better data fetching
   const fetchStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
 
       console.log("Starting store metrics fetch...");
 
-      // First, get all stores
       const { data: stores, error: storesError } = await supabase
         .from("stores" as any)
         .select("id, name")
@@ -200,7 +194,6 @@ const Dashboard = () => {
 
       if (storesError) {
         console.error("Error fetching stores:", storesError);
-        // Use sample data if stores table doesn't exist
         const sampleStoreMetrics: StoreMetrics[] = [
           { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
           { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
@@ -212,7 +205,6 @@ const Dashboard = () => {
 
       console.log("Stores found:", stores);
 
-      // If no stores exist, use sample data
       if (!stores || stores.length === 0) {
         console.log("No stores found, using sample data");
         const sampleStoreMetrics: StoreMetrics[] = [
@@ -224,7 +216,6 @@ const Dashboard = () => {
         return;
       }
 
-      // Get ALL inventory items first to analyze the structure
       const { data: allItems, error: allItemsError } = await supabase.from("inventory_items" as any).select("*");
 
       console.log("All inventory items:", allItems);
@@ -232,7 +223,6 @@ const Dashboard = () => {
 
       if (allItemsError) {
         console.error("Error fetching all items:", allItemsError);
-        // If we can't fetch items, show stores with zero values
         const storeMetricsData: StoreMetrics[] = stores.map((store: any) => ({
           storeName: store.name,
           totalItems: 0,
@@ -243,7 +233,6 @@ const Dashboard = () => {
         return;
       }
 
-      // Analyze item structure to understand how to calculate metrics
       const storeMetricsData: StoreMetrics[] = [];
 
       for (const store of stores) {
@@ -251,7 +240,6 @@ const Dashboard = () => {
 
         console.log(`Processing store: ${storeData.name} (ID: ${storeData.id})`);
 
-        // Method 1: Try to filter by store_id if it exists
         let storeItems = allItems;
         if (allItems && allItems.length > 0 && allItems[0].store_id !== undefined) {
           storeItems = allItems.filter((item: any) => item.store_id === storeData.id);
@@ -260,23 +248,19 @@ const Dashboard = () => {
           console.log(`No store_id field found, using all items for store ${storeData.name}`);
         }
 
-        // Calculate metrics
         let totalItems = 0;
         let inventoryValue = 0;
         let lowStockCount = 0;
 
         if (storeItems && storeItems.length > 0) {
           storeItems.forEach((item: any) => {
-            // Count items
             totalItems += 1;
 
-            // Calculate value (handle different possible field names)
             const quantity = item.quantity || item.stock_quantity || item.qty || 0;
             const price = item.price || item.cost_price || item.unit_price || 0;
             const value = quantity * price;
             inventoryValue += value;
 
-            // Check for low stock (handle different possible field names)
             const minStock = item.min_stock || item.minimum_stock || item.reorder_level || 5;
             if (quantity <= minStock) {
               lowStockCount += 1;
@@ -302,7 +286,6 @@ const Dashboard = () => {
       setStoreMetrics(storeMetricsData);
     } catch (error) {
       console.error("Error fetching store metrics:", error);
-      // Fallback to sample data
       const sampleStoreMetrics: StoreMetrics[] = [
         { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
         { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
@@ -314,14 +297,12 @@ const Dashboard = () => {
     }
   };
 
-  // Alternative: Fetch store metrics using a different approach
   const fetchStoreMetricsAlternative = async () => {
     try {
       setStoreMetricsLoading(true);
 
       console.log("Using alternative store metrics approach...");
 
-      // Get all stores
       const { data: stores, error: storesError } = await supabase
         .from("stores" as any)
         .select("id, name")
@@ -337,9 +318,6 @@ const Dashboard = () => {
       for (const store of stores) {
         const storeData = store as any;
 
-        // Try different approaches to get store-specific data
-
-        // Approach 1: Check if inventory_items has store_id
         const { data: itemsWithStore, error: storeItemsError } = await supabase
           .from("inventory_items" as any)
           .select("quantity, price, min_stock")
@@ -363,7 +341,6 @@ const Dashboard = () => {
             }
           });
         } else {
-          // Approach 2: If no store_id, check for location field
           const { data: itemsWithLocation, error: locationError } = await supabase
             .from("inventory_items" as any)
             .select("quantity, price, min_stock, location")
@@ -383,7 +360,6 @@ const Dashboard = () => {
               }
             });
           } else {
-            // Approach 3: If no store-specific data, distribute total items evenly
             const { data: allItems, error: allItemsError } = await supabase
               .from("inventory_items" as any)
               .select("quantity, price, min_stock");
@@ -392,17 +368,14 @@ const Dashboard = () => {
               const itemsPerStore = Math.floor(allItems.length / stores.length);
               const remainingItems = allItems.length % stores.length;
 
-              // Distribute items evenly among stores
               const storeIndex = stores.findIndex((s: any) => s.id === storeData.id);
               const assignedItems = storeIndex < remainingItems ? itemsPerStore + 1 : itemsPerStore;
 
-              // Calculate average value per item
               const totalValue = allItems.reduce((sum: number, item: any) => {
                 return sum + (item.quantity || 0) * (item.price || 0);
               }, 0);
               const avgValuePerItem = totalValue / allItems.length;
 
-              // Calculate low stock percentage
               const totalLowStock = allItems.filter(
                 (item: any) => (item.quantity || 0) <= (item.min_stock || 5),
               ).length;
@@ -434,7 +407,6 @@ const Dashboard = () => {
     }
   };
 
-  // Enhanced notifications fetcher
   const fetchNotifications = async () => {
     if (!isAdmin) {
       setNotificationsLoading(false);
@@ -445,7 +417,6 @@ const Dashboard = () => {
       setNotificationsLoading(true);
       const allNotifications: Notification[] = [];
 
-      // Fetch from inventory_approvals table
       try {
         const { data: approvals, error: approvalsError } = await supabase
           .from("inventory_approvals" as any)
@@ -475,7 +446,6 @@ const Dashboard = () => {
         console.log("Inventory approvals table error:", tableError);
       }
 
-      // Only use sample data if no real notifications found
       if (allNotifications.length === 0) {
         allNotifications.push(...getSampleNotifications());
       }
@@ -489,7 +459,6 @@ const Dashboard = () => {
     }
   };
 
-  // Helper function to get notification link
   const getNotificationLink = (type: string, referenceId: string): string => {
     switch (type) {
       case "purchase_order":
@@ -503,7 +472,6 @@ const Dashboard = () => {
     }
   };
 
-  // Sample notifications for testing
   const getSampleNotifications = (): Notification[] => {
     return [
       {
@@ -533,7 +501,14 @@ const Dashboard = () => {
     }
   };
 
-  // Initialize everything
+  const handleNotificationClick = (link: string, notificationId?: string) => {
+    setIsNotificationsOpen(false);
+    if (notificationId) {
+      markAsRead(notificationId);
+    }
+    navigate(link);
+  };
+
   useEffect(() => {
     const savedCharts = localStorage.getItem("dashboard-charts");
     if (savedCharts) {
@@ -550,10 +525,9 @@ const Dashboard = () => {
     }
 
     debugDatabaseStructure();
-    fetchStoreMetricsAlternative(); // Use the alternative approach
+    fetchStoreMetricsAlternative();
     fetchNotifications();
 
-    // Set up real-time subscription
     const subscription = supabase
       .channel("notifications")
       .on("postgres_changes", { event: "*", schema: "public", table: "inventory_approvals" }, () => {
@@ -566,9 +540,162 @@ const Dashboard = () => {
     };
   }, [isAdmin]);
 
-  // [Rest of the component remains the same - handleAddChart, handleRemoveChart, etc.]
+  useEffect(() => {
+    if (dashboardCharts.length > 0) {
+      localStorage.setItem("dashboard-charts", JSON.stringify(dashboardCharts));
+    }
+  }, [dashboardCharts]);
 
-  // Calculate totals from store metrics
+  const handleAddChart = () => {
+    if (!selectedChart) return;
+
+    const newChart: DashboardChart = {
+      id: Date.now().toString(),
+      chartId: selectedChart,
+      position: dashboardCharts.length,
+    };
+
+    setDashboardCharts((prev) => [...prev, newChart]);
+    setSelectedChart("");
+    setIsAddChartOpen(false);
+  };
+
+  const handleRemoveChart = (chartId: string) => {
+    setDashboardCharts((prev) => prev.filter((chart) => chart.id !== chartId));
+  };
+
+  const handleDragStart = (e: React.DragEvent, chartId: string) => {
+    e.dataTransfer.setData("chartId", chartId);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetChartId: string) => {
+    e.preventDefault();
+    const draggedChartId = e.dataTransfer.getData("chartId");
+
+    if (draggedChartId === targetChartId) return;
+
+    const draggedIndex = dashboardCharts.findIndex((chart) => chart.id === draggedChartId);
+    const targetIndex = dashboardCharts.findIndex((chart) => chart.id === targetChartId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newCharts = [...dashboardCharts];
+    const [draggedChart] = newCharts.splice(draggedIndex, 1);
+    newCharts.splice(targetIndex, 0, draggedChart);
+
+    const updatedCharts = newCharts.map((chart, index) => ({
+      ...chart,
+      position: index,
+    }));
+
+    setDashboardCharts(updatedCharts);
+  };
+
+  const getChartData = (dataKey: string) => {
+    const dataMap: { [key: string]: any } = {
+      categoryQuantity,
+      categoryValue,
+      stockMovementTrends,
+      abcDistribution,
+      lowStockByCategory: categoryQuantity.map((item) => ({
+        name: item.name,
+        lowStock: Math.floor(item.value * 0.1),
+      })),
+      turnoverRates: [
+        { month: "Jan", turnover: 2.5 },
+        { month: "Feb", turnover: 3.1 },
+        { month: "Mar", turnover: 2.8 },
+        { month: "Apr", turnover: 3.4 },
+        { month: "May", turnover: 3.0 },
+        { month: "Jun", turnover: 3.2 },
+      ],
+    };
+
+    return dataMap[dataKey] || [];
+  };
+
+  const renderChart = (chartConfig: ChartConfig) => {
+    const data = getChartData(chartConfig.dataKey);
+
+    switch (chartConfig.type) {
+      case "bar":
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Bar
+                dataKey={chartConfig.dataKey === "lowStockByCategory" ? "lowStock" : "value"}
+                fill={chartConfig.color}
+                radius={[8, 8, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        );
+
+      case "pie":
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={data}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent, value }) =>
+                  chartConfig.dataKey === "abcDistribution"
+                    ? `${name}: ${value}`
+                    : `${name} ${(percent * 100).toFixed(0)}%`
+                }
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {data.map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              {chartConfig.dataKey === "abcDistribution" && <Legend />}
+            </PieChart>
+          </ResponsiveContainer>
+        );
+
+      case "line":
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis dataKey={chartConfig.dataKey === "turnoverRates" ? "month" : "date"} />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey={chartConfig.dataKey === "turnoverRates" ? "turnover" : "adjustments"}
+                stroke={chartConfig.color}
+                strokeWidth={2}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  const getAvailableChartOptions = () => {
+    const usedChartIds = new Set(dashboardCharts.map((chart) => chart.chartId));
+    return availableCharts.filter((chart) => !usedChartIds.has(chart.id));
+  };
+
   const totalItemsAllStores = storeMetrics.reduce((sum, store) => sum + store.totalItems, 0);
   const totalValueAllStores = storeMetrics.reduce((sum, store) => sum + store.inventoryValue, 0);
   const totalLowStockAllStores = storeMetrics.reduce((sum, store) => sum + store.lowStockCount, 0);
@@ -581,7 +708,6 @@ const Dashboard = () => {
           <p className="text-muted-foreground mt-1">Customizable overview of your inventory across all stores</p>
         </div>
         <div className="flex gap-2">
-          {/* Notifications Button */}
           {isAdmin && (
             <Dialog open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
               <DialogTrigger asChild>
@@ -686,7 +812,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Store-wise Metrics Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -707,7 +832,6 @@ const Dashboard = () => {
             </div>
           ) : (
             <>
-              {/* Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                 <MetricCard
                   title="Total Items (All Stores)"
@@ -735,7 +859,6 @@ const Dashboard = () => {
                 />
               </div>
 
-              {/* Store Details */}
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -780,7 +903,145 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* [Rest of the component remains the same...] */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {isLoading ? (
+          <>
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </>
+        ) : (
+          <>
+            <MetricCard
+              title="Total Items"
+              value={metrics.totalItems}
+              icon={<Package className="w-5 h-5" />}
+              variant="default"
+            />
+            <MetricCard
+              title="Inventory Value"
+              value={`$${metrics.totalValue.toFixed(2)}`}
+              icon={<DollarSign className="w-5 h-5" />}
+              variant="success"
+            />
+            <MetricCard
+              title="Low Stock Alerts"
+              value={metrics.lowStockCount}
+              icon={<AlertTriangle className="w-5 h-5" />}
+              variant="warning"
+            />
+            <MetricCard
+              title="Total Products"
+              value={metrics.totalProducts}
+              icon={<TrendingUp className="w-5 h-5" />}
+              variant="default"
+            />
+          </>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {dashboardCharts.map((dashboardChart) => {
+          const chartConfig = availableCharts.find((chart) => chart.id === dashboardChart.chartId);
+          if (!chartConfig) return null;
+
+          return (
+            <Card
+              key={dashboardChart.id}
+              className={`relative ${isEditMode ? "border-2 border-dashed border-primary" : ""}`}
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, dashboardChart.id)}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, dashboardChart.id)}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div className="flex items-center gap-2">
+                  {isEditMode && <GripVertical className="w-4 h-4 text-muted-foreground cursor-move" />}
+                  <CardTitle>{chartConfig.title}</CardTitle>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => navigate(`/reports?tab=${chartConfig.reportTab}`)}>
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Full Report
+                  </Button>
+                  {isEditMode && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveChart(dashboardChart.id)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>{isLoading ? <Skeleton className="h-[300px]" /> : renderChart(chartConfig)}</CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Low Stock Items</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+            </div>
+          ) : lowStockItems.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No low stock items</p>
+          ) : (
+            <>
+              <div className="space-y-4">
+                {lowStockItems.slice(0, 5).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <p className="font-medium">{item.name}</p>
+                      <p className="text-sm text-muted-foreground">{item.sku}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-warning">
+                        {item.quantity} {item.unit}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Min: {item.minStock}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {lowStockItems.length > 5 && (
+                <div className="mt-4 text-center">
+                  <Button variant="outline" onClick={() => navigate("/reports?tab=LOW_STOCK")}>
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    See Full Report ({lowStockItems.length} items)
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {dashboardCharts.length === 0 && !isLoading && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Package className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No charts configured</h3>
+            <p className="text-muted-foreground text-center mb-4">
+              Add charts to your dashboard to visualize your inventory data
+            </p>
+            <Button onClick={() => setIsEditMode(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Your First Chart
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
