@@ -35,6 +35,17 @@ import POSRefunds from "./pages/POS/POSRefunds";
 import ClosingCash from "./pages/POS/ClosingCash";
 import { POSProvider } from "./pages/POS/POSContext";
 
+// Placeholder for new page
+const Approvals = () => (
+  <div className="p-8">
+    <h1 className="text-3xl font-bold mb-4">Pending Approvals & Notifications</h1>
+    <p className="text-muted-foreground">
+      This page will display a full list of all inventory-related items awaiting your review or action, such as Purchase
+      Orders and Transfer requests.
+    </p>
+  </div>
+);
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -208,6 +219,18 @@ const App = () => (
               <ProtectedRoute>
                 <Layout>
                   <TransferDetail />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* --- Approvals/Notifications Page --- */}
+          <Route
+            path="/approvals"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Approvals />
                 </Layout>
               </ProtectedRoute>
             }
