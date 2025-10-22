@@ -141,50 +141,57 @@ const POSHome = () => {
 
     const transactionId = `TXN-${Date.now()}`;
     try {
-      // Insert transaction metadata (optional table), then insert sales
-      for (const it of cart) {
-        const itemDiscountFixed = it.itemDiscountType === "fixed" ? it.itemDiscountValue || 0 : 0;
-        const itemDiscountPercent = it.itemDiscountType === "percent" ? it.itemDiscountValue || 0 : 0;
-
-        const salePayload = {
+      // Insert into transactions table
+      const transactionItems = cart.map((item) => {
+        const itemDiscountFixed = item.itemDiscountType === "fixed" ? item.itemDiscountValue || 0 : 0;
+        const itemDiscountPercent = item.itemDiscountType === "percent" ? item.itemDiscountValue || 0 : 0;
+        
+        return {
           transaction_id: transactionId,
           session_id: sessionId,
           cashier_id: cashierId,
-          item_id: it.id,
-          sku: it.sku,
-          quantity: it.cartQuantity,
-          price: it.price,
+          item_id: item.id,
+          sku: item.sku,
+          quantity: item.cartQuantity,
+          price: item.price,
           discount_fixed: itemDiscountFixed,
           discount_percent: itemDiscountPercent,
           amount:
-            it.price * it.cartQuantity -
-            itemDiscountFixed * it.cartQuantity -
-            (it.price * it.cartQuantity * itemDiscountPercent) / 100,
+            item.price * item.cartQuantity -
+            itemDiscountFixed * item.cartQuantity -
+            (item.price * item.cartQuantity * itemDiscountPercent) / 100,
           is_refund: false,
-          created_at: new Date(),
+          payment_method: method,
         };
+      });
 
-        const { error: saleErr } = await supabase.from("sales").insert(salePayload);
-        if (saleErr) throw saleErr;
+      const { error: transactionError } = await supabase
+        .from("transactions")
+        .insert(transactionItems);
 
-        // update stock
+      if (transactionError) throw transactionError;
+
+      // Save transaction to sales for historical record
+      const { error: saleError } = await supabase.from("sales").insert(
+        cart.map((item) => ({
+          item_id: item.id,
+          sku: item.sku,
+          quantity: item.cartQuantity,
+          price: item.price,
+          user_id: cashierId,
+        }))
+      );
+
+      if (saleError) throw saleError;
+
+      // Update stock for each item
+      for (const item of cart) {
         const { error: updateErr } = await supabase
           .from("items")
-          .update({ quantity: Math.max(0, it.quantity - it.cartQuantity) })
-          .eq("id", it.id);
+          .update({ quantity: Math.max(0, item.quantity - item.cartQuantity) })
+          .eq("id", item.id);
         if (updateErr) throw updateErr;
       }
-
-      // Optionally create a transaction summary row
-      await supabase.from("transactions").insert({
-        id: transactionId,
-        session_id: sessionId,
-        cashier_id: cashierId,
-        total,
-        payment_method: method,
-        amount_paid: amountPaid ?? null,
-        created_at: new Date(),
-      });
 
       // show receipt
       setLastTransaction({
@@ -383,7 +390,7 @@ const POSHome = () => {
                 <Button variant="ghost" onClick={() => window.location.assign("/pos/receipts")}>
                   Receipts
                 </Button>
-                <Button variant="danger" onClick={() => window.location.assign("/pos/refunds")}>
+                <Button variant="destructive" onClick={() => window.location.assign("/pos/refunds")}>
                   Refunds
                 </Button>
               </div>

@@ -32,6 +32,39 @@ export type Database = {
         }
         Relationships: []
       }
+      cash_sessions: {
+        Row: {
+          cashier_id: string | null
+          close_at: string | null
+          created_at: string
+          end_cash: number | null
+          id: string
+          notes: string | null
+          open_at: string
+          start_cash: number
+        }
+        Insert: {
+          cashier_id?: string | null
+          close_at?: string | null
+          created_at?: string
+          end_cash?: number | null
+          id?: string
+          notes?: string | null
+          open_at?: string
+          start_cash?: number
+        }
+        Update: {
+          cashier_id?: string | null
+          close_at?: string | null
+          created_at?: string
+          end_cash?: number | null
+          id?: string
+          notes?: string | null
+          open_at?: string
+          start_cash?: number
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -664,6 +697,41 @@ export type Database = {
           },
         ]
       }
+      refunds: {
+        Row: {
+          created_at: string
+          id: string
+          refund_amount: number
+          refund_reason: string | null
+          refunded_by: string | null
+          transaction_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          refund_amount: number
+          refund_reason?: string | null
+          refunded_by?: string | null
+          transaction_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          refund_amount?: number
+          refund_reason?: string | null
+          refunded_by?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refunds_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales: {
         Row: {
           created_at: string
@@ -851,6 +919,75 @@ export type Database = {
         }
         Relationships: []
       }
+      transactions: {
+        Row: {
+          amount: number
+          cashier_id: string | null
+          created_at: string
+          discount_fixed: number
+          discount_percent: number
+          id: string
+          is_refund: boolean
+          is_refunded: boolean
+          item_id: string | null
+          payment_method: string
+          price: number
+          quantity: number
+          session_id: string | null
+          sku: string
+          transaction_id: string
+        }
+        Insert: {
+          amount: number
+          cashier_id?: string | null
+          created_at?: string
+          discount_fixed?: number
+          discount_percent?: number
+          id?: string
+          is_refund?: boolean
+          is_refunded?: boolean
+          item_id?: string | null
+          payment_method?: string
+          price: number
+          quantity?: number
+          session_id?: string | null
+          sku: string
+          transaction_id: string
+        }
+        Update: {
+          amount?: number
+          cashier_id?: string | null
+          created_at?: string
+          discount_fixed?: number
+          discount_percent?: number
+          id?: string
+          is_refund?: boolean
+          is_refunded?: boolean
+          item_id?: string | null
+          payment_method?: string
+          price?: number
+          quantity?: number
+          session_id?: string | null
+          sku?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "cash_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transfer_items: {
         Row: {
           created_at: string
@@ -1023,6 +1160,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      pos_session_expected_cash: {
+        Args: { session_id_param: string }
+        Returns: number
       }
     }
     Enums: {

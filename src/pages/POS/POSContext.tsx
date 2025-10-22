@@ -62,7 +62,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { data, error } = await supabase
         .from("cash_sessions")
-        .insert([{ cashier_id: cashier, start_cash: startCash, open_at: new Date() }])
+        .insert([{ cashier_id: cashier, start_cash: startCash, open_at: new Date().toISOString() }])
         .select()
         .single();
 
@@ -95,7 +95,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // For now we'll update the session row with end_cash and close_at
       const { error } = await supabase
         .from("cash_sessions")
-        .update({ end_cash: endCash, close_at: new Date(), notes })
+        .update({ end_cash: endCash, close_at: new Date().toISOString(), notes })
         .eq("id", sessionId);
 
       if (error) throw error;

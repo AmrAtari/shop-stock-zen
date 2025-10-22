@@ -20,17 +20,22 @@ const POSRefunds = () => {
       const { data } = await supabase
         .from("transactions")
         .select("*")
-        .ilike("id", `%${q}%`)
+        .ilike("transaction_id", `%${q}%`)
         .order("created_at", { ascending: false })
         .limit(50);
       return data || [];
     },
   });
 
-  const loadSales = async (txId: string) => {
-    const { data } = await supabase.from("sales").select("*").eq("transaction_id", txId);
+  const loadSales = async (txnId: string) => {
+    const { data } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("transaction_id", txnId)
+      .eq("is_refund", false)
+      .eq("is_refunded", false);
     setSelectedSaleIds({});
-    setSelectedTransaction({ id: txId, sales: data || [] });
+    setSelectedTransaction({ transaction_id: txnId, items: data || [] });
   };
 
   const toggleSaleSelect = (saleId: string) => {
@@ -39,41 +44,54 @@ const POSRefunds = () => {
 
   const issueRefund = async (mode: "fixed" | "percent", value: number, reason?: string) => {
     if (!selectedTransaction) return toast.error("Select a transaction and items");
-    const saleIds = Object.keys(selectedSaleIds).filter((id) => selectedSaleIds[id]);
-    if (!saleIds.length) return toast.error("Select items to refund");
+    const itemIds = Object.keys(selectedSaleIds).filter((id) => selectedSaleIds[id]);
+    if (!itemIds.length) return toast.error("Select items to refund");
 
     try {
-      for (const saleId of saleIds) {
-        // fetch sale row
-        const { data: saleRow } = await supabase.from("sales").select("*").eq("id", saleId).single();
-        if (!saleRow) continue;
+      for (const itemId of itemIds) {
+        // fetch transaction item row
+        const { data: txnItem } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("id", itemId)
+          .single();
+        if (!txnItem) continue;
 
         // calculate refund amount
         let refundAmount = 0;
         if (mode === "fixed") {
-          refundAmount = Math.min(value, saleRow.amount);
+          refundAmount = Math.min(value, txnItem.amount);
         } else {
-          refundAmount = (saleRow.amount * value) / 100;
+          refundAmount = (txnItem.amount * value) / 100;
         }
 
         // insert refund record
         await supabase.from("refunds").insert({
-          transaction_id: selectedTransaction.id,
-          sale_id: saleRow.id,
-          amount: refundAmount,
-          reason: reason || "No reason",
-          cashier_id: cashierId,
-          created_at: new Date(),
+          transaction_id: txnItem.id,
+          refunded_by: cashierId,
+          refund_reason: reason || "No reason",
+          refund_amount: refundAmount,
         });
 
-        // mark sale as refunded (or adjust)
-        await supabase.from("sales").update({ is_refunded: true }).eq("id", saleRow.id);
+        // mark transaction as refunded
+        await supabase
+          .from("transactions")
+          .update({ is_refunded: true })
+          .eq("id", txnItem.id);
 
         // return item to inventory
-        await supabase
+        const { data: currentItem } = await supabase
           .from("items")
-          .update({ quantity: (saleRow.quantity || 0) + (saleRow.quantity || 0) })
-          .eq("id", saleRow.item_id);
+          .select("quantity")
+          .eq("id", txnItem.item_id)
+          .single();
+        
+        if (currentItem) {
+          await supabase
+            .from("items")
+            .update({ quantity: currentItem.quantity + txnItem.quantity })
+            .eq("id", txnItem.item_id);
+        }
       }
 
       toast.success("Refund processed");
@@ -104,11 +122,11 @@ const POSRefunds = () => {
                 {receipts.map((r: any) => (
                   <div key={r.id} className="p-2 border rounded flex justify-between items-center">
                     <div>
-                      <div className="font-medium">{r.id}</div>
+                      <div className="font-medium">{r.transaction_id}</div>
                       <div className="text-sm text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
                     </div>
                     <div>
-                      <Button size="sm" onClick={() => loadSales(r.id)}>
+                      <Button size="sm" onClick={() => loadSales(r.transaction_id)}>
                         Load
                       </Button>
                     </div>
@@ -124,12 +142,12 @@ const POSRefunds = () => {
               ) : (
                 <>
                   <div className="space-y-2">
-                    {(selectedTransaction.sales || []).map((s: any) => (
+                    {(selectedTransaction.items || []).map((s: any) => (
                       <div key={s.id} className="p-2 border rounded flex items-center justify-between">
                         <div>
                           <div className="font-medium">{s.sku}</div>
                           <div className="text-sm text-muted-foreground">
-                            Qty: {s.quantity} — ${s.amount}
+                            Qty: {s.quantity} — ${s.amount?.toFixed(2)}
                           </div>
                         </div>
                         <div className="flex gap-2 items-center">
