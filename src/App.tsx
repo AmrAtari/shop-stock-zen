@@ -113,7 +113,18 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-          <Route path="/ai-reports" element={<AIReports />} />
+
+          {/* AI Reports (Protected + with Layout) */}
+          <Route
+            path="/ai-reports"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <AIReports />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/inventory"
