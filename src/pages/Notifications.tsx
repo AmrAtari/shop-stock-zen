@@ -9,27 +9,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ExternalLink, MailOpen, Check } from "lucide-react";
 
-// CORRECTED Interface to match the error's structure and app logic
 interface Notification {
   id: string;
   type: "purchase_order" | "transfer" | "low_stock" | "system";
   title: string;
-  description: string; // Map message from DB to description
+  description: string;
   link: string;
   created_at: string;
   is_read: boolean;
-}
-
-// Interface for the data fetched directly from the DB
-interface DBNotification {
-  id: number;
-  user_id: string;
-  type: string; // The problematic type: string
-  title: string;
-  message: string;
-  is_read: boolean;
-  created_at: string;
-  reference_id: string; // Assuming a key exists to reference the PO/Transfer ID
 }
 
 const Notifications = () => {
@@ -40,7 +27,6 @@ const Notifications = () => {
   const fetchAllNotifications = async () => {
     setIsLoading(true);
     try {
-      // FIX: Casting table name to any to bypass potential TS error on unknown table
       const { data, error } = await supabase
         .from("inventory_approvals" as any)
         .select(`id, user_id, type, title, message, is_read, created_at, reference_id`)
@@ -48,8 +34,8 @@ const Notifications = () => {
 
       if (error) throw error;
 
-      // Map DB data to the strict Notification interface, resolving the type conflict
-      const mappedNotifications: Notification[] = (data as DBNotification[]).map((item) => {
+      // Map DB data to the strict Notification interface with proper type handling
+      const mappedNotifications: Notification[] = ((data || []) as any[]).map((item) => {
         let linkPath = "";
 
         // Safely cast the 'type: string' from DB to the strict union type
@@ -97,7 +83,7 @@ const Notifications = () => {
     try {
       await supabase
         .from("inventory_approvals" as any)
-        .update({ is_read: true })
+        .update({ is_read: true } as any)
         .eq("id", id);
 
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
