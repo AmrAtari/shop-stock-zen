@@ -1,65 +1,74 @@
 import React, { useState } from "react";
 import * as XLSX from "xlsx";
+import { supabase } from "@/lib/supabaseClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Download, Bot } from "lucide-react";
 
-/**
- * AIReports.tsx (Vite-safe, no file-saver)
- * Uses native browser download for Excel export.
- */
+interface ReportData {
+  name: string;
+  value: number;
+}
+
 const AIReports: React.FC = () => {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<ReportData[]>([]);
   const [summary, setSummary] = useState("");
 
-  const handleGenerateReport = async () => {
-    if (!query.trim()) return;
+  // Map simple keywords to Supabase queries
+  const fetchReport = async (query: string) => {
     setLoading(true);
     setSummary("");
     setData([]);
 
-    // Simulate AI report logic (replace with real API later)
-    setTimeout(() => {
-      let generatedData: any[] = [];
+    try {
+      let result;
       let reportSummary = "";
 
       if (query.toLowerCase().includes("sales")) {
-        generatedData = [
-          { name: "Store A", value: 12000 },
-          { name: "Store B", value: 18500 },
-          { name: "Store C", value: 9200 },
-        ];
-        reportSummary = "Total sales by store.";
+        // Example: total sales by store
+        result = await supabase.from("sales").select("store, total_amount").order("total_amount", { ascending: false });
+        reportSummary = "Total sales by store";
       } else if (query.toLowerCase().includes("inventory")) {
-        generatedData = [
-          { name: "Electronics", value: 45000 },
-          { name: "Clothing", value: 28000 },
-          { name: "Home Goods", value: 18000 },
-        ];
-        reportSummary = "Inventory value by category.";
+        // Example: inventory value by category
+        result = await supabase
+          .from("inventory")
+          .select("category, total_value")
+          .order("total_value", { ascending: false });
+        reportSummary = "Inventory value by category";
       } else {
-        generatedData = [
-          { name: "Item A", value: 5000 },
-          { name: "Item B", value: 7000 },
-          { name: "Item C", value: 4000 },
-        ];
-        reportSummary = "Generic sample report.";
+        // fallback
+        result = await supabase.from("inventory").select("item_name, quantity");
+        reportSummary = "Generic inventory report";
       }
 
-      setData(generatedData);
+      if (result.error) throw result.error;
+
+      const formattedData = (result.data as any[]).map((row) => ({
+        name: row.store || row.category || row.item_name,
+        value: row.total_amount || row.total_value || row.quantity,
+      }));
+
+      setData(formattedData);
       setSummary(reportSummary);
+    } catch (error) {
+      console.error(error);
+      setSummary("Failed to fetch data.");
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
-  // Native browser download (no file-saver)
+  const handleGenerateReport = () => {
+    if (!query.trim()) return;
+    fetchReport(query);
+  };
+
   const handleExportExcel = () => {
     if (!data.length) return;
-
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Report");
