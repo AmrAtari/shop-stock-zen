@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Download, Bot } from "lucide-react";
 
 /**
- * AIReports.tsx (Vite-safe)
- * Uses dynamic import for file-saver to avoid Vite import issues
+ * AIReports.tsx (Vite-safe, no file-saver)
+ * Uses native browser download for Excel export.
  */
 const AIReports: React.FC = () => {
   const [query, setQuery] = useState("");
@@ -56,18 +56,25 @@ const AIReports: React.FC = () => {
     }, 1500);
   };
 
-  // Dynamic import for file-saver
-  const handleExportExcel = async () => {
+  // Native browser download (no file-saver)
+  const handleExportExcel = () => {
     if (!data.length) return;
-    const FileSaver = await import("file-saver"); // dynamic import
+
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Report");
+
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const blob = new Blob([excelBuffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
-    FileSaver.saveAs(blob, "AI_Report.xlsx");
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "AI_Report.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
