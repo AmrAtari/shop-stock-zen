@@ -52,6 +52,16 @@ interface DashboardChart {
   position: number;
 }
 
+// NEW Interface for Notification fetched from DB
+interface Notification {
+  id: string;
+  type: "purchase-order" | "transfer" | "low-stock";
+  title: string;
+  description: string;
+  link: string; // The route to navigate to on click
+  created_at: string;
+}
+
 const availableCharts: ChartConfig[] = [
   {
     id: "inventory-by-category",
@@ -121,11 +131,13 @@ const Dashboard = () => {
   const [isAddChartOpen, setIsAddChartOpen] = useState(false);
   const [selectedChart, setSelectedChart] = useState<string>("");
 
-  // NEW STATE FOR PENDING APPROVALS
+  // STATE FOR NOTIFICATIONS
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]); // To store the list of notifications
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // **********************************
-  // NEW FUNCTION: Fetch Pending Approvals
+  // MODIFIED FUNCTION: Fetch Pending Approvals COUNT
   // **********************************
   const fetchPendingApprovals = async () => {
     if (!isAdmin) return; // Only fetch for Admins
@@ -146,7 +158,55 @@ const Dashboard = () => {
     }
   };
 
-  // Initialize dashboard charts from localStorage
+  // **********************************
+  // NEW FUNCTION: Fetch Pending Notifications LIST (DB-driven)
+  // **********************************
+  const fetchNotificationsList = async () => {
+    if (!isAdmin) return;
+    try {
+      // Fetch the actual records that are pending
+      const { data, error } = await supabase
+        .from("inventory_approvals")
+        .select(`id, type, reference_id, created_at, title, description`) // Assuming these columns exist
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(10); // Limit to 10 for dashboard preview
+
+      if (error) throw error;
+
+      // Map DB data to the Notification interface and create the dynamic link
+      const mappedNotifications: Notification[] = data.map((item: any) => {
+        let linkPath = "";
+        switch (item.type) {
+          case "purchase-order":
+            linkPath = `/purchase-orders/${item.reference_id}/edit`;
+            break;
+          case "transfer":
+            linkPath = `/transfers/${item.reference_id}`;
+            break;
+          // You would add more types here, e.g., 'low-stock' might link to /alerts
+          default:
+            linkPath = "/approvals"; // Fallback to the main approvals page
+        }
+
+        return {
+          id: item.id,
+          type: item.type,
+          title: item.title || `Pending ${item.type} ${item.reference_id}`,
+          description: item.description || `Action required on ${item.type} with ID ${item.reference_id}.`,
+          link: linkPath,
+          created_at: item.created_at,
+        };
+      });
+
+      setNotifications(mappedNotifications);
+    } catch (error) {
+      console.error("Error fetching notification list:", error);
+      setNotifications([]);
+    }
+  };
+
+  // Initialize dashboard charts from localStorage and fetch data
   useEffect(() => {
     const savedCharts = localStorage.getItem("dashboard-charts");
     if (savedCharts) {
@@ -165,6 +225,7 @@ const Dashboard = () => {
 
     // FETCH PENDING APPROVALS ON LOAD (If admin)
     fetchPendingApprovals();
+    fetchNotificationsList();
   }, [isAdmin]); // Added isAdmin as dependency
 
   // Save to localStorage whenever charts change
@@ -324,6 +385,12 @@ const Dashboard = () => {
     return availableCharts.filter((chart) => !usedChartIds.has(chart.id));
   };
 
+  // Handler for notification click
+  const handleNotificationClick = (link: string) => {
+    setIsNotificationsOpen(false); // Close the dialog
+    navigate(link); // Navigate to the specific page/resource
+  };
+
   return (
     <div className="p-8 space-y-8">
       <div className="flex items-center justify-between">
@@ -333,26 +400,60 @@ const Dashboard = () => {
         </div>
         <div className="flex gap-2">
           {/* ********************************** */}
-          {/* NEW: Notifications Button for Admins */}
+          {/* UPDATED: Notifications Button for Admins (Use Dialog) */}
           {/* ********************************** */}
           {isAdmin && (
-            <div className="relative">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => navigate("/approvals")} // Assume an /approvals route
-              >
-                <Bell className="w-5 h-5" />
-              </Button>
-              {pendingApprovalsCount > 0 && (
-                <span
-                  className="absolute top-0 right-0 block h-4 w-4 rounded-full ring-2 ring-background bg-red-500 text-xs text-white flex items-center justify-center -translate-y-1 translate-x-1"
-                  style={{ fontSize: "10px" }} // Custom inline style for small badge text
-                >
-                  {pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}
-                </span>
-              )}
-            </div>
+            <Dialog open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
+              <DialogTrigger asChild>
+                <div className="relative">
+                  <Button variant="outline" size="icon">
+                    <Bell className="w-5 h-5" />
+                  </Button>
+                  {/* Use the count from the database for the badge */}
+                  {pendingApprovalsCount > 0 && (
+                    <span
+                      className="absolute top-0 right-0 block h-4 w-4 rounded-full ring-2 ring-background bg-red-500 text-xs text-white flex items-center justify-center -translate-y-1 translate-x-1"
+                      style={{ fontSize: "10px" }}
+                    >
+                      {pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}
+                    </span>
+                  )}
+                </div>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Notifications ({notifications.length} Pending)</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {pendingApprovalsCount > 0 && notifications.length === 0 ? (
+                    <div className="text-center py-4">
+                      <Skeleton className="h-4 w-3/4 mx-auto mb-2" />
+                      <Skeleton className="h-4 w-1/2 mx-auto" />
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No new approvals or notifications.</p>
+                  ) : (
+                    notifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                        onClick={() => handleNotificationClick(notif.link)}
+                      >
+                        <p className="font-semibold text-sm">{notif.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{notif.description}</p>
+                        <p className="text-xs text-right text-gray-400">
+                          {new Date(notif.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {/* Button to navigate to the full Approvals page */}
+                <Button variant="ghost" onClick={() => handleNotificationClick("/approvals")}>
+                  View All Approvals / Notifications <ExternalLink className="w-4 h-4 ml-2" />
+                </Button>
+              </DialogContent>
+            </Dialog>
           )}
 
           <Button variant={isEditMode ? "default" : "outline"} onClick={() => setIsEditMode(!isEditMode)}>
