@@ -220,7 +220,7 @@ const Dashboard = () => {
       const storeMetricsData: StoreMetrics[] = [];
 
       // Try multiple possible table names for inventory data
-      const possibleInventoryTables = ["inventory_items", "products", "items", "stock", "inventory"];
+      const possibleInventoryTables = ["inventory_items", "products", "items", "stock", "inventory", "store_inventory"];
 
       let allInventory: any[] = [];
       let foundTable = "";
@@ -266,15 +266,19 @@ const Dashboard = () => {
       // Analyze the first item to understand the structure
       const firstItem = allInventory[0];
 
+      // --- ENHANCED FIELD NAME CHECKS ---
       // Check for various field name possibilities
-      const hasStoreId = "store_id" in firstItem || "storeId" in firstItem;
+      const hasStoreId =
+        "store_id" in firstItem || "storeId" in firstItem || "location_id" in firstItem || "warehouse_id" in firstItem;
       const hasLocation = "location" in firstItem || "store_location" in firstItem;
       const hasQuantity =
         "quantity" in firstItem ||
         "stock_quantity" in firstItem ||
         "qty" in firstItem ||
         "stock" in firstItem ||
-        "current_stock" in firstItem;
+        "current_stock" in firstItem ||
+        "stock_level" in firstItem ||
+        "current_quantity" in firstItem;
       const hasPrice =
         "price" in firstItem ||
         "unit_price" in firstItem ||
@@ -282,7 +286,12 @@ const Dashboard = () => {
         "selling_price" in firstItem ||
         "retail_price" in firstItem;
       const hasCost =
-        "cost_price" in firstItem || "cost" in firstItem || "unit_cost" in firstItem || "purchase_price" in firstItem;
+        "cost_price" in firstItem ||
+        "cost" in firstItem ||
+        "unit_cost" in firstItem ||
+        "purchase_price" in firstItem ||
+        "standard_cost" in firstItem ||
+        "purchase_cost" in firstItem;
       const hasMinStock =
         "min_stock" in firstItem ||
         "minimum_stock" in firstItem ||
@@ -324,13 +333,25 @@ const Dashboard = () => {
 
         // Method 1: Filter by store_id (exact match)
         if (hasStoreId) {
-          const storeIdField = "store_id" in firstItem ? "store_id" : "storeId";
-          storeItems = allInventory.filter((item: any) => {
-            // Handle both string and number comparisons
-            const itemStoreId = item[storeIdField];
-            return itemStoreId != null && itemStoreId.toString() === storeData.id.toString();
-          });
-          console.log(`📍 Found ${storeItems.length} items by ${storeIdField}`);
+          const storeIdField =
+            "store_id" in firstItem
+              ? "store_id"
+              : "storeId" in firstItem
+                ? "storeId"
+                : "location_id" in firstItem
+                  ? "location_id"
+                  : "warehouse_id" in firstItem
+                    ? "warehouse_id"
+                    : null;
+
+          if (storeIdField) {
+            storeItems = allInventory.filter((item: any) => {
+              // Handle both string and number comparisons
+              const itemStoreId = item[storeIdField];
+              return itemStoreId != null && itemStoreId.toString() === storeData.id.toString();
+            });
+            console.log(`📍 Found ${storeItems.length} items by ${storeIdField}`);
+          }
         }
 
         // Method 2: Filter by location (partial match)
@@ -346,7 +367,7 @@ const Dashboard = () => {
 
         // Method 3: If no store linking found, check if this might be a centralized inventory
         else {
-          console.log("⚠️ No store linking field found");
+          console.log("⚠️ No store linking field found, attempting text search/warehouse assignment");
 
           // Check if this might be a main warehouse/central inventory
           if (storeData.name.toLowerCase().includes("warehouse") || storeData.name.toLowerCase().includes("main")) {
@@ -366,9 +387,6 @@ const Dashboard = () => {
         // Calculate metrics for this store
         if (storeItems.length > 0) {
           storeItems.forEach((item: any) => {
-            // Count as one item (this might be where the issue is - we're counting items, not quantities)
-            totalItems += 1;
-
             // Get quantity from various possible field names
             let quantity = 1;
             if (hasQuantity) {
@@ -383,12 +401,19 @@ const Dashboard = () => {
                         ? "stock"
                         : "current_stock" in item
                           ? "current_stock"
-                          : null;
+                          : "stock_level" in item // Added
+                            ? "stock_level" // Added
+                            : "current_quantity" in item // Added
+                              ? "current_quantity" // Added
+                              : null;
 
               if (quantityField) {
                 quantity = Number(item[quantityField]) || 1;
               }
             }
+
+            // Count the total items (by quantity)
+            totalItems += quantity;
 
             // Get price from various possible field names
             let price = 0;
@@ -408,6 +433,7 @@ const Dashboard = () => {
                 price = Number(item[priceField]) || 0;
               }
             }
+            // Fallback to cost if price is zero
             if (price === 0 && hasCost) {
               const costField =
                 "cost_price" in item
@@ -418,7 +444,11 @@ const Dashboard = () => {
                       ? "unit_cost"
                       : "purchase_price" in item
                         ? "purchase_price"
-                        : null;
+                        : "standard_cost" in item // Added
+                          ? "standard_cost" // Added
+                          : "purchase_cost" in item // Added
+                            ? "purchase_cost" // Added
+                            : null;
 
               if (costField) {
                 price = Number(item[costField]) || 0;
@@ -543,7 +573,7 @@ const Dashboard = () => {
       }
 
       setNotifications(allNotifications);
-      setPendingCount(allNotifications.length);
+      setPendingCount(allNotifications.filter((n) => !n.is_read).length); // Corrected pending count logic
     } catch (error) {
       console.error("Error fetching notifications:", error);
     } finally {
@@ -956,7 +986,7 @@ const Dashboard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                 <MetricCard
                   title="Total Items (All Stores)"
-                  value={totalItemsAllStores}
+                  value={totalItemsAllStores.toLocaleString()}
                   icon={<Package className="w-5 h-5" />}
                   variant="default"
                 />
@@ -968,7 +998,7 @@ const Dashboard = () => {
                 />
                 <MetricCard
                   title="Total Low Stock Alerts"
-                  value={totalLowStockAllStores}
+                  value={totalLowStockAllStores.toLocaleString()}
                   icon={<AlertTriangle className="w-5 h-5" />}
                   variant="warning"
                 />
@@ -993,7 +1023,7 @@ const Dashboard = () => {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Items:</span>
-                            <span className="font-medium">{store.totalItems}</span>
+                            <span className="font-medium">{store.totalItems.toLocaleString()}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Value:</span>
@@ -1010,7 +1040,7 @@ const Dashboard = () => {
                             <span
                               className={`font-medium ${store.lowStockCount > 0 ? "text-warning" : "text-success"}`}
                             >
-                              {store.lowStockCount}
+                              {store.lowStockCount.toLocaleString()}
                             </span>
                           </div>
                         </div>
@@ -1037,7 +1067,7 @@ const Dashboard = () => {
           <>
             <MetricCard
               title="Total Items"
-              value={metrics.totalItems}
+              value={metrics.totalItems.toLocaleString()}
               icon={<Package className="w-5 h-5" />}
               variant="default"
             />
