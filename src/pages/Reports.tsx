@@ -83,20 +83,32 @@ const REPORT_SECTIONS = {
   },
 } as const;
 
-const REPORT_TABS = Object.values(REPORT_SECTIONS).flatMap((section) => section.reports) as readonly string[];
+// Extract report tab types from REPORT_SECTIONS
+type ReportTab =
+  | "DASHBOARD"
+  | "INVENTORY_ON_HAND"
+  | "INVENTORY_VALUATION"
+  | "LOW_STOCK"
+  | "INVENTORY_AGING"
+  | "STOCK_MOVEMENT"
+  | "INVENTORY_DISCREPANCY"
+  | "ABC_ANALYSIS"
+  | "SALES_PERFORMANCE"
+  | "COGS"
+  | "PIVOT_REPORT"
+  | "STOCK_MOVEMENT_TRANSACTION";
 
-type ReportTab = (typeof REPORT_TABS)[number];
 type ReportSection = keyof typeof REPORT_SECTIONS;
 
 // Define the report config type
-type ReportConfigType = {
+interface ReportConfig {
   name: string;
   icon: JSX.Element;
   description: string;
-};
+}
 
-// Report configuration with proper typing
-const REPORT_CONFIG: Record<ReportTab, ReportConfigType> = {
+// Report configuration with explicit type assertion
+const REPORT_CONFIG: { [key in ReportTab]: ReportConfig } = {
   DASHBOARD: {
     name: "Reports Dashboard",
     icon: <LayoutDashboard className="w-4 h-4" />,
@@ -158,6 +170,9 @@ const REPORT_CONFIG: Record<ReportTab, ReportConfigType> = {
     description: "Detailed stock movement transactions",
   },
 };
+
+// Create REPORT_TABS array from the keys of REPORT_CONFIG
+const REPORT_TABS = Object.keys(REPORT_CONFIG) as ReportTab[];
 
 export default function Reports() {
   const [searchParams] = useSearchParams();
@@ -1091,8 +1106,8 @@ export default function Reports() {
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {REPORT_CONFIG[reportKey].icon}
-                {REPORT_CONFIG[reportKey].name}
+                {REPORT_CONFIG[reportKey as ReportTab].icon}
+                {REPORT_CONFIG[reportKey as ReportTab].name}
               </Button>
             ))}
           </div>
