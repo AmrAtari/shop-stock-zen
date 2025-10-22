@@ -146,128 +146,6 @@ const Dashboard = () => {
   const [storeMetrics, setStoreMetrics] = useState<StoreMetrics[]>([]);
   const [storeMetricsLoading, setStoreMetricsLoading] = useState(true);
 
-  // Debug function to check database
-  const debugDatabaseCheck = async () => {
-    console.log("=== DATABASE DEBUG INFO ===");
-
-    try {
-      // Check inventory_approvals table
-      const { data: approvals, error: approvalsError } = await supabase
-        .from("inventory_approvals" as any)
-        .select("*")
-        .limit(5);
-
-      console.log("Inventory Approvals:", approvals);
-      console.log("Approvals Error:", approvalsError);
-
-      // Check stores table
-      const { data: stores, error: storesError } = await supabase
-        .from("stores" as any)
-        .select("*")
-        .limit(5);
-
-      console.log("Stores:", stores);
-      console.log("Stores Error:", storesError);
-
-      // Check inventory_items with store information
-      const { data: items, error: itemsError } = await supabase
-        .from("inventory_items" as any)
-        .select("*, stores(name)")
-        .limit(5);
-
-      console.log("Inventory Items with stores:", items);
-      console.log("Items Error:", itemsError);
-    } catch (error) {
-      console.error("Debug check failed:", error);
-    }
-  };
-
-  // Fetch store-specific metrics
-  const fetchStoreMetrics = async () => {
-    try {
-      setStoreMetricsLoading(true);
-
-      // First, get all stores
-      const { data: stores, error: storesError } = await supabase
-        .from("stores" as any)
-        .select("id, name")
-        .order("name");
-
-      if (storesError) {
-        console.error("Error fetching stores:", storesError);
-        return;
-      }
-
-      console.log("Stores found:", stores);
-
-      // If no stores table exists, create sample store metrics
-      if (!stores || stores.length === 0) {
-        console.log("No stores found, using sample data");
-        const sampleStoreMetrics: StoreMetrics[] = [
-          { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
-          { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
-          { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
-        ];
-        setStoreMetrics(sampleStoreMetrics);
-        return;
-      }
-
-      // Get metrics for each store
-      const storeMetricsData: StoreMetrics[] = [];
-
-      for (const store of stores) {
-        // Get total items count for this store
-        const { count: itemsCount, error: countError } = await supabase
-          .from("inventory_items" as any)
-          .select("*", { count: "exact", head: true })
-          .eq("store_id", store.id);
-
-        // Get inventory value for this store (assuming you have price and quantity fields)
-        const { data: itemsData, error: itemsError } = await supabase
-          .from("inventory_items" as any)
-          .select("quantity, price")
-          .eq("store_id", store.id);
-
-        let inventoryValue = 0;
-        let lowStockCount = 0;
-
-        if (itemsData && !itemsError) {
-          // Calculate total value and low stock count
-          itemsData.forEach((item: any) => {
-            const value = (item.quantity || 0) * (item.price || 0);
-            inventoryValue += value;
-
-            // Check if item is low stock (assuming min_stock field exists)
-            if (item.quantity <= (item.min_stock || 5)) {
-              lowStockCount++;
-            }
-          });
-        }
-
-        storeMetricsData.push({
-          storeName: store.name,
-          totalItems: itemsCount || 0,
-          inventoryValue: inventoryValue,
-          lowStockCount: lowStockCount,
-        });
-      }
-
-      console.log("Store metrics calculated:", storeMetricsData);
-      setStoreMetrics(storeMetricsData);
-    } catch (error) {
-      console.error("Error fetching store metrics:", error);
-      // Fallback to sample data
-      const sampleStoreMetrics: StoreMetrics[] = [
-        { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
-        { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
-        { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
-      ];
-      setStoreMetrics(sampleStoreMetrics);
-    } finally {
-      setStoreMetricsLoading(false);
-    }
-  };
-
   // Enhanced notifications fetcher
   const fetchNotifications = async () => {
     if (!isAdmin) {
@@ -363,6 +241,107 @@ const Dashboard = () => {
     }
   };
 
+  // Fetch store-specific metrics with proper error handling
+  const fetchStoreMetrics = async () => {
+    try {
+      setStoreMetricsLoading(true);
+
+      // First, try to get all stores with proper type handling
+      const { data: stores, error: storesError } = await supabase
+        .from("stores" as any)
+        .select("id, name")
+        .order("name");
+
+      if (storesError) {
+        console.error("Error fetching stores:", storesError);
+        // If stores table doesn't exist, use sample data
+        console.log("No stores table found, using sample data");
+        const sampleStoreMetrics: StoreMetrics[] = [
+          { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
+          { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
+          { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
+        ];
+        setStoreMetrics(sampleStoreMetrics);
+        return;
+      }
+
+      console.log("Stores found:", stores);
+
+      // If no stores exist, use sample data
+      if (!stores || stores.length === 0) {
+        console.log("No stores found, using sample data");
+        const sampleStoreMetrics: StoreMetrics[] = [
+          { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
+          { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
+          { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
+        ];
+        setStoreMetrics(sampleStoreMetrics);
+        return;
+      }
+
+      // Get metrics for each store with proper type handling
+      const storeMetricsData: StoreMetrics[] = [];
+
+      for (const store of stores) {
+        // Use type assertion to handle the store object
+        const storeData = store as any;
+
+        // Get total items count for this store
+        const { count: itemsCount, error: countError } = await supabase
+          .from("inventory_items" as any)
+          .select("*", { count: "exact", head: true })
+          .eq("store_id", storeData.id);
+
+        // Get inventory items for this store to calculate value and low stock
+        const { data: itemsData, error: itemsError } = await supabase
+          .from("inventory_items" as any)
+          .select("quantity, price, min_stock")
+          .eq("store_id", storeData.id);
+
+        let inventoryValue = 0;
+        let lowStockCount = 0;
+
+        if (itemsData && !itemsError) {
+          // Calculate total value and low stock count
+          itemsData.forEach((item: any) => {
+            const quantity = item.quantity || 0;
+            const price = item.price || 0;
+            const minStock = item.min_stock || 5;
+
+            const value = quantity * price;
+            inventoryValue += value;
+
+            // Check if item is low stock
+            if (quantity <= minStock) {
+              lowStockCount++;
+            }
+          });
+        }
+
+        storeMetricsData.push({
+          storeName: storeData.name,
+          totalItems: itemsCount || 0,
+          inventoryValue: inventoryValue,
+          lowStockCount: lowStockCount,
+        });
+      }
+
+      console.log("Store metrics calculated:", storeMetricsData);
+      setStoreMetrics(storeMetricsData);
+    } catch (error) {
+      console.error("Error fetching store metrics:", error);
+      // Fallback to sample data
+      const sampleStoreMetrics: StoreMetrics[] = [
+        { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
+        { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
+        { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
+      ];
+      setStoreMetrics(sampleStoreMetrics);
+    } finally {
+      setStoreMetricsLoading(false);
+    }
+  };
+
   // Helper function to get notification link
   const getNotificationLink = (type: string, referenceId: string): string => {
     switch (type) {
@@ -440,7 +419,6 @@ const Dashboard = () => {
       localStorage.setItem("dashboard-charts", JSON.stringify(defaultCharts));
     }
 
-    debugDatabaseCheck();
     fetchNotifications();
     fetchStoreMetrics();
 
@@ -834,6 +812,45 @@ const Dashboard = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Original Metrics Cards (keeping for backward compatibility) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {isLoading ? (
+          <>
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </>
+        ) : (
+          <>
+            <MetricCard
+              title="Total Items"
+              value={metrics.totalItems}
+              icon={<Package className="w-5 h-5" />}
+              variant="default"
+            />
+            <MetricCard
+              title="Inventory Value"
+              value={`$${metrics.totalValue.toFixed(2)}`}
+              icon={<DollarSign className="w-5 h-5" />}
+              variant="success"
+            />
+            <MetricCard
+              title="Low Stock Alerts"
+              value={metrics.lowStockCount}
+              icon={<AlertTriangle className="w-5 h-5" />}
+              variant="warning"
+            />
+            <MetricCard
+              title="Total Products"
+              value={metrics.totalProducts}
+              icon={<TrendingUp className="w-5 h-5" />}
+              variant="default"
+            />
+          </>
+        )}
+      </div>
 
       {/* Customizable Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
