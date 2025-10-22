@@ -1,5 +1,15 @@
 import { useState, useEffect } from "react";
-import { Package, DollarSign, AlertTriangle, TrendingUp, ExternalLink, Plus, GripVertical, X } from "lucide-react";
+import {
+  Package,
+  DollarSign,
+  AlertTriangle,
+  TrendingUp,
+  ExternalLink,
+  Plus,
+  GripVertical,
+  X,
+  Bell,
+} from "lucide-react";
 import MetricCard from "@/components/MetricCard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -111,6 +121,31 @@ const Dashboard = () => {
   const [isAddChartOpen, setIsAddChartOpen] = useState(false);
   const [selectedChart, setSelectedChart] = useState<string>("");
 
+  // NEW STATE FOR PENDING APPROVALS
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+
+  // **********************************
+  // NEW FUNCTION: Fetch Pending Approvals
+  // **********************************
+  const fetchPendingApprovals = async () => {
+    if (!isAdmin) return; // Only fetch for Admins
+
+    try {
+      // Assuming a table named 'inventory_approvals' with a 'status' column
+      const { count, error } = await supabase
+        .from("inventory_approvals")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending");
+
+      if (error) throw error;
+      setPendingApprovalsCount(count || 0);
+    } catch (error) {
+      console.error("Error fetching pending approvals:", error);
+      toast.error("Failed to load approval notifications.");
+      setPendingApprovalsCount(0);
+    }
+  };
+
   // Initialize dashboard charts from localStorage
   useEffect(() => {
     const savedCharts = localStorage.getItem("dashboard-charts");
@@ -127,7 +162,10 @@ const Dashboard = () => {
       setDashboardCharts(defaultCharts);
       localStorage.setItem("dashboard-charts", JSON.stringify(defaultCharts));
     }
-  }, []);
+
+    // FETCH PENDING APPROVALS ON LOAD (If admin)
+    fetchPendingApprovals();
+  }, [isAdmin]); // Added isAdmin as dependency
 
   // Save to localStorage whenever charts change
   useEffect(() => {
@@ -294,6 +332,29 @@ const Dashboard = () => {
           <p className="text-muted-foreground mt-1">Customizable overview of your inventory</p>
         </div>
         <div className="flex gap-2">
+          {/* ********************************** */}
+          {/* NEW: Notifications Button for Admins */}
+          {/* ********************************** */}
+          {isAdmin && (
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => navigate("/approvals")} // Assume an /approvals route
+              >
+                <Bell className="w-5 h-5" />
+              </Button>
+              {pendingApprovalsCount > 0 && (
+                <span
+                  className="absolute top-0 right-0 block h-4 w-4 rounded-full ring-2 ring-background bg-red-500 text-xs text-white flex items-center justify-center -translate-y-1 translate-x-1"
+                  style={{ fontSize: "10px" }} // Custom inline style for small badge text
+                >
+                  {pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}
+                </span>
+              )}
+            </div>
+          )}
+
           <Button variant={isEditMode ? "default" : "outline"} onClick={() => setIsEditMode(!isEditMode)}>
             {isEditMode ? "Save Layout" : "Edit Dashboard"}
           </Button>
