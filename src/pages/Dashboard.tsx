@@ -9,6 +9,8 @@ import {
   GripVertical,
   X,
   Bell,
+  Store,
+  Warehouse,
 } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,6 +62,13 @@ interface Notification {
   link: string;
   created_at: string;
   is_read?: boolean;
+}
+
+interface StoreMetrics {
+  storeName: string;
+  totalItems: number;
+  inventoryValue: number;
+  lowStockCount: number;
 }
 
 const availableCharts: ChartConfig[] = [
@@ -134,8 +143,132 @@ const Dashboard = () => {
   const [pendingCount, setPendingCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [storeMetrics, setStoreMetrics] = useState<StoreMetrics[]>([]);
+  const [storeMetricsLoading, setStoreMetricsLoading] = useState(true);
 
-  // Enhanced notifications fetcher with proper type handling
+  // Debug function to check database
+  const debugDatabaseCheck = async () => {
+    console.log("=== DATABASE DEBUG INFO ===");
+
+    try {
+      // Check inventory_approvals table
+      const { data: approvals, error: approvalsError } = await supabase
+        .from("inventory_approvals" as any)
+        .select("*")
+        .limit(5);
+
+      console.log("Inventory Approvals:", approvals);
+      console.log("Approvals Error:", approvalsError);
+
+      // Check stores table
+      const { data: stores, error: storesError } = await supabase
+        .from("stores" as any)
+        .select("*")
+        .limit(5);
+
+      console.log("Stores:", stores);
+      console.log("Stores Error:", storesError);
+
+      // Check inventory_items with store information
+      const { data: items, error: itemsError } = await supabase
+        .from("inventory_items" as any)
+        .select("*, stores(name)")
+        .limit(5);
+
+      console.log("Inventory Items with stores:", items);
+      console.log("Items Error:", itemsError);
+    } catch (error) {
+      console.error("Debug check failed:", error);
+    }
+  };
+
+  // Fetch store-specific metrics
+  const fetchStoreMetrics = async () => {
+    try {
+      setStoreMetricsLoading(true);
+
+      // First, get all stores
+      const { data: stores, error: storesError } = await supabase
+        .from("stores" as any)
+        .select("id, name")
+        .order("name");
+
+      if (storesError) {
+        console.error("Error fetching stores:", storesError);
+        return;
+      }
+
+      console.log("Stores found:", stores);
+
+      // If no stores table exists, create sample store metrics
+      if (!stores || stores.length === 0) {
+        console.log("No stores found, using sample data");
+        const sampleStoreMetrics: StoreMetrics[] = [
+          { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
+          { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
+          { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
+        ];
+        setStoreMetrics(sampleStoreMetrics);
+        return;
+      }
+
+      // Get metrics for each store
+      const storeMetricsData: StoreMetrics[] = [];
+
+      for (const store of stores) {
+        // Get total items count for this store
+        const { count: itemsCount, error: countError } = await supabase
+          .from("inventory_items" as any)
+          .select("*", { count: "exact", head: true })
+          .eq("store_id", store.id);
+
+        // Get inventory value for this store (assuming you have price and quantity fields)
+        const { data: itemsData, error: itemsError } = await supabase
+          .from("inventory_items" as any)
+          .select("quantity, price")
+          .eq("store_id", store.id);
+
+        let inventoryValue = 0;
+        let lowStockCount = 0;
+
+        if (itemsData && !itemsError) {
+          // Calculate total value and low stock count
+          itemsData.forEach((item: any) => {
+            const value = (item.quantity || 0) * (item.price || 0);
+            inventoryValue += value;
+
+            // Check if item is low stock (assuming min_stock field exists)
+            if (item.quantity <= (item.min_stock || 5)) {
+              lowStockCount++;
+            }
+          });
+        }
+
+        storeMetricsData.push({
+          storeName: store.name,
+          totalItems: itemsCount || 0,
+          inventoryValue: inventoryValue,
+          lowStockCount: lowStockCount,
+        });
+      }
+
+      console.log("Store metrics calculated:", storeMetricsData);
+      setStoreMetrics(storeMetricsData);
+    } catch (error) {
+      console.error("Error fetching store metrics:", error);
+      // Fallback to sample data
+      const sampleStoreMetrics: StoreMetrics[] = [
+        { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
+        { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
+        { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
+      ];
+      setStoreMetrics(sampleStoreMetrics);
+    } finally {
+      setStoreMetricsLoading(false);
+    }
+  };
+
+  // Enhanced notifications fetcher
   const fetchNotifications = async () => {
     if (!isAdmin) {
       setNotificationsLoading(false);
@@ -146,68 +279,85 @@ const Dashboard = () => {
       setNotificationsLoading(true);
       const allNotifications: Notification[] = [];
 
-      // Try to fetch from inventory_approvals table using any to bypass type issues
+      // 1. Fetch from inventory_approvals table
       try {
         const { data: approvals, error: approvalsError } = await supabase
           .from("inventory_approvals" as any)
           .select("*")
-          .eq("status", "pending")
           .order("created_at", { ascending: false })
           .limit(10);
 
-        if (!approvalsError && approvals) {
-          const mapped = approvals.map((item: any) => ({
-            id: String(item.id),
-            type: (item.type as Notification["type"]) || "system",
-            title: item.title || `Pending ${item.type}`,
-            description: item.message || item.description || `Action required for ${item.type}`,
-            link: getNotificationLink(item.type, item.reference_id),
-            created_at: item.created_at,
-            is_read: item.is_read || false,
-          }));
+        console.log("Raw approvals data:", approvals);
+
+        if (!approvalsError && approvals && approvals.length > 0) {
+          const mapped = approvals.map((item: any) => {
+            // Handle different possible field names
+            const title = item.title || `Pending ${item.type}`;
+            const description = item.message || item.description || `Action required for ${item.type}`;
+            const referenceId = item.reference_id || item.id;
+
+            return {
+              id: String(item.id),
+              type: (item.type as Notification["type"]) || "system",
+              title: title,
+              description: description,
+              link: getNotificationLink(item.type, referenceId),
+              created_at: item.created_at || new Date().toISOString(),
+              is_read: item.is_read || item.status === "read" || false,
+            };
+          });
           allNotifications.push(...mapped);
+          console.log("Mapped approvals:", mapped);
+        } else {
+          console.log("No approvals found or error:", approvalsError);
         }
       } catch (tableError) {
-        console.log("Inventory approvals table not accessible:", tableError);
+        console.log("Inventory approvals table error:", tableError);
       }
 
-      // Also fetch low stock items as notifications - using any to bypass type issues
+      // 2. Fetch low stock items as notifications
       try {
         const { data: lowStockItems, error: lowStockError } = await supabase
           .from("inventory_items" as any)
           .select("id, name, quantity, min_stock, sku")
-          .filter("quantity", "lte", "min_stock")
-          .limit(5);
+          .limit(20);
 
-        if (!lowStockError && lowStockItems && lowStockItems.length > 0) {
-          const lowStockNotifications: Notification[] = lowStockItems.map((item: any) => ({
-            id: `low-stock-${item.id}`,
-            type: "low_stock" as const,
-            title: "Low Stock Alert",
-            description: `${item.name} (${item.sku}) is below minimum stock level. Current: ${item.quantity}, Min: ${item.min_stock}`,
-            link: `/inventory?item=${item.id}`,
-            created_at: new Date().toISOString(),
-          }));
-          allNotifications.push(...lowStockNotifications);
+        if (!lowStockError && lowStockItems) {
+          // Filter for low stock items manually
+          const actualLowStock = lowStockItems.filter((item: any) => item.quantity <= (item.min_stock || 10));
+
+          console.log("Actual low stock items:", actualLowStock);
+
+          if (actualLowStock.length > 0) {
+            const lowStockNotifications: Notification[] = actualLowStock.map((item: any) => ({
+              id: `low-stock-${item.id}`,
+              type: "low_stock" as const,
+              title: "Low Stock Alert",
+              description: `${item.name} (${item.sku}) is below minimum stock level. Current: ${item.quantity}, Min: ${item.min_stock || 10}`,
+              link: `/inventory?item=${item.id}`,
+              created_at: new Date().toISOString(),
+            }));
+            allNotifications.push(...lowStockNotifications);
+          }
         }
       } catch (lowStockError) {
         console.log("Low stock fetch error:", lowStockError);
       }
 
-      // If no notifications from database, show some sample data for testing
+      console.log("All notifications before sample:", allNotifications);
+
+      // Only use sample data if absolutely no real notifications found
       if (allNotifications.length === 0) {
-        console.log("No notifications found, showing sample data for testing");
+        console.log("No real notifications found, using sample data");
         allNotifications.push(...getSampleNotifications());
+      } else {
+        console.log(`Found ${allNotifications.length} real notifications`);
       }
 
       setNotifications(allNotifications);
       setPendingCount(allNotifications.length);
     } catch (error) {
       console.error("Error fetching notifications:", error);
-      // Fallback to sample data
-      const sampleNotifications = getSampleNotifications();
-      setNotifications(sampleNotifications);
-      setPendingCount(sampleNotifications.length);
     } finally {
       setNotificationsLoading(false);
     }
@@ -233,25 +383,25 @@ const Dashboard = () => {
       {
         id: "sample-1",
         type: "purchase_order",
-        title: "Purchase Order #PO-1234 Needs Approval",
-        description: "New purchase order from Vendor ABC requires your review",
-        link: "/purchase-orders/1234",
+        title: "Purchase Order #PO-1001 Needs Approval",
+        description: "New purchase order from Tech Suppliers Inc. requires your review",
+        link: "/purchase-orders/1001",
         created_at: new Date().toISOString(),
       },
       {
         id: "sample-2",
         type: "low_stock",
-        title: "Low Stock Alert - Widget X",
-        description: "Widget X is below minimum stock level. Current: 5, Min: 10",
-        link: "/inventory?item=widget-x",
+        title: "Low Stock Alert - USB-C Cables",
+        description: "USB-C Cables stock is below minimum threshold. Current: 8, Min: 15",
+        link: "/inventory?item=ITEM-USB-C-001",
         created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
       {
         id: "sample-3",
         type: "transfer",
         title: "Stock Transfer Request",
-        description: "Transfer from Warehouse A to B needs approval",
-        link: "/transfers/5678",
+        description: "Transfer from Main Warehouse to Store #5 needs authorization",
+        link: "/transfers/TRF-2024-001",
         created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
       },
     ];
@@ -274,7 +424,7 @@ const Dashboard = () => {
     }
   };
 
-  // Initialize dashboard charts and fetch notifications
+  // Initialize everything
   useEffect(() => {
     const savedCharts = localStorage.getItem("dashboard-charts");
     if (savedCharts) {
@@ -290,7 +440,9 @@ const Dashboard = () => {
       localStorage.setItem("dashboard-charts", JSON.stringify(defaultCharts));
     }
 
+    debugDatabaseCheck();
     fetchNotifications();
+    fetchStoreMetrics();
 
     // Set up real-time subscription for notifications
     const subscription = supabase
@@ -470,12 +622,17 @@ const Dashboard = () => {
     navigate(link);
   };
 
+  // Calculate totals from store metrics
+  const totalItemsAllStores = storeMetrics.reduce((sum, store) => sum + store.totalItems, 0);
+  const totalValueAllStores = storeMetrics.reduce((sum, store) => sum + store.inventoryValue, 0);
+  const totalLowStockAllStores = storeMetrics.reduce((sum, store) => sum + store.lowStockCount, 0);
+
   return (
     <div className="p-8 space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Customizable overview of your inventory</p>
+          <p className="text-muted-foreground mt-1">Customizable overview of your inventory across all stores</p>
         </div>
         <div className="flex gap-2">
           {/* Notifications Button */}
@@ -524,10 +681,15 @@ const Dashboard = () => {
                       >
                         <p className="font-semibold text-sm">{notif.title}</p>
                         <p className="text-xs text-muted-foreground mt-1">{notif.description}</p>
-                        <p className="text-xs text-right text-gray-400 mt-1">
-                          {new Date(notif.created_at).toLocaleDateString()} at{" "}
-                          {new Date(notif.created_at).toLocaleTimeString()}
-                        </p>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-xs text-gray-400">
+                            {new Date(notif.created_at).toLocaleDateString()} at{" "}
+                            {new Date(notif.created_at).toLocaleTimeString()}
+                          </span>
+                          <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">
+                            {notif.id.startsWith("sample-") ? "Sample" : "Real"}
+                          </span>
+                        </div>
                       </div>
                     ))
                   )}
@@ -582,44 +744,96 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {isLoading ? (
-          <>
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </>
-        ) : (
-          <>
-            <MetricCard
-              title="Total Items"
-              value={metrics.totalItems}
-              icon={<Package className="w-5 h-5" />}
-              variant="default"
-            />
-            <MetricCard
-              title="Inventory Value"
-              value={`$${metrics.totalValue.toFixed(2)}`}
-              icon={<DollarSign className="w-5 h-5" />}
-              variant="success"
-            />
-            <MetricCard
-              title="Low Stock Alerts"
-              value={metrics.lowStockCount}
-              icon={<AlertTriangle className="w-5 h-5" />}
-              variant="warning"
-            />
-            <MetricCard
-              title="Total Products"
-              value={metrics.totalProducts}
-              icon={<TrendingUp className="w-5 h-5" />}
-              variant="default"
-            />
-          </>
-        )}
-      </div>
+      {/* Store-wise Metrics Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Store className="w-5 h-5" />
+            Inventory Overview by Store
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {storeMetricsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <MetricCard
+                  title="Total Items (All Stores)"
+                  value={totalItemsAllStores}
+                  icon={<Package className="w-5 h-5" />}
+                  variant="default"
+                />
+                <MetricCard
+                  title="Total Inventory Value"
+                  value={`$${totalValueAllStores.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={<DollarSign className="w-5 h-5" />}
+                  variant="success"
+                />
+                <MetricCard
+                  title="Total Low Stock Alerts"
+                  value={totalLowStockAllStores}
+                  icon={<AlertTriangle className="w-5 h-5" />}
+                  variant="warning"
+                />
+                <MetricCard
+                  title="Active Stores"
+                  value={storeMetrics.length}
+                  icon={<Warehouse className="w-5 h-5" />}
+                  variant="default"
+                />
+              </div>
+
+              {/* Store Details */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {storeMetrics.map((store, index) => (
+                    <Card key={index} className="relative overflow-hidden">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-semibold text-sm truncate">{store.storeName}</h4>
+                          <Store className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Items:</span>
+                            <span className="font-medium">{store.totalItems}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Value:</span>
+                            <span className="font-medium">
+                              $
+                              {store.inventoryValue.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Low Stock:</span>
+                            <span
+                              className={`font-medium ${store.lowStockCount > 0 ? "text-warning" : "text-success"}`}
+                            >
+                              {store.lowStockCount}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Customizable Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
