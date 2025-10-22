@@ -6,40 +6,40 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 // Standard App Components
-// FIX: Changed paths from './components/...' to '../components/...'
-import Layout from "../components/Layout";
-import ProtectedRoute from "../components/ProtectedRoute";
+// FIX: Using relative paths from src/ and removing file extensions
+import Layout from "./components/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 // Standard Page Components
-// FIX: Changed paths from './pages/...' to './...'
-import Auth from "./Auth";
-import Dashboard from "./Dashboard";
-import Inventory from "./Inventory";
-import Alerts from "./Alerts";
-import Reports from "./Reports";
-import PurchaseOrders from "./PurchaseOrders";
-import PurchaseOrderNew from "./PurchaseOrderNew";
-import PurchaseOrderDetail from "./PurchaseOrderDetail";
-import Stores from "./Stores";
-import Configuration from "./Configuration";
-import Duplicates from "./Duplicates";
-import Transfers from "./Transfers";
-import TransferDetail from "./TransferDetail";
-import PhysicalInventory from "./PhysicalInventory";
-import PhysicalInventoryNew from "./PhysicalInventoryNew";
-import PhysicalInventoryDetail from "./PhysicalInventoryDetail";
-import NotFound from "./NotFound";
+// FIX: Using relative paths from src/ and removing file extensions
+import Auth from "./pages/Auth";
+import Dashboard from "./pages/Dashboard";
+import Inventory from "./pages/Inventory";
+import Alerts from "./pages/Alerts";
+import Reports from "./pages/Reports";
+import PurchaseOrders from "./pages/PurchaseOrders";
+import PurchaseOrderNew from "./pages/PurchaseOrderNew";
+import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
+import Stores from "./pages/Stores";
+import Configuration from "./pages/Configuration";
+import Duplicates from "./pages/Duplicates";
+import Transfers from "./pages/Transfers";
+import TransferDetail from "./pages/TransferDetail";
+import PhysicalInventory from "./pages/PhysicalInventory";
+import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
+import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
+import NotFound from "./pages/NotFound";
 
 // New Notifications Page
-import Notifications from "./Notifications";
+import Notifications from "./pages/Notifications";
 
 // POS Pages
-// FIX: Changed paths from './pages/POS/...' to './POS/...'
-import POSHome from "./POS/POSHome";
-import POSReceipts from "./POS/POSReceipts";
-import POSRefunds from "./POS/POSRefunds";
-import ClosingCash from "./POS/ClosingCash";
-import { POSProvider } from "./POS/POSContext";
+// FIX: Using relative paths from src/ and removing file extensions
+import POSHome from "./pages/POS/POSHome";
+import POSReceipts from "./pages/POS/POSReceipts";
+import POSRefunds from "./pages/POS/POSRefunds";
+import ClosingCash from "./pages/POS/ClosingCash";
+import { POSProvider } from "./pages/POS/POSContext";
 
 const queryClient = new QueryClient();
 
