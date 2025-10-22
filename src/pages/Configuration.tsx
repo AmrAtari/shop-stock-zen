@@ -119,10 +119,11 @@ const Configuration = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // User Management States
+  // User Management States (MODIFIED)
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [showUserDialog, setShowUserDialog] = useState(false);
-  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserId, setNewUserId] = useState(""); // MODIFIED: Replaced newUserEmail
+  const [newUserPassword, setNewUserPassword] = useState(""); // MODIFIED: Added for password-based creation
   const [newUserRole, setNewUserRole] = useState<"admin" | "supervisor" | "inventory_man" | "cashier">("cashier");
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
@@ -343,24 +344,34 @@ const Configuration = () => {
     XLSX.writeFile(wb, `${activeCatalog?.label || "data"}.xlsx`);
   };
 
-  const handleInviteUser = async () => {
-    if (!newUserEmail.trim()) return toast.error("Please enter email address");
+  // MODIFIED: Function to handle adding user with ID and Password
+  const handleAddUser = async () => {
+    if (!newUserId.trim() || !newUserPassword.trim()) {
+        return toast.error("Please enter a User ID and Password");
+    }
 
     try {
-      const { data, error } = await supabase.functions.invoke("admin-invite-user", {
-        body: { email: newUserEmail, role: newUserRole }
+      // NOTE: This assumes you have a Supabase Edge Function named 'admin-create-user-password'
+      // that uses the Supabase Admin client to create a user with a password.
+      const { data, error } = await supabase.functions.invoke("admin-create-user-password", {
+        body: { 
+          userId: newUserId, 
+          password: newUserPassword,
+          role: newUserRole 
+        }
       });
 
       if (error) throw error;
 
-      toast.success(data.message);
+      toast.success(data.message || "User created successfully!");
       setShowUserDialog(false);
-      setNewUserEmail("");
+      setNewUserId("");
+      setNewUserPassword("");
       setNewUserRole("cashier");
       loadUsers();
     } catch (error: any) {
-      console.error("Error inviting user:", error);
-      toast.error("Failed to invite user: " + error.message);
+      console.error("Error creating user:", error);
+      toast.error("Failed to create user: " + error.message);
     }
   };
 
@@ -570,7 +581,7 @@ const Configuration = () => {
                 <h3 className="text-lg font-semibold">System Users</h3>
                 <Button onClick={() => setShowUserDialog(true)}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Invite User
+                  Add User {/* MODIFIED: Text changed from Invite User */}
                 </Button>
               </div>
 
@@ -856,22 +867,31 @@ const Configuration = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Invite User Modal */}
+      {/* MODIFIED: Add User Modal (formerly Invite User Modal) */}
       <Dialog open={showUserDialog} onOpenChange={setShowUserDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite New User</DialogTitle>
-            <DialogDescription>Send an invitation to a new user and assign their role</DialogDescription>
+            <DialogTitle>Add New User</DialogTitle> {/* MODIFIED: Title Change */}
+            <DialogDescription>Create a new system user and assign their role</DialogDescription> {/* MODIFIED: Description Change */}
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="user-email">Email Address</Label>
+              <Label htmlFor="user-id">User ID / Username</Label> {/* MODIFIED: Label Change */}
               <Input
-                id="user-email"
-                type="email"
-                placeholder="user@company.com"
-                value={newUserEmail}
-                onChange={(e) => setNewUserEmail(e.target.value)}
+                id="user-id"
+                placeholder="inventory_clerk_01" {/* MODIFIED: Placeholder Change */}
+                value={newUserId}
+                onChange={(e) => setNewUserId(e.target.value)} {/* MODIFIED: Using newUserId */}
+              />
+            </div>
+            <div>
+              <Label htmlFor="user-password">Password</Label> {/* MODIFIED: New Field */}
+              <Input
+                id="user-password"
+                type="password"
+                placeholder="********"
+                value={newUserPassword}
+                onChange={(e) => setNewUserPassword(e.target.value)} {/* MODIFIED: Using newUserPassword */}
               />
             </div>
             <div>
@@ -896,7 +916,7 @@ const Configuration = () => {
             <Button variant="outline" onClick={() => setShowUserDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleInviteUser}>Send Invitation</Button>
+            <Button onClick={handleAddUser}>Create User</Button> {/* MODIFIED: Button text and function call */}
           </DialogFooter>
         </DialogContent>
       </Dialog>
