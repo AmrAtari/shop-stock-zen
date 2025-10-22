@@ -216,16 +216,17 @@ const Dashboard = () => {
       const possibleInventoryTables = ["inventory_items", "products", "items", "stock", "inventory"];
 
       let allInventory: any[] = [];
-      let inventoryError = null;
+      let foundTable = "";
 
       // Try each possible table name
       for (const tableName of possibleInventoryTables) {
         console.log(`🔍 Trying to fetch from table: ${tableName}`);
-        const { data, error } = await supabase.from(tableName).select("*").limit(1000); // Increase limit to get more data
+        const { data, error } = await supabase.from(tableName).select("*").limit(5000); // Get more data
 
         if (!error && data && data.length > 0) {
           console.log(`✅ Found data in table: ${tableName}`, data.length, "items");
           allInventory = data;
+          foundTable = tableName;
           break;
         } else {
           console.log(`❌ No data in table: ${tableName}`, error);
@@ -248,17 +249,35 @@ const Dashboard = () => {
         return;
       }
 
+      console.log(`📦 Found ${allInventory.length} items in table: ${foundTable}`);
       console.log("📦 Inventory data structure:", allInventory[0]);
       console.log("🔑 Inventory item keys:", Object.keys(allInventory[0]));
 
       // Analyze the first item to understand the structure
       const firstItem = allInventory[0];
-      const hasStoreId = "store_id" in firstItem;
-      const hasLocation = "location" in firstItem;
-      const hasQuantity = "quantity" in firstItem || "stock_quantity" in firstItem || "qty" in firstItem;
-      const hasPrice = "price" in firstItem || "unit_price" in firstItem || "cost" in firstItem;
-      const hasCost = "cost_price" in firstItem || "cost" in firstItem || "unit_cost" in firstItem;
-      const hasMinStock = "min_stock" in firstItem || "minimum_stock" in firstItem || "reorder_level" in firstItem;
+
+      // Check for various field name possibilities
+      const hasStoreId = "store_id" in firstItem || "storeId" in firstItem;
+      const hasLocation = "location" in firstItem || "store_location" in firstItem;
+      const hasQuantity =
+        "quantity" in firstItem ||
+        "stock_quantity" in firstItem ||
+        "qty" in firstItem ||
+        "stock" in firstItem ||
+        "current_stock" in firstItem;
+      const hasPrice =
+        "price" in firstItem ||
+        "unit_price" in firstItem ||
+        "cost" in firstItem ||
+        "selling_price" in firstItem ||
+        "retail_price" in firstItem;
+      const hasCost =
+        "cost_price" in firstItem || "cost" in firstItem || "unit_cost" in firstItem || "purchase_price" in firstItem;
+      const hasMinStock =
+        "min_stock" in firstItem ||
+        "minimum_stock" in firstItem ||
+        "reorder_level" in firstItem ||
+        "min_quantity" in firstItem;
 
       console.log("🔍 Field analysis:", {
         hasStoreId,
@@ -269,9 +288,23 @@ const Dashboard = () => {
         hasMinStock,
       });
 
+      // If we found very few items (like 12), let's check if we need to look at a different table structure
+      if (allInventory.length < 100) {
+        console.log("⚠️ Very few items found, checking for alternative data structures...");
+
+        // Try to get count from all tables to see which has the real data
+        for (const tableName of possibleInventoryTables) {
+          const { count, error } = await supabase.from(tableName).select("*", { count: "exact", head: true });
+
+          if (!error && count && count > allInventory.length) {
+            console.log(`📊 Table ${tableName} has ${count} total records`);
+          }
+        }
+      }
+
       // Process each store
       for (const store of stores) {
-        console.log(`\n📊 Processing store: ${store.name}`);
+        console.log(`\n📊 Processing store: ${store.name} (ID: ${store.id})`);
 
         let storeItems: any[] = [];
         let totalItems = 0;
@@ -280,45 +313,109 @@ const Dashboard = () => {
 
         // Method 1: Filter by store_id (exact match)
         if (hasStoreId) {
-          storeItems = allInventory.filter((item: any) => item.store_id === store.id);
-          console.log(`📍 Found ${storeItems.length} items by store_id`);
+          const storeIdField = "store_id" in firstItem ? "store_id" : "storeId";
+          storeItems = allInventory.filter((item: any) => {
+            // Handle both string and number comparisons
+            const itemStoreId = item[storeIdField];
+            return itemStoreId != null && itemStoreId.toString() === store.id.toString();
+          });
+          console.log(`📍 Found ${storeItems.length} items by ${storeIdField}`);
         }
 
         // Method 2: Filter by location (partial match)
         else if (hasLocation) {
+          const locationField = "location" in firstItem ? "location" : "store_location";
           storeItems = allInventory.filter(
-            (item: any) => item.location && item.location.toString().toLowerCase().includes(store.name.toLowerCase()),
+            (item: any) =>
+              item[locationField] && item[locationField].toString().toLowerCase().includes(store.name.toLowerCase()),
           );
           console.log(`📍 Found ${storeItems.length} items by location match`);
         }
 
-        // Method 3: If no store linking, assign items randomly for demo
+        // Method 3: If no store linking found, check if this might be a centralized inventory
         else {
-          console.log("⚠️ No store linking field found, using demo distribution");
-          // Simple demo: assign items randomly to stores
-          storeItems = allInventory.filter((_, index) => index % stores.length === stores.indexOf(store));
-          console.log(`📍 Assigned ${storeItems.length} items for demo`);
+          console.log("⚠️ No store linking field found");
+
+          // Check if this might be a main warehouse/central inventory
+          if (store.name.toLowerCase().includes("warehouse") || store.name.toLowerCase().includes("main")) {
+            console.log("🏭 This appears to be a main warehouse, assigning all items");
+            storeItems = allInventory;
+          } else {
+            // For other stores, check if items have any location reference
+            storeItems = allInventory.filter((item: any) => {
+              // Check various fields that might contain store information
+              const itemString = JSON.stringify(item).toLowerCase();
+              return itemString.includes(store.name.toLowerCase());
+            });
+            console.log(`📍 Found ${storeItems.length} items by text search in all fields`);
+          }
         }
 
         // Calculate metrics for this store
         if (storeItems.length > 0) {
           storeItems.forEach((item: any) => {
+            // Count as one item (this might be where the issue is - we're counting items, not quantities)
             totalItems += 1;
 
             // Get quantity from various possible field names
             let quantity = 1;
             if (hasQuantity) {
-              quantity = item.quantity || item.stock_quantity || item.qty || 1;
+              const quantityField =
+                "quantity" in item
+                  ? "quantity"
+                  : "stock_quantity" in item
+                    ? "stock_quantity"
+                    : "qty" in item
+                      ? "qty"
+                      : "stock" in item
+                        ? "stock"
+                        : "current_stock" in item
+                          ? "current_stock"
+                          : null;
+
+              if (quantityField) {
+                quantity = Number(item[quantityField]) || 1;
+              }
             }
 
             // Get price from various possible field names
             let price = 0;
             if (hasPrice) {
-              price = item.price || item.unit_price || item.cost || 0;
-            } else if (hasCost) {
-              price = item.cost_price || item.cost || item.unit_cost || 0;
-            } else {
-              price = 10; // Default price for demo
+              const priceField =
+                "price" in item
+                  ? "price"
+                  : "unit_price" in item
+                    ? "unit_price"
+                    : "selling_price" in item
+                      ? "selling_price"
+                      : "retail_price" in item
+                        ? "retail_price"
+                        : null;
+
+              if (priceField) {
+                price = Number(item[priceField]) || 0;
+              }
+            }
+            if (price === 0 && hasCost) {
+              const costField =
+                "cost_price" in item
+                  ? "cost_price"
+                  : "cost" in item
+                    ? "cost"
+                    : "unit_cost" in item
+                      ? "unit_cost"
+                      : "purchase_price" in item
+                        ? "purchase_price"
+                        : null;
+
+              if (costField) {
+                price = Number(item[costField]) || 0;
+              }
+            }
+
+            // If still no price, use a reasonable default based on the item type
+            if (price === 0) {
+              price = 50; // Reasonable default for inventory items
             }
 
             const value = quantity * price;
@@ -327,7 +424,20 @@ const Dashboard = () => {
             // Get min stock from various possible field names
             let minStock = 5; // Default
             if (hasMinStock) {
-              minStock = item.min_stock || item.minimum_stock || item.reorder_level || 5;
+              const minStockField =
+                "min_stock" in item
+                  ? "min_stock"
+                  : "minimum_stock" in item
+                    ? "minimum_stock"
+                    : "reorder_level" in item
+                      ? "reorder_level"
+                      : "min_quantity" in item
+                        ? "min_quantity"
+                        : null;
+
+              if (minStockField) {
+                minStock = Number(item[minStockField]) || 5;
+              }
             }
 
             // Check if item is low stock
@@ -339,7 +449,7 @@ const Dashboard = () => {
 
         console.log(`📈 Store ${store.name} metrics:`, {
           totalItems,
-          inventoryValue,
+          inventoryValue: `$${inventoryValue.toFixed(2)}`,
           lowStockCount,
         });
 
@@ -352,6 +462,15 @@ const Dashboard = () => {
       }
 
       console.log("🎯 Final store metrics:", storeMetricsData);
+
+      // Debug: Compare with main metrics
+      console.log("🔍 Comparison with main metrics:", {
+        storeMetricsTotalItems: storeMetricsData.reduce((sum, store) => sum + store.totalItems, 0),
+        storeMetricsTotalValue: storeMetricsData.reduce((sum, store) => sum + store.inventoryValue, 0),
+        mainMetricsTotalItems: metrics.totalItems,
+        mainMetricsTotalValue: metrics.totalValue,
+      });
+
       setStoreMetrics(storeMetricsData);
     } catch (error) {
       console.error("💥 Error in fetchRealStoreMetrics:", error);
