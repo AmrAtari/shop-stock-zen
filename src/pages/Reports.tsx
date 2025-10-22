@@ -24,6 +24,18 @@ import {
   ClipboardList,
   Scale,
   ArrowLeftRight,
+  Users,
+  Truck,
+  Settings,
+  FileText,
+  Target,
+  Zap,
+  Brain,
+  LineChart,
+  GitBranch,
+  Shield,
+  Clock,
+  Activity,
 } from "lucide-react";
 import { format, subDays, startOfMonth, startOfDay } from "date-fns";
 import {
@@ -38,6 +50,10 @@ import {
   PieChart as RechartsPieChart,
   Pie,
   Cell,
+  LineChart as RechartsLineChart,
+  Line,
+  AreaChart,
+  Area,
 } from "recharts";
 import { useSearchParams } from "react-router-dom";
 
@@ -55,6 +71,41 @@ const REPORT_KEYS = [
   "COGS",
   "PIVOT_REPORT",
   "STOCK_MOVEMENT_TRANSACTION",
+  // Financial Reports
+  "PROFIT_LOSS",
+  "BALANCE_SHEET",
+  "CASH_FLOW",
+  "GROSS_MARGIN_ANALYSIS",
+  "REVENUE_BY_CATEGORY",
+  "EXPENSE_ANALYSIS",
+  // Customer Analytics
+  "CUSTOMER_LIFETIME_VALUE",
+  "CUSTOMER_SEGMENTATION",
+  "SALES_BY_CUSTOMER",
+  "REPEAT_CUSTOMER_RATE",
+  "CUSTOMER_ACQUISITION",
+  "CUSTOMER_RETENTION",
+  // Procurement
+  "SUPPLIER_PERFORMANCE",
+  "PURCHASE_ORDER_ANALYSIS",
+  "LEAD_TIME_ANALYSIS",
+  "SUPPLIER_QUALITY",
+  "PROCUREMENT_COST",
+  "VENDOR_MANAGEMENT",
+  // Operations
+  "OPERATIONAL_EFFICIENCY",
+  "THROUGHPUT_ANALYSIS",
+  "CAPACITY_UTILIZATION",
+  "QUALITY_METRICS",
+  "DOWNTIME_ANALYSIS",
+  "PRODUCTIVITY_REPORT",
+  // Advanced Analytics
+  "FORECASTING",
+  "TREND_ANALYSIS",
+  "PREDICTIVE_MODELING",
+  "BUSINESS_INTELLIGENCE",
+  "KPI_DASHBOARD",
+  "PERFORMANCE_SCORECARD",
 ] as const;
 
 type ReportTab = (typeof REPORT_KEYS)[number];
@@ -69,9 +120,9 @@ interface ReportConfig {
 // Report configuration
 const REPORT_CONFIG: Record<ReportTab, ReportConfig> = {
   DASHBOARD: {
-    name: "Reports Dashboard",
+    name: "Executive Dashboard",
     icon: <LayoutDashboard className="w-4 h-4" />,
-    description: "Overview of all available reports",
+    description: "Executive overview with key performance indicators",
   },
   INVENTORY_ON_HAND: {
     name: "Inventory On-Hand",
@@ -86,22 +137,22 @@ const REPORT_CONFIG: Record<ReportTab, ReportConfig> = {
   LOW_STOCK: {
     name: "Low Stock Alerts",
     icon: <AlertTriangle className="w-4 h-4" />,
-    description: "Items below minimum stock levels",
+    description: "Items below minimum stock levels with reorder recommendations",
   },
   INVENTORY_AGING: {
     name: "Inventory Aging",
     icon: <Calendar className="w-4 h-4" />,
-    description: "Analysis of inventory by age and turnover",
+    description: "Analysis of inventory by age and turnover rate",
   },
   STOCK_MOVEMENT: {
     name: "Stock Movement",
     icon: <TrendingUp className="w-4 h-4" />,
-    description: "Inventory movement trends and patterns",
+    description: "Inventory movement trends and velocity analysis",
   },
   INVENTORY_DISCREPANCY: {
     name: "Inventory Discrepancy",
     icon: <Scale className="w-4 h-4" />,
-    description: "Variances and adjustment reports",
+    description: "Variances, adjustments, and shrinkage analysis",
   },
   ABC_ANALYSIS: {
     name: "ABC Analysis",
@@ -111,37 +162,197 @@ const REPORT_CONFIG: Record<ReportTab, ReportConfig> = {
   COGS: {
     name: "Cost of Goods Sold",
     icon: <DollarSign className="w-4 h-4" />,
-    description: "COGS analysis and reporting",
+    description: "Detailed COGS analysis and margin reporting",
   },
   SALES_PERFORMANCE: {
     name: "Sales Performance",
     icon: <ShoppingCart className="w-4 h-4" />,
-    description: "Sales metrics and performance indicators",
+    description: "Sales metrics, trends, and performance indicators",
   },
   PIVOT_REPORT: {
-    name: "Pivot Report",
+    name: "Advanced Pivot Analysis",
     icon: <BarChart3 className="w-4 h-4" />,
-    description: "Customizable pivot table analysis",
+    description: "Customizable pivot tables with multi-dimensional analysis",
   },
   STOCK_MOVEMENT_TRANSACTION: {
     name: "Stock Transactions",
     icon: <ClipboardList className="w-4 h-4" />,
-    description: "Detailed stock movement transactions",
+    description: "Detailed stock movement transactions and audit trail",
+  },
+
+  // Financial Reports
+  PROFIT_LOSS: {
+    name: "Profit & Loss",
+    icon: <FileText className="w-4 h-4" />,
+    description: "Comprehensive P&L statement with variance analysis",
+  },
+  BALANCE_SHEET: {
+    name: "Balance Sheet",
+    icon: <Scale className="w-4 h-4" />,
+    description: "Assets, liabilities, and equity position",
+  },
+  CASH_FLOW: {
+    name: "Cash Flow",
+    icon: <GitBranch className="w-4 h-4" />,
+    description: "Operating, investing, and financing cash flows",
+  },
+  GROSS_MARGIN_ANALYSIS: {
+    name: "Gross Margin Analysis",
+    icon: <Target className="w-4 h-4" />,
+    description: "Product and category margin performance",
+  },
+  REVENUE_BY_CATEGORY: {
+    name: "Revenue by Category",
+    icon: <PieChart className="w-4 h-4" />,
+    description: "Revenue breakdown by product categories",
+  },
+  EXPENSE_ANALYSIS: {
+    name: "Expense Analysis",
+    icon: <DollarSign className="w-4 h-4" />,
+    description: "Operating expenses and cost center analysis",
+  },
+
+  // Customer Analytics
+  CUSTOMER_LIFETIME_VALUE: {
+    name: "Customer Lifetime Value",
+    icon: <Users className="w-4 h-4" />,
+    description: "CLV calculation and customer profitability",
+  },
+  CUSTOMER_SEGMENTATION: {
+    name: "Customer Segmentation",
+    icon: <Brain className="w-4 h-4" />,
+    description: "Customer grouping by behavior and value",
+  },
+  SALES_BY_CUSTOMER: {
+    name: "Sales by Customer",
+    icon: <ShoppingCart className="w-4 h-4" />,
+    description: "Customer-level sales performance and trends",
+  },
+  REPEAT_CUSTOMER_RATE: {
+    name: "Repeat Customer Rate",
+    icon: <Repeat2 className="w-4 h-4" />,
+    description: "Customer retention and loyalty metrics",
+  },
+  CUSTOMER_ACQUISITION: {
+    name: "Customer Acquisition",
+    icon: <Zap className="w-4 h-4" />,
+    description: "New customer acquisition costs and channels",
+  },
+  CUSTOMER_RETENTION: {
+    name: "Customer Retention",
+    icon: <Shield className="w-4 h-4" />,
+    description: "Customer churn analysis and retention strategies",
+  },
+
+  // Procurement
+  SUPPLIER_PERFORMANCE: {
+    name: "Supplier Performance",
+    icon: <Truck className="w-4 h-4" />,
+    description: "Supplier quality, delivery, and cost performance",
+  },
+  PURCHASE_ORDER_ANALYSIS: {
+    name: "Purchase Order Analysis",
+    icon: <ClipboardList className="w-4 h-4" />,
+    description: "PO volume, value, and cycle time analysis",
+  },
+  LEAD_TIME_ANALYSIS: {
+    name: "Lead Time Analysis",
+    icon: <Clock className="w-4 h-4" />,
+    description: "Supplier lead times and reliability metrics",
+  },
+  SUPPLIER_QUALITY: {
+    name: "Supplier Quality",
+    icon: <Target className="w-4 h-4" />,
+    description: "Quality metrics and defect rates by supplier",
+  },
+  PROCUREMENT_COST: {
+    name: "Procurement Cost",
+    icon: <DollarSign className="w-4 h-4" />,
+    description: "Procurement spending and cost savings analysis",
+  },
+  VENDOR_MANAGEMENT: {
+    name: "Vendor Management",
+    icon: <Users className="w-4 h-4" />,
+    description: "Vendor portfolio and relationship management",
+  },
+
+  // Operations
+  OPERATIONAL_EFFICIENCY: {
+    name: "Operational Efficiency",
+    icon: <Activity className="w-4 h-4" />,
+    description: "Overall equipment effectiveness and efficiency metrics",
+  },
+  THROUGHPUT_ANALYSIS: {
+    name: "Throughput Analysis",
+    icon: <Zap className="w-4 h-4" />,
+    description: "Production throughput and bottleneck identification",
+  },
+  CAPACITY_UTILIZATION: {
+    name: "Capacity Utilization",
+    icon: <BarChart className="w-4 h-4" />,
+    description: "Resource utilization and capacity planning",
+  },
+  QUALITY_METRICS: {
+    name: "Quality Metrics",
+    icon: <Target className="w-4 h-4" />,
+    description: "Quality control metrics and defect analysis",
+  },
+  DOWNTIME_ANALYSIS: {
+    name: "Downtime Analysis",
+    icon: <Clock className="w-4 h-4" />,
+    description: "Equipment downtime and maintenance analysis",
+  },
+  PRODUCTIVITY_REPORT: {
+    name: "Productivity Report",
+    icon: <TrendingUp className="w-4 h-4" />,
+    description: "Labor productivity and efficiency metrics",
+  },
+
+  // Advanced Analytics
+  FORECASTING: {
+    name: "Demand Forecasting",
+    icon: <LineChart className="w-4 h-4" />,
+    description: "Predictive demand forecasting and planning",
+  },
+  TREND_ANALYSIS: {
+    name: "Trend Analysis",
+    icon: <TrendingUp className="w-4 h-4" />,
+    description: "Historical trends and pattern recognition",
+  },
+  PREDICTIVE_MODELING: {
+    name: "Predictive Modeling",
+    icon: <Brain className="w-4 h-4" />,
+    description: "Machine learning models for business predictions",
+  },
+  BUSINESS_INTELLIGENCE: {
+    name: "Business Intelligence",
+    icon: <BarChart3 className="w-4 h-4" />,
+    description: "Comprehensive BI dashboard with interactive analytics",
+  },
+  KPI_DASHBOARD: {
+    name: "KPI Dashboard",
+    icon: <Target className="w-4 h-4" />,
+    description: "Key performance indicators and metrics dashboard",
+  },
+  PERFORMANCE_SCORECARD: {
+    name: "Performance Scorecard",
+    icon: <Activity className="w-4 h-4" />,
+    description: "Balanced scorecard with performance benchmarks",
   },
 };
 
 // Define report sections with organized categories
 const REPORT_SECTIONS = {
   OVERVIEW: {
-    name: "Overview",
+    name: "Executive Overview",
     icon: <LayoutDashboard className="w-4 h-4" />,
-    description: "High-level dashboard and summary reports",
-    reports: ["DASHBOARD"] as ReportTab[],
+    description: "Executive dashboards and high-level summaries",
+    reports: ["DASHBOARD", "KPI_DASHBOARD", "PERFORMANCE_SCORECARD"] as ReportTab[],
   },
   INVENTORY: {
-    name: "Inventory Reports",
+    name: "Inventory Management",
     icon: <Package className="w-4 h-4" />,
-    description: "Detailed inventory analysis and tracking",
+    description: "Inventory tracking, valuation, and optimization",
     reports: [
       "INVENTORY_ON_HAND",
       "INVENTORY_VALUATION",
@@ -153,22 +364,68 @@ const REPORT_SECTIONS = {
     ] as ReportTab[],
   },
   SALES: {
-    name: "Sales & Financial",
+    name: "Sales & Revenue",
     icon: <ShoppingCart className="w-4 h-4" />,
-    description: "Sales performance and cost analysis",
-    reports: ["SALES_PERFORMANCE", "COGS"] as ReportTab[],
+    description: "Sales performance and revenue analytics",
+    reports: ["SALES_PERFORMANCE", "REVENUE_BY_CATEGORY", "GROSS_MARGIN_ANALYSIS"] as ReportTab[],
+  },
+  FINANCIAL: {
+    name: "Financial Reports",
+    icon: <DollarSign className="w-4 h-4" />,
+    description: "Financial statements and profitability analysis",
+    reports: ["PROFIT_LOSS", "BALANCE_SHEET", "CASH_FLOW", "COGS", "EXPENSE_ANALYSIS"] as ReportTab[],
+  },
+  CUSTOMER: {
+    name: "Customer Analytics",
+    icon: <Users className="w-4 h-4" />,
+    description: "Customer behavior and relationship management",
+    reports: [
+      "CUSTOMER_LIFETIME_VALUE",
+      "CUSTOMER_SEGMENTATION",
+      "SALES_BY_CUSTOMER",
+      "REPEAT_CUSTOMER_RATE",
+      "CUSTOMER_ACQUISITION",
+      "CUSTOMER_RETENTION",
+    ] as ReportTab[],
+  },
+  PROCUREMENT: {
+    name: "Procurement",
+    icon: <Truck className="w-4 h-4" />,
+    description: "Supplier performance and procurement optimization",
+    reports: [
+      "SUPPLIER_PERFORMANCE",
+      "PURCHASE_ORDER_ANALYSIS",
+      "LEAD_TIME_ANALYSIS",
+      "SUPPLIER_QUALITY",
+      "PROCUREMENT_COST",
+      "VENDOR_MANAGEMENT",
+    ] as ReportTab[],
   },
   OPERATIONS: {
     name: "Operations",
-    icon: <ArrowLeftRight className="w-4 h-4" />,
-    description: "Stock movements and transactions",
-    reports: ["STOCK_MOVEMENT_TRANSACTION"] as ReportTab[],
+    icon: <Settings className="w-4 h-4" />,
+    description: "Operational efficiency and performance metrics",
+    reports: [
+      "OPERATIONAL_EFFICIENCY",
+      "THROUGHPUT_ANALYSIS",
+      "CAPACITY_UTILIZATION",
+      "QUALITY_METRICS",
+      "DOWNTIME_ANALYSIS",
+      "PRODUCTIVITY_REPORT",
+      "STOCK_MOVEMENT_TRANSACTION",
+    ] as ReportTab[],
   },
-  ADVANCED: {
+  ANALYTICS: {
     name: "Advanced Analytics",
-    icon: <BarChart3 className="w-4 h-4" />,
-    description: "Custom reports and pivot analysis",
-    reports: ["PIVOT_REPORT"] as ReportTab[],
+    icon: <Brain className="w-4 h-4" />,
+    description: "Predictive analytics and business intelligence",
+    reports: [
+      "PIVOT_REPORT",
+      "FORECASTING",
+      "TREND_ANALYSIS",
+      "PREDICTIVE_MODELING",
+      "BUSINESS_INTELLIGENCE",
+    ] as ReportTab[],
   },
 } as const;
 
@@ -441,6 +698,7 @@ export default function Reports() {
       case "PIVOT_REPORT":
         data = pivotData || [];
         break;
+      // Add cases for new reports here
       default:
         data = [];
     }
@@ -646,7 +904,7 @@ export default function Reports() {
       return (
         <div className="p-6 text-center text-muted-foreground">
           <LayoutDashboard className="mx-auto h-8 w-8 mb-4" />
-          <h2 className="text-xl font-semibold">Reports Dashboard</h2>
+          <h2 className="text-xl font-semibold">Executive Dashboard</h2>
           <p>Select a report from the menu above to view detailed analytics.</p>
         </div>
       );
@@ -1038,6 +1296,7 @@ export default function Reports() {
       );
     }
 
+    // For new reports, you can add specific rendering logic here
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -1053,14 +1312,14 @@ export default function Reports() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Reports & Analytics</h1>
-          <p className="text-muted-foreground">Comprehensive reports and analytics for your business operations</p>
+          <h1 className="text-3xl font-bold tracking-tight">Enterprise Analytics Suite</h1>
+          <p className="text-muted-foreground">Comprehensive business intelligence and reporting platform</p>
         </div>
       </div>
 
       {/* Section Navigation */}
       <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           {Object.entries(REPORT_SECTIONS).map(([sectionKey, section]) => (
             <Card
               key={sectionKey}
