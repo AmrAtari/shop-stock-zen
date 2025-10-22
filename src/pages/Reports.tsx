@@ -8,31 +8,70 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { LayoutDashboard, TrendingUp, DollarSign, Repeat2, BarChart } from "lucide-react";
+import {
+  LayoutDashboard,
+  TrendingUp,
+  DollarSign,
+  Repeat2,
+  BarChart,
+  Package,
+  AlertTriangle,
+  PieChart,
+  ShoppingCart,
+  BarChart3,
+  Calendar,
+} from "lucide-react";
 import { format, subDays, startOfMonth, startOfDay } from "date-fns";
-import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import {
+  BarChart as RechartsBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import { useSearchParams } from "react-router-dom";
 
-const REPORT_TABS = [
-  "DASHBOARD",
-  "INVENTORY_ON_HAND",
-  "INVENTORY_VALUATION",
-  "LOW_STOCK",
-  "INVENTORY_AGING",
-  "STOCK_MOVEMENT",
-  "INVENTORY_DISCREPANCY",
-  "ABC_ANALYSIS",
-  "COGS",
-  "SALES_PERFORMANCE",
-  "PIVOT_REPORT",
-  "STOCK_MOVEMENT_TRANSACTION",
-] as const;
+const REPORT_SECTIONS = {
+  OVERVIEW: {
+    name: "Overview",
+    reports: ["DASHBOARD"],
+  },
+  INVENTORY: {
+    name: "Inventory Reports",
+    reports: [
+      "INVENTORY_ON_HAND",
+      "INVENTORY_VALUATION",
+      "LOW_STOCK",
+      "INVENTORY_AGING",
+      "STOCK_MOVEMENT",
+      "INVENTORY_DISCREPANCY",
+      "ABC_ANALYSIS",
+    ],
+  },
+  SALES: {
+    name: "Sales Reports",
+    reports: ["SALES_PERFORMANCE", "COGS"],
+  },
+  ADVANCED: {
+    name: "Advanced Analytics",
+    reports: ["PIVOT_REPORT", "STOCK_MOVEMENT_TRANSACTION"],
+  },
+} as const;
+
+const REPORT_TABS = Object.values(REPORT_SECTIONS).flatMap((section) => section.reports) as readonly string[];
 
 type ReportTab = (typeof REPORT_TABS)[number];
 
 export default function Reports() {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ReportTab>("DASHBOARD");
+  const [activeSection, setActiveSection] = useState<keyof typeof REPORT_SECTIONS>("OVERVIEW");
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -44,11 +83,28 @@ export default function Reports() {
 
   // Handle tab query parameter on mount
   useEffect(() => {
-    const tabParam = searchParams.get('tab');
+    const tabParam = searchParams.get("tab");
     if (tabParam && REPORT_TABS.includes(tabParam as ReportTab)) {
       setActiveTab(tabParam as ReportTab);
+      // Set active section based on the tab
+      for (const [sectionKey, section] of Object.entries(REPORT_SECTIONS)) {
+        if (section.reports.includes(tabParam)) {
+          setActiveSection(sectionKey as keyof typeof REPORT_SECTIONS);
+          break;
+        }
+      }
     }
   }, [searchParams]);
+
+  // Update active section when tab changes
+  useEffect(() => {
+    for (const [sectionKey, section] of Object.entries(REPORT_SECTIONS)) {
+      if (section.reports.includes(activeTab)) {
+        setActiveSection(sectionKey as keyof typeof REPORT_SECTIONS);
+        break;
+      }
+    }
+  }, [activeTab]);
 
   // Reset to page 1 when filters change
   const resetPagination = () => setCurrentPage(1);
@@ -213,9 +269,7 @@ export default function Reports() {
     });
 
     // Convert to array and filter zero values
-    const data = Object.values(pivotMap).filter((row) => 
-      pivotShowZeroValues || row.totalSales > 0
-    );
+    const data = Object.values(pivotMap).filter((row) => pivotShowZeroValues || row.totalSales > 0);
 
     // Generate chart data
     const chartData = data.map((row) => ({
@@ -238,7 +292,7 @@ export default function Reports() {
       pivotSelectedCategories,
       pivotSelectedBrands,
       pivotShowZeroValues,
-    ]
+    ],
   );
 
   // Filtered data based on active tab, search, and date
@@ -491,8 +545,8 @@ export default function Reports() {
     }
 
     if (activeTab === "PIVOT_REPORT") {
-      const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
-      
+      const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#82CA9D"];
+
       const toggleRowExpansion = (rowKey: string) => {
         setExpandedRows((prev) => {
           const newSet = new Set(prev);
@@ -505,9 +559,7 @@ export default function Reports() {
         });
       };
 
-      const uniqueColumns = [...new Set(
-        pivotData.flatMap((row: any) => Object.keys(row.columns))
-      )].sort();
+      const uniqueColumns = [...new Set(pivotData.flatMap((row: any) => Object.keys(row.columns)))].sort();
 
       return (
         <div className="space-y-6">
@@ -713,9 +765,7 @@ export default function Reports() {
 
             <TabsContent value="results" className="space-y-4 mt-4">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-sm text-muted-foreground">
-                  {pivotData.length} group(s) found
-                </div>
+                <div className="text-sm text-muted-foreground">{pivotData.length} group(s) found</div>
                 <div className="flex gap-2">
                   <Button
                     variant={pivotChartType === "bar" ? "default" : "outline"}
@@ -731,7 +781,9 @@ export default function Reports() {
                   >
                     Pie Chart
                   </Button>
-                  <Button onClick={exportCSV} size="sm">Export CSV</Button>
+                  <Button onClick={exportCSV} size="sm">
+                    Export CSV
+                  </Button>
                 </div>
               </div>
 
@@ -752,7 +804,7 @@ export default function Reports() {
                         <Bar dataKey="cost" fill="#ffc658" name="Cost" />
                       </RechartsBarChart>
                     ) : (
-                      <PieChart>
+                      <RechartsPieChart>
                         <Pie
                           data={pivotChartData}
                           cx="50%"
@@ -768,7 +820,7 @@ export default function Reports() {
                           ))}
                         </Pie>
                         <Tooltip />
-                      </PieChart>
+                      </RechartsPieChart>
                     )}
                   </ResponsiveContainer>
                 </CardContent>
@@ -799,12 +851,15 @@ export default function Reports() {
                     {pivotData.map((row: any, idx: number) => {
                       const isExpanded = expandedRows.has(row.rowField);
                       const grossMargin = row.totalSales - row.totalCost;
-                      const marginPercent = row.totalSales > 0 ? ((grossMargin / row.totalSales) * 100) : 0;
-                      const avgPrice = row.totalQty > 0 ? (row.totalSales / row.totalQty) : 0;
+                      const marginPercent = row.totalSales > 0 ? (grossMargin / row.totalSales) * 100 : 0;
+                      const avgPrice = row.totalQty > 0 ? row.totalSales / row.totalQty : 0;
 
                       return (
                         <React.Fragment key={idx}>
-                          <tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleRowExpansion(row.rowField)}>
+                          <tr
+                            className="hover:bg-muted/50 cursor-pointer"
+                            onClick={() => toggleRowExpansion(row.rowField)}
+                          >
                             <td className="border border-border p-3 font-medium sticky left-0 bg-background">
                               <span className="inline-block mr-2">{isExpanded ? "▼" : "►"}</span>
                               {row.rowField}
@@ -828,8 +883,9 @@ export default function Reports() {
                           {isExpanded &&
                             Object.values(row.brands).map((brand: any, brandIdx: number) => {
                               const brandGrossMargin = brand.totalSales - brand.totalCost;
-                              const brandMarginPercent = brand.totalSales > 0 ? ((brandGrossMargin / brand.totalSales) * 100) : 0;
-                              const brandAvgPrice = brand.totalQty > 0 ? (brand.totalSales / brand.totalQty) : 0;
+                              const brandMarginPercent =
+                                brand.totalSales > 0 ? (brandGrossMargin / brand.totalSales) * 100 : 0;
+                              const brandAvgPrice = brand.totalQty > 0 ? brand.totalSales / brand.totalQty : 0;
 
                               return (
                                 <tr key={brandIdx} className="bg-muted/30">
@@ -842,13 +898,21 @@ export default function Reports() {
                                     </td>
                                   ))}
                                   <td className="border border-border p-3 text-center text-sm">{brand.totalQty}</td>
-                                  <td className="border border-border p-3 text-center text-sm">${brand.totalSales.toFixed(2)}</td>
-                                  <td className="border border-border p-3 text-center text-sm">${brand.totalCost.toFixed(2)}</td>
+                                  <td className="border border-border p-3 text-center text-sm">
+                                    ${brand.totalSales.toFixed(2)}
+                                  </td>
+                                  <td className="border border-border p-3 text-center text-sm">
+                                    ${brand.totalCost.toFixed(2)}
+                                  </td>
                                   <td className="border border-border p-3 text-center text-sm text-green-600">
                                     ${brandGrossMargin.toFixed(2)}
                                   </td>
-                                  <td className="border border-border p-3 text-center text-sm">{brandMarginPercent.toFixed(1)}%</td>
-                                  <td className="border border-border p-3 text-center text-sm">${brandAvgPrice.toFixed(2)}</td>
+                                  <td className="border border-border p-3 text-center text-sm">
+                                    {brandMarginPercent.toFixed(1)}%
+                                  </td>
+                                  <td className="border border-border p-3 text-center text-sm">
+                                    ${brandAvgPrice.toFixed(2)}
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -865,130 +929,186 @@ export default function Reports() {
     }
 
     return (
-      <div>
-        <div className="mb-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Start Date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full border border-border rounded-md p-2 bg-background"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">End Date</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full border border-border rounded-md p-2 bg-background"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Store</label>
-              <select
-                value={selectedStore}
-                onChange={(e) => setSelectedStore(e.target.value)}
-                className="w-full border border-border rounded-md p-2 bg-background"
-              >
-                <option value="all">All Stores</option>
-                {stores.map((store) => (
-                  <option key={store} value={store}>
-                    {store}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Search</label>
-              <input
-                type="text"
-                placeholder="Search..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full border border-border rounded-md p-2 bg-background"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Category</label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full border border-border rounded-md p-2 bg-background"
-              >
-                <option value="all">All Categories</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Brand</label>
-              <select
-                value={selectedBrand}
-                onChange={(e) => setSelectedBrand(e.target.value)}
-                className="w-full border border-border rounded-md p-2 bg-background"
-              >
-                <option value="all">All Brands</option>
-                {brands.map((brand) => (
-                  <option key={brand} value={brand}>
-                    {brand}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-end">
-              <Button onClick={exportCSV} className="w-full">
-                Export CSV
-              </Button>
-            </div>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Showing {paginatedData.length} of {filteredData.length} results
-          </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">{filteredData.length} record(s) found</div>
+          <Button onClick={exportCSV}>Export CSV</Button>
         </div>
         {renderTable(paginatedData)}
       </div>
     );
   };
 
-  const reportButtons: { key: ReportTab; label: string; icon: React.ReactNode }[] = [
-    { key: "DASHBOARD", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4 mr-2" /> },
-    { key: "INVENTORY_ON_HAND", label: "On-Hand", icon: <BarChart className="w-4 h-4 mr-2" /> },
-    { key: "INVENTORY_VALUATION", label: "Valuation", icon: <DollarSign className="w-4 h-4 mr-2" /> },
-    { key: "LOW_STOCK", label: "Low Stock", icon: <Repeat2 className="w-4 h-4 mr-2" /> },
-    { key: "INVENTORY_AGING", label: "Aging", icon: <TrendingUp className="w-4 h-4 mr-2" /> },
-    { key: "STOCK_MOVEMENT", label: "Movement", icon: <TrendingUp className="w-4 h-4 mr-2" /> },
-    { key: "INVENTORY_DISCREPANCY", label: "Discrepancy", icon: <Repeat2 className="w-4 h-4 mr-2" /> },
-    { key: "ABC_ANALYSIS", label: "ABC Analysis", icon: <BarChart className="w-4 h-4 mr-2" /> },
-    { key: "COGS", label: "COGS", icon: <DollarSign className="w-4 h-4 mr-2" /> },
-    { key: "SALES_PERFORMANCE", label: "Sales", icon: <TrendingUp className="w-4 h-4 mr-2" /> },
-    { key: "PIVOT_REPORT", label: "Pivot Report", icon: <BarChart className="w-4 h-4 mr-2" /> },
-    { key: "STOCK_MOVEMENT_TRANSACTION", label: "Stock Transactions", icon: <Repeat2 className="w-4 h-4 mr-2" /> },
-  ];
+  const getReportIcon = (reportKey: string) => {
+    const iconProps = { className: "w-4 h-4" };
+    switch (reportKey) {
+      case "DASHBOARD":
+        return <LayoutDashboard {...iconProps} />;
+      case "INVENTORY_ON_HAND":
+        return <Package {...iconProps} />;
+      case "INVENTORY_VALUATION":
+        return <DollarSign {...iconProps} />;
+      case "LOW_STOCK":
+        return <AlertTriangle {...iconProps} />;
+      case "INVENTORY_AGING":
+        return <Calendar {...iconProps} />;
+      case "STOCK_MOVEMENT":
+      case "STOCK_MOVEMENT_TRANSACTION":
+        return <Repeat2 {...iconProps} />;
+      case "ABC_ANALYSIS":
+        return <PieChart {...iconProps} />;
+      case "SALES_PERFORMANCE":
+        return <TrendingUp {...iconProps} />;
+      case "COGS":
+        return <BarChart3 {...iconProps} />;
+      case "PIVOT_REPORT":
+        return <BarChart {...iconProps} />;
+      default:
+        return <BarChart {...iconProps} />;
+    }
+  };
 
   return (
-    <div className="p-8 space-y-6">
-      <h1 className="text-3xl font-bold">Inventory Reports</h1>
-      <p className="text-muted-foreground mt-1">
-        Select a detailed report to analyze inventory health and profitability.
-      </p>
-
-      <div className="flex flex-wrap gap-2 border-b pb-4">
-        {reportButtons.map(({ key, label, icon }) => (
-          <Button key={key} variant={activeTab === key ? "default" : "outline"} onClick={() => setActiveTab(key)}>
-            {icon}
-            {label}
-          </Button>
-        ))}
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
+          <p className="text-muted-foreground">Comprehensive analytics and insights for your business</p>
+        </div>
       </div>
 
+      {/* Section Navigation */}
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(REPORT_SECTIONS).map(([sectionKey, section]) => (
+            <Button
+              key={sectionKey}
+              variant={activeSection === sectionKey ? "default" : "outline"}
+              onClick={() => {
+                setActiveSection(sectionKey as keyof typeof REPORT_SECTIONS);
+                setActiveTab(section.reports[0]);
+              }}
+              className="flex items-center gap-2"
+            >
+              {section.name}
+            </Button>
+          ))}
+        </div>
+
+        {/* Report Tabs within Active Section */}
+        <div className="border-b">
+          <div className="flex flex-wrap gap-1">
+            {REPORT_SECTIONS[activeSection].reports.map((reportKey) => (
+              <Button
+                key={reportKey}
+                variant={activeTab === reportKey ? "default" : "ghost"}
+                onClick={() => setActiveTab(reportKey)}
+                className={`flex items-center gap-2 rounded-none border-b-2 ${
+                  activeTab === reportKey
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {getReportIcon(reportKey)}
+                {reportKey.replace(/_/g, " ")}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div>
+          <Label htmlFor="search">Search</Label>
+          <input
+            id="search"
+            type="text"
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full border border-border rounded-md p-2 bg-background"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="store">Store</Label>
+          <select
+            id="store"
+            value={selectedStore}
+            onChange={(e) => setSelectedStore(e.target.value)}
+            className="w-full border border-border rounded-md p-2 bg-background"
+          >
+            <option value="all">All Stores</option>
+            {stores.map((store) => (
+              <option key={store} value={store}>
+                {store}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <Label htmlFor="category">Category</Label>
+          <select
+            id="category"
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="w-full border border-border rounded-md p-2 bg-background"
+          >
+            <option value="all">All Categories</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <Label htmlFor="brand">Brand</Label>
+          <select
+            id="brand"
+            value={selectedBrand}
+            onChange={(e) => setSelectedBrand(e.target.value)}
+            className="w-full border border-border rounded-md p-2 bg-background"
+          >
+            <option value="all">All Brands</option>
+            {brands.map((brand) => (
+              <option key={brand} value={brand}>
+                {brand}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Date Range */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <Label htmlFor="startDate">Start Date</Label>
+          <input
+            id="startDate"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full border border-border rounded-md p-2 bg-background"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="endDate">End Date</Label>
+          <input
+            id="endDate"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full border border-border rounded-md p-2 bg-background"
+          />
+        </div>
+      </div>
+
+      {/* Active Report Content */}
       <Card>
         <CardContent className="p-6">{renderActiveReport()}</CardContent>
       </Card>
