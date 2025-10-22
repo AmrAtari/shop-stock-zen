@@ -169,13 +169,6 @@ const Dashboard = () => {
       if (items && items.length > 0) {
         console.log("Inventory Items Columns:", Object.keys(items[0]));
       }
-
-      const { count: totalItems, error: countError } = await supabase
-        .from("inventory_items" as any)
-        .select("*", { count: "exact", head: true });
-
-      console.log("Total Inventory Items:", totalItems);
-      console.log("Count Error:", countError);
     } catch (error) {
       console.error("Debug check failed:", error);
     }
@@ -216,22 +209,11 @@ const Dashboard = () => {
         return;
       }
 
+      // Get all inventory items with proper type handling
       const { data: allItems, error: allItemsError } = await supabase.from("inventory_items" as any).select("*");
 
       console.log("All inventory items:", allItems);
       console.log("All items error:", allItemsError);
-
-      if (allItemsError) {
-        console.error("Error fetching all items:", allItemsError);
-        const storeMetricsData: StoreMetrics[] = stores.map((store: any) => ({
-          storeName: store.name,
-          totalItems: 0,
-          inventoryValue: 0,
-          lowStockCount: 0,
-        }));
-        setStoreMetrics(storeMetricsData);
-        return;
-      }
 
       const storeMetricsData: StoreMetrics[] = [];
 
@@ -240,12 +222,19 @@ const Dashboard = () => {
 
         console.log(`Processing store: ${storeData.name} (ID: ${storeData.id})`);
 
-        let storeItems = allItems;
-        if (allItems && allItems.length > 0 && allItems[0].store_id !== undefined) {
-          storeItems = allItems.filter((item: any) => item.store_id === storeData.id);
-          console.log(`Store ${storeData.name} items (by store_id):`, storeItems);
-        } else {
-          console.log(`No store_id field found, using all items for store ${storeData.name}`);
+        let storeItems: any[] = [];
+
+        // Check if items have store_id field and filter by it
+        if (allItems && allItems.length > 0) {
+          const firstItem = allItems[0] as any;
+          if (firstItem.store_id !== undefined) {
+            storeItems = allItems.filter((item: any) => item.store_id === storeData.id);
+            console.log(`Store ${storeData.name} items (by store_id):`, storeItems);
+          } else {
+            // If no store_id, use all items for this store (fallback)
+            storeItems = allItems;
+            console.log(`No store_id field found, using all items for store ${storeData.name}`);
+          }
         }
 
         let totalItems = 0;
@@ -292,116 +281,6 @@ const Dashboard = () => {
         { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
       ];
       setStoreMetrics(sampleStoreMetrics);
-    } finally {
-      setStoreMetricsLoading(false);
-    }
-  };
-
-  const fetchStoreMetricsAlternative = async () => {
-    try {
-      setStoreMetricsLoading(true);
-
-      console.log("Using alternative store metrics approach...");
-
-      const { data: stores, error: storesError } = await supabase
-        .from("stores" as any)
-        .select("id, name")
-        .order("name");
-
-      if (storesError || !stores) {
-        console.error("Error fetching stores:", storesError);
-        return;
-      }
-
-      const storeMetricsData: StoreMetrics[] = [];
-
-      for (const store of stores) {
-        const storeData = store as any;
-
-        const { data: itemsWithStore, error: storeItemsError } = await supabase
-          .from("inventory_items" as any)
-          .select("quantity, price, min_stock")
-          .eq("store_id", storeData.id);
-
-        let totalItems = 0;
-        let inventoryValue = 0;
-        let lowStockCount = 0;
-
-        if (!storeItemsError && itemsWithStore && itemsWithStore.length > 0) {
-          console.log(`Found ${itemsWithStore.length} items for store ${storeData.name} using store_id`);
-
-          itemsWithStore.forEach((item: any) => {
-            totalItems += 1;
-            const quantity = item.quantity || 0;
-            const price = item.price || 0;
-            inventoryValue += quantity * price;
-
-            if (quantity <= (item.min_stock || 5)) {
-              lowStockCount += 1;
-            }
-          });
-        } else {
-          const { data: itemsWithLocation, error: locationError } = await supabase
-            .from("inventory_items" as any)
-            .select("quantity, price, min_stock, location")
-            .ilike("location", `%${storeData.name}%`);
-
-          if (!locationError && itemsWithLocation && itemsWithLocation.length > 0) {
-            console.log(`Found ${itemsWithLocation.length} items for store ${storeData.name} using location field`);
-
-            itemsWithLocation.forEach((item: any) => {
-              totalItems += 1;
-              const quantity = item.quantity || 0;
-              const price = item.price || 0;
-              inventoryValue += quantity * price;
-
-              if (quantity <= (item.min_stock || 5)) {
-                lowStockCount += 1;
-              }
-            });
-          } else {
-            const { data: allItems, error: allItemsError } = await supabase
-              .from("inventory_items" as any)
-              .select("quantity, price, min_stock");
-
-            if (!allItemsError && allItems && allItems.length > 0) {
-              const itemsPerStore = Math.floor(allItems.length / stores.length);
-              const remainingItems = allItems.length % stores.length;
-
-              const storeIndex = stores.findIndex((s: any) => s.id === storeData.id);
-              const assignedItems = storeIndex < remainingItems ? itemsPerStore + 1 : itemsPerStore;
-
-              const totalValue = allItems.reduce((sum: number, item: any) => {
-                return sum + (item.quantity || 0) * (item.price || 0);
-              }, 0);
-              const avgValuePerItem = totalValue / allItems.length;
-
-              const totalLowStock = allItems.filter(
-                (item: any) => (item.quantity || 0) <= (item.min_stock || 5),
-              ).length;
-              const lowStockPercentage = totalLowStock / allItems.length;
-
-              totalItems = assignedItems;
-              inventoryValue = assignedItems * avgValuePerItem;
-              lowStockCount = Math.round(assignedItems * lowStockPercentage);
-
-              console.log(`Distributed ${assignedItems} items to store ${storeData.name}`);
-            }
-          }
-        }
-
-        storeMetricsData.push({
-          storeName: storeData.name,
-          totalItems,
-          inventoryValue,
-          lowStockCount,
-        });
-      }
-
-      console.log("Alternative store metrics:", storeMetricsData);
-      setStoreMetrics(storeMetricsData);
-    } catch (error) {
-      console.error("Error in alternative store metrics:", error);
     } finally {
       setStoreMetricsLoading(false);
     }
@@ -525,7 +404,7 @@ const Dashboard = () => {
     }
 
     debugDatabaseStructure();
-    fetchStoreMetricsAlternative();
+    fetchStoreMetrics();
     fetchNotifications();
 
     const subscription = supabase
