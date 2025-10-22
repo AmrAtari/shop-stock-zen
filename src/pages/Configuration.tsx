@@ -205,9 +205,9 @@ const Configuration = () => {
   const loadUsers = async () => {
     try {
       const { data, error } = await supabase.functions.invoke("admin-list-users");
-      
+
       if (error) throw error;
-      
+
       setUsers(data.users || []);
     } catch (error: any) {
       console.error("Error loading users:", error);
@@ -347,18 +347,18 @@ const Configuration = () => {
   // MODIFIED: Function to handle adding user with ID and Password
   const handleAddUser = async () => {
     if (!newUserId.trim() || !newUserPassword.trim()) {
-        return toast.error("Please enter a User ID and Password");
+      return toast.error("Please enter a User ID and Password");
     }
 
     try {
       // NOTE: This assumes you have a Supabase Edge Function named 'admin-create-user-password'
       // that uses the Supabase Admin client to create a user with a password.
       const { data, error } = await supabase.functions.invoke("admin-create-user-password", {
-        body: { 
-          userId: newUserId, 
+        body: {
+          userId: newUserId,
           password: newUserPassword,
-          role: newUserRole 
-        }
+          role: newUserRole,
+        },
       });
 
       if (error) throw error;
@@ -378,7 +378,7 @@ const Configuration = () => {
   const updateUserRole = async (userId: string, newRole: UserWithRole["role"]) => {
     try {
       const { error } = await supabase.functions.invoke("admin-manage-user-role", {
-        body: { userId, role: newRole, action: "update" }
+        body: { userId, role: newRole, action: "update" },
       });
 
       if (error) throw error;
@@ -396,7 +396,7 @@ const Configuration = () => {
 
     try {
       const { error } = await supabase.functions.invoke("admin-manage-user-role", {
-        body: { userId, action: "delete" }
+        body: { userId, action: "delete" },
       });
 
       if (error) throw error;
@@ -643,9 +643,9 @@ const Configuration = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => {
                               setSelectedUser(user);
                               setShowPermissionsDialog(true);
@@ -654,9 +654,9 @@ const Configuration = () => {
                             <Shield className="w-4 h-4 mr-1" />
                             Permissions
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => deleteUserRole(user.id)}
                             disabled={!user.role}
                           >
@@ -699,9 +699,7 @@ const Configuration = () => {
                         <Package className="w-4 h-4 text-green-600" />
                         <h4 className="font-semibold">Inventory Manager</h4>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        Create POs, conduct counts, manage transfers
-                      </p>
+                      <p className="text-sm text-muted-foreground">Create POs, conduct counts, manage transfers</p>
                     </div>
                     <div className="space-y-2 p-4 border rounded-lg">
                       <div className="flex items-center gap-2">
@@ -871,35 +869,39 @@ const Configuration = () => {
       <Dialog open={showUserDialog} onOpenChange={setShowUserDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle> {/* MODIFIED: Title Change */}
-            <DialogDescription>Create a new system user and assign their role</DialogDescription> {/* MODIFIED: Description Change */}
+            {/* MODIFIED: Title Change */}
+            <DialogTitle>Add New User</DialogTitle>
+            {/* MODIFIED: Description Change */}
+            <DialogDescription>Create a new system user and assign their role</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="user-id">User ID / Username</Label> {/* MODIFIED: Label Change */}
+              {/* MODIFIED: Label Change */}
+              <Label htmlFor="user-id">User ID / Username</Label>
               <Input
                 id="user-id"
-                placeholder="inventory_clerk_01" {/* MODIFIED: Placeholder Change */}
+                // MODIFIED: Placeholder Change
+                placeholder="inventory_clerk_01"
                 value={newUserId}
-                onChange={(e) => setNewUserId(e.target.value)} {/* MODIFIED: Using newUserId */}
+                // MODIFIED: Using newUserId
+                onChange={(e) => setNewUserId(e.target.value)}
               />
             </div>
             <div>
-              <Label htmlFor="user-password">Password</Label> {/* MODIFIED: New Field */}
+              {/* MODIFIED: New Field */}
+              <Label htmlFor="user-password">Password</Label>
               <Input
                 id="user-password"
                 type="password"
                 placeholder="********"
                 value={newUserPassword}
-                onChange={(e) => setNewUserPassword(e.target.value)} {/* MODIFIED: Using newUserPassword */}
+                // MODIFIED: Using newUserPassword
+                onChange={(e) => setNewUserPassword(e.target.value)}
               />
             </div>
             <div>
               <Label htmlFor="user-role">Role</Label>
-              <Select
-                value={newUserRole}
-                onValueChange={(value) => setNewUserRole(value as typeof newUserRole)}
-              >
+              <Select value={newUserRole} onValueChange={(value) => setNewUserRole(value as typeof newUserRole)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -916,7 +918,8 @@ const Configuration = () => {
             <Button variant="outline" onClick={() => setShowUserDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddUser}>Create User</Button> {/* MODIFIED: Button text and function call */}
+            {/* MODIFIED: Button text and function call */}
+            <Button onClick={handleAddUser}>Create User</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
