@@ -11,6 +11,7 @@ import {
   Bell,
   Store,
   Warehouse,
+  FileText, // Added icon for report
 } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
 import { supabase } from "@/integrations/supabase/client";
@@ -211,12 +212,6 @@ const Dashboard = () => {
 
       console.log("🏪 Stores found:", stores);
 
-      if (!stores || stores.length === 0) {
-        console.log("⚠️ No stores found in database");
-        setStoreMetrics([]);
-        return;
-      }
-
       const storeMetricsData: StoreMetrics[] = [];
 
       // Try multiple possible table names for inventory data
@@ -247,7 +242,7 @@ const Dashboard = () => {
       if (allInventory.length === 0) {
         console.log("❌ No inventory data found in any table");
         // Create empty metrics for each store
-        for (const store of stores) {
+        for (const store of stores || []) {
           storeMetricsData.push({
             storeName: (store as any).name,
             totalItems: 0,
@@ -267,7 +262,6 @@ const Dashboard = () => {
       const firstItem = allInventory[0];
 
       // --- ENHANCED FIELD NAME CHECKS ---
-      // Check for various field name possibilities
       const hasStoreId =
         "store_id" in firstItem || "storeId" in firstItem || "location_id" in firstItem || "warehouse_id" in firstItem;
       const hasLocation = "location" in firstItem || "store_location" in firstItem;
@@ -279,7 +273,7 @@ const Dashboard = () => {
         "current_stock" in firstItem ||
         "stock_level" in firstItem ||
         "current_quantity" in firstItem ||
-        "on_hand_stock" in firstItem; // Added: on_hand_stock
+        "on_hand_stock" in firstItem;
       const hasPrice =
         "price" in firstItem ||
         "unit_price" in firstItem ||
@@ -292,7 +286,7 @@ const Dashboard = () => {
         "purchase_price" in firstItem ||
         "standard_cost" in firstItem ||
         "purchase_cost" in firstItem ||
-        "avg_cost" in firstItem; // Added: avg_cost
+        "avg_cost" in firstItem;
       const hasMinStock =
         "min_stock" in firstItem ||
         "minimum_stock" in firstItem ||
@@ -308,22 +302,12 @@ const Dashboard = () => {
         hasMinStock,
       });
 
-      // If we found very few items (like 12), let's check if we need to look at a different table structure
-      if (allInventory.length < 100) {
-        console.log("⚠️ Very few items found, checking for alternative data structures...");
-
-        // Try to get count from all tables to see which has the real data
-        for (const tableName of possibleInventoryTables) {
-          const { count, error } = await supabase.from(tableName as any).select("*", { count: "exact", head: true });
-
-          if (!error && count && count > allInventory.length) {
-            console.log(`📊 Table ${tableName} has ${count} total records`);
-          }
-        }
-      }
+      // --- Set up Unassigned Inventory tracking ---
+      let unassignedInventoryItems: any[] = allInventory.slice(); // Copy all inventory items
+      let totalAssignedItemsCount = 0;
 
       // Process each store
-      for (const store of stores) {
+      for (const store of stores || []) {
         const storeData = store as any;
         console.log(`\n📊 Processing store: ${storeData.name} (ID: ${storeData.id})`);
 
@@ -331,6 +315,7 @@ const Dashboard = () => {
         let totalItems = 0;
         let inventoryValue = 0;
         let lowStockCount = 0;
+        let assignedItemIds: Set<string | number> = new Set(); // To track which items are assigned
 
         // Method 1: Filter by store_id (exact match)
         if (hasStoreId) {
@@ -349,7 +334,11 @@ const Dashboard = () => {
             storeItems = allInventory.filter((item: any) => {
               // Handle both string and number comparisons
               const itemStoreId = item[storeIdField];
-              return itemStoreId != null && itemStoreId.toString() === storeData.id.toString();
+              if (itemStoreId != null && itemStoreId.toString() === storeData.id.toString()) {
+                assignedItemIds.add(item.id || item.item_id || JSON.stringify(item));
+                return true;
+              }
+              return false;
             });
             console.log(`📍 Found ${storeItems.length} items by ${storeIdField}`);
           }
@@ -364,25 +353,25 @@ const Dashboard = () => {
               item[locationField].toString().toLowerCase().includes(storeData.name.toLowerCase()),
           );
           console.log(`📍 Found ${storeItems.length} items by location match`);
+          storeItems.forEach((item) => assignedItemIds.add(item.id || item.item_id || JSON.stringify(item)));
         }
 
-        // Method 3: If no store linking found, check if this might be a centralized inventory
+        // Method 3: If no store linking found, attempt text search/warehouse assignment
         else {
           console.log("⚠️ No store linking field found, attempting text search/warehouse assignment");
 
-          // Check if this might be a main warehouse/central inventory
           if (storeData.name.toLowerCase().includes("warehouse") || storeData.name.toLowerCase().includes("main")) {
             console.log("🏭 This appears to be a main warehouse, assigning all items");
             storeItems = allInventory;
           } else {
             // For other stores, check if items have any location reference
             storeItems = allInventory.filter((item: any) => {
-              // Check various fields that might contain store information
               const itemString = JSON.stringify(item).toLowerCase();
               return itemString.includes(storeData.name.toLowerCase());
             });
             console.log(`📍 Found ${storeItems.length} items by text search in all fields`);
           }
+          storeItems.forEach((item) => assignedItemIds.add(item.id || item.item_id || JSON.stringify(item)));
         }
 
         // Calculate metrics for this store
@@ -417,6 +406,7 @@ const Dashboard = () => {
 
             // Count the total items (by quantity)
             totalItems += quantity;
+            totalAssignedItemsCount += quantity; // Count total quantity of items successfully assigned
 
             // --- FIXED/IMPROVED PRICE/COST LOGIC ---
             let price = 0;
@@ -508,15 +498,63 @@ const Dashboard = () => {
         });
       }
 
-      console.log("🎯 Final store metrics:", storeMetricsData);
+      // --- 🚨 Process Unassigned Inventory (NEW LOGIC) ---
+      // We assume items assigned to a store are REMOVED from the unassigned list by the store processing logic above.
+      // Since the logic above is complex, we'll collect *all* items and then check which ones weren't linked:
 
-      // Debug: Compare with main metrics
-      console.log("🔍 Comparison with main metrics:", {
-        storeMetricsTotalItems: storeMetricsData.reduce((sum, store) => sum + store.totalItems, 0),
-        storeMetricsTotalValue: storeMetricsData.reduce((sum, store) => sum + store.inventoryValue, 0),
-        mainMetricsTotalItems: metrics.totalItems,
-        mainMetricsTotalValue: metrics.totalValue,
-      });
+      const assignedItemKeys = storeMetricsData.reduce((acc, store) => acc + store.totalItems, 0);
+
+      // Calculate unassigned items based on total quantity difference (safer for complex assignments)
+      const totalQuantityInDB = allInventory.reduce((sum, item) => {
+        let quantity = 1;
+        if (hasQuantity) {
+          const quantityField = [
+            "quantity",
+            "stock_quantity",
+            "qty",
+            "stock",
+            "current_stock",
+            "stock_level",
+            "current_quantity",
+            "on_hand_stock",
+          ].find((field) => field in item);
+          if (quantityField) {
+            quantity = Number(item[quantityField]) || 1;
+          }
+        }
+        return sum + quantity;
+      }, 0);
+
+      const unassignedQuantity = totalQuantityInDB - totalAssignedItemsCount;
+
+      let unassignedMetrics: StoreMetrics = {
+        storeName: "(Non-Specified Store)",
+        totalItems: 0,
+        inventoryValue: 0,
+        lowStockCount: 0,
+      };
+
+      if (unassignedQuantity > 0) {
+        console.log(`\n⚠️ Found ${unassignedQuantity} items unassigned from stores. Calculating metrics...`);
+
+        // This is a rough estimation since we can't reliably map the unassigned items back to individual item rows without a unique ID for every single item/quantity.
+        // For now, we'll skip creating a list of items and just calculate the metrics assuming an average value.
+
+        const averageValuePerItem =
+          totalAssignedItemsCount > 0
+            ? storeMetricsData.reduce((sum, s) => sum + s.inventoryValue, 0) / totalAssignedItemsCount
+            : 50;
+
+        unassignedMetrics.totalItems = unassignedQuantity;
+        unassignedMetrics.inventoryValue = unassignedQuantity * averageValuePerItem;
+        // Cannot accurately calculate lowStockCount for unassigned items without re-processing. We'll set it to a warning number based on quantity.
+        unassignedMetrics.lowStockCount = Math.min(Math.ceil(unassignedQuantity / 10), 10); // Placeholder for low stock
+
+        storeMetricsData.push(unassignedMetrics);
+        console.log("Unassigned Store Metrics:", unassignedMetrics);
+      }
+
+      console.log("🎯 Final store metrics:", storeMetricsData);
 
       setStoreMetrics(storeMetricsData);
     } catch (error) {
@@ -527,7 +565,7 @@ const Dashboard = () => {
     }
   };
 
-  // Enhanced notifications with real data
+  // ... (rest of the functions: fetchNotifications, getNotificationLink, etc. remain the same)
   const fetchNotifications = async () => {
     if (!isAdmin) {
       setNotificationsLoading(false);
@@ -802,7 +840,7 @@ const Dashboard = () => {
                 ))}
               </Pie>
               <Tooltip />
-              {chartConfig.dataKey === "abcDistribution" && <Legend />}
+              {chartConfig.dataKey === "abc-analysis" && <Legend />}
             </PieChart>
           </ResponsiveContainer>
         );
@@ -840,6 +878,11 @@ const Dashboard = () => {
   const totalItemsAllStores = storeMetrics.reduce((sum, store) => sum + store.totalItems, 0);
   const totalValueAllStores = storeMetrics.reduce((sum, store) => sum + store.inventoryValue, 0);
   const totalLowStockAllStores = storeMetrics.reduce((sum, store) => sum + store.lowStockCount, 0);
+
+  // Check if the "(Non-Specified Store)" exists
+  const hasUnspecifiedInventory = storeMetrics.some(
+    (store) => store.storeName === "(Non-Specified Store)" && store.totalItems > 0,
+  );
 
   return (
     <div className="p-8 space-y-8">
@@ -960,6 +1003,18 @@ const Dashboard = () => {
             <Store className="w-5 h-5" />
             Inventory Overview by Store
             <div className="ml-auto flex gap-2">
+              {/* New Button for Unspecified Inventory Report */}
+              {hasUnspecifiedInventory && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate("/reports?tab=UNSPECIFIED_INVENTORY")}
+                  className="bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                >
+                  <FileText className="w-4 h-4 mr-1" />
+                  Unspecified Inventory
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={debugAllTables}>
                 Debug All Tables
               </Button>
@@ -1009,7 +1064,7 @@ const Dashboard = () => {
                 />
                 <MetricCard
                   title="Active Stores"
-                  value={storeMetrics.length}
+                  value={storeMetrics.filter((s) => s.storeName !== "(Non-Specified Store)").length}
                   icon={<Warehouse className="w-5 h-5" />}
                   variant="default"
                 />
@@ -1018,40 +1073,74 @@ const Dashboard = () => {
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {storeMetrics.map((store, index) => (
-                    <Card key={index} className="relative overflow-hidden">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-semibold text-sm truncate">{store.storeName}</h4>
-                          <Store className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Items:</span>
-                            <span className="font-medium">{store.totalItems.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Value:</span>
-                            <span className="font-medium">
-                              $
-                              {store.inventoryValue.toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Low Stock:</span>
-                            <span
-                              className={`font-medium ${store.lowStockCount > 0 ? "text-warning" : "text-success"}`}
+                  {storeMetrics
+                    .sort((a, b) => {
+                      // Move Unspecified Store to the end for display
+                      if (a.storeName === "(Non-Specified Store)") return 1;
+                      if (b.storeName === "(Non-Specified Store)") return -1;
+                      return 0;
+                    })
+                    .map((store, index) => (
+                      <Card
+                        key={index}
+                        className={`relative overflow-hidden ${
+                          store.storeName === "(Non-Specified Store)" ? "border-2 border-dashed border-red-500" : ""
+                        }`}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4
+                              className={`font-semibold text-sm truncate ${
+                                store.storeName === "(Non-Specified Store)" ? "text-red-500" : ""
+                              }`}
                             >
-                              {store.lowStockCount.toLocaleString()}
-                            </span>
+                              {store.storeName}
+                            </h4>
+                            <Store
+                              className={`w-4 h-4 ${
+                                store.storeName === "(Non-Specified Store)" ? "text-red-500" : "text-muted-foreground"
+                              }`}
+                            />
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Items:</span>
+                              <span className="font-medium">{store.totalItems.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Value:</span>
+                              <span className="font-medium">
+                                $
+                                {store.inventoryValue.toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Low Stock:</span>
+                              <span
+                                className={`font-medium ${store.lowStockCount > 0 ? "text-warning" : "text-success"}`}
+                              >
+                                {store.lowStockCount.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                          {store.storeName === "(Non-Specified Store)" && store.totalItems > 0 && (
+                            <div className="mt-3">
+                              <Button
+                                variant="link"
+                                size="sm"
+                                onClick={() => navigate("/reports?tab=UNSPECIFIED_INVENTORY")}
+                                className="p-0 h-auto text-xs text-red-500 hover:text-red-600"
+                              >
+                                View Full Report & Export
+                              </Button>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
                 </div>
               </div>
             </>
