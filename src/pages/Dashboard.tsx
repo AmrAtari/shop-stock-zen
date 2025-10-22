@@ -11,7 +11,8 @@ import {
   Bell,
   Store,
   Warehouse,
-  FileText, // Added icon for report
+  FileText,
+  Download, // Added icon for export
 } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
 import { supabase } from "@/integrations/supabase/client";
@@ -146,6 +147,54 @@ const Dashboard = () => {
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [storeMetrics, setStoreMetrics] = useState<StoreMetrics[]>([]);
   const [storeMetricsLoading, setStoreMetricsLoading] = useState(true);
+  // NEW STATE: To hold the actual item data for the unassigned report
+  const [unassignedItemsData, setUnassignedItemsData] = useState<any[]>([]);
+
+  /**
+   * Utility function to export JSON data to CSV.
+   * @param data Array of objects to export.
+   * @param filename Desired filename for the download.
+   */
+  const exportToCsv = (data: any[], filename: string) => {
+    if (!data || data.length === 0) {
+      toast.error("No data to export.");
+      return;
+    }
+
+    // Get all unique headers from all objects
+    const allKeys = new Set<string>();
+    data.forEach((row) => Object.keys(row).forEach((key) => allKeys.add(key)));
+    const headers = Array.from(allKeys);
+
+    // Create CSV rows
+    const csv = [
+      headers.join(","), // Header row
+      ...data.map((row) =>
+        headers
+          .map((fieldName) => {
+            const cell = row[fieldName] === null || row[fieldName] === undefined ? "" : String(row[fieldName]);
+            // Escape commas and double quotes
+            return `"${cell.replace(/"/g, '""')}"`;
+          })
+          .join(","),
+      ),
+    ].join("\n");
+
+    // Create and trigger download
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${data.length} items to ${filename}`);
+  };
+
+  // Handler for the export button
+  const handleExportUnspecified = () => {
+    exportToCsv(unassignedItemsData, "Unspecified_Inventory_Report.csv");
+  };
 
   // Debug function to check ALL tables in your database
   const debugAllTables = async () => {
@@ -241,7 +290,6 @@ const Dashboard = () => {
       // If no inventory data found in any table
       if (allInventory.length === 0) {
         console.log("❌ No inventory data found in any table");
-        // Create empty metrics for each store
         for (const store of stores || []) {
           storeMetricsData.push({
             storeName: (store as any).name,
@@ -251,14 +299,11 @@ const Dashboard = () => {
           });
         }
         setStoreMetrics(storeMetricsData);
+        setUnassignedItemsData([]); // Set unassigned data to empty
         return;
       }
 
       console.log(`📦 Found ${allInventory.length} items in table: ${foundTable}`);
-      console.log("📦 Inventory data structure:", allInventory[0]);
-      console.log("🔑 Inventory item keys:", Object.keys(allInventory[0]));
-
-      // Analyze the first item to understand the structure
       const firstItem = allInventory[0];
 
       // --- ENHANCED FIELD NAME CHECKS ---
@@ -293,219 +338,11 @@ const Dashboard = () => {
         "reorder_level" in firstItem ||
         "min_quantity" in firstItem;
 
-      console.log("🔍 Field analysis:", {
-        hasStoreId,
-        hasLocation,
-        hasQuantity,
-        hasPrice,
-        hasCost,
-        hasMinStock,
-      });
-
-      // --- Set up Unassigned Inventory tracking ---
-      let unassignedInventoryItems: any[] = allInventory.slice(); // Copy all inventory items
-      let totalAssignedItemsCount = 0;
-
-      // Process each store
-      for (const store of stores || []) {
-        const storeData = store as any;
-        console.log(`\n📊 Processing store: ${storeData.name} (ID: ${storeData.id})`);
-
-        let storeItems: any[] = [];
-        let totalItems = 0;
-        let inventoryValue = 0;
-        let lowStockCount = 0;
-        let assignedItemIds: Set<string | number> = new Set(); // To track which items are assigned
-
-        // Method 1: Filter by store_id (exact match)
-        if (hasStoreId) {
-          const storeIdField =
-            "store_id" in firstItem
-              ? "store_id"
-              : "storeId" in firstItem
-                ? "storeId"
-                : "location_id" in firstItem
-                  ? "location_id"
-                  : "warehouse_id" in firstItem
-                    ? "warehouse_id"
-                    : null;
-
-          if (storeIdField) {
-            storeItems = allInventory.filter((item: any) => {
-              // Handle both string and number comparisons
-              const itemStoreId = item[storeIdField];
-              if (itemStoreId != null && itemStoreId.toString() === storeData.id.toString()) {
-                assignedItemIds.add(item.id || item.item_id || JSON.stringify(item));
-                return true;
-              }
-              return false;
-            });
-            console.log(`📍 Found ${storeItems.length} items by ${storeIdField}`);
-          }
-        }
-
-        // Method 2: Filter by location (partial match)
-        else if (hasLocation) {
-          const locationField = "location" in firstItem ? "location" : "store_location";
-          storeItems = allInventory.filter(
-            (item: any) =>
-              item[locationField] &&
-              item[locationField].toString().toLowerCase().includes(storeData.name.toLowerCase()),
-          );
-          console.log(`📍 Found ${storeItems.length} items by location match`);
-          storeItems.forEach((item) => assignedItemIds.add(item.id || item.item_id || JSON.stringify(item)));
-        }
-
-        // Method 3: If no store linking found, attempt text search/warehouse assignment
-        else {
-          console.log("⚠️ No store linking field found, attempting text search/warehouse assignment");
-
-          if (storeData.name.toLowerCase().includes("warehouse") || storeData.name.toLowerCase().includes("main")) {
-            console.log("🏭 This appears to be a main warehouse, assigning all items");
-            storeItems = allInventory;
-          } else {
-            // For other stores, check if items have any location reference
-            storeItems = allInventory.filter((item: any) => {
-              const itemString = JSON.stringify(item).toLowerCase();
-              return itemString.includes(storeData.name.toLowerCase());
-            });
-            console.log(`📍 Found ${storeItems.length} items by text search in all fields`);
-          }
-          storeItems.forEach((item) => assignedItemIds.add(item.id || item.item_id || JSON.stringify(item)));
-        }
-
-        // Calculate metrics for this store
-        if (storeItems.length > 0) {
-          storeItems.forEach((item: any) => {
-            // Get quantity from various possible field names
-            let quantity = 1;
-            if (hasQuantity) {
-              const quantityField =
-                "quantity" in item
-                  ? "quantity"
-                  : "stock_quantity" in item
-                    ? "stock_quantity"
-                    : "qty" in item
-                      ? "qty"
-                      : "stock" in item
-                        ? "stock"
-                        : "current_stock" in item
-                          ? "current_stock"
-                          : "stock_level" in item
-                            ? "stock_level"
-                            : "current_quantity" in item
-                              ? "current_quantity"
-                              : "on_hand_stock" in item
-                                ? "on_hand_stock"
-                                : null;
-
-              if (quantityField) {
-                quantity = Number(item[quantityField]) || 1;
-              }
-            }
-
-            // Count the total items (by quantity)
-            totalItems += quantity;
-            totalAssignedItemsCount += quantity; // Count total quantity of items successfully assigned
-
-            // --- FIXED/IMPROVED PRICE/COST LOGIC ---
-            let price = 0;
-            let priceField = null;
-
-            // 1. Prioritize Price (Retail/Selling Value)
-            if (hasPrice) {
-              priceField =
-                "unit_price" in item
-                  ? "unit_price"
-                  : "price" in item
-                    ? "price"
-                    : "selling_price" in item
-                      ? "selling_price"
-                      : "retail_price" in item
-                        ? "retail_price"
-                        : null;
-            }
-
-            // 2. Fallback to Cost (If Price is missing)
-            if (!priceField && hasCost) {
-              priceField =
-                "cost_price" in item
-                  ? "cost_price"
-                  : "cost" in item
-                    ? "cost"
-                    : "unit_cost" in item
-                      ? "unit_cost"
-                      : "purchase_price" in item
-                        ? "purchase_price"
-                        : "standard_cost" in item
-                          ? "standard_cost"
-                          : "purchase_cost" in item
-                            ? "purchase_cost"
-                            : "avg_cost" in item
-                              ? "avg_cost"
-                              : null;
-            }
-
-            if (priceField) {
-              price = Number(item[priceField]) || 0;
-            }
-
-            // 3. Final Fallback
-            if (price === 0) {
-              price = 50; // Default price
-            }
-
-            const value = quantity * price;
-            inventoryValue += value;
-
-            // Get min stock from various possible field names
-            let minStock = 5; // Default
-            if (hasMinStock) {
-              const minStockField =
-                "min_stock" in item
-                  ? "min_stock"
-                  : "minimum_stock" in item
-                    ? "minimum_stock"
-                    : "reorder_level" in item
-                      ? "reorder_level"
-                      : "min_quantity" in item
-                        ? "min_quantity"
-                        : null;
-
-              if (minStockField) {
-                minStock = Number(item[minStockField]) || 5;
-              }
-            }
-
-            // Check if item is low stock
-            if (quantity <= minStock) {
-              lowStockCount += 1;
-            }
-          });
-        }
-
-        console.log(`📈 Store ${storeData.name} metrics:`, {
-          totalItems,
-          inventoryValue: `$${inventoryValue.toFixed(2)}`,
-          lowStockCount,
-        });
-
-        storeMetricsData.push({
-          storeName: storeData.name,
-          totalItems,
-          inventoryValue,
-          lowStockCount,
-        });
-      }
-
-      // --- 🚨 Process Unassigned Inventory (NEW LOGIC) ---
-      // We assume items assigned to a store are REMOVED from the unassigned list by the store processing logic above.
-      // Since the logic above is complex, we'll collect *all* items and then check which ones weren't linked:
-
-      const assignedItemKeys = storeMetricsData.reduce((acc, store) => acc + store.totalItems, 0);
-
-      // Calculate unassigned items based on total quantity difference (safer for complex assignments)
-      const totalQuantityInDB = allInventory.reduce((sum, item) => {
+      /**
+       * Helper function to calculate quantity, value, and low stock status for a single item.
+       */
+      const calculateItemMetrics = (item: any) => {
+        // Quantity logic
         let quantity = 1;
         if (hasQuantity) {
           const quantityField = [
@@ -522,40 +359,177 @@ const Dashboard = () => {
             quantity = Number(item[quantityField]) || 1;
           }
         }
-        return sum + quantity;
-      }, 0);
 
-      const unassignedQuantity = totalQuantityInDB - totalAssignedItemsCount;
+        // Price/Value logic
+        let price = 0;
+        let priceField = null;
 
-      let unassignedMetrics: StoreMetrics = {
-        storeName: "(Non-Specified Store)",
-        totalItems: 0,
-        inventoryValue: 0,
-        lowStockCount: 0,
+        if (hasPrice) {
+          priceField = ["unit_price", "price", "selling_price", "retail_price"].find((field) => field in item);
+        }
+        if (!priceField && hasCost) {
+          priceField = [
+            "cost_price",
+            "cost",
+            "unit_cost",
+            "purchase_price",
+            "standard_cost",
+            "purchase_cost",
+            "avg_cost",
+          ].find((field) => field in item);
+        }
+
+        if (priceField) {
+          price = Number(item[priceField]) || 0;
+        }
+        if (price === 0) {
+          price = 50; // Default price
+        }
+
+        const value = quantity * price;
+
+        // Low Stock logic
+        let minStock = 5; // Default
+        if (hasMinStock) {
+          const minStockField = ["min_stock", "minimum_stock", "reorder_level", "min_quantity"].find(
+            (field) => field in item,
+          );
+          if (minStockField) {
+            minStock = Number(item[minStockField]) || 5;
+          }
+        }
+
+        const isLowStock = quantity <= minStock;
+
+        return { quantity, value, isLowStock };
       };
 
-      if (unassignedQuantity > 0) {
-        console.log(`\n⚠️ Found ${unassignedQuantity} items unassigned from stores. Calculating metrics...`);
+      // --- Store Assignment Tracking (NEW LOGIC) ---
+      // Use a boolean array to track which row (index) in allInventory was assigned to ANY store.
+      const isItemAssigned: boolean[] = new Array(allInventory.length).fill(false);
 
-        // This is a rough estimation since we can't reliably map the unassigned items back to individual item rows without a unique ID for every single item/quantity.
-        // For now, we'll skip creating a list of items and just calculate the metrics assuming an average value.
+      // Process each store
+      for (const store of stores || []) {
+        const storeData = store as any;
+        console.log(`\n📊 Processing store: ${storeData.name} (ID: ${storeData.id})`);
 
-        const averageValuePerItem =
-          totalAssignedItemsCount > 0
-            ? storeMetricsData.reduce((sum, s) => sum + s.inventoryValue, 0) / totalAssignedItemsCount
-            : 50;
+        let storeItemsIndices: number[] = [];
+        let totalItems = 0;
+        let inventoryValue = 0;
+        let lowStockCount = 0;
 
-        unassignedMetrics.totalItems = unassignedQuantity;
-        unassignedMetrics.inventoryValue = unassignedQuantity * averageValuePerItem;
-        // Cannot accurately calculate lowStockCount for unassigned items without re-processing. We'll set it to a warning number based on quantity.
-        unassignedMetrics.lowStockCount = Math.min(Math.ceil(unassignedQuantity / 10), 10); // Placeholder for low stock
+        // Determine which items belong to this store
+        allInventory.forEach((item: any, index: number) => {
+          let matches = false;
 
+          // Method 1: Filter by store_id (exact match)
+          if (hasStoreId) {
+            const storeIdField =
+              "store_id" in firstItem
+                ? "store_id"
+                : "storeId" in firstItem
+                  ? "storeId"
+                  : "location_id" in firstItem
+                    ? "location_id"
+                    : "warehouse_id" in firstItem
+                      ? "warehouse_id"
+                      : null;
+
+            if (storeIdField) {
+              const itemStoreId = item[storeIdField];
+              if (itemStoreId != null && itemStoreId.toString() === storeData.id.toString()) {
+                matches = true;
+              }
+            }
+          }
+
+          // Method 2: Filter by location (partial match)
+          if (!matches && hasLocation) {
+            const locationField = "location" in firstItem ? "location" : "store_location";
+            if (
+              item[locationField] &&
+              item[locationField].toString().toLowerCase().includes(storeData.name.toLowerCase())
+            ) {
+              matches = true;
+            }
+          }
+
+          // Method 3: Text search/warehouse assignment
+          if (!matches) {
+            if (storeData.name.toLowerCase().includes("warehouse") || storeData.name.toLowerCase().includes("main")) {
+              matches = true;
+            } else {
+              const itemString = JSON.stringify(item).toLowerCase();
+              if (itemString.includes(storeData.name.toLowerCase())) {
+                matches = true;
+              }
+            }
+          }
+
+          if (matches) {
+            storeItemsIndices.push(index);
+            isItemAssigned[index] = true; // Mark as assigned
+          }
+        });
+
+        // Calculate metrics for this store
+        storeItemsIndices.forEach((index) => {
+          const item = allInventory[index];
+          const { quantity, value, isLowStock } = calculateItemMetrics(item);
+
+          totalItems += quantity;
+          inventoryValue += value;
+          if (isLowStock) {
+            lowStockCount += 1;
+          }
+        });
+
+        if (totalItems > 0 || storeData.name.toLowerCase().includes("warehouse")) {
+          storeMetricsData.push({
+            storeName: storeData.name,
+            totalItems,
+            inventoryValue,
+            lowStockCount,
+          });
+        }
+      }
+
+      // --- 🚨 Process Unassigned Inventory (NEW LOGIC) ---
+      let unassignedItems: any[] = [];
+      let totalUnassignedItems = 0;
+      let totalUnassignedValue = 0;
+      let totalUnassignedLowStock = 0;
+
+      allInventory.forEach((item, index) => {
+        if (!isItemAssigned[index]) {
+          const { quantity, value, isLowStock } = calculateItemMetrics(item);
+
+          if (quantity > 0) {
+            unassignedItems.push(item);
+            totalUnassignedItems += quantity;
+            totalUnassignedValue += value;
+            if (isLowStock) {
+              totalUnassignedLowStock += 1;
+            }
+          }
+        }
+      });
+
+      // Store the list of unassigned items for export
+      setUnassignedItemsData(unassignedItems);
+
+      if (totalUnassignedItems > 0) {
+        const unassignedMetrics: StoreMetrics = {
+          storeName: "(Non-Specified Store)",
+          totalItems: totalUnassignedItems,
+          inventoryValue: totalUnassignedValue,
+          lowStockCount: totalUnassignedLowStock,
+        };
         storeMetricsData.push(unassignedMetrics);
         console.log("Unassigned Store Metrics:", unassignedMetrics);
       }
 
       console.log("🎯 Final store metrics:", storeMetricsData);
-
       setStoreMetrics(storeMetricsData);
     } catch (error) {
       console.error("💥 Error in fetchRealStoreMetrics:", error);
@@ -879,10 +853,8 @@ const Dashboard = () => {
   const totalValueAllStores = storeMetrics.reduce((sum, store) => sum + store.inventoryValue, 0);
   const totalLowStockAllStores = storeMetrics.reduce((sum, store) => sum + store.lowStockCount, 0);
 
-  // Check if the "(Non-Specified Store)" exists
-  const hasUnspecifiedInventory = storeMetrics.some(
-    (store) => store.storeName === "(Non-Specified Store)" && store.totalItems > 0,
-  );
+  // Check if the "(Non-Specified Store)" exists and has data for the export button
+  const hasUnspecifiedInventory = unassignedItemsData.length > 0;
 
   return (
     <div className="p-8 space-y-8">
@@ -1008,11 +980,11 @@ const Dashboard = () => {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => navigate("/reports?tab=UNSPECIFIED_INVENTORY")}
+                  onClick={handleExportUnspecified}
                   className="bg-red-500/10 text-red-500 hover:bg-red-500/20"
                 >
-                  <FileText className="w-4 h-4 mr-1" />
-                  Unspecified Inventory
+                  <Download className="w-4 h-4 mr-1" />
+                  Export Unspecified Data
                 </Button>
               )}
               <Button variant="outline" size="sm" onClick={debugAllTables}>
@@ -1131,10 +1103,11 @@ const Dashboard = () => {
                               <Button
                                 variant="link"
                                 size="sm"
-                                onClick={() => navigate("/reports?tab=UNSPECIFIED_INVENTORY")}
+                                onClick={handleExportUnspecified}
                                 className="p-0 h-auto text-xs text-red-500 hover:text-red-600"
                               >
-                                View Full Report & Export
+                                <Download className="w-3 h-3 mr-1" />
+                                Download & Export Data
                               </Button>
                             </div>
                           )}
