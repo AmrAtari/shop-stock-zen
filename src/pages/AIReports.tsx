@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { saveAs } from "file-saver";
 import * as XLSX from "xlsx";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
@@ -8,32 +7,23 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Download, Bot } from "lucide-react";
 
 /**
- * AIReports.tsx
- * --------------------------------------------------------
- * This page provides an AI-powered reporting assistant.
- * Users can type natural queries like:
- *  - "Show me total sales by store"
- *  - "Compare inventory cost by category"
- *  - "Top 5 selling items last month"
- * --------------------------------------------------------
+ * AIReports.tsx (Vite-safe)
+ * Uses dynamic import for file-saver to avoid Vite import issues
  */
-
 const AIReports: React.FC = () => {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any[]>([]);
   const [summary, setSummary] = useState("");
 
-  // Simulate an AI-generated report
   const handleGenerateReport = async () => {
     if (!query.trim()) return;
     setLoading(true);
     setSummary("");
     setData([]);
 
-    // Simulate AI report logic (you can later connect to OpenAI or Supabase Functions)
+    // Simulate AI report logic (replace with real API later)
     setTimeout(() => {
-      // Fake data examples based on keywords
       let generatedData: any[] = [];
       let reportSummary = "";
 
@@ -43,21 +33,21 @@ const AIReports: React.FC = () => {
           { name: "Store B", value: 18500 },
           { name: "Store C", value: 9200 },
         ];
-        reportSummary = "This chart shows total sales by store.";
+        reportSummary = "Total sales by store.";
       } else if (query.toLowerCase().includes("inventory")) {
         generatedData = [
           { name: "Electronics", value: 45000 },
           { name: "Clothing", value: 28000 },
           { name: "Home Goods", value: 18000 },
         ];
-        reportSummary = "Inventory value breakdown by category.";
+        reportSummary = "Inventory value by category.";
       } else {
         generatedData = [
           { name: "Item A", value: 5000 },
           { name: "Item B", value: 7000 },
           { name: "Item C", value: 4000 },
         ];
-        reportSummary = "Generic report — AI could not match a specific category.";
+        reportSummary = "Generic sample report.";
       }
 
       setData(generatedData);
@@ -66,8 +56,10 @@ const AIReports: React.FC = () => {
     }, 1500);
   };
 
-  // Export chart data to Excel
-  const handleExportExcel = () => {
+  // Dynamic import for file-saver
+  const handleExportExcel = async () => {
+    if (!data.length) return;
+    const FileSaver = await import("file-saver"); // dynamic import
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Report");
@@ -75,7 +67,7 @@ const AIReports: React.FC = () => {
     const blob = new Blob([excelBuffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
-    saveAs(blob, "AI_Report.xlsx");
+    FileSaver.saveAs(blob, "AI_Report.xlsx");
   };
 
   return (
