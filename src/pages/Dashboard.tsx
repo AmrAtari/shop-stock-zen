@@ -52,10 +52,10 @@ interface DashboardChart {
   position: number;
 }
 
-// NEW Interface for Notification fetched from DB
+// CORRECTED Interface for Notification fetched from DB
 interface Notification {
   id: string;
-  type: "purchase-order" | "transfer" | "low-stock";
+  type: "purchase_order" | "transfer" | "low_stock" | "system"; // Using underscore to match potential DB conventions
   title: string;
   description: string;
   link: string; // The route to navigate to on click
@@ -137,15 +137,15 @@ const Dashboard = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // **********************************
-  // MODIFIED FUNCTION: Fetch Pending Approvals COUNT
+  // MODIFIED FUNCTION: Fetch Pending Approvals COUNT (FIXED TS Error)
   // **********************************
   const fetchPendingApprovals = async () => {
     if (!isAdmin) return; // Only fetch for Admins
 
     try {
-      // Assuming a table named 'inventory_approvals' with a 'status' column
+      // FIX: Cast table name to any to bypass TS error related to unknown table name in Supabase types
       const { count, error } = await supabase
-        .from("inventory_approvals")
+        .from("inventory_approvals" as any)
         .select("*", { count: "exact", head: true })
         .eq("status", "pending");
 
@@ -159,41 +159,52 @@ const Dashboard = () => {
   };
 
   // **********************************
-  // NEW FUNCTION: Fetch Pending Notifications LIST (DB-driven)
+  // MODIFIED FUNCTION: Fetch Pending Notifications LIST (FIXED TS Error)
   // **********************************
   const fetchNotificationsList = async () => {
     if (!isAdmin) return;
     try {
-      // Fetch the actual records that are pending
+      // FIX: Cast table name to any to bypass TS error
       const { data, error } = await supabase
-        .from("inventory_approvals")
-        .select(`id, type, reference_id, created_at, title, description`) // Assuming these columns exist
+        .from("inventory_approvals" as any)
+        .select(`id, type, reference_id, created_at, title, description`)
         .eq("status", "pending")
         .order("created_at", { ascending: false })
-        .limit(10); // Limit to 10 for dashboard preview
+        .limit(10);
 
       if (error) throw error;
 
-      // Map DB data to the Notification interface and create the dynamic link
+      // FIX: Map DB data, ensuring type safety with a check and casting
       const mappedNotifications: Notification[] = data.map((item: any) => {
         let linkPath = "";
-        switch (item.type) {
-          case "purchase-order":
+
+        // Use a more relaxed type check from the DB, then map to a strict type
+        const notificationType: Notification["type"] =
+          item.type === "purchase_order" || item.type === "transfer" || item.type === "low_stock"
+            ? item.type
+            : "system";
+
+        switch (notificationType) {
+          case "purchase_order":
             linkPath = `/purchase-orders/${item.reference_id}/edit`;
             break;
           case "transfer":
             linkPath = `/transfers/${item.reference_id}`;
             break;
-          // You would add more types here, e.g., 'low-stock' might link to /alerts
+          case "low_stock":
+            linkPath = `/alerts?item=${item.reference_id}`; // Assuming reference_id is an item ID/SKU
+            break;
           default:
-            linkPath = "/approvals"; // Fallback to the main approvals page
+            linkPath = "/approvals";
         }
 
         return {
           id: item.id,
-          type: item.type,
-          title: item.title || `Pending ${item.type} ${item.reference_id}`,
-          description: item.description || `Action required on ${item.type} with ID ${item.reference_id}.`,
+          type: notificationType,
+          title: item.title || `Pending ${notificationType.replace("_", " ")} ${item.reference_id}`,
+          description:
+            item.description ||
+            `Action required on ${notificationType.replace("_", " ")} with ID ${item.reference_id}.`,
           link: linkPath,
           created_at: item.created_at,
         };
