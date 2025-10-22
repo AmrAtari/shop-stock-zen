@@ -35,7 +35,7 @@ import POSRefunds from "./pages/POS/POSRefunds";
 import ClosingCash from "./pages/POS/ClosingCash";
 import { POSProvider } from "./pages/POS/POSContext";
 
-// Placeholder for new page
+// Placeholder for new page (Approvals)
 const Approvals = () => (
   <div className="p-8">
     <h1 className="text-3xl font-bold mb-4">Pending Approvals & Notifications</h1>
