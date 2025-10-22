@@ -41,64 +41,23 @@ import {
 } from "recharts";
 import { useSearchParams } from "react-router-dom";
 
-// Define report sections with organized categories
-const REPORT_SECTIONS = {
-  OVERVIEW: {
-    name: "Overview",
-    icon: <LayoutDashboard className="w-4 h-4" />,
-    description: "High-level dashboard and summary reports",
-    reports: ["DASHBOARD"],
-  },
-  INVENTORY: {
-    name: "Inventory Reports",
-    icon: <Package className="w-4 h-4" />,
-    description: "Detailed inventory analysis and tracking",
-    reports: [
-      "INVENTORY_ON_HAND",
-      "INVENTORY_VALUATION",
-      "LOW_STOCK",
-      "INVENTORY_AGING",
-      "STOCK_MOVEMENT",
-      "INVENTORY_DISCREPANCY",
-      "ABC_ANALYSIS",
-    ],
-  },
-  SALES: {
-    name: "Sales & Financial",
-    icon: <ShoppingCart className="w-4 h-4" />,
-    description: "Sales performance and cost analysis",
-    reports: ["SALES_PERFORMANCE", "COGS"],
-  },
-  OPERATIONS: {
-    name: "Operations",
-    icon: <ArrowLeftRight className="w-4 h-4" />,
-    description: "Stock movements and transactions",
-    reports: ["STOCK_MOVEMENT_TRANSACTION"],
-  },
-  ADVANCED: {
-    name: "Advanced Analytics",
-    icon: <BarChart3 className="w-4 h-4" />,
-    description: "Custom reports and pivot analysis",
-    reports: ["PIVOT_REPORT"],
-  },
-} as const;
+// First, define all report types as a union
+const REPORT_KEYS = [
+  "DASHBOARD",
+  "INVENTORY_ON_HAND",
+  "INVENTORY_VALUATION",
+  "LOW_STOCK",
+  "INVENTORY_AGING",
+  "STOCK_MOVEMENT",
+  "INVENTORY_DISCREPANCY",
+  "ABC_ANALYSIS",
+  "SALES_PERFORMANCE",
+  "COGS",
+  "PIVOT_REPORT",
+  "STOCK_MOVEMENT_TRANSACTION",
+] as const;
 
-// Extract report tab types from REPORT_SECTIONS
-type ReportTab =
-  | "DASHBOARD"
-  | "INVENTORY_ON_HAND"
-  | "INVENTORY_VALUATION"
-  | "LOW_STOCK"
-  | "INVENTORY_AGING"
-  | "STOCK_MOVEMENT"
-  | "INVENTORY_DISCREPANCY"
-  | "ABC_ANALYSIS"
-  | "SALES_PERFORMANCE"
-  | "COGS"
-  | "PIVOT_REPORT"
-  | "STOCK_MOVEMENT_TRANSACTION";
-
-type ReportSection = keyof typeof REPORT_SECTIONS;
+type ReportTab = (typeof REPORT_KEYS)[number];
 
 // Define the report config type
 interface ReportConfig {
@@ -107,8 +66,8 @@ interface ReportConfig {
   description: string;
 }
 
-// Report configuration with explicit type assertion
-const REPORT_CONFIG: { [key in ReportTab]: ReportConfig } = {
+// Report configuration - SIMPLIFIED without complex mapped types
+const REPORT_CONFIG: Record<ReportTab, ReportConfig> = {
   DASHBOARD: {
     name: "Reports Dashboard",
     icon: <LayoutDashboard className="w-4 h-4" />,
@@ -171,8 +130,52 @@ const REPORT_CONFIG: { [key in ReportTab]: ReportConfig } = {
   },
 };
 
-// Create REPORT_TABS array from the keys of REPORT_CONFIG
-const REPORT_TABS = Object.keys(REPORT_CONFIG) as ReportTab[];
+// Define report sections with organized categories
+const REPORT_SECTIONS = {
+  OVERVIEW: {
+    name: "Overview",
+    icon: <LayoutDashboard className="w-4 h-4" />,
+    description: "High-level dashboard and summary reports",
+    reports: ["DASHBOARD"] as ReportTab[],
+  },
+  INVENTORY: {
+    name: "Inventory Reports",
+    icon: <Package className="w-4 h-4" />,
+    description: "Detailed inventory analysis and tracking",
+    reports: [
+      "INVENTORY_ON_HAND",
+      "INVENTORY_VALUATION",
+      "LOW_STOCK",
+      "INVENTORY_AGING",
+      "STOCK_MOVEMENT",
+      "INVENTORY_DISCREPANCY",
+      "ABC_ANALYSIS",
+    ] as ReportTab[],
+  },
+  SALES: {
+    name: "Sales & Financial",
+    icon: <ShoppingCart className="w-4 h-4" />,
+    description: "Sales performance and cost analysis",
+    reports: ["SALES_PERFORMANCE", "COGS"] as ReportTab[],
+  },
+  OPERATIONS: {
+    name: "Operations",
+    icon: <ArrowLeftRight className="w-4 h-4" />,
+    description: "Stock movements and transactions",
+    reports: ["STOCK_MOVEMENT_TRANSACTION"] as ReportTab[],
+  },
+  ADVANCED: {
+    name: "Advanced Analytics",
+    icon: <BarChart3 className="w-4 h-4" />,
+    description: "Custom reports and pivot analysis",
+    reports: ["PIVOT_REPORT"] as ReportTab[],
+  },
+} as const;
+
+type ReportSection = keyof typeof REPORT_SECTIONS;
+
+// Create REPORT_TABS from all sections
+const REPORT_TABS: ReportTab[] = Object.values(REPORT_SECTIONS).flatMap((section) => section.reports);
 
 export default function Reports() {
   const [searchParams] = useSearchParams();
@@ -194,7 +197,7 @@ export default function Reports() {
       setActiveTab(tabParam as ReportTab);
       // Set active section based on the tab
       for (const [sectionKey, section] of Object.entries(REPORT_SECTIONS)) {
-        if (section.reports.includes(tabParam)) {
+        if (section.reports.includes(tabParam as ReportTab)) {
           setActiveSection(sectionKey as ReportSection);
           break;
         }
@@ -1106,8 +1109,8 @@ export default function Reports() {
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {REPORT_CONFIG[reportKey as ReportTab].icon}
-                {REPORT_CONFIG[reportKey as ReportTab].name}
+                {REPORT_CONFIG[reportKey].icon}
+                {REPORT_CONFIG[reportKey].name}
               </Button>
             ))}
           </div>
