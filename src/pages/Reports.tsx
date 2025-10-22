@@ -88,8 +88,15 @@ const REPORT_TABS = Object.values(REPORT_SECTIONS).flatMap((section) => section.
 type ReportTab = (typeof REPORT_TABS)[number];
 type ReportSection = keyof typeof REPORT_SECTIONS;
 
-// Report configuration with icons and descriptions
-const REPORT_CONFIG = {
+// Define the report config type
+type ReportConfigType = {
+  name: string;
+  icon: JSX.Element;
+  description: string;
+};
+
+// Report configuration with proper typing
+const REPORT_CONFIG: Record<ReportTab, ReportConfigType> = {
   DASHBOARD: {
     name: "Reports Dashboard",
     icon: <LayoutDashboard className="w-4 h-4" />,
@@ -150,7 +157,7 @@ const REPORT_CONFIG = {
     icon: <ClipboardList className="w-4 h-4" />,
     description: "Detailed stock movement transactions",
   },
-} as const;
+};
 
 export default function Reports() {
   const [searchParams] = useSearchParams();
@@ -1084,8 +1091,8 @@ export default function Reports() {
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {REPORT_CONFIG[reportKey as keyof typeof REPORT_CONFIG]?.icon}
-                {REPORT_CONFIG[reportKey as keyof typeof REPORT_CONFIG]?.name}
+                {REPORT_CONFIG[reportKey].icon}
+                {REPORT_CONFIG[reportKey].name}
               </Button>
             ))}
           </div>
@@ -1098,12 +1105,10 @@ export default function Reports() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl font-bold flex items-center gap-3">
-                {REPORT_CONFIG[activeTab as keyof typeof REPORT_CONFIG]?.icon}
-                {REPORT_CONFIG[activeTab as keyof typeof REPORT_CONFIG]?.name}
+                {REPORT_CONFIG[activeTab].icon}
+                {REPORT_CONFIG[activeTab].name}
               </h2>
-              <p className="text-muted-foreground mt-1">
-                {REPORT_CONFIG[activeTab as keyof typeof REPORT_CONFIG]?.description}
-              </p>
+              <p className="text-muted-foreground mt-1">{REPORT_CONFIG[activeTab].description}</p>
             </div>
           </div>
 
