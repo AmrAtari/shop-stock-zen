@@ -18,7 +18,7 @@ const AIReports: React.FC = () => {
   const [data, setData] = useState<ReportData[]>([]);
   const [summary, setSummary] = useState("");
 
-  // Map simple keywords to Supabase queries
+  // Fetch report data from Supabase
   const fetchReport = async (query: string) => {
     setLoading(true);
     setSummary("");
@@ -40,7 +40,7 @@ const AIReports: React.FC = () => {
           .order("total_value", { ascending: false });
         reportSummary = "Inventory value by category";
       } else {
-        // fallback
+        // fallback: generic inventory report
         result = await supabase.from("inventory").select("item_name, quantity");
         reportSummary = "Generic inventory report";
       }
@@ -67,6 +67,7 @@ const AIReports: React.FC = () => {
     fetchReport(query);
   };
 
+  // Excel export using native browser download (no file-saver)
   const handleExportExcel = () => {
     if (!data.length) return;
     const ws = XLSX.utils.json_to_sheet(data);
