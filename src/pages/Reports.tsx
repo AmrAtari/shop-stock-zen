@@ -66,7 +66,7 @@ interface ReportConfig {
   description: string;
 }
 
-// Report configuration - SIMPLIFIED without complex mapped types
+// Report configuration
 const REPORT_CONFIG: Record<ReportTab, ReportConfig> = {
   DASHBOARD: {
     name: "Reports Dashboard",
@@ -1065,7 +1065,9 @@ export default function Reports() {
             <Card
               key={sectionKey}
               className={`cursor-pointer transition-all hover:shadow-md ${
-                activeSection === sectionKey ? "border-primary bg-primary/5" : "border-border"
+                activeSection === sectionKey
+                  ? "border-primary bg-primary/10 shadow-md ring-2 ring-primary/20"
+                  : "border-border hover:border-primary/30"
               }`}
               onClick={() => {
                 setActiveSection(sectionKey as ReportSection);
@@ -1075,7 +1077,7 @@ export default function Reports() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-lg ${
+                    className={`p-2 rounded-lg transition-colors ${
                       activeSection === sectionKey
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted text-muted-foreground"
@@ -1084,7 +1086,13 @@ export default function Reports() {
                     {section.icon}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-sm">{section.name}</h3>
+                    <h3
+                      className={`font-semibold text-sm ${
+                        activeSection === sectionKey ? "text-primary" : "text-foreground"
+                      }`}
+                    >
+                      {section.name}
+                    </h3>
                     <p className="text-xs text-muted-foreground mt-1">
                       {section.reports.length} report{section.reports.length !== 1 ? "s" : ""}
                     </p>
@@ -1101,12 +1109,12 @@ export default function Reports() {
             {REPORT_SECTIONS[activeSection].reports.map((reportKey) => (
               <Button
                 key={reportKey}
-                variant={activeTab === reportKey ? "default" : "ghost"}
+                variant="ghost"
                 onClick={() => setActiveTab(reportKey)}
-                className={`flex items-center gap-2 rounded-none border-b-2 ${
+                className={`flex items-center gap-2 rounded-none border-b-2 transition-all ${
                   activeTab === reportKey
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
+                    ? "border-primary text-primary bg-primary/10 font-semibold"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 }`}
               >
                 {REPORT_CONFIG[reportKey].icon}
