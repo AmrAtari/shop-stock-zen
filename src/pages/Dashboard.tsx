@@ -278,11 +278,11 @@ const Dashboard = () => {
         "stock" in firstItem ||
         "current_stock" in firstItem ||
         "stock_level" in firstItem ||
-        "current_quantity" in firstItem;
+        "current_quantity" in firstItem ||
+        "on_hand_stock" in firstItem; // Added: on_hand_stock
       const hasPrice =
         "price" in firstItem ||
         "unit_price" in firstItem ||
-        "cost" in firstItem ||
         "selling_price" in firstItem ||
         "retail_price" in firstItem;
       const hasCost =
@@ -291,7 +291,8 @@ const Dashboard = () => {
         "unit_cost" in firstItem ||
         "purchase_price" in firstItem ||
         "standard_cost" in firstItem ||
-        "purchase_cost" in firstItem;
+        "purchase_cost" in firstItem ||
+        "avg_cost" in firstItem; // Added: avg_cost
       const hasMinStock =
         "min_stock" in firstItem ||
         "minimum_stock" in firstItem ||
@@ -401,11 +402,13 @@ const Dashboard = () => {
                         ? "stock"
                         : "current_stock" in item
                           ? "current_stock"
-                          : "stock_level" in item // Added
-                            ? "stock_level" // Added
-                            : "current_quantity" in item // Added
-                              ? "current_quantity" // Added
-                              : null;
+                          : "stock_level" in item
+                            ? "stock_level"
+                            : "current_quantity" in item
+                              ? "current_quantity"
+                              : "on_hand_stock" in item
+                                ? "on_hand_stock"
+                                : null;
 
               if (quantityField) {
                 quantity = Number(item[quantityField]) || 1;
@@ -415,27 +418,27 @@ const Dashboard = () => {
             // Count the total items (by quantity)
             totalItems += quantity;
 
-            // Get price from various possible field names
+            // --- FIXED/IMPROVED PRICE/COST LOGIC ---
             let price = 0;
+            let priceField = null;
+
+            // 1. Prioritize Price (Retail/Selling Value)
             if (hasPrice) {
-              const priceField =
-                "price" in item
-                  ? "price"
-                  : "unit_price" in item
-                    ? "unit_price"
+              priceField =
+                "unit_price" in item
+                  ? "unit_price"
+                  : "price" in item
+                    ? "price"
                     : "selling_price" in item
                       ? "selling_price"
                       : "retail_price" in item
                         ? "retail_price"
                         : null;
-
-              if (priceField) {
-                price = Number(item[priceField]) || 0;
-              }
             }
-            // Fallback to cost if price is zero
-            if (price === 0 && hasCost) {
-              const costField =
+
+            // 2. Fallback to Cost (If Price is missing)
+            if (!priceField && hasCost) {
+              priceField =
                 "cost_price" in item
                   ? "cost_price"
                   : "cost" in item
@@ -444,20 +447,22 @@ const Dashboard = () => {
                       ? "unit_cost"
                       : "purchase_price" in item
                         ? "purchase_price"
-                        : "standard_cost" in item // Added
-                          ? "standard_cost" // Added
-                          : "purchase_cost" in item // Added
-                            ? "purchase_cost" // Added
-                            : null;
-
-              if (costField) {
-                price = Number(item[costField]) || 0;
-              }
+                        : "standard_cost" in item
+                          ? "standard_cost"
+                          : "purchase_cost" in item
+                            ? "purchase_cost"
+                            : "avg_cost" in item
+                              ? "avg_cost"
+                              : null;
             }
 
-            // If still no price, use a reasonable default based on the item type
+            if (priceField) {
+              price = Number(item[priceField]) || 0;
+            }
+
+            // 3. Final Fallback
             if (price === 0) {
-              price = 50; // Reasonable default for inventory items
+              price = 50; // Default price
             }
 
             const value = quantity * price;
