@@ -165,7 +165,11 @@ const Dashboard = () => {
 
       for (const tableName of tables) {
         try {
-          const { data, error } = await supabase.from(tableName).select("*").limit(5);
+          // Use type assertion to avoid TypeScript errors
+          const { data, error } = await supabase
+            .from(tableName as any)
+            .select("*")
+            .limit(5);
 
           console.log(`=== Table: ${tableName} ===`);
           console.log(`Data:`, data);
@@ -194,7 +198,10 @@ const Dashboard = () => {
       console.log("🔍 Fetching REAL store metrics from database...");
 
       // Get all stores
-      const { data: stores, error: storesError } = await supabase.from("stores").select("id, name").order("name");
+      const { data: stores, error: storesError } = await supabase
+        .from("stores" as any)
+        .select("id, name")
+        .order("name");
 
       if (storesError) {
         console.error("❌ Error fetching stores:", storesError);
@@ -221,7 +228,10 @@ const Dashboard = () => {
       // Try each possible table name
       for (const tableName of possibleInventoryTables) {
         console.log(`🔍 Trying to fetch from table: ${tableName}`);
-        const { data, error } = await supabase.from(tableName).select("*").limit(5000); // Get more data
+        const { data, error } = await supabase
+          .from(tableName as any)
+          .select("*")
+          .limit(5000); // Get more data
 
         if (!error && data && data.length > 0) {
           console.log(`✅ Found data in table: ${tableName}`, data.length, "items");
@@ -239,7 +249,7 @@ const Dashboard = () => {
         // Create empty metrics for each store
         for (const store of stores) {
           storeMetricsData.push({
-            storeName: store.name,
+            storeName: (store as any).name,
             totalItems: 0,
             inventoryValue: 0,
             lowStockCount: 0,
@@ -294,7 +304,7 @@ const Dashboard = () => {
 
         // Try to get count from all tables to see which has the real data
         for (const tableName of possibleInventoryTables) {
-          const { count, error } = await supabase.from(tableName).select("*", { count: "exact", head: true });
+          const { count, error } = await supabase.from(tableName as any).select("*", { count: "exact", head: true });
 
           if (!error && count && count > allInventory.length) {
             console.log(`📊 Table ${tableName} has ${count} total records`);
@@ -304,7 +314,8 @@ const Dashboard = () => {
 
       // Process each store
       for (const store of stores) {
-        console.log(`\n📊 Processing store: ${store.name} (ID: ${store.id})`);
+        const storeData = store as any;
+        console.log(`\n📊 Processing store: ${storeData.name} (ID: ${storeData.id})`);
 
         let storeItems: any[] = [];
         let totalItems = 0;
@@ -317,7 +328,7 @@ const Dashboard = () => {
           storeItems = allInventory.filter((item: any) => {
             // Handle both string and number comparisons
             const itemStoreId = item[storeIdField];
-            return itemStoreId != null && itemStoreId.toString() === store.id.toString();
+            return itemStoreId != null && itemStoreId.toString() === storeData.id.toString();
           });
           console.log(`📍 Found ${storeItems.length} items by ${storeIdField}`);
         }
@@ -327,7 +338,8 @@ const Dashboard = () => {
           const locationField = "location" in firstItem ? "location" : "store_location";
           storeItems = allInventory.filter(
             (item: any) =>
-              item[locationField] && item[locationField].toString().toLowerCase().includes(store.name.toLowerCase()),
+              item[locationField] &&
+              item[locationField].toString().toLowerCase().includes(storeData.name.toLowerCase()),
           );
           console.log(`📍 Found ${storeItems.length} items by location match`);
         }
@@ -337,7 +349,7 @@ const Dashboard = () => {
           console.log("⚠️ No store linking field found");
 
           // Check if this might be a main warehouse/central inventory
-          if (store.name.toLowerCase().includes("warehouse") || store.name.toLowerCase().includes("main")) {
+          if (storeData.name.toLowerCase().includes("warehouse") || storeData.name.toLowerCase().includes("main")) {
             console.log("🏭 This appears to be a main warehouse, assigning all items");
             storeItems = allInventory;
           } else {
@@ -345,7 +357,7 @@ const Dashboard = () => {
             storeItems = allInventory.filter((item: any) => {
               // Check various fields that might contain store information
               const itemString = JSON.stringify(item).toLowerCase();
-              return itemString.includes(store.name.toLowerCase());
+              return itemString.includes(storeData.name.toLowerCase());
             });
             console.log(`📍 Found ${storeItems.length} items by text search in all fields`);
           }
@@ -447,14 +459,14 @@ const Dashboard = () => {
           });
         }
 
-        console.log(`📈 Store ${store.name} metrics:`, {
+        console.log(`📈 Store ${storeData.name} metrics:`, {
           totalItems,
           inventoryValue: `$${inventoryValue.toFixed(2)}`,
           lowStockCount,
         });
 
         storeMetricsData.push({
-          storeName: store.name,
+          storeName: storeData.name,
           totalItems,
           inventoryValue,
           lowStockCount,
@@ -494,7 +506,7 @@ const Dashboard = () => {
       // Try to get real notifications
       try {
         const { data: approvals, error: approvalsError } = await supabase
-          .from("inventory_approvals")
+          .from("inventory_approvals" as any)
           .select("*")
           .order("created_at", { ascending: false })
           .limit(10);
@@ -576,7 +588,10 @@ const Dashboard = () => {
   const markAsRead = async (notificationId: string) => {
     try {
       if (!notificationId.startsWith("sample-")) {
-        await supabase.from("inventory_approvals").update({ is_read: true }).eq("id", notificationId);
+        await supabase
+          .from("inventory_approvals" as any)
+          .update({ is_read: true } as any)
+          .eq("id", notificationId);
       }
 
       setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
@@ -617,10 +632,10 @@ const Dashboard = () => {
     // Set up real-time listeners
     const subscription = supabase
       .channel("dashboard-updates")
-      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_approvals" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_approvals" as any }, () => {
         fetchNotifications();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_items" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_items" as any }, () => {
         fetchRealStoreMetrics();
       })
       .subscribe();
