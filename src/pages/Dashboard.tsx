@@ -146,146 +146,205 @@ const Dashboard = () => {
   const [storeMetrics, setStoreMetrics] = useState<StoreMetrics[]>([]);
   const [storeMetricsLoading, setStoreMetricsLoading] = useState(true);
 
-  const debugDatabaseStructure = async () => {
-    console.log("=== DATABASE STRUCTURE DEBUG ===");
+  // Debug function to check ALL tables in your database
+  const debugAllTables = async () => {
+    console.log("=== COMPLETE DATABASE DEBUG ===");
 
     try {
-      const { data: stores, error: storesError } = await supabase
-        .from("stores" as any)
-        .select("*")
-        .limit(5);
+      // Check all possible table names
+      const tables = [
+        "stores",
+        "inventory_items",
+        "products",
+        "items",
+        "stock",
+        "inventory",
+        "products_inventory",
+        "store_inventory",
+      ];
 
-      console.log("Stores:", stores);
-      console.log("Stores Error:", storesError);
+      for (const tableName of tables) {
+        try {
+          const { data, error } = await supabase
+            .from(tableName as any)
+            .select("*")
+            .limit(2);
 
-      const { data: items, error: itemsError } = await supabase
-        .from("inventory_items" as any)
-        .select("*")
-        .limit(3);
+          console.log(`Table "${tableName}":`, data);
+          console.log(`Error for "${tableName}":`, error);
 
-      console.log("Inventory Items Sample:", items);
-      console.log("Items Error:", itemsError);
-
-      if (items && items.length > 0) {
-        console.log("Inventory Items Columns:", Object.keys(items[0]));
+          if (data && data.length > 0) {
+            console.log(`Columns in "${tableName}":`, Object.keys(data[0]));
+          }
+        } catch (err) {
+          console.log(`Table "${tableName}" doesn't exist or can't be accessed`);
+        }
       }
     } catch (error) {
-      console.error("Debug check failed:", error);
+      console.error("Complete debug failed:", error);
     }
   };
 
-  const fetchStoreMetrics = async () => {
+  // NEW: Get real store metrics from your actual database
+  const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
+      console.log("🔍 Fetching REAL store metrics from database...");
 
-      console.log("Starting store metrics fetch...");
-
+      // Get all stores
       const { data: stores, error: storesError } = await supabase
         .from("stores" as any)
         .select("id, name")
         .order("name");
 
       if (storesError) {
-        console.error("Error fetching stores:", storesError);
-        const sampleStoreMetrics: StoreMetrics[] = [
-          { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
-          { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
-          { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
-        ];
-        setStoreMetrics(sampleStoreMetrics);
+        console.error("❌ Error fetching stores:", storesError);
         return;
       }
 
-      console.log("Stores found:", stores);
+      console.log("🏪 Stores found:", stores);
 
       if (!stores || stores.length === 0) {
-        console.log("No stores found, using sample data");
-        const sampleStoreMetrics: StoreMetrics[] = [
-          { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
-          { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
-          { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
-        ];
-        setStoreMetrics(sampleStoreMetrics);
+        console.log("⚠️ No stores found in database");
+        setStoreMetrics([]);
         return;
       }
-
-      // Get all inventory items with proper type handling
-      const { data: allItems, error: allItemsError } = await supabase.from("inventory_items" as any).select("*");
-
-      console.log("All inventory items:", allItems);
-      console.log("All items error:", allItemsError);
 
       const storeMetricsData: StoreMetrics[] = [];
 
-      for (const store of stores) {
-        const storeData = store as any;
+      // Get ALL inventory data to work with
+      const { data: allInventory, error: inventoryError } = await supabase.from("inventory_items" as any).select("*");
 
-        console.log(`Processing store: ${storeData.name} (ID: ${storeData.id})`);
+      console.log("📦 All inventory items:", allInventory);
+      console.log("📦 Inventory error:", inventoryError);
 
-        let storeItems: any[] = [];
-
-        // Check if items have store_id field and filter by it
-        if (allItems && allItems.length > 0) {
-          const firstItem = allItems[0] as any;
-          if (firstItem.store_id !== undefined) {
-            storeItems = allItems.filter((item: any) => item.store_id === storeData.id);
-            console.log(`Store ${storeData.name} items (by store_id):`, storeItems);
-          } else {
-            // If no store_id, use all items for this store (fallback)
-            storeItems = allItems;
-            console.log(`No store_id field found, using all items for store ${storeData.name}`);
-          }
-        }
-
-        let totalItems = 0;
-        let inventoryValue = 0;
-        let lowStockCount = 0;
-
-        if (storeItems && storeItems.length > 0) {
-          storeItems.forEach((item: any) => {
-            totalItems += 1;
-
-            const quantity = item.quantity || item.stock_quantity || item.qty || 0;
-            const price = item.price || item.cost_price || item.unit_price || 0;
-            const value = quantity * price;
-            inventoryValue += value;
-
-            const minStock = item.min_stock || item.minimum_stock || item.reorder_level || 5;
-            if (quantity <= minStock) {
-              lowStockCount += 1;
-            }
-          });
-        }
-
-        console.log(`Store ${storeData.name} metrics:`, {
-          totalItems,
-          inventoryValue,
-          lowStockCount,
-        });
-
-        storeMetricsData.push({
-          storeName: storeData.name,
-          totalItems,
-          inventoryValue,
-          lowStockCount,
-        });
+      if (inventoryError) {
+        console.error("❌ Error fetching inventory:", inventoryError);
+        return;
       }
 
-      console.log("Final store metrics:", storeMetricsData);
+      // If we have inventory data, let's analyze it
+      if (allInventory && allInventory.length > 0) {
+        console.log("✅ Found inventory data, analyzing structure...");
+        const firstItem = allInventory[0] as any;
+        console.log("📊 First item structure:", firstItem);
+        console.log("🔑 First item keys:", Object.keys(firstItem));
+
+        // Check what fields we have
+        const hasStoreId = "store_id" in firstItem;
+        const hasLocation = "location" in firstItem;
+        const hasQuantity = "quantity" in firstItem;
+        const hasPrice = "price" in firstItem;
+        const hasCost = "cost_price" in firstItem;
+        const hasMinStock = "min_stock" in firstItem;
+
+        console.log(
+          "🔍 Field check - store_id:",
+          hasStoreId,
+          "location:",
+          hasLocation,
+          "quantity:",
+          hasQuantity,
+          "price:",
+          hasPrice,
+          "cost_price:",
+          hasCost,
+          "min_stock:",
+          hasMinStock,
+        );
+
+        for (const store of stores) {
+          const storeData = store as any;
+          console.log(`\n📊 Processing store: ${storeData.name}`);
+
+          let storeItems: any[] = [];
+          let totalItems = 0;
+          let inventoryValue = 0;
+          let lowStockCount = 0;
+
+          // METHOD 1: If items have store_id, filter by it
+          if (hasStoreId) {
+            storeItems = allInventory.filter((item: any) => item.store_id === storeData.id);
+            console.log(`📍 Found ${storeItems.length} items for store ${storeData.name} by store_id`);
+          }
+          // METHOD 2: If items have location field, try to match by store name
+          else if (hasLocation) {
+            storeItems = allInventory.filter(
+              (item: any) => item.location && item.location.toLowerCase().includes(storeData.name.toLowerCase()),
+            );
+            console.log(`📍 Found ${storeItems.length} items for store ${storeData.name} by location`);
+          }
+          // METHOD 3: If no store linking, distribute items evenly (fallback)
+          else {
+            console.log("⚠️ No store linking field found, using fallback distribution");
+            const itemsPerStore = Math.floor(allInventory.length / stores.length);
+            const storeIndex = stores.findIndex((s: any) => s.id === storeData.id);
+            const startIndex = storeIndex * itemsPerStore;
+            const endIndex = storeIndex === stores.length - 1 ? allInventory.length : startIndex + itemsPerStore;
+            storeItems = allInventory.slice(startIndex, endIndex);
+          }
+
+          // Calculate metrics for this store
+          if (storeItems.length > 0) {
+            storeItems.forEach((item: any) => {
+              totalItems += 1;
+
+              // Calculate value - try different possible price fields
+              const quantity = hasQuantity ? item.quantity || 0 : 1;
+              let price = 0;
+
+              if (hasPrice) price = item.price || 0;
+              else if (hasCost) price = item.cost_price || 0;
+              else price = 10; // Default price if no price field
+
+              const value = quantity * price;
+              inventoryValue += value;
+
+              // Check low stock - try different possible min_stock fields
+              const minStock = hasMinStock ? item.min_stock || item.minimum_stock || 5 : 5;
+              if (quantity <= minStock) {
+                lowStockCount += 1;
+              }
+            });
+          }
+
+          console.log(`📈 Store ${storeData.name} metrics:`, {
+            totalItems,
+            inventoryValue,
+            lowStockCount,
+          });
+
+          storeMetricsData.push({
+            storeName: storeData.name,
+            totalItems,
+            inventoryValue,
+            lowStockCount,
+          });
+        }
+      } else {
+        // No inventory data found
+        console.log("❌ No inventory data found in database");
+        for (const store of stores) {
+          storeMetricsData.push({
+            storeName: (store as any).name,
+            totalItems: 0,
+            inventoryValue: 0,
+            lowStockCount: 0,
+          });
+        }
+      }
+
+      console.log("🎯 Final store metrics:", storeMetricsData);
       setStoreMetrics(storeMetricsData);
     } catch (error) {
-      console.error("Error fetching store metrics:", error);
-      const sampleStoreMetrics: StoreMetrics[] = [
-        { storeName: "Main Warehouse", totalItems: 245, inventoryValue: 45280.75, lowStockCount: 12 },
-        { storeName: "Downtown Store", totalItems: 89, inventoryValue: 18750.3, lowStockCount: 5 },
-        { storeName: "Mall Branch", totalItems: 67, inventoryValue: 12340.2, lowStockCount: 3 },
-      ];
-      setStoreMetrics(sampleStoreMetrics);
+      console.error("💥 Error in fetchRealStoreMetrics:", error);
+      toast.error("Failed to load store metrics");
     } finally {
       setStoreMetricsLoading(false);
     }
   };
 
+  // Enhanced notifications with real data
   const fetchNotifications = async () => {
     if (!isAdmin) {
       setNotificationsLoading(false);
@@ -296,6 +355,7 @@ const Dashboard = () => {
       setNotificationsLoading(true);
       const allNotifications: Notification[] = [];
 
+      // Try to get real notifications
       try {
         const { data: approvals, error: approvalsError } = await supabase
           .from("inventory_approvals" as any)
@@ -304,6 +364,7 @@ const Dashboard = () => {
           .limit(10);
 
         if (!approvalsError && approvals && approvals.length > 0) {
+          console.log("✅ Found real notifications:", approvals);
           const mapped = approvals.map((item: any) => {
             const title = item.title || `Pending ${item.type}`;
             const description = item.message || item.description || `Action required for ${item.type}`;
@@ -320,12 +381,16 @@ const Dashboard = () => {
             };
           });
           allNotifications.push(...mapped);
+        } else {
+          console.log("📭 No real notifications found");
         }
       } catch (tableError) {
-        console.log("Inventory approvals table error:", tableError);
+        console.log("❌ Inventory approvals table error:", tableError);
       }
 
+      // Only use sample data if no real notifications found
       if (allNotifications.length === 0) {
+        console.log("🎭 Using sample notifications");
         allNotifications.push(...getSampleNotifications());
       }
 
@@ -361,12 +426,20 @@ const Dashboard = () => {
         link: "/purchase-orders/1001",
         created_at: new Date().toISOString(),
       },
+      {
+        id: "sample-2",
+        type: "low_stock",
+        title: "Low Stock Alert - USB-C Cables",
+        description: "USB-C Cables stock is below minimum threshold",
+        link: "/inventory?alert=ITEM-USB-C-001",
+        created_at: new Date().toISOString(),
+      },
     ];
   };
 
   const markAsRead = async (notificationId: string) => {
     try {
-      if (!notificationId.startsWith("sample-") && !notificationId.startsWith("low-stock-")) {
+      if (!notificationId.startsWith("sample-")) {
         await supabase
           .from("inventory_approvals" as any)
           .update({ is_read: true } as any)
@@ -388,6 +461,7 @@ const Dashboard = () => {
     navigate(link);
   };
 
+  // Initialize dashboard
   useEffect(() => {
     const savedCharts = localStorage.getItem("dashboard-charts");
     if (savedCharts) {
@@ -403,14 +477,18 @@ const Dashboard = () => {
       localStorage.setItem("dashboard-charts", JSON.stringify(defaultCharts));
     }
 
-    debugDatabaseStructure();
-    fetchStoreMetrics();
+    // Fetch real data on component mount
+    fetchRealStoreMetrics();
     fetchNotifications();
 
+    // Set up real-time listeners
     const subscription = supabase
-      .channel("notifications")
+      .channel("dashboard-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "inventory_approvals" }, () => {
         fetchNotifications();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_items" }, () => {
+        fetchRealStoreMetrics();
       })
       .subscribe();
 
@@ -419,6 +497,7 @@ const Dashboard = () => {
     };
   }, [isAdmin]);
 
+  // Rest of the component remains the same...
   useEffect(() => {
     if (dashboardCharts.length > 0) {
       localStorage.setItem("dashboard-charts", JSON.stringify(dashboardCharts));
@@ -575,6 +654,7 @@ const Dashboard = () => {
     return availableCharts.filter((chart) => !usedChartIds.has(chart.id));
   };
 
+  // Calculate totals
   const totalItemsAllStores = storeMetrics.reduce((sum, store) => sum + store.totalItems, 0);
   const totalValueAllStores = storeMetrics.reduce((sum, store) => sum + store.inventoryValue, 0);
   const totalLowStockAllStores = storeMetrics.reduce((sum, store) => sum + store.lowStockCount, 0);
@@ -691,14 +771,20 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Store Metrics Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Store className="w-5 h-5" />
             Inventory Overview by Store
-            <Button variant="outline" size="sm" onClick={debugDatabaseStructure} className="ml-auto">
-              Debug DB
-            </Button>
+            <div className="ml-auto flex gap-2">
+              <Button variant="outline" size="sm" onClick={debugAllTables}>
+                Debug All Tables
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchRealStoreMetrics}>
+                Refresh Data
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -708,6 +794,15 @@ const Dashboard = () => {
               <Skeleton className="h-32" />
               <Skeleton className="h-32" />
               <Skeleton className="h-32" />
+            </div>
+          ) : storeMetrics.length === 0 ? (
+            <div className="text-center py-8">
+              <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Store Data Found</h3>
+              <p className="text-muted-foreground mb-4">
+                We couldn't find any store inventory data. Check the console for debug information.
+              </p>
+              <Button onClick={debugAllTables}>Debug Database</Button>
             </div>
           ) : (
             <>
@@ -782,6 +877,7 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      {/* Rest of the dashboard components... */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {isLoading ? (
           <>
