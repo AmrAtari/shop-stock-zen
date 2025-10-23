@@ -27,7 +27,7 @@ const PurchaseOrderDetail = () => {
         .from("purchase_orders")
         .update({ status: newStatus, updated_at: new Date().toISOString() })
         .eq("id", id);
-      
+
       if (error) throw error;
     },
     onSuccess: () => {
@@ -150,6 +150,29 @@ const PurchaseOrderDetail = () => {
       let updatedCount = 0;
       const notFoundSkus: string[] = [];
 
+      // 1. Fetch the store name using the PO's store_id
+      let storeName: string | null = null;
+      if (po.store_id) {
+        const { data: storeData, error: storeError } = await supabase
+          .from("stores") // Assuming you have a 'stores' table
+          .select("name")
+          .eq("id", po.store_id)
+          .maybeSingle();
+
+        if (storeError) throw storeError;
+        storeName = storeData?.name || null;
+      }
+
+      // Base update payload for the inventory item
+      const itemUpdatePayload: { quantity?: number; last_restocked: string; location?: string } = {
+        last_restocked: new Date().toISOString(),
+      };
+
+      // 2. Add the store name to the update payload if found
+      if (storeName) {
+        itemUpdatePayload.location = storeName;
+      }
+
       for (const item of items) {
         // Find the inventory item either by explicit item_id or fallback to SKU
         let targetId: string | null = null;
@@ -182,12 +205,15 @@ const PurchaseOrderDetail = () => {
         }
 
         if (targetId) {
+          // Calculate new quantity and update the specific item's payload
+          const finalUpdatePayload = {
+            ...itemUpdatePayload,
+            quantity: currentQty + item.quantity,
+          };
+
           const { error: updateErr } = await supabase
             .from("items")
-            .update({
-              quantity: currentQty + item.quantity,
-              last_restocked: new Date().toISOString(),
-            })
+            .update(finalUpdatePayload) // Update quantity AND location
             .eq("id", targetId);
           if (updateErr) throw updateErr;
           updatedCount += 1;
@@ -304,9 +330,7 @@ const PurchaseOrderDetail = () => {
           <div className="flex justify-between items-start">
             <div>
               <CardTitle className="text-2xl">{po.po_number}</CardTitle>
-              <p className="text-muted-foreground mt-1">
-                Order Date: {format(new Date(po.order_date), "PPP")}
-              </p>
+              <p className="text-muted-foreground mt-1">Order Date: {format(new Date(po.order_date), "PPP")}</p>
             </div>
             <Badge variant={getStatusVariant(po.status) as any} className="text-lg px-4 py-2">
               {po.status.toUpperCase()}
