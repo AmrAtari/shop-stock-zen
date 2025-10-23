@@ -6,36 +6,46 @@ export interface RealTimeStock {
   item_id: string;
   location_id: string | null;
   current_stock: number;
-  item_name?: string;
-  location_name?: string;
-  sku?: string;
+  item_name: string;
+  location_name: string;
+  sku: string;
 }
 
 export const useInventoryCalculations = () => {
-  const { data: stockLevels, isLoading: stockLoading, error } = useQuery({
+  const {
+    data: stockLevels,
+    isLoading: stockLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.inventory.stockLevels,
     queryFn: async (): Promise<RealTimeStock[]> => {
+      console.log("Fetching real-time stock levels...");
+
       // Call our Supabase Edge Function
-      const { data, error } = await supabase.functions.invoke('calculate-stock');
-      
+      const { data, error } = await supabase.functions.invoke("calculate-stock-levels");
+
       if (error) {
-        console.error('Error fetching stock levels:', error);
-        throw error;
+        console.error("Error calling stock calculation function:", error);
+        throw new Error(`Failed to fetch stock levels: ${error.message}`);
       }
 
       if (!data.success) {
-        throw new Error(data.error || 'Failed to calculate stock levels');
+        console.error("Function returned error:", data.error);
+        throw new Error(data.error || "Failed to calculate stock levels");
       }
 
-      // We'll enrich this data with item and location names in the next step
-      return data.data || [];
+      console.log(`Received ${data.data.length} stock level records`);
+      return data.data;
     },
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+    retry: 2, // Retry failed requests twice
   });
 
   return {
     stockLevels: stockLevels || [],
     isLoading: stockLoading,
-    error
+    error,
+    refetch,
   };
 };
