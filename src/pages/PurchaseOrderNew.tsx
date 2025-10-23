@@ -278,35 +278,38 @@ const PurchaseOrderNew = () => {
         data: { user },
       } = await supabase.auth.getUser();
 
+      // Create purchase order data without tax_rate field
+      const poDataToInsert = {
+        po_number: poNumber,
+        supplier: supplierData.name,
+        store_id: data.store || null,
+        order_date: data.orderDate.toISOString(),
+        expected_delivery: data.expectedDelivery?.toISOString(),
+        buyer_company_name: data.buyerCompanyName,
+        buyer_address: data.buyerAddress,
+        buyer_contact: data.buyerContact,
+        billing_address: data.billingAddress,
+        shipping_address: data.shippingAddress,
+        supplier_contact_person: selectedSupplier?.contact_person,
+        payment_terms: data.paymentTerms,
+        currency: data.currency,
+        shipping_method: data.shippingMethod,
+        fob_terms: data.fobTerms,
+        special_instructions: data.specialInstructions,
+        subtotal,
+        tax_amount: taxAmount,
+        // REMOVED: tax_rate field since it doesn't exist in the table
+        shipping_charges: data.shippingCharges,
+        total_cost: grandTotal,
+        total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
+        status: "completed", // NEW: Set as completed to trigger inventory update
+        authorized_by: user?.id,
+      };
+
       // Create purchase order
       const { data: poData, error: poError } = await supabase
         .from("purchase_orders")
-        .insert({
-          po_number: poNumber,
-          supplier: supplierData.name,
-          store_id: data.store || null,
-          order_date: data.orderDate.toISOString(),
-          expected_delivery: data.expectedDelivery?.toISOString(),
-          buyer_company_name: data.buyerCompanyName,
-          buyer_address: data.buyerAddress,
-          buyer_contact: data.buyerContact,
-          billing_address: data.billingAddress,
-          shipping_address: data.shippingAddress,
-          supplier_contact_person: selectedSupplier?.contact_person,
-          payment_terms: data.paymentTerms,
-          currency: data.currency,
-          shipping_method: data.shippingMethod,
-          fob_terms: data.fobTerms,
-          special_instructions: data.specialInstructions,
-          subtotal,
-          tax_amount: taxAmount,
-          tax_rate: data.taxPercent,
-          shipping_charges: data.shippingCharges,
-          total_cost: grandTotal,
-          total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
-          status: "completed", // NEW: Set as completed to trigger inventory update
-          authorized_by: user?.id,
-        })
+        .insert(poDataToInsert)
         .select()
         .single();
 
