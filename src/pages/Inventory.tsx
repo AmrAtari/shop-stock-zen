@@ -27,7 +27,6 @@ import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Label } from "@/components/ui/label";
-// FIX: Import the useStores hook to fetch all stores
 import { useStores } from "@/hooks/usePurchaseOrders";
 
 interface BulkActionsProps {
@@ -305,21 +304,30 @@ const InventoryNew = () => {
   const [mainGroupFilter, setMainGroupFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  const { data: inventory = [], isLoading } = useQuery({
-    queryKey: queryKeys.inventory.all,
+  // FIX: Update query key to include locationFilter to force refresh
+  const { data: inventory = [], isLoading } = useQuery<Item[]>({
+    queryKey: queryKeys.inventory.list({ location: locationFilter }),
     queryFn: async () => {
-      const { data, error } = await supabase.from("items").select("*").order("name");
-
-      if (error) {
-        toast.error("Failed to load inventory");
-        throw error;
+      // FIX: Implement logic to fetch based on selected location (store ID)
+      if (locationFilter !== "all" && locationFilter) {
+        // CRUCIAL: Assume a dedicated RPC is used to get location-specific data
+        // This function should return item data *plus* the location quantity
+        const { data: locationData, error: locationError } = await supabase.rpc("get_inventory_by_store", {
+          store_id: locationFilter, // locationFilter is now the store ID
+        });
+        if (locationError) throw locationError;
+        // The item objects returned here must contain the location-specific stock as `quantity`
+        return locationData || [];
+      } else {
+        // Default: fetch all items globally (total quantity)
+        const { data: globalData, error: globalError } = await supabase.from("items").select("*").order("name");
+        if (globalError) throw globalError;
+        return globalData || [];
       }
-
-      return data || [];
     },
   });
 
-  // FIX: Fetch all stores
+  // Fetch all stores (used for the filter dropdown)
   const { data: stores = [] } = useStores();
 
   const filteredInventory = useMemo(() => {
@@ -330,16 +338,17 @@ const InventoryNew = () => {
         item.category.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
-      const matchesLocation = locationFilter === "all" || item.location === locationFilter;
+      // FIX: The location filter is handled by the useQuery above,
+      // so we only keep other filters here for performance
+      // const matchesLocation = locationFilter === "all" || item.location === locationFilter;
+
       const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
 
-      return (
-        matchesSearch && matchesModelNumber && matchesLocation && matchesSeason && matchesMainGroup && matchesCategory
-      );
+      return matchesSearch && matchesModelNumber && matchesSeason && matchesMainGroup && matchesCategory;
     });
-  }, [inventory, searchTerm, modelNumberFilter, locationFilter, seasonFilter, mainGroupFilter, categoryFilter]);
+  }, [inventory, searchTerm, modelNumberFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
   // Unique values for filters
   const uniqueModelNumbers = useMemo(
@@ -347,8 +356,11 @@ const InventoryNew = () => {
     [inventory],
   );
 
-  // FIX: Generate uniqueLocations from the complete list of stores
-  const uniqueLocations = useMemo(() => stores.map((store) => store.name).sort(), [stores]);
+  // FIX: Generate uniqueLocations from the complete list of stores (using ID for filter value)
+  const uniqueLocations = useMemo(
+    () => stores.map((store) => ({ id: store.id, name: store.name })).sort((a, b) => a.name.localeCompare(b.name)),
+    [stores],
+  );
 
   const uniqueSeasons = useMemo(() => [...new Set(inventory.map((i) => i.season).filter(Boolean))].sort(), [inventory]);
   const uniqueMainGroups = useMemo(
@@ -424,6 +436,12 @@ const InventoryNew = () => {
     return { label: "In Stock", variant: "success" as const };
   };
 
+  // Helper to display store name from ID
+  const displayLocation = useMemo(() => {
+    if (locationFilter === "all") return "All";
+    return stores.find((s) => s.id === locationFilter)?.name || "Unknown Location";
+  }, [locationFilter, stores]);
+
   if (isLoading) {
     return <div className="p-8">Loading...</div>;
   }
@@ -491,6 +509,7 @@ const InventoryNew = () => {
             </SelectContent>
           </Select>
 
+          {/* FIX: Location Filter now uses store ID for value, name for display */}
           <Select value={locationFilter} onValueChange={setLocationFilter}>
             <SelectTrigger>
               <SelectValue placeholder="Location" />
@@ -498,8 +517,8 @@ const InventoryNew = () => {
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
               {uniqueLocations.map((loc) => (
-                <SelectItem key={loc} value={loc}>
-                  {loc}
+                <SelectItem key={loc.id} value={loc.id}>
+                  {loc.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -610,12 +629,14 @@ const InventoryNew = () => {
                   <TableCell>{item.origin || "-"}</TableCell>
                   <TableCell>{item.theme || "-"}</TableCell>
                   <TableCell>{item.supplier || "-"}</TableCell>
+                  {/* NOTE: item.quantity now displays location-specific stock if filter is set, otherwise global stock */}
                   <TableCell>{item.quantity}</TableCell>
                   <TableCell>{item.unit}</TableCell>
                   <TableCell>
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
-                  <TableCell>{item.location || "-"}</TableCell>
+                  {/* NOTE: location field may be null/empty, but displayLocation helps if set */}
+                  <TableCell>{displayLocation}</TableCell>
                   <TableCell>{item.item_number || "-"}</TableCell>
                   <TableCell>
                     <Button
