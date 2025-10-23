@@ -53,15 +53,68 @@ const Transfers = () => {
   // NEW: Function to update inventory when transfer is received
   const updateInventoryFromTransfer = async (transferId: string) => {
     try {
-      const { error } = await supabase.rpc("process_transfer_inventory", {
-        p_transfer_id: transferId,
-        p_status: "received",
-      });
+      // Get transfer items
+      const { data: transferItems, error: itemsError } = await supabase
+        .from("transfer_items")
+        .select("*")
+        .eq("transfer_id", transferId);
 
-      if (error) throw error;
+      if (itemsError) throw itemsError;
+
+      if (!transferItems || transferItems.length === 0) {
+        throw new Error("No items found in transfer");
+      }
+
+      // Update inventory for each transfer item
+      for (const item of transferItems) {
+        // Get current quantity
+        const { data: currentItem, error: fetchError } = await supabase
+          .from("items")
+          .select("quantity")
+          .eq("sku", item.sku)
+          .single();
+
+        if (fetchError) {
+          console.error("Failed to fetch current item:", fetchError);
+          throw new Error(`Failed to fetch item ${item.sku}`);
+        }
+
+        // Update inventory quantity (add to destination)
+        const { error: updateError } = await supabase
+          .from("items")
+          .update({
+            quantity: (currentItem.quantity || 0) + item.quantity,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("sku", item.sku);
+
+        if (updateError) {
+          console.error("Failed to update inventory for item:", item.sku, updateError);
+          throw new Error(`Failed to update inventory for ${item.sku}`);
+        }
+
+        // Create inventory transaction record
+        const { error: transactionError } = await supabase.from("inventory_transactions").insert({
+          sku: item.sku,
+          quantity_change: item.quantity,
+          reason: "transfer_received",
+          reference_id: transferId,
+          created_at: new Date().toISOString(),
+        });
+
+        if (transactionError) {
+          console.error("Failed to create transaction record:", transactionError);
+          // Don't throw here as the main update succeeded
+        }
+      }
 
       // Update transfer status to received
-      await supabase.from("transfers").update({ status: "received" }).eq("id", transferId);
+      const { error: statusError } = await supabase
+        .from("transfers")
+        .update({ status: "received" })
+        .eq("id", transferId);
+
+      if (statusError) throw statusError;
 
       toast.success("Transfer completed and inventory updated");
     } catch (error: any) {
