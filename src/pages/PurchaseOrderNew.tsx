@@ -123,6 +123,31 @@ const PurchaseOrderNew = () => {
     }
   }, [sameShippingAddress, watchBuyerAddress, setValue]);
 
+  // NEW: Function to update inventory when PO is completed
+  const updateInventoryFromPO = async (poId: string, items: POItem[]) => {
+    try {
+      // Update inventory for each item in the PO
+      for (const item of items) {
+        const { error: updateError } = await supabase.rpc("update_inventory_quantity", {
+          p_sku: item.sku,
+          p_quantity_change: item.quantity,
+          p_reason: "purchase_order_received",
+          p_reference_id: poId,
+        });
+
+        if (updateError) {
+          console.error("Failed to update inventory for item:", item.sku, updateError);
+          throw new Error(`Failed to update inventory for ${item.sku}`);
+        }
+      }
+
+      toast.success(`Inventory updated for ${items.length} items`);
+    } catch (error: any) {
+      console.error("Inventory update error:", error);
+      throw error;
+    }
+  };
+
   const handleAddItemsFromSelector = (items: Array<{ item: Item; quantity: number; price: number }>) => {
     const newItems: POItem[] = items.map(({ item, quantity, price }) => ({
       sku: item.sku,
@@ -233,12 +258,11 @@ const PurchaseOrderNew = () => {
           special_instructions: data.specialInstructions,
           subtotal,
           tax_amount: taxAmount,
-          // FIX: Added the missing tax_rate field
           tax_rate: data.taxPercent,
           shipping_charges: data.shippingCharges,
           total_cost: grandTotal,
           total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
-          status: "draft",
+          status: "completed", // NEW: Set as completed to trigger inventory update
           authorized_by: user?.id,
         })
         .select()
@@ -264,10 +288,15 @@ const PurchaseOrderNew = () => {
 
       if (itemsError) throw itemsError;
 
-      // Invalidate queries
-      await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      // NEW: Update inventory quantities
+      await updateInventoryFromPO(poData.id, poItems);
 
-      toast.success(`Purchase Order ${poNumber} created successfully`);
+      // Invalidate queries to refresh data
+      await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+
+      toast.success(`Purchase Order ${poNumber} created successfully and inventory updated`);
       navigate("/purchase-orders");
     } catch (error: any) {
       console.error("PO creation error:", error);
