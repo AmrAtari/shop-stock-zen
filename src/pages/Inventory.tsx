@@ -125,7 +125,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
 
   const handleBulkUpdateClick = () => {
     // Check if any selected items have item_numbers
-    const hasParentItems = selectedItems.some((item) => item.item_number);
+    const hasParentItems = (selectedItems as Item[]).some((item) => item.item_number);
 
     if (hasParentItems) {
       setShowBulkConfirmation(true);
@@ -152,7 +152,8 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
 
       if (applyToAll) {
         // Group items by item_number to update all related SKUs
-        const itemsByParent = selectedItems.reduce(
+        // FIX: Explicitly cast selectedItems to Item[] to satisfy TypeScript iteration requirements
+        const itemsByParent = (selectedItems as Item[]).reduce(
           (acc, item) => {
             const parentKey = item.item_number || item.id;
             if (!acc[parentKey]) {
@@ -165,7 +166,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         );
 
         // Update each parent group
-        for (const [parentKey, items] of Object.entries(itemsByParent)) {
+        for (const items of Object.values(itemsByParent)) {
           if (items[0].item_number) {
             // This is a parent item with related SKUs
             await updateRelatedSKUs(items[0].item_number, bulkFormData);
@@ -180,7 +181,8 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         }
       } else {
         // Apply only to selected items
-        for (const item of selectedItems) {
+        // FIX: Explicitly cast selectedItems to Item[] to satisfy TypeScript iteration requirements
+        for (const item of selectedItems as Item[]) {
           await supabase.from("items").update(bulkFormData).eq("id", item.id);
           totalUpdated++;
         }
@@ -195,14 +197,15 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
     }
   };
 
-  if (selectedItems.length === 0) return null;
+  // FIX: Explicitly cast selectedItems to Item[] to resolve TS2339 (Property 'length' does not exist on type 'unknown')
+  if ((selectedItems as Item[]).length === 0) return null;
 
-  const parentItemsCount = selectedItems.filter((item) => item.item_number).length;
+  const parentItemsCount = (selectedItems as Item[]).filter((item) => item.item_number).length;
 
   return (
     <>
       <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-        <span className="text-sm font-medium">{selectedItems.length} item(s) selected</span>
+        <span className="text-sm font-medium">{(selectedItems as Item[]).length} item(s) selected</span>
         <Button variant="outline" size="sm" onClick={handleBulkUpdateClick}>
           Bulk Update
         </Button>
@@ -215,7 +218,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Bulk Update {selectedItems.length} Items</DialogTitle>
+            <DialogTitle>Bulk Update {(selectedItems as Item[]).length} Items</DialogTitle>
             <DialogDescription>
               Update shared fields across selected items. Leave fields empty to keep current values.
             </DialogDescription>
@@ -282,7 +285,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         open={showBulkConfirmation}
         onOpenChange={setShowBulkConfirmation}
         onConfirm={handleBulkConfirmation}
-        selectedCount={selectedItems.length}
+        selectedCount={(selectedItems as Item[]).length}
         parentItemsCount={parentItemsCount}
       />
     </>
