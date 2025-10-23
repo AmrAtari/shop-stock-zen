@@ -1,6 +1,3 @@
-// Fixed version: compatible with Supabase type safety and avoids TS errors
-// Use type assertions and generic suppression to prevent deep type inference loops
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -38,15 +35,14 @@ const PurchaseOrderNew = () => {
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
   const { data: stores = [] } = useStores();
-  const { data: inventory = [] } = useQuery<Item[]>({
+
+  // ✅ Fixed: explicitly typed useQuery returning Promise<Item[]>
+  const { data: inventory = [] } = useQuery<Item[], Error>({
     queryKey: queryKeys.inventory.all,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("items" as any)
-        .select("*")
-        .order("name");
+    queryFn: async (): Promise<Item[]> => {
+      const { data, error } = await supabase.from("items").select("*").order("name");
       if (error) throw error;
-      return data || [];
+      return (data as Item[]) || [];
     },
   });
 
@@ -123,7 +119,6 @@ const PurchaseOrderNew = () => {
       const { error: itemsError } = await (supabase.from as any)("purchase_order_items").insert(poItemsData);
       if (itemsError) throw itemsError;
 
-      // ✅ Update store quantities safely
       for (const item of poItems) {
         const { data: existingRecord } = await (supabase.from as any)("store_quantities")
           .select("*")
