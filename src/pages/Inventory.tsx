@@ -21,16 +21,12 @@ import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
-// import { Item } from "@/types/database"; // Assuming Item type is defined here
+import { Item } from "@/types/database";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Label } from "@/components/ui/label";
-import { useStores } from "@/hooks/usePurchaseOrders";
-
-// Using a placeholder type based on the context of the file
-type Item = any;
 
 interface BulkActionsProps {
   selectedItems: Item[];
@@ -152,7 +148,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
 
       if (applyToAll) {
         // Group items by item_number to update all related SKUs
-        // FIX: Explicitly cast selectedItems to Item[] to satisfy TypeScript iteration requirements
+        // FIX: Add explicit cast to selectedItems for .reduce()
         const itemsByParent = (selectedItems as Item[]).reduce(
           (acc, item) => {
             const parentKey = item.item_number || item.id;
@@ -166,7 +162,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         );
 
         // Update each parent group
-        for (const items of Object.values(itemsByParent)) {
+        for (const [parentKey, items] of Object.entries(itemsByParent)) {
           if (items[0].item_number) {
             // This is a parent item with related SKUs
             await updateRelatedSKUs(items[0].item_number, bulkFormData);
@@ -181,7 +177,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         }
       } else {
         // Apply only to selected items
-        // FIX: Explicitly cast selectedItems to Item[] to satisfy TypeScript iteration requirements
+        // FIX: Add explicit cast to selectedItems for iteration
         for (const item of selectedItems as Item[]) {
           await supabase.from("items").update(bulkFormData).eq("id", item.id);
           totalUpdated++;
@@ -197,9 +193,10 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
     }
   };
 
-  // FIX: Explicitly cast selectedItems to Item[] to resolve TS2339 (Property 'length' does not exist on type 'unknown')
+  // FIX: Add explicit cast to resolve TS2339 (Property 'length' does not exist on type 'unknown')
   if ((selectedItems as Item[]).length === 0) return null;
 
+  // FIX: Add explicit cast to resolve TS2488 (Type 'unknown' must have a '[Symbol.iterator]()' method)
   const parentItemsCount = (selectedItems as Item[]).filter((item) => item.item_number).length;
 
   return (
@@ -310,64 +307,50 @@ const InventoryNew = () => {
   const [mainGroupFilter, setMainGroupFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  // FIX 1 & 3: Update query key structure and explicitly type the result to Item[]
   const { data: inventory = [], isLoading } = useQuery<Item[]>({
-    queryKey: [...queryKeys.inventory.all, locationFilter],
-    queryFn: async (): Promise<Item[]> => {
-      if (locationFilter !== "all" && locationFilter) {
-        // FIX 2: Add 'as any' to bypass TypeScript error for custom RPC name
-        const { data: locationData, error: locationError } = await supabase.rpc("get_inventory_by_store" as any, {
-          store_id: locationFilter, // locationFilter is now the store ID
-        });
-        if (locationError) throw locationError;
-        return (locationData as Item[]) || [];
-      } else {
-        // Default: fetch all items globally (total quantity)
-        const { data: globalData, error: globalError } = await supabase.from("items").select("*").order("name");
-        if (globalError) throw globalError;
-        return (globalData as Item[]) || [];
+    queryKey: queryKeys.inventory.all,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("items").select("*").order("name");
+
+      if (error) {
+        toast.error("Failed to load inventory");
+        throw error;
       }
+
+      // Explicitly return as Item[] to ensure type is preserved for useMemo below
+      return (data as Item[]) || [];
     },
   });
 
-  // Fetch all stores (used for the filter dropdown)
-  const { data: stores = [] } = useStores();
-
   const filteredInventory = useMemo(() => {
-    // FIX 3: Ensure array methods are called on the expected type
-    if (!Array.isArray(inventory)) return [];
-
-    return inventory.filter((item: Item) => {
+    // Cast to Item[] for safety as well
+    return (inventory as Item[]).filter((item) => {
       const matchesSearch =
-        item.name?.toLowerCase()?.includes(searchTerm.toLowerCase()) ||
-        item.sku?.toLowerCase()?.includes(searchTerm.toLowerCase()) ||
-        item.category?.toLowerCase()?.includes(searchTerm.toLowerCase());
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.category.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
+      const matchesLocation = locationFilter === "all" || item.location === locationFilter;
       const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
 
-      return matchesSearch && matchesModelNumber && matchesSeason && matchesMainGroup && matchesCategory;
+      return (
+        matchesSearch && matchesModelNumber && matchesLocation && matchesSeason && matchesMainGroup && matchesCategory
+      );
     });
-  }, [inventory, searchTerm, modelNumberFilter, seasonFilter, mainGroupFilter, categoryFilter]);
+  }, [inventory, searchTerm, modelNumberFilter, locationFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
   // Unique values for filters
-  // FIX 3: Explicitly cast inventory to Item[] before using .map
   const uniqueModelNumbers = useMemo(
     () => [...new Set((inventory as Item[]).map((i) => i.item_number).filter(Boolean))].sort(),
     [inventory],
   );
-
-  // FIX: Generate uniqueLocations from the complete list of stores (using ID for filter value)
   const uniqueLocations = useMemo(
-    () =>
-      stores
-        .map((store: { id: string; name: string }) => ({ id: store.id, name: store.name }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [stores],
+    () => [...new Set((inventory as Item[]).map((i) => i.location).filter(Boolean))].sort(),
+    [inventory],
   );
-
   const uniqueSeasons = useMemo(
     () => [...new Set((inventory as Item[]).map((i) => i.season).filter(Boolean))].sort(),
     [inventory],
@@ -388,8 +371,6 @@ const InventoryNew = () => {
   });
 
   const paginatedInventory = useMemo(() => {
-    // FIX 3: Ensure slice method is called on an array
-    if (!Array.isArray(filteredInventory)) return [];
     return filteredInventory.slice(pagination.startIndex, pagination.endIndex);
   }, [filteredInventory, pagination.startIndex, pagination.endIndex]);
 
@@ -446,14 +427,6 @@ const InventoryNew = () => {
     if (item.quantity <= item.min_stock) return { label: "Low Stock", variant: "warning" as const };
     return { label: "In Stock", variant: "success" as const };
   };
-
-  // Helper to display store name from ID
-  const displayLocation = useMemo(() => {
-    if (locationFilter === "all") return "All";
-    // Ensure stores is an array before using find
-    if (!Array.isArray(stores)) return "Unknown Location";
-    return stores.find((s) => s.id === locationFilter)?.name || "Unknown Location";
-  }, [locationFilter, stores]);
 
   if (isLoading) {
     return <div className="p-8">Loading...</div>;
@@ -514,7 +487,7 @@ const InventoryNew = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Model Numbers</SelectItem>
-              {uniqueModelNumbers.map((num: string) => (
+              {uniqueModelNumbers.map((num) => (
                 <SelectItem key={num} value={num}>
                   {num}
                 </SelectItem>
@@ -522,16 +495,15 @@ const InventoryNew = () => {
             </SelectContent>
           </Select>
 
-          {/* FIX: Location Filter now uses store ID for value, name for display */}
           <Select value={locationFilter} onValueChange={setLocationFilter}>
             <SelectTrigger>
               <SelectValue placeholder="Location" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
-              {uniqueLocations.map((loc: { id: string; name: string }) => (
-                <SelectItem key={loc.id} value={loc.id}>
-                  {loc.name}
+              {uniqueLocations.map((loc) => (
+                <SelectItem key={loc} value={loc}>
+                  {loc}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -543,7 +515,7 @@ const InventoryNew = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Seasons</SelectItem>
-              {uniqueSeasons.map((season: string) => (
+              {uniqueSeasons.map((season) => (
                 <SelectItem key={season} value={season}>
                   {season}
                 </SelectItem>
@@ -557,7 +529,7 @@ const InventoryNew = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Main Groups</SelectItem>
-              {uniqueMainGroups.map((group: string) => (
+              {uniqueMainGroups.map((group) => (
                 <SelectItem key={group} value={group}>
                   {group}
                 </SelectItem>
@@ -571,7 +543,7 @@ const InventoryNew = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {uniqueCategories.map((cat: string) => (
+              {uniqueCategories.map((cat) => (
                 <SelectItem key={cat} value={cat}>
                   {cat}
                 </SelectItem>
@@ -620,7 +592,7 @@ const InventoryNew = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedInventory.map((item: Item) => {
+            {paginatedInventory.map((item) => {
               const status = getStockStatus(item);
               const isSelected = selectedItems.some((selected) => selected.id === item.id);
 
@@ -642,14 +614,12 @@ const InventoryNew = () => {
                   <TableCell>{item.origin || "-"}</TableCell>
                   <TableCell>{item.theme || "-"}</TableCell>
                   <TableCell>{item.supplier || "-"}</TableCell>
-                  {/* NOTE: item.quantity now displays location-specific stock if filter is set, otherwise global stock */}
                   <TableCell>{item.quantity}</TableCell>
                   <TableCell>{item.unit}</TableCell>
                   <TableCell>
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
-                  {/* NOTE: location field may be null/empty, but displayLocation helps if set */}
-                  <TableCell>{displayLocation}</TableCell>
+                  <TableCell>{item.location || "-"}</TableCell>
                   <TableCell>{item.item_number || "-"}</TableCell>
                   <TableCell>
                     <Button
