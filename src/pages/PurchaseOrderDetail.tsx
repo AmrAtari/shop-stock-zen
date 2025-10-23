@@ -150,34 +150,11 @@ const PurchaseOrderDetail = () => {
       let updatedCount = 0;
       const notFoundSkus: string[] = [];
 
-      // 1. Fetch the store name using the PO's store_id
-      let storeName: string | null = null;
-      if (po.store_id) {
-        const { data: storeData, error: storeError } = await supabase
-          .from("stores") // Assuming you have a 'stores' table
-          .select("name")
-          .eq("id", po.store_id)
-          .maybeSingle();
-
-        if (storeError) throw storeError;
-        storeName = storeData?.name || null;
-      }
-
-      // Base update payload for the inventory item
-      const itemUpdatePayload: { quantity?: number; last_restocked: string; location?: string } = {
-        last_restocked: new Date().toISOString(),
-      };
-
-      // 2. Add the store name to the update payload if found
-      if (storeName) {
-        itemUpdatePayload.location = storeName;
-      }
-
       for (const item of items) {
-        // Find the inventory item either by explicit item_id or fallback to SKU
-        let targetId: string | null = null;
-        let currentQty = 0;
+        let targetItemId: string | null = null;
+        let currentGlobalQty = 0;
 
+        // 1. Find the Item ID and Current Global Quantity
         if (item.item_id) {
           const { data: byId, error: byIdErr } = await supabase
             .from("items")
@@ -187,8 +164,8 @@ const PurchaseOrderDetail = () => {
 
           if (byIdErr) throw byIdErr;
           if (byId) {
-            targetId = byId.id as string;
-            currentQty = (byId.quantity as number) ?? 0;
+            targetItemId = byId.id as string;
+            currentGlobalQty = (byId.quantity as number) ?? 0;
           }
         } else if (item.sku) {
           const { data: bySku, error: bySkuErr } = await supabase
@@ -199,23 +176,37 @@ const PurchaseOrderDetail = () => {
 
           if (bySkuErr) throw bySkuErr;
           if (bySku) {
-            targetId = bySku.id as string;
-            currentQty = (bySku.quantity as number) ?? 0;
+            targetItemId = bySku.id as string;
+            currentGlobalQty = (bySku.quantity as number) ?? 0;
           }
         }
 
-        if (targetId) {
-          // Calculate new quantity and update the specific item's payload
-          const finalUpdatePayload = {
-            ...itemUpdatePayload,
-            quantity: currentQty + item.quantity,
-          };
-
-          const { error: updateErr } = await supabase
+        if (targetItemId) {
+          // 2. Update Global Inventory (items table)
+          const { error: globalUpdateErr } = await supabase
             .from("items")
-            .update(finalUpdatePayload) // Update quantity AND location
-            .eq("id", targetId);
-          if (updateErr) throw updateErr;
+            .update({
+              quantity: currentGlobalQty + item.quantity,
+              // CRUCIAL FIX: Remove item.location update. Location is now relational.
+              last_restocked: new Date().toISOString(),
+            })
+            .eq("id", targetItemId);
+          if (globalUpdateErr) throw globalUpdateErr;
+
+          // 3. Update Location-Specific Inventory (NEW ARCHITECTURE)
+          if (po.store_id) {
+            // This relies on you implementing a Postgres RPC function named `increment_location_stock`
+            // that safely adds the p_quantity_to_add to the record matching p_item_id and p_store_id
+            // in your new relational stock table (e.g., item_stock_by_location).
+            const { error: locationUpdateErr } = await supabase.rpc("increment_location_stock", {
+              p_item_id: targetItemId,
+              p_store_id: po.store_id,
+              p_quantity_to_add: item.quantity,
+            });
+
+            if (locationUpdateErr) throw locationUpdateErr;
+          }
+
           updatedCount += 1;
         } else {
           if (item.sku) notFoundSkus.push(item.sku);
@@ -231,7 +222,7 @@ const PurchaseOrderDetail = () => {
 
       if (updatedCount > 0) {
         await updateStatusMutation.mutateAsync("completed");
-        // Refresh related caches so Inventory reflects latest stock
+        // Refresh all related caches so Inventory and Reports reflect latest stock
         await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
 
         toast({
