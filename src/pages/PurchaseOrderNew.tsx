@@ -60,6 +60,15 @@ interface POItem {
   costPrice: number;
 }
 
+// Define the inventory transaction type
+interface InventoryTransaction {
+  sku: string;
+  quantity_change: number;
+  reason: string;
+  reference_id?: string;
+  created_at?: string;
+}
+
 const PurchaseOrderNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -154,14 +163,19 @@ const PurchaseOrderNew = () => {
           throw new Error(`Failed to update inventory for ${item.sku}`);
         }
 
-        // Create inventory transaction record
-        const { error: transactionError } = await supabase.from("inventory_transactions").insert({
+        // Create inventory transaction record - using type assertion to avoid TypeScript errors
+        const transactionData: InventoryTransaction = {
           sku: item.sku,
           quantity_change: item.quantity,
           reason: "purchase_order_received",
           reference_id: poId,
           created_at: new Date().toISOString(),
-        });
+        };
+
+        // Use type assertion to bypass TypeScript check for the table name
+        const { error: transactionError } = await supabase
+          .from("inventory_transactions" as any)
+          .insert(transactionData);
 
         if (transactionError) {
           console.error("Failed to create transaction record:", transactionError);
