@@ -29,15 +29,15 @@ export const queryKeys = {
   stores: {
     all: ["stores"] as const,
   },
-  physicalInventory: {
-    all: ["physical-inventory-sessions"] as const,
-    detail: (id: string) => ["physical-inventory-sessions", id] as const,
-    counts: (sessionId: string) => ["physical-inventory-counts", sessionId] as const,
-  },
   inventory: {
     all: ["inventory"] as const,
     stockLevels: () => [...queryKeys.inventory.all, "stock-levels"] as const,
     movements: () => [...queryKeys.inventory.all, "movements"] as const,
     details: (id: string) => [...queryKeys.inventory.all, "detail", id] as const,
+  },
+  physicalInventory: {
+    all: ["physical-inventory-sessions"] as const,
+    detail: (id: string) => ["physical-inventory-sessions", id] as const,
+    counts: (sessionId: string) => ["physical-inventory-counts", sessionId] as const,
   },
 };
