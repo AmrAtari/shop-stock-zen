@@ -539,106 +539,66 @@ const Dashboard = () => {
     }
   };
 
-  // ... (rest of the functions: fetchNotifications, getNotificationLink, etc. remain the same)
+  // Fetch real notifications from database
   const fetchNotifications = async () => {
-    if (!isAdmin) {
-      setNotificationsLoading(false);
-      return;
-    }
-
     try {
       setNotificationsLoading(true);
-      const allNotifications: Notification[] = [];
-
-      // Try to get real notifications
+      
+      // First, check and create low stock notifications
       try {
-        const { data: approvals, error: approvalsError } = await supabase
-          .from("inventory_approvals" as any)
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(10);
-
-        if (!approvalsError && approvals && approvals.length > 0) {
-          console.log("✅ Found real notifications:", approvals);
-          const mapped = approvals.map((item: any) => {
-            const title = item.title || `Pending ${item.type}`;
-            const description = item.message || item.description || `Action required for ${item.type}`;
-            const referenceId = item.reference_id || item.id;
-
-            return {
-              id: String(item.id),
-              type: (item.type as Notification["type"]) || "system",
-              title: title,
-              description: description,
-              link: getNotificationLink(item.type, referenceId),
-              created_at: item.created_at || new Date().toISOString(),
-              is_read: item.is_read || item.status === "read" || false,
-            };
-          });
-          allNotifications.push(...mapped);
-        } else {
-          console.log("📭 No real notifications found");
-        }
-      } catch (tableError) {
-        console.log("❌ Inventory approvals table error:", tableError);
+        await supabase.rpc('check_low_stock_notifications');
+      } catch (error) {
+        console.log("Could not check low stock notifications:", error);
       }
 
-      // Only use sample data if no real notifications found
-      if (allNotifications.length === 0) {
-        console.log("🎭 Using sample notifications");
-        allNotifications.push(...getSampleNotifications());
+      // Fetch real notifications from the database
+      const { data: notificationData, error: notificationsError } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("is_read", false)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (notificationsError) {
+        console.error("Error fetching notifications:", notificationsError);
+        setNotifications([]);
+        setPendingCount(0);
+        return;
       }
 
-      setNotifications(allNotifications);
-      setPendingCount(allNotifications.filter((n) => !n.is_read).length); // Corrected pending count logic
+      const mappedNotifications: Notification[] = (notificationData || []).map((item: any) => ({
+        id: String(item.id),
+        type: item.type as Notification["type"],
+        title: item.title,
+        description: item.message,
+        link: item.link,
+        created_at: item.created_at,
+        is_read: item.is_read,
+      }));
+
+      setNotifications(mappedNotifications);
+      setPendingCount(mappedNotifications.filter((n) => !n.is_read).length);
     } catch (error) {
       console.error("Error fetching notifications:", error);
+      setNotifications([]);
+      setPendingCount(0);
     } finally {
       setNotificationsLoading(false);
     }
   };
 
-  const getNotificationLink = (type: string, referenceId: string): string => {
-    switch (type) {
-      case "purchase_order":
-        return `/purchase-orders/${referenceId}`;
-      case "transfer":
-        return `/transfers/${referenceId}`;
-      case "low_stock":
-        return `/inventory?alert=${referenceId}`;
-      default:
-        return "/approvals";
-    }
-  };
 
-  const getSampleNotifications = (): Notification[] => {
-    return [
-      {
-        id: "sample-1",
-        type: "purchase_order",
-        title: "Purchase Order #PO-1001 Needs Approval",
-        description: "New purchase order from Tech Suppliers Inc. requires your review",
-        link: "/purchase-orders/1001",
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: "sample-2",
-        type: "low_stock",
-        title: "Low Stock Alert - USB-C Cables",
-        description: "USB-C Cables stock is below minimum threshold",
-        link: "/inventory?alert=ITEM-USB-C-001",
-        created_at: new Date().toISOString(),
-      },
-    ];
-  };
 
   const markAsRead = async (notificationId: string) => {
     try {
-      if (!notificationId.startsWith("sample-")) {
-        await supabase
-          .from("inventory_approvals" as any)
-          .update({ is_read: true } as any)
-          .eq("id", notificationId);
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", notificationId);
+
+      if (error) {
+        console.error("Error marking notification as read:", error);
+        return;
       }
 
       setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
@@ -679,10 +639,10 @@ const Dashboard = () => {
     // Set up real-time listeners
     const subscription = supabase
       .channel("dashboard-updates")
-      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_approvals" as any }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
         fetchNotifications();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "inventory_items" as any }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "items" }, () => {
         fetchRealStoreMetrics();
       })
       .subscribe();

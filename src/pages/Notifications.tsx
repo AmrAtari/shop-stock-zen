@@ -27,47 +27,30 @@ const Notifications = () => {
   const fetchAllNotifications = async () => {
     setIsLoading(true);
     try {
+      // First, check and create low stock notifications
+      try {
+        await supabase.rpc('check_low_stock_notifications');
+      } catch (error) {
+        console.log("Could not check low stock notifications:", error);
+      }
+
       const { data, error } = await supabase
-        .from("inventory_approvals" as any)
-        .select(`id, user_id, type, title, message, is_read, created_at, reference_id`)
+        .from("notifications")
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      // Map DB data to the strict Notification interface with proper type handling
-      const mappedNotifications: Notification[] = ((data || []) as any[]).map((item) => {
-        let linkPath = "";
-
-        // Safely cast the 'type: string' from DB to the strict union type
-        const notificationType: Notification["type"] =
-          item.type === "purchase_order" || item.type === "transfer" || item.type === "low_stock"
-            ? (item.type as Notification["type"])
-            : "system";
-
-        switch (notificationType) {
-          case "purchase_order":
-            linkPath = `/purchase-orders/${item.reference_id}/edit`;
-            break;
-          case "transfer":
-            linkPath = `/transfers/${item.reference_id}`;
-            break;
-          case "low_stock":
-            linkPath = `/alerts?item=${item.reference_id}`;
-            break;
-          default:
-            linkPath = "/approvals";
-        }
-
-        return {
-          id: String(item.id),
-          type: notificationType,
-          title: item.title,
-          description: item.message, // Use 'message' from DB for 'description'
-          link: linkPath,
-          created_at: item.created_at,
-          is_read: item.is_read,
-        };
-      });
+      // Map DB data to the strict Notification interface
+      const mappedNotifications: Notification[] = ((data || []) as any[]).map((item) => ({
+        id: String(item.id),
+        type: item.type as Notification["type"],
+        title: item.title,
+        description: item.message,
+        link: item.link,
+        created_at: item.created_at,
+        is_read: item.is_read,
+      }));
 
       setNotifications(mappedNotifications);
     } catch (error) {
@@ -81,10 +64,12 @@ const Notifications = () => {
   // Function to mark notification as read
   const markAsRead = async (id: string) => {
     try {
-      await supabase
-        .from("inventory_approvals" as any)
-        .update({ is_read: true } as any)
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
         .eq("id", id);
+
+      if (error) throw error;
 
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
     } catch (error) {

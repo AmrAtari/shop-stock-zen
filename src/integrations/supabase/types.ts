@@ -349,6 +349,42 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          is_read: boolean
+          link: string
+          message: string
+          reference_id: string | null
+          title: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          link: string
+          message: string
+          reference_id?: string | null
+          title: string
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          link?: string
+          message?: string
+          reference_id?: string | null
+          title?: string
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       origins: {
         Row: {
           created_at: string
@@ -1146,14 +1182,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      generate_pi_session_number: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
-      generate_po_number: {
-        Args: { supplier_name: string }
-        Returns: string
-      }
+      check_low_stock_notifications: { Args: never; Returns: undefined }
+      generate_pi_session_number: { Args: never; Returns: string }
+      generate_po_number: { Args: { supplier_name: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
