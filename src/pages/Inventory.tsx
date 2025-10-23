@@ -27,7 +27,7 @@ import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Label } from "@/components/ui/label";
-// [FIX 1: Import useStores hook]
+// FIX: Import the useStores hook to fetch all stores
 import { useStores } from "@/hooks/usePurchaseOrders";
 
 interface BulkActionsProps {
@@ -319,7 +319,7 @@ const InventoryNew = () => {
     },
   });
 
-  // [FIX 1: Use the hook to fetch all stores]
+  // FIX: Fetch all stores
   const { data: stores = [] } = useStores();
 
   const filteredInventory = useMemo(() => {
@@ -342,19 +342,13 @@ const InventoryNew = () => {
   }, [inventory, searchTerm, modelNumberFilter, locationFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
   // Unique values for filters
-
-  // [FIX 2: Generate uniqueLocations from the complete list of stores]
-  const uniqueLocations = useMemo(
-    // Map the fetched store objects to an array of their names,
-    // which matches the data type of the 'location' field on the item.
-    () => stores.map((store) => store.name).sort(),
-    [stores],
-  );
-
   const uniqueModelNumbers = useMemo(
     () => [...new Set(inventory.map((i) => i.item_number).filter(Boolean))].sort(),
     [inventory],
   );
+
+  // FIX: Generate uniqueLocations from the complete list of stores
+  const uniqueLocations = useMemo(() => stores.map((store) => store.name).sort(), [stores]);
 
   const uniqueSeasons = useMemo(() => [...new Set(inventory.map((i) => i.season).filter(Boolean))].sort(), [inventory]);
   const uniqueMainGroups = useMemo(
@@ -497,7 +491,6 @@ const InventoryNew = () => {
             </SelectContent>
           </Select>
 
-          {/* Location Filter now correctly uses all store names */}
           <Select value={locationFilter} onValueChange={setLocationFilter}>
             <SelectTrigger>
               <SelectValue placeholder="Location" />
