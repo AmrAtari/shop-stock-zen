@@ -29,7 +29,7 @@ import { Item, Supplier } from "@/types/database";
 
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
-  store: z.string().min(1, "Store is required"),
+  store: z.string().optional(),
   orderDate: z.date(),
   expectedDelivery: z.date().optional(),
   buyerCompanyName: z.string().optional(),
@@ -41,9 +41,9 @@ const poSchema = z.object({
   currency: z.enum(["USD", "AED"]).default("USD"),
   shippingMethod: z.string().optional(),
   fobTerms: z.string().optional(),
-  specialInstructions: z.string().optional(),
   taxPercent: z.number().min(0).max(100).default(0),
   shippingCharges: z.number().min(0).default(0),
+  specialInstructions: z.string().optional(),
 });
 
 type POFormData = z.infer<typeof poSchema>;
@@ -65,15 +65,16 @@ const PurchaseOrderNew = () => {
   const queryClient = useQueryClient();
   const { data: suppliers = [] } = useSuppliers();
   const { data: stores = [] } = useStores();
-  const { data: inventory = [] } = useQuery<Item[], Error>({
+  const { data: inventory = [] } = useQuery<Item[]>({
     queryKey: queryKeys.inventory.all,
-    queryFn: async (): Promise<Item[]> => {
+    queryFn: async () => {
       const { data, error } = await supabase.from("items").select("*").order("name");
       if (error) throw error;
-      return (data as Item[]) || [];
+      return data || [];
     },
   });
 
+  const [step, setStep] = useState(1);
   const [poItems, setPOItems] = useState<POItem[]>([]);
   const [sameBillingAddress, setSameBillingAddress] = useState(false);
   const [sameShippingAddress, setSameShippingAddress] = useState(false);
@@ -110,6 +111,18 @@ const PurchaseOrderNew = () => {
     }
   }, [watchSupplier, suppliers]);
 
+  useEffect(() => {
+    if (sameBillingAddress && watchBuyerAddress) {
+      setValue("billingAddress", watchBuyerAddress);
+    }
+  }, [sameBillingAddress, watchBuyerAddress, setValue]);
+
+  useEffect(() => {
+    if (sameShippingAddress && watchBuyerAddress) {
+      setValue("shippingAddress", watchBuyerAddress);
+    }
+  }, [sameShippingAddress, watchBuyerAddress, setValue]);
+
   const handleAddItemsFromSelector = (items: Array<{ item: Item; quantity: number; price: number }>) => {
     const newItems: POItem[] = items.map(({ item, quantity, price }) => ({
       sku: item.sku,
@@ -124,6 +137,40 @@ const PurchaseOrderNew = () => {
     }));
     setPOItems([...poItems, ...newItems]);
     toast.success(`Added ${newItems.length} items`);
+  };
+
+  const handleImportItems = (items: any[]) => {
+    const newItems: POItem[] = items.map((item) => ({
+      sku: item.sku,
+      itemName: item.itemName || item.sku,
+      itemDescription: item.description,
+      color: item.color,
+      size: item.size,
+      modelNumber: item.modelNumber,
+      unit: item.unit || "pcs",
+      quantity: item.quantity,
+      costPrice: item.costPrice,
+    }));
+    setPOItems([...poItems, ...newItems]);
+  };
+
+  const handleBarcodeScans = (scannedItems: any[]) => {
+    const newItems: POItem[] = scannedItems.map((item) => ({
+      sku: item.sku,
+      itemName: item.name || item.sku,
+      unit: "pcs",
+      quantity: item.quantity,
+      costPrice: item.price,
+    }));
+    setPOItems([...poItems, ...newItems]);
+  };
+
+  const lookupSkuForBarcode = async (sku: string) => {
+    const item = inventory.find((i) => i.sku === sku);
+    if (item) {
+      return { name: item.name, price: 0 };
+    }
+    return null;
   };
 
   const handleRemoveItem = (index: number) => {
@@ -145,26 +192,32 @@ const PurchaseOrderNew = () => {
       toast.error("Please add at least one item");
       return;
     }
+
     setIsSaving(true);
 
     try {
       const supplierData = suppliers.find((s) => s.id === data.supplier);
       if (!supplierData) throw new Error("Supplier not found");
 
-      const { data: poNumber, error: poNumberError } = await (supabase.rpc as any)("generate_po_number", {
+      // Generate PO number using database function
+      const { data: poNumber, error: poNumberError } = await supabase.rpc("generate_po_number", {
         supplier_name: supplierData.name,
       });
+
       if (poNumberError) throw poNumberError;
 
+      // Get current user for authorized_by
       const {
         data: { user },
-      } = await (supabase.auth.getUser as any)();
+      } = await supabase.auth.getUser();
 
-      const { data: poData, error: poError } = await (supabase.from as any)("purchase_orders")
+      // Create purchase order
+      const { data: poData, error: poError } = await supabase
+        .from("purchase_orders")
         .insert({
           po_number: poNumber,
           supplier: supplierData.name,
-          store_id: data.store,
+          store_id: data.store || null,
           order_date: data.orderDate.toISOString(),
           expected_delivery: data.expectedDelivery?.toISOString(),
           buyer_company_name: data.buyerCompanyName,
@@ -172,6 +225,7 @@ const PurchaseOrderNew = () => {
           buyer_contact: data.buyerContact,
           billing_address: data.billingAddress,
           shipping_address: data.shippingAddress,
+          supplier_contact_person: selectedSupplier?.contact_person,
           payment_terms: data.paymentTerms,
           currency: data.currency,
           shipping_method: data.shippingMethod,
@@ -179,6 +233,8 @@ const PurchaseOrderNew = () => {
           special_instructions: data.specialInstructions,
           subtotal,
           tax_amount: taxAmount,
+          // FIX: Added the missing tax_rate field
+          tax_rate: data.taxPercent,
           shipping_charges: data.shippingCharges,
           total_cost: grandTotal,
           total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
@@ -190,8 +246,9 @@ const PurchaseOrderNew = () => {
 
       if (poError) throw poError;
 
+      // Create PO items
       const poItemsData = poItems.map((item) => ({
-        po_id: (poData as any)?.id,
+        po_id: poData.id,
         sku: item.sku,
         item_name: item.itemName,
         item_description: item.itemDescription,
@@ -203,33 +260,13 @@ const PurchaseOrderNew = () => {
         cost_price: item.costPrice,
       }));
 
-      const { error: itemsError } = await (supabase.from as any)("purchase_order_items").insert(poItemsData);
+      const { error: itemsError } = await supabase.from("purchase_order_items").insert(poItemsData);
+
       if (itemsError) throw itemsError;
 
-      for (const item of poItems) {
-        const { data: existingRecord } = await (supabase.from as any)("store_quantities")
-          .select("*")
-          .eq("store_id", data.store)
-          .eq("sku", item.sku)
-          .maybeSingle();
-
-        const currentQty = (existingRecord as any)?.quantity || 0;
-        if (currentQty > 0) {
-          await (supabase.from as any)("store_quantities")
-            .update({ quantity: currentQty + item.quantity, updated_at: new Date().toISOString() })
-            .eq("store_id", data.store)
-            .eq("sku", item.sku);
-        } else {
-          await (supabase.from as any)("store_quantities").insert({
-            store_id: data.store,
-            sku: item.sku,
-            quantity: item.quantity,
-            created_at: new Date().toISOString(),
-          });
-        }
-      }
-
+      // Invalidate queries
       await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+
       toast.success(`Purchase Order ${poNumber} created successfully`);
       navigate("/purchase-orders");
     } catch (error: any) {
@@ -253,6 +290,7 @@ const PurchaseOrderNew = () => {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Step 1: Basic Info & Dates */}
         <Card>
           <CardHeader>
             <CardTitle>1. Identification & Dates</CardTitle>
@@ -264,7 +302,7 @@ const PurchaseOrderNew = () => {
                 <Input value="Auto-generated on save" disabled />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="store">Store *</Label>
+                <Label htmlFor="store">Store (Optional)</Label>
                 <Select value={watch("store")} onValueChange={(value) => setValue("store", value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select store" />
@@ -277,7 +315,6 @@ const PurchaseOrderNew = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.store && <p className="text-sm text-destructive">{errors.store.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="orderDate">Order Date *</Label>
@@ -298,44 +335,124 @@ const PurchaseOrderNew = () => {
                   </PopoverContent>
                 </Popover>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="expectedDelivery">Expected Delivery Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {watch("expectedDelivery") ? format(watch("expectedDelivery"), "PPP") : "Select date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={watch("expectedDelivery")}
+                      onSelect={(date) => setValue("expectedDelivery", date)}
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Buyer & Supplier Details */}
+        {/* Step 2: Buyer & Supplier Details */}
         <Card>
           <CardHeader>
             <CardTitle>2. Buyer & Supplier Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="supplier">Supplier *</Label>
-                <Select value={watchSupplier} onValueChange={(value) => setValue("supplier", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select supplier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map((supplier) => (
-                      <SelectItem key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.supplier && <p className="text-sm text-destructive">{errors.supplier.message}</p>}
-              </div>
-              {selectedSupplier && (
-                <div className="p-4 bg-muted rounded-lg space-y-2">
-                  <p><strong>Address:</strong> {selectedSupplier.address || "N/A"}</p>
-                  <p><strong>Contact:</strong> {selectedSupplier.contact_person || "N/A"}</p>
+              <div className="space-y-4">
+                <h3 className="font-semibold">Buyer Information</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="buyerCompanyName">Company Name</Label>
+                  <Input {...register("buyerCompanyName")} placeholder="Your company name" />
                 </div>
-              )}
+                <div className="space-y-2">
+                  <Label htmlFor="buyerAddress">Address</Label>
+                  <Textarea {...register("buyerAddress")} placeholder="Company address" rows={3} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="buyerContact">Contact</Label>
+                  <Input {...register("buyerContact")} placeholder="Phone / Email" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="billingAddress">Billing Address</Label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Checkbox
+                      checked={sameBillingAddress}
+                      onCheckedChange={(checked) => setSameBillingAddress(checked as boolean)}
+                    />
+                    <span className="text-sm">Same as buyer address</span>
+                  </div>
+                  <Textarea
+                    {...register("billingAddress")}
+                    placeholder="Billing address"
+                    rows={3}
+                    disabled={sameBillingAddress}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="shippingAddress">Shipping Address</Label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Checkbox
+                      checked={sameShippingAddress}
+                      onCheckedChange={(checked) => setSameShippingAddress(checked as boolean)}
+                    />
+                    <span className="text-sm">Same as buyer address</span>
+                  </div>
+                  <Textarea
+                    {...register("shippingAddress")}
+                    placeholder="Shipping address"
+                    rows={3}
+                    disabled={sameShippingAddress}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-semibold">Supplier Information</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="supplier">Supplier *</Label>
+                  <Select value={watchSupplier} onValueChange={(value) => setValue("supplier", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select supplier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {suppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.supplier && <p className="text-sm text-destructive">{errors.supplier.message}</p>}
+                </div>
+                {selectedSupplier && (
+                  <div className="p-4 bg-muted rounded-lg space-y-2">
+                    <p className="text-sm">
+                      <strong>Address:</strong> {selectedSupplier.address || "N/A"}
+                    </p>
+                    <p className="text-sm">
+                      <strong>Contact Person:</strong> {selectedSupplier.contact_person || "N/A"}
+                    </p>
+                    <p className="text-sm">
+                      <strong>Phone:</strong> {selectedSupplier.phone || "N/A"}
+                    </p>
+                    <p className="text-sm">
+                      <strong>Email:</strong> {selectedSupplier.email || "N/A"}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Add Items */}
+        {/* Step 3: Items */}
         <Card>
           <CardHeader>
             <CardTitle>3. Add Items</CardTitle>
@@ -351,10 +468,10 @@ const PurchaseOrderNew = () => {
                 <POItemSelector items={inventory} onSelect={handleAddItemsFromSelector} />
               </TabsContent>
               <TabsContent value="import">
-                <POItemImport onImport={() => {}} existingSkus={inventory.map((i) => i.sku)} />
+                <POItemImport onImport={handleImportItems} existingSkus={inventory.map((i) => i.sku)} />
               </TabsContent>
               <TabsContent value="barcode">
-                <POBarcodeScanner onScan={() => {}} onLookupSku={async () => null} />
+                <POBarcodeScanner onScan={handleBarcodeScans} onLookupSku={lookupSkuForBarcode} />
               </TabsContent>
             </Tabs>
 
@@ -368,7 +485,10 @@ const PurchaseOrderNew = () => {
                         <TableHead>#</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead>Item Name</TableHead>
+                        <TableHead>Color</TableHead>
+                        <TableHead>Size</TableHead>
                         <TableHead>Qty</TableHead>
+                        <TableHead>Unit</TableHead>
                         <TableHead>Price</TableHead>
                         <TableHead>Total</TableHead>
                         <TableHead></TableHead>
@@ -378,14 +498,181 @@ const PurchaseOrderNew = () => {
                       {poItems.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell>{index + 1}</TableCell>
-                          <TableCell>{item.sku}</TableCell>
+                          <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                           <TableCell>{item.itemName}</TableCell>
                           <TableCell>
                             <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(index, "quantity", parseInt(e.target.value))}
+                              value={item.color || ""}
+                              onChange={(e) => handleItemChange(index, "color", e.target.value)}
+                              className="w-20"
                             />
                           </TableCell>
                           <TableCell>
                             <Input
+                              value={item.size || ""}
+                              onChange={(e) => handleItemChange(index, "size", e.target.value)}
+                              className="w-20"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => handleItemChange(index, "quantity", parseInt(e.target.value) || 1)}
+                              className="w-20"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              value={item.unit}
+                              onChange={(e) => handleItemChange(index, "unit", e.target.value)}
+                              className="w-20"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.costPrice}
+                              onChange={(e) => handleItemChange(index, "costPrice", parseFloat(e.target.value) || 0)}
+                              className="w-24"
+                            />
+                          </TableCell>
+                          <TableCell>{(item.quantity * item.costPrice).toFixed(2)}</TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(index)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Step 4: Financial Details */}
+        <Card>
+          <CardHeader>
+            <CardTitle>4. Financial Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="paymentTerms">Payment Terms</Label>
+                <Select value={watch("paymentTerms")} onValueChange={(value) => setValue("paymentTerms", value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Net 30">Net 30</SelectItem>
+                    <SelectItem value="Net 60">Net 60</SelectItem>
+                    <SelectItem value="COD">COD (Cash on Delivery)</SelectItem>
+                    <SelectItem value="2% 10 Net 30">2% 10 Net 30</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="currency">Currency</Label>
+                <Select value={watchCurrency} onValueChange={(value) => setValue("currency", value as "USD" | "AED")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="AED">AED (د.إ)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="taxPercent">Tax %</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  {...register("taxPercent", { valueAsNumber: true })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shippingCharges">Shipping Charges</Label>
+                <Input type="number" min="0" step="0.01" {...register("shippingCharges", { valueAsNumber: true })} />
+              </div>
+            </div>
+
+            <div className="p-4 bg-muted rounded-lg space-y-2">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span className="font-semibold">
+                  {watchCurrency} {subtotal.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tax ({watchTaxPercent}%):</span>
+                <span className="font-semibold">
+                  {watchCurrency} {taxAmount.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Shipping:</span>
+                <span className="font-semibold">
+                  {watchCurrency} {(watchShippingCharges || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-lg font-bold border-t pt-2">
+                <span>Grand Total:</span>
+                <span>
+                  {watchCurrency} {grandTotal.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Step 5: Logistics & Notes */}
+        <Card>
+          <CardHeader>
+            <CardTitle>5. Logistics & Additional Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="shippingMethod">Shipping Method (Optional)</Label>
+                <Input {...register("shippingMethod")} placeholder="e.g., UPS Ground, Air Freight" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fobTerms">FOB Terms (Optional)</Label>
+                <Input {...register("fobTerms")} placeholder="e.g., FOB Destination" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="specialInstructions">Special Instructions / Notes (Optional)</Label>
+              <Textarea
+                {...register("specialInstructions")}
+                placeholder="Any special requirements or notes..."
+                rows={4}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-4">
+          <Button type="button" variant="outline" onClick={() => navigate("/purchase-orders")} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSaving || poItems.length === 0}>
+            {isSaving ? "Creating..." : "Create Purchase Order"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+export default PurchaseOrderNew;
