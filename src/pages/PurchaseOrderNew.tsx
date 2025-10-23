@@ -128,16 +128,44 @@ const PurchaseOrderNew = () => {
     try {
       // Update inventory for each item in the PO
       for (const item of items) {
-        const { error: updateError } = await supabase.rpc("update_inventory_quantity", {
-          p_sku: item.sku,
-          p_quantity_change: item.quantity,
-          p_reason: "purchase_order_received",
-          p_reference_id: poId,
-        });
+        // First, get current quantity
+        const { data: currentItem, error: fetchError } = await supabase
+          .from("items")
+          .select("quantity")
+          .eq("sku", item.sku)
+          .single();
+
+        if (fetchError) {
+          console.error("Failed to fetch current item:", fetchError);
+          throw new Error(`Failed to fetch item ${item.sku}`);
+        }
+
+        // Update inventory quantity
+        const { error: updateError } = await supabase
+          .from("items")
+          .update({
+            quantity: (currentItem.quantity || 0) + item.quantity,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("sku", item.sku);
 
         if (updateError) {
           console.error("Failed to update inventory for item:", item.sku, updateError);
           throw new Error(`Failed to update inventory for ${item.sku}`);
+        }
+
+        // Create inventory transaction record
+        const { error: transactionError } = await supabase.from("inventory_transactions").insert({
+          sku: item.sku,
+          quantity_change: item.quantity,
+          reason: "purchase_order_received",
+          reference_id: poId,
+          created_at: new Date().toISOString(),
+        });
+
+        if (transactionError) {
+          console.error("Failed to create transaction record:", transactionError);
+          // Don't throw here as the main update succeeded
         }
       }
 
