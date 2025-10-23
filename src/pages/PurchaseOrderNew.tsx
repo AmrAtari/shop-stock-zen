@@ -29,7 +29,7 @@ import { Item, Supplier } from "@/types/database";
 
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
-  store: z.string().optional(),
+  store: z.string().min(1, "Target store is required"), // FIX 1: Store is now mandatory
   orderDate: z.date(),
   expectedDelivery: z.date().optional(),
   buyerCompanyName: z.string().optional(),
@@ -74,7 +74,6 @@ const PurchaseOrderNew = () => {
     },
   });
 
-  const [step, setStep] = useState(1);
   const [poItems, setPOItems] = useState<POItem[]>([]);
   const [sameBillingAddress, setSameBillingAddress] = useState(false);
   const [sameShippingAddress, setSameShippingAddress] = useState(false);
@@ -95,6 +94,7 @@ const PurchaseOrderNew = () => {
       currency: "USD",
       taxPercent: 0,
       shippingCharges: 0,
+      // NOTE: Store default is intentionally left out to enforce selection via min(1)
     },
   });
 
@@ -114,14 +114,18 @@ const PurchaseOrderNew = () => {
   useEffect(() => {
     if (sameBillingAddress && watchBuyerAddress) {
       setValue("billingAddress", watchBuyerAddress);
+    } else if (!sameBillingAddress && watchBuyerAddress === watch("billingAddress")) {
+      setValue("billingAddress", ""); // Clear if unchecked and value matches buyerAddress
     }
-  }, [sameBillingAddress, watchBuyerAddress, setValue]);
+  }, [sameBillingAddress, watchBuyerAddress, setValue, watch]);
 
   useEffect(() => {
     if (sameShippingAddress && watchBuyerAddress) {
       setValue("shippingAddress", watchBuyerAddress);
+    } else if (!sameShippingAddress && watchBuyerAddress === watch("shippingAddress")) {
+      setValue("shippingAddress", ""); // Clear if unchecked and value matches buyerAddress
     }
-  }, [sameShippingAddress, watchBuyerAddress, setValue]);
+  }, [sameShippingAddress, watchBuyerAddress, setValue, watch]);
 
   const handleAddItemsFromSelector = (items: Array<{ item: Item; quantity: number; price: number }>) => {
     const newItems: POItem[] = items.map(({ item, quantity, price }) => ({
@@ -168,7 +172,8 @@ const PurchaseOrderNew = () => {
   const lookupSkuForBarcode = async (sku: string) => {
     const item = inventory.find((i) => i.sku === sku);
     if (item) {
-      return { name: item.name, price: 0 };
+      // Use the item's unit cost as a default price
+      return { name: item.name, price: item.unit_cost || 0 };
     }
     return null;
   };
@@ -217,7 +222,7 @@ const PurchaseOrderNew = () => {
         .insert({
           po_number: poNumber,
           supplier: supplierData.name,
-          store_id: data.store || null,
+          store_id: data.store, // Required store_id is used
           order_date: data.orderDate.toISOString(),
           expected_delivery: data.expectedDelivery?.toISOString(),
           buyer_company_name: data.buyerCompanyName,
@@ -262,6 +267,10 @@ const PurchaseOrderNew = () => {
 
       if (itemsError) throw itemsError;
 
+      // NOTE ON INVENTORY:
+      // Inventory quantity update should happen in a separate "Goods Receipt"
+      // or "Receiving" step, not here, as the items haven't arrived yet.
+
       // Invalidate queries
       await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
 
@@ -299,11 +308,13 @@ const PurchaseOrderNew = () => {
                 <Label>PO Number</Label>
                 <Input value="Auto-generated on save" disabled />
               </div>
+
+              {/* Store Selection (Now Mandatory) */}
               <div className="space-y-2">
-                <Label htmlFor="store">Store (Optional)</Label>
+                <Label htmlFor="store">Store *</Label>
                 <Select value={watch("store")} onValueChange={(value) => setValue("store", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select store" />
+                  <SelectTrigger className={cn(errors.store && "border-destructive")}>
+                    <SelectValue placeholder="Select target store" />
                   </SelectTrigger>
                   <SelectContent>
                     {stores.map((store) => (
@@ -313,7 +324,10 @@ const PurchaseOrderNew = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {/* FIX 2: Added error message display for store */}
+                {errors.store && <p className="text-sm text-destructive mt-1">{errors.store.message}</p>}
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="orderDate">Order Date *</Label>
                 <Popover>
@@ -416,7 +430,7 @@ const PurchaseOrderNew = () => {
                 <div className="space-y-2">
                   <Label htmlFor="supplier">Supplier *</Label>
                   <Select value={watchSupplier} onValueChange={(value) => setValue("supplier", value)}>
-                    <SelectTrigger>
+                    <SelectTrigger className={cn(errors.supplier && "border-destructive")}>
                       <SelectValue placeholder="Select supplier" />
                     </SelectTrigger>
                     <SelectContent>
@@ -427,7 +441,7 @@ const PurchaseOrderNew = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  {errors.supplier && <p className="text-sm text-destructive">{errors.supplier.message}</p>}
+                  {errors.supplier && <p className="text-sm text-destructive mt-1">{errors.supplier.message}</p>}
                 </div>
                 {selectedSupplier && (
                   <div className="p-4 bg-muted rounded-lg space-y-2">
@@ -476,7 +490,7 @@ const PurchaseOrderNew = () => {
             {poItems.length > 0 && (
               <div className="mt-6">
                 <h3 className="font-semibold mb-4">Order Items ({poItems.length})</h3>
-                <div className="border rounded-lg">
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
