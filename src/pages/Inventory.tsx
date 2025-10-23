@@ -27,6 +27,8 @@ import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Label } from "@/components/ui/label";
+// [NEW]: Import useStores hook
+import { useStores } from "@/hooks/usePurchaseOrders";
 
 interface BulkActionsProps {
   selectedItems: Item[];
@@ -317,6 +319,9 @@ const InventoryNew = () => {
     },
   });
 
+  // [NEW]: Fetch all stores using the hook available in your project.
+  const { data: stores = [] } = useStores();
+
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const matchesSearch =
@@ -337,14 +342,23 @@ const InventoryNew = () => {
   }, [inventory, searchTerm, modelNumberFilter, locationFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
   // Unique values for filters
+
+  // [UPDATED]: uniqueLocations now uses the 'stores' data instead of filtering 'inventory'.
+  const uniqueLocations = useMemo(
+    // Assume stores object has a 'name' property that corresponds to item.location
+    () => stores.map((store) => store.name).sort(),
+    [stores],
+  );
+
   const uniqueModelNumbers = useMemo(
     () => [...new Set(inventory.map((i) => i.item_number).filter(Boolean))].sort(),
     [inventory],
   );
-  const uniqueLocations = useMemo(
-    () => [...new Set(inventory.map((i) => i.location).filter(Boolean))].sort(),
-    [inventory],
-  );
+  // The rest of the filter memos remain the same
+  // const uniqueLocations = useMemo(
+  //   () => [...new Set(inventory.map((i) => i.location).filter(Boolean))].sort(),
+  //   [inventory],
+  // );
   const uniqueSeasons = useMemo(() => [...new Set(inventory.map((i) => i.season).filter(Boolean))].sort(), [inventory]);
   const uniqueMainGroups = useMemo(
     () => [...new Set(inventory.map((i) => i.main_group).filter(Boolean))].sort(),
@@ -486,6 +500,7 @@ const InventoryNew = () => {
             </SelectContent>
           </Select>
 
+          {/* Location Filter using uniqueLocations (now based on all stores) */}
           <Select value={locationFilter} onValueChange={setLocationFilter}>
             <SelectTrigger>
               <SelectValue placeholder="Location" />
@@ -682,4 +697,4 @@ const InventoryNew = () => {
   );
 };
 
-export default InventoryNew;
+export default Inventory;
