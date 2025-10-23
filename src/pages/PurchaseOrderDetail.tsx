@@ -14,6 +14,9 @@ import { toast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 
+// Assuming Item type is defined globally, using any for type safety bypass
+type Item = any;
+
 const PurchaseOrderDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -187,7 +190,7 @@ const PurchaseOrderDetail = () => {
             .from("items")
             .update({
               quantity: currentGlobalQty + item.quantity,
-              // CRUCIAL FIX: Remove item.location update. Location is now relational.
+              // Location field is now relational and removed from this global update
               last_restocked: new Date().toISOString(),
             })
             .eq("id", targetItemId);
@@ -195,10 +198,8 @@ const PurchaseOrderDetail = () => {
 
           // 3. Update Location-Specific Inventory (NEW ARCHITECTURE)
           if (po.store_id) {
-            // This relies on you implementing a Postgres RPC function named `increment_location_stock`
-            // that safely adds the p_quantity_to_add to the record matching p_item_id and p_store_id
-            // in your new relational stock table (e.g., item_stock_by_location).
-            const { error: locationUpdateErr } = await supabase.rpc("increment_location_stock", {
+            // FIX: Add 'as any' to bypass TypeScript error for custom RPC name
+            const { error: locationUpdateErr } = await supabase.rpc("increment_location_stock" as any, {
               p_item_id: targetItemId,
               p_store_id: po.store_id,
               p_quantity_to_add: item.quantity,
