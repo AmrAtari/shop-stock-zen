@@ -36,7 +36,7 @@ const Transfers = () => {
     reason: "",
     notes: "",
   });
-  
+
   const { data: transfers = [], isLoading } = useTransfers(searchTerm, statusFilter);
   const { data: stores = [] } = useStores();
 
@@ -50,17 +50,53 @@ const Transfers = () => {
     return transfers.slice(pagination.startIndex, pagination.endIndex);
   }, [transfers, pagination.startIndex, pagination.endIndex]);
 
+  // NEW: Function to update inventory when transfer is received
+  const updateInventoryFromTransfer = async (transferId: string) => {
+    try {
+      const { error } = await supabase.rpc("process_transfer_inventory", {
+        p_transfer_id: transferId,
+        p_status: "received",
+      });
+
+      if (error) throw error;
+
+      // Update transfer status to received
+      await supabase.from("transfers").update({ status: "received" }).eq("id", transferId);
+
+      toast.success("Transfer completed and inventory updated");
+    } catch (error: any) {
+      console.error("Transfer inventory update error:", error);
+      throw error;
+    }
+  };
+
   const handleDelete = async (id: string, transferNumber: string) => {
     if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
 
     try {
       const { error } = await supabase.from("transfers").delete().eq("id", id);
       if (error) throw error;
-      
+
       await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
       toast.success("Transfer deleted");
     } catch (error: any) {
       toast.error("Failed to delete transfer");
+    }
+  };
+
+  // NEW: Function to mark transfer as received and update inventory
+  const handleReceiveTransfer = async (transferId: string, transferNumber: string) => {
+    if (!confirm(`Mark ${transferNumber} as received and update inventory?`)) return;
+
+    try {
+      await updateInventoryFromTransfer(transferId);
+
+      // Invalidate queries to refresh data
+      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+    } catch (error: any) {
+      toast.error("Failed to receive transfer: " + error.message);
     }
   };
 
@@ -82,7 +118,7 @@ const Transfers = () => {
 
   const getStoreName = (storeId: string | null) => {
     if (!storeId) return "N/A";
-    const store = stores.find(s => s.id === storeId);
+    const store = stores.find((s) => s.id === storeId);
     return store?.name || storeId;
   };
 
@@ -100,17 +136,21 @@ const Transfers = () => {
     setIsCreating(true);
     try {
       const transferNumber = `TRF-${String(transfers.length + 1).padStart(5, "0")}`;
-      
-      const { data, error } = await supabase.from("transfers").insert({
-        transfer_number: transferNumber,
-        from_store_id: formData.from_store_id,
-        to_store_id: formData.to_store_id,
-        created_at: formData.transfer_date.toISOString(),
-        status: "pending",
-        total_items: 0,
-        reason: formData.reason || null,
-        notes: formData.notes || null,
-      }).select().single();
+
+      const { data, error } = await supabase
+        .from("transfers")
+        .insert({
+          transfer_number: transferNumber,
+          from_store_id: formData.from_store_id,
+          to_store_id: formData.to_store_id,
+          created_at: formData.transfer_date.toISOString(),
+          status: "pending",
+          total_items: 0,
+          reason: formData.reason || null,
+          notes: formData.notes || null,
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
@@ -124,7 +164,7 @@ const Transfers = () => {
         reason: "",
         notes: "",
       });
-      
+
       // Navigate to the transfer detail page to add items
       if (data) {
         navigate(`/transfers/${data.id}`);
@@ -205,20 +245,25 @@ const Transfers = () => {
                     <TableCell>{getStoreName(transfer.to_store_id)}</TableCell>
                     <TableCell>
                       <Badge variant={getStatusVariant(transfer.status)}>
-                        {transfer.status.replace('_', ' ').toUpperCase()}
+                        {transfer.status.replace("_", " ").toUpperCase()}
                       </Badge>
                     </TableCell>
                     <TableCell>{transfer.total_items}</TableCell>
                     <TableCell>{format(new Date(transfer.created_at), "PP")}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => navigate(`/transfers/${transfer.id}`)}
-                        >
+                        <Button variant="ghost" size="icon" onClick={() => navigate(`/transfers/${transfer.id}`)}>
                           <Eye className="w-4 h-4" />
                         </Button>
+                        {transfer.status === "in_transit" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleReceiveTransfer(transfer.id, transfer.transfer_number)}
+                          >
+                            Receive
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -233,7 +278,7 @@ const Transfers = () => {
               )}
             </TableBody>
           </Table>
-          
+
           <div className="mt-4">
             <PaginationControls
               currentPage={pagination.currentPage}
@@ -301,7 +346,7 @@ const Transfers = () => {
                     variant="outline"
                     className={cn(
                       "w-full justify-start text-left font-normal",
-                      !formData.transfer_date && "text-muted-foreground"
+                      !formData.transfer_date && "text-muted-foreground",
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
