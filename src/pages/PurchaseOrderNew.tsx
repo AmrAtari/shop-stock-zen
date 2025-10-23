@@ -27,9 +27,14 @@ import { CalendarIcon, Trash2, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Item, Supplier } from "@/types/database";
 
+// FIX: Define a local interface that extends Item to include the missing property
+interface ItemWithCost extends Item {
+  unit_cost?: number;
+}
+
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
-  store: z.string().min(1, "Target store is required"), // FIX 1: Store is now mandatory
+  store: z.string().optional(),
   orderDate: z.date(),
   expectedDelivery: z.date().optional(),
   buyerCompanyName: z.string().optional(),
@@ -94,7 +99,6 @@ const PurchaseOrderNew = () => {
       currency: "USD",
       taxPercent: 0,
       shippingCharges: 0,
-      // NOTE: Store default is intentionally left out to enforce selection via min(1)
     },
   });
 
@@ -115,7 +119,7 @@ const PurchaseOrderNew = () => {
     if (sameBillingAddress && watchBuyerAddress) {
       setValue("billingAddress", watchBuyerAddress);
     } else if (!sameBillingAddress && watchBuyerAddress === watch("billingAddress")) {
-      setValue("billingAddress", ""); // Clear if unchecked and value matches buyerAddress
+      setValue("billingAddress", "");
     }
   }, [sameBillingAddress, watchBuyerAddress, setValue, watch]);
 
@@ -123,7 +127,7 @@ const PurchaseOrderNew = () => {
     if (sameShippingAddress && watchBuyerAddress) {
       setValue("shippingAddress", watchBuyerAddress);
     } else if (!sameShippingAddress && watchBuyerAddress === watch("shippingAddress")) {
-      setValue("shippingAddress", ""); // Clear if unchecked and value matches buyerAddress
+      setValue("shippingAddress", "");
     }
   }, [sameShippingAddress, watchBuyerAddress, setValue, watch]);
 
@@ -172,8 +176,10 @@ const PurchaseOrderNew = () => {
   const lookupSkuForBarcode = async (sku: string) => {
     const item = inventory.find((i) => i.sku === sku);
     if (item) {
+      // FIX: Assert type to ItemWithCost to access unit_cost property
+      const itemWithCost = item as ItemWithCost;
       // Use the item's unit cost as a default price
-      return { name: item.name, price: item.unit_cost || 0 };
+      return { name: itemWithCost.name, price: itemWithCost.unit_cost || 0 };
     }
     return null;
   };
@@ -222,7 +228,7 @@ const PurchaseOrderNew = () => {
         .insert({
           po_number: poNumber,
           supplier: supplierData.name,
-          store_id: data.store, // Required store_id is used
+          store_id: data.store || null,
           order_date: data.orderDate.toISOString(),
           expected_delivery: data.expectedDelivery?.toISOString(),
           buyer_company_name: data.buyerCompanyName,
@@ -267,10 +273,6 @@ const PurchaseOrderNew = () => {
 
       if (itemsError) throw itemsError;
 
-      // NOTE ON INVENTORY:
-      // Inventory quantity update should happen in a separate "Goods Receipt"
-      // or "Receiving" step, not here, as the items haven't arrived yet.
-
       // Invalidate queries
       await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
 
@@ -308,13 +310,11 @@ const PurchaseOrderNew = () => {
                 <Label>PO Number</Label>
                 <Input value="Auto-generated on save" disabled />
               </div>
-
-              {/* Store Selection (Now Mandatory) */}
               <div className="space-y-2">
-                <Label htmlFor="store">Store *</Label>
+                <Label htmlFor="store">Store (Optional)</Label>
                 <Select value={watch("store")} onValueChange={(value) => setValue("store", value)}>
-                  <SelectTrigger className={cn(errors.store && "border-destructive")}>
-                    <SelectValue placeholder="Select target store" />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select store" />
                   </SelectTrigger>
                   <SelectContent>
                     {stores.map((store) => (
@@ -324,10 +324,7 @@ const PurchaseOrderNew = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                {/* FIX 2: Added error message display for store */}
-                {errors.store && <p className="text-sm text-destructive mt-1">{errors.store.message}</p>}
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="orderDate">Order Date *</Label>
                 <Popover>
@@ -430,7 +427,7 @@ const PurchaseOrderNew = () => {
                 <div className="space-y-2">
                   <Label htmlFor="supplier">Supplier *</Label>
                   <Select value={watchSupplier} onValueChange={(value) => setValue("supplier", value)}>
-                    <SelectTrigger className={cn(errors.supplier && "border-destructive")}>
+                    <SelectTrigger>
                       <SelectValue placeholder="Select supplier" />
                     </SelectTrigger>
                     <SelectContent>
@@ -441,7 +438,7 @@ const PurchaseOrderNew = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  {errors.supplier && <p className="text-sm text-destructive mt-1">{errors.supplier.message}</p>}
+                  {errors.supplier && <p className="text-sm text-destructive">{errors.supplier.message}</p>}
                 </div>
                 {selectedSupplier && (
                   <div className="p-4 bg-muted rounded-lg space-y-2">
@@ -490,7 +487,7 @@ const PurchaseOrderNew = () => {
             {poItems.length > 0 && (
               <div className="mt-6">
                 <h3 className="font-semibold mb-4">Order Items ({poItems.length})</h3>
-                <div className="border rounded-lg overflow-x-auto">
+                <div className="border rounded-lg">
                   <Table>
                     <TableHeader>
                       <TableRow>
