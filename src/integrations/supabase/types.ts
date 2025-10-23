@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      attribute_types: {
+        Row: {
+          created_at: string
+          icon: string | null
+          id: string
+          label: string
+          name: string
+          table_name: string
+        }
+        Insert: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          label: string
+          name: string
+          table_name: string
+        }
+        Update: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          label?: string
+          name?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       brands: {
         Row: {
           created_at: string
@@ -1183,6 +1210,10 @@ export type Database = {
     }
     Functions: {
       check_low_stock_notifications: { Args: never; Returns: undefined }
+      create_attribute_table: {
+        Args: { p_icon?: string; p_label: string; p_table_name: string }
+        Returns: Json
+      }
       generate_pi_session_number: { Args: never; Returns: string }
       generate_po_number: { Args: { supplier_name: string }; Returns: string }
       has_role: {

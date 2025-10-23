@@ -139,31 +139,51 @@ const Configuration = () => {
     status: "active" as Store["status"],
   });
 
-  const [catalogs, setCatalogs] = useState<{ key: string; label: string; icon: string }[]>([
-    { key: "categories", label: "Categories", icon: "Boxes" },
-    { key: "units", label: "Units", icon: "Ruler" },
-    { key: "colors", label: "Colors", icon: "Tags" },
-    { key: "genders", label: "Genders", icon: "User" },
-    { key: "departments", label: "Departments", icon: "Building" },
-    { key: "suppliers", label: "Suppliers", icon: "Package" },
-    { key: "seasons", label: "Seasons", icon: "CloudSun" },
-    { key: "locations", label: "Locations", icon: "MapPin" },
-    { key: "sizes", label: "Sizes", icon: "Ruler" },
-  ]);
-
+  const [catalogs, setCatalogs] = useState<{ key: string; label: string; icon: string }[]>([]);
   const [attrModalOpen, setAttrModalOpen] = useState(false);
   const [newAttrName, setNewAttrName] = useState("");
+  const [newAttrIcon, setNewAttrIcon] = useState("Tag");
+
+  // Load attribute types from database
+  const loadAttributeTypes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("attribute_types")
+        .select("*")
+        .order("label");
+
+      if (error) throw error;
+
+      const catalogData = (data || []).map((attr: any) => ({
+        key: attr.table_name,
+        label: attr.label,
+        icon: attr.icon || "Tag",
+      }));
+
+      setCatalogs(catalogData);
+    } catch (error: any) {
+      console.error("Error loading attribute types:", error);
+      toast.error("Failed to load attribute types");
+    }
+  };
 
   useEffect(() => {
-    const saved = localStorage.getItem("customCatalogs");
-    if (saved) setCatalogs(JSON.parse(saved));
+    loadAttributeTypes();
     loadUsers();
     loadStores();
-  }, []);
 
-  useEffect(() => {
-    localStorage.setItem("customCatalogs", JSON.stringify(catalogs));
-  }, [catalogs]);
+    // Set up real-time subscription for attribute types
+    const subscription = supabase
+      .channel("attribute_types_subscription")
+      .on("postgres_changes", { event: "*", schema: "public", table: "attribute_types" }, () => {
+        loadAttributeTypes();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isLoading && !isAdmin) {
@@ -825,7 +845,7 @@ const Configuration = () => {
             </div>
             <div>
               <Label htmlFor="attr-icon">Icon</Label>
-              <Select>
+              <Select value={newAttrIcon} onValueChange={setNewAttrIcon}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select an icon" />
                 </SelectTrigger>
@@ -850,16 +870,33 @@ const Configuration = () => {
               Cancel
             </Button>
             <Button
-              onClick={() => {
+              onClick={async () => {
                 if (!newAttrName.trim()) return toast.error("Enter a name");
-                const newKey = newAttrName.toLowerCase().replace(/\s+/g, "_");
-                setCatalogs([...catalogs, { key: newKey, label: newAttrName, icon: "Tags" }]);
-                setAttrModalOpen(false);
-                setNewAttrName("");
-                toast.success("Attribute type added!");
+                
+                // Convert name to table name format (lowercase with underscores)
+                const tableName = newAttrName.toLowerCase().replace(/\s+/g, "_");
+                
+                try {
+                  const { data, error } = await supabase.rpc("create_attribute_table", {
+                    p_table_name: tableName,
+                    p_label: newAttrName.trim(),
+                    p_icon: newAttrIcon || "Tag",
+                  });
+
+                  if (error) throw error;
+
+                  toast.success("Attribute type created successfully!");
+                  setAttrModalOpen(false);
+                  setNewAttrName("");
+                  setNewAttrIcon("Tag");
+                  loadAttributeTypes(); // Reload the list
+                } catch (error: any) {
+                  console.error("Error creating attribute type:", error);
+                  toast.error(error.message || "Failed to create attribute type");
+                }
               }}
             >
-              Save Attribute
+              Create Attribute
             </Button>
           </DialogFooter>
         </DialogContent>
