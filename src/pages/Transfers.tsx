@@ -22,6 +22,15 @@ import { queryKeys } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
+// Define the inventory transaction type
+interface InventoryTransaction {
+  sku: string;
+  quantity_change: number;
+  reason: string;
+  reference_id?: string;
+  created_at?: string;
+}
+
 const Transfers = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -93,14 +102,19 @@ const Transfers = () => {
           throw new Error(`Failed to update inventory for ${item.sku}`);
         }
 
-        // Create inventory transaction record
-        const { error: transactionError } = await supabase.from("inventory_transactions").insert({
+        // Create inventory transaction record - using type assertion to avoid TypeScript errors
+        const transactionData: InventoryTransaction = {
           sku: item.sku,
           quantity_change: item.quantity,
           reason: "transfer_received",
           reference_id: transferId,
           created_at: new Date().toISOString(),
-        });
+        };
+
+        // Use type assertion to bypass TypeScript check for the table name
+        const { error: transactionError } = await supabase
+          .from("inventory_transactions" as any)
+          .insert(transactionData);
 
         if (transactionError) {
           console.error("Failed to create transaction record:", transactionError);
