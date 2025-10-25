@@ -129,6 +129,14 @@ const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps)
               <Label className="text-sm font-medium">Model Number</Label>
               <p className="text-sm mt-1">{item.item_number || "-"}</p>
             </div>
+            <div>
+              <Label className="text-sm font-medium">Size</Label>
+              <p className="text-sm mt-1">{item.size || "-"}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Color</Label>
+              <p className="text-sm mt-1">{item.color || "-"}</p>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -152,12 +160,16 @@ const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps)
               <Label className="text-sm font-medium">Main Group</Label>
               <p className="text-sm mt-1">{item.main_group || "-"}</p>
             </div>
+            <div>
+              <Label className="text-sm font-medium">Color Code</Label>
+              <p className="text-sm mt-1">{item.item_color_code || "-"}</p>
+            </div>
           </div>
         </div>
 
         <div className="space-y-3">
           <Label className="text-sm font-medium">Additional Information</Label>
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="font-medium">Supplier:</span> {item.supplier || "-"}
             </div>
@@ -169,6 +181,12 @@ const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps)
             </div>
             <div>
               <span className="font-medium">Theme:</span> {item.theme || "-"}
+            </div>
+            <div>
+              <span className="font-medium">Cost Price:</span> {item.cost_price ? `$${item.cost_price}` : "-"}
+            </div>
+            <div>
+              <span className="font-medium">Selling Price:</span> {item.selling_price ? `$${item.selling_price}` : "-"}
             </div>
           </div>
         </div>
@@ -215,7 +233,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
 
   const handleBulkUpdateClick = () => {
     // Check if any selected items have item_numbers
-    const hasParentItems = (selectedItems as Item[]).some((item) => item.item_number);
+    const hasParentItems = selectedItems.some((item) => item.item_number);
 
     if (hasParentItems) {
       setShowBulkConfirmation(true);
@@ -441,29 +459,48 @@ const InventoryNew = () => {
     if (storeFilter === "all") {
       return aggregatedInventory || [];
     } else {
-      // Cast storeInventory to the correct type and transform to Item format
-      return (storeInventory as StoreInventoryItem[]).map((si) => ({
-        id: si.item_id,
-        sku: si.sku,
-        name: si.item_name,
-        category: si.category || "",
-        brand: si.brand || "",
-        quantity: si.quantity || 0,
-        min_stock: si.min_stock || 0,
-        unit: si.unit || "pcs",
-        store_name: si.store_name,
-        store_id: si.store_id,
-        // These might not be available in StoreInventoryView, so we'll leave them empty
-        item_number: "",
-        season: "",
-        main_group: "",
-        supplier: "",
-        department: "",
-        origin: "",
-        theme: "",
-        created_at: "",
-        updated_at: "",
-      })) as Item[];
+      // Cast storeInventory to the correct type and transform to Item format with all required properties
+      return (storeInventory as StoreInventoryItem[]).map(
+        (si) =>
+          ({
+            // Basic required fields from store inventory
+            id: si.item_id,
+            sku: si.sku,
+            name: si.item_name,
+            category: si.category || "",
+            brand: si.brand || "",
+            quantity: si.quantity || 0,
+            min_stock: si.min_stock || 0,
+            unit: si.unit || "pcs",
+
+            // Store-specific fields
+            store_name: si.store_name,
+            store_id: si.store_id,
+
+            // Fields that might not be available in StoreInventoryView - set to empty/default
+            item_number: "",
+            season: "",
+            main_group: "",
+            supplier: "",
+            department: "",
+            origin: "",
+            theme: "",
+            created_at: "",
+            updated_at: "",
+
+            // Additional required fields from Item type with defaults
+            size: "",
+            color: "",
+            color_id: "",
+            item_color_code: "",
+            cost_price: 0,
+            selling_price: 0,
+            barcode: "",
+            notes: "",
+            image_url: "",
+            is_active: true,
+          }) as Item,
+      ); // Explicitly cast to Item type
     }
   }, [storeFilter, aggregatedInventory, storeInventory]);
 
