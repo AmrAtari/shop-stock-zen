@@ -27,6 +27,8 @@ import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Label } from "@/components/ui/label";
+import { useStoreInventoryView, useAggregatedInventory } from "@/hooks/useStoreInventoryView";
+import { useStores } from "@/hooks/usePurchaseOrders";
 
 interface BulkActionsProps {
   selectedItems: Item[];
@@ -302,25 +304,35 @@ const InventoryNew = () => {
 
   // Filter states
   const [modelNumberFilter, setModelNumberFilter] = useState<string>("all");
-  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [storeFilter, setStoreFilter] = useState<string>("all");
   const [seasonFilter, setSeasonFilter] = useState<string>("all");
   const [mainGroupFilter, setMainGroupFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  const { data: inventory = [], isLoading } = useQuery<Item[]>({
-    queryKey: queryKeys.inventory.all,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("items").select("*").order("name");
+  // Fetch stores for filtering
+  const { data: stores = [] } = useStores();
 
-      if (error) {
-        toast.error("Failed to load inventory");
-        throw error;
-      }
+  // Fetch store-based inventory or aggregated view
+  const { data: storeInventory = [], isLoading: storeInvLoading } = useStoreInventoryView(
+    storeFilter !== "all" ? storeFilter : undefined
+  );
+  const { data: aggregatedInventory = [], isLoading: aggLoading } = useAggregatedInventory();
 
-      // Explicitly return as Item[] to ensure type is preserved for useMemo below
-      return (data as Item[]) || [];
-    },
-  });
+  // Use store inventory when a specific store is selected, otherwise use aggregated
+  const inventory = storeFilter === "all" ? aggregatedInventory : storeInventory.map(si => ({
+    id: si.item_id,
+    sku: si.sku,
+    name: si.item_name,
+    category: si.category,
+    brand: si.brand || "",
+    quantity: si.quantity,
+    min_stock: si.min_stock,
+    unit: si.unit,
+    store_name: si.store_name,
+    store_id: si.store_id,
+  }));
+
+  const isLoading = storeInvLoading || aggLoading;
 
   const filteredInventory = useMemo(() => {
     // Cast to Item[] for safety as well
@@ -330,25 +342,21 @@ const InventoryNew = () => {
         item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.category.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
-      const matchesLocation = locationFilter === "all" || item.location === locationFilter;
-      const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
+      const matchesModelNumber = modelNumberFilter === "all" || (item as any).item_number === modelNumberFilter;
+      const matchesStore = storeFilter === "all" || (item as any).store_id === storeFilter;
+      const matchesSeason = seasonFilter === "all" || (item as any).season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
 
       return (
-        matchesSearch && matchesModelNumber && matchesLocation && matchesSeason && matchesMainGroup && matchesCategory
+        matchesSearch && matchesModelNumber && matchesStore && matchesSeason && matchesMainGroup && matchesCategory
       );
     });
-  }, [inventory, searchTerm, modelNumberFilter, locationFilter, seasonFilter, mainGroupFilter, categoryFilter]);
+  }, [inventory, searchTerm, modelNumberFilter, storeFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
   // Unique values for filters
   const uniqueModelNumbers = useMemo(
     () => [...new Set((inventory as Item[]).map((i) => i.item_number).filter(Boolean))].sort(),
-    [inventory],
-  );
-  const uniqueLocations = useMemo(
-    () => [...new Set((inventory as Item[]).map((i) => i.location).filter(Boolean))].sort(),
     [inventory],
   );
   const uniqueSeasons = useMemo(
@@ -495,15 +503,15 @@ const InventoryNew = () => {
             </SelectContent>
           </Select>
 
-          <Select value={locationFilter} onValueChange={setLocationFilter}>
+          <Select value={storeFilter} onValueChange={setStoreFilter}>
             <SelectTrigger>
-              <SelectValue placeholder="Location" />
+              <SelectValue placeholder="Store" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Locations</SelectItem>
-              {uniqueLocations.map((loc) => (
-                <SelectItem key={loc} value={loc}>
-                  {loc}
+              <SelectItem value="all">All Stores</SelectItem>
+              {stores.map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -572,22 +580,12 @@ const InventoryNew = () => {
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Main Group</TableHead>
               <TableHead>Brand</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Color</TableHead>
-              <TableHead>Gender</TableHead>
-              <TableHead>Season</TableHead>
-              <TableHead>Origin</TableHead>
-              <TableHead>Theme</TableHead>
-              <TableHead>Supplier</TableHead>
+              <TableHead>Store</TableHead>
               <TableHead>Quantity</TableHead>
               <TableHead>Unit</TableHead>
+              <TableHead>Min Stock</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Model Number</TableHead>
-              <TableHead>Prices</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -604,35 +602,30 @@ const InventoryNew = () => {
                   <TableCell className="font-medium">{item.sku}</TableCell>
                   <TableCell>{item.name}</TableCell>
                   <TableCell>{item.category}</TableCell>
-                  <TableCell>{item.department || "-"}</TableCell>
-                  <TableCell>{item.main_group || "-"}</TableCell>
                   <TableCell>{item.brand || "-"}</TableCell>
-                  <TableCell>{item.size || "-"}</TableCell>
-                  <TableCell>{item.color || "-"}</TableCell>
-                  <TableCell>{item.gender || "-"}</TableCell>
-                  <TableCell>{item.season || "-"}</TableCell>
-                  <TableCell>{item.origin || "-"}</TableCell>
-                  <TableCell>{item.theme || "-"}</TableCell>
-                  <TableCell>{item.supplier || "-"}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>
+                    {storeFilter === "all" ? (
+                      <div className="space-y-1">
+                        <div className="font-medium text-sm">Multiple Stores</div>
+                        <div className="text-xs text-muted-foreground">
+                          {(item as any).stores?.map((s: any) => (
+                            <div key={s.store_id}>
+                              {s.store_name}: {s.quantity}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      (item as any).store_name || "-"
+                    )}
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {storeFilter === "all" ? (item as any).total_quantity : item.quantity}
+                  </TableCell>
                   <TableCell>{item.unit}</TableCell>
+                  <TableCell>{item.min_stock}</TableCell>
                   <TableCell>
                     <Badge variant={status.variant}>{status.label}</Badge>
-                  </TableCell>
-                  <TableCell>{item.location || "-"}</TableCell>
-                  <TableCell>{item.item_number || "-"}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedItemForHistory({ id: item.id, name: item.name });
-                        setPriceHistoryOpen(true);
-                      }}
-                    >
-                      <History className="w-4 h-4 mr-1" />
-                      History
-                    </Button>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">

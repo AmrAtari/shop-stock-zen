@@ -149,12 +149,24 @@ const PurchaseOrderDetail = () => {
   };
 
   const handleReceive = async () => {
+    if (!po || !po.store_id) {
+      toast({
+        title: "Error",
+        description: "Cannot receive PO without a destination store",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
+      console.log("Receiving PO to store:", po.store_id);
       let updatedCount = 0;
       const notFoundSkus: string[] = [];
 
       for (const item of items) {
         let targetItemId: string | null = null;
+
+        console.log(`Processing item: ${item.sku}`);
 
         // 1. Find the Item ID
         if (item.item_id) {
@@ -184,25 +196,42 @@ const PurchaseOrderDetail = () => {
         if (targetItemId) {
           // 2. Update Store Inventory
           if (po.store_id) {
-            // Check if store inventory record exists
-            const { data: existingStoreInv } = await supabase
-              .from("store_inventory")
-              .select("id, quantity")
-              .eq("item_id", targetItemId)
-              .eq("store_id", po.store_id)
-              .maybeSingle();
+            const previousQty = await (async () => {
+              const { data: existingStoreInv, error: fetchErr } = await supabase
+                .from("store_inventory")
+                .select("id, quantity")
+                .eq("item_id", targetItemId)
+                .eq("store_id", po.store_id)
+                .maybeSingle();
 
-            if (existingStoreInv) {
+              if (fetchErr) {
+                console.error("Error fetching store inventory:", fetchErr);
+                throw fetchErr;
+              }
+
+              return existingStoreInv;
+            })();
+
+            const prevQty = previousQty?.quantity || 0;
+            const newQty = prevQty + item.quantity;
+
+            console.log(`Store inventory - Previous: ${prevQty}, Adding: ${item.quantity}, New: ${newQty}`);
+
+            if (previousQty) {
               // Update existing record
               const { error: updateErr } = await supabase
                 .from("store_inventory")
                 .update({
-                  quantity: existingStoreInv.quantity + item.quantity,
+                  quantity: newQty,
                   last_restocked: new Date().toISOString(),
                 })
-                .eq("id", existingStoreInv.id);
+                .eq("id", previousQty.id);
               
-              if (updateErr) throw updateErr;
+              if (updateErr) {
+                console.error("Error updating store_inventory:", updateErr);
+                throw updateErr;
+              }
+              console.log("Successfully updated store_inventory");
             } else {
               // Insert new record
               const { error: insertErr } = await supabase
@@ -211,10 +240,15 @@ const PurchaseOrderDetail = () => {
                   item_id: targetItemId,
                   store_id: po.store_id,
                   quantity: item.quantity,
+                  min_stock: 0,
                   last_restocked: new Date().toISOString(),
                 });
               
-              if (insertErr) throw insertErr;
+              if (insertErr) {
+                console.error("Error inserting store_inventory:", insertErr);
+                throw insertErr;
+              }
+              console.log("Successfully inserted store_inventory");
             }
 
             // Create stock adjustment record
@@ -223,14 +257,18 @@ const PurchaseOrderDetail = () => {
               .insert({
                 item_id: targetItemId,
                 store_id: po.store_id,
-                previous_quantity: existingStoreInv?.quantity || 0,
-                new_quantity: (existingStoreInv?.quantity || 0) + item.quantity,
+                previous_quantity: prevQty,
+                new_quantity: newQty,
                 adjustment: item.quantity,
                 reason: `PO Receipt: ${po.po_number}`,
                 reference_number: po.po_number,
               });
             
-            if (adjustmentErr) throw adjustmentErr;
+            if (adjustmentErr) {
+              console.error("Error creating stock adjustment:", adjustmentErr);
+              throw adjustmentErr;
+            }
+            console.log("Successfully created stock adjustment");
           }
 
           updatedCount += 1;
