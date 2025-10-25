@@ -314,33 +314,40 @@ const InventoryNew = () => {
 
   // Fetch store-based inventory or aggregated view
   const { data: storeInventory = [], isLoading: storeInvLoading } = useStoreInventoryView(
-    storeFilter !== "all" ? storeFilter : undefined
+    storeFilter !== "all" ? storeFilter : undefined,
   );
   const { data: aggregatedInventory = [], isLoading: aggLoading } = useAggregatedInventory();
 
   // Use store inventory when a specific store is selected, otherwise use aggregated
-  const inventory = storeFilter === "all" ? aggregatedInventory : storeInventory.map(si => ({
-    id: si.item_id,
-    sku: si.sku,
-    name: si.item_name,
-    category: si.category,
-    brand: si.brand || "",
-    quantity: si.quantity,
-    min_stock: si.min_stock,
-    unit: si.unit,
-    store_name: si.store_name,
-    store_id: si.store_id,
-  }));
+  const inventory =
+    storeFilter === "all"
+      ? aggregatedInventory
+      : storeInventory.map((si) => ({
+          id: si.item_id,
+          sku: si.sku,
+          name: si.item_name,
+          category: si.category,
+          brand: si.brand || "",
+          quantity: si.quantity,
+          min_stock: si.min_stock,
+          unit: si.unit,
+          store_name: si.store_name,
+          store_id: si.store_id,
+        }));
 
   const isLoading = storeInvLoading || aggLoading;
 
   const filteredInventory = useMemo(() => {
-    // Cast to Item[] for safety as well
     return (inventory as Item[]).filter((item) => {
+      // Safely handle potentially undefined properties with fallbacks
+      const name = item.name || "";
+      const sku = item.sku || "";
+      const category = item.category || "";
+
       const matchesSearch =
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchTerm.toLowerCase());
+        name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        category.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesModelNumber = modelNumberFilter === "all" || (item as any).item_number === modelNumberFilter;
       const matchesStore = storeFilter === "all" || (item as any).store_id === storeFilter;
