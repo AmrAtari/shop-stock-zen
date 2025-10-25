@@ -1,7 +1,8 @@
+// src/pages/Inventory.tsx
 import React, { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient"; // make sure you have this configured
+import { supabase } from "../supabaseClient";
 
-// TypeScript interfaces
+// Define TypeScript interfaces for our data
 interface InventoryItem {
   id: string;
   name: string;
@@ -35,7 +36,7 @@ interface StoreSummary {
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showDebug, setShowDebug] = useState(true);
+  const [showDebug, setShowDebug] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
   const [debugInfo, setDebugInfo] = useState<any>({});
@@ -52,30 +53,33 @@ const Inventory = () => {
       currentPath: window.location.pathname,
     };
 
+    // Check localStorage
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key) {
         try {
           const value = localStorage.getItem(key);
           storageData.localStorage[key] = value ? JSON.parse(value) : null;
-        } catch {
+        } catch (e) {
           storageData.localStorage[key] = localStorage.getItem(key);
         }
       }
     }
 
+    // Check sessionStorage
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
       if (key) {
         try {
           const value = sessionStorage.getItem(key);
           storageData.sessionStorage[key] = value ? JSON.parse(value) : null;
-        } catch {
+        } catch (e) {
           storageData.sessionStorage[key] = sessionStorage.getItem(key);
         }
       }
     }
 
+    // Check global variables
     const globalVars = ["inventory", "storeData", "supabase", "queryClient", "react"];
     globalVars.forEach((varName) => {
       if ((window as any)[varName]) {
@@ -89,8 +93,6 @@ const Inventory = () => {
   };
 
   const analyzeStores = (inventoryData: InventoryItem[]) => {
-    if (!inventoryData || inventoryData.length === 0) return {};
-
     const stores: StoreSummary = {};
 
     inventoryData.forEach((item) => {
@@ -112,31 +114,34 @@ const Inventory = () => {
     return stores;
   };
 
-  // Load inventory from Supabase
   const loadInventory = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       console.log("🔄 Loading inventory from Supabase...");
 
-      const { data, error } = await supabase.from<InventoryItem, InventoryItem>("inventory").select("*, store(*)");
+      // Fetch inventory items from Supabase
+      const { data, error } = await supabase.from<InventoryItem>("inventory").select("*");
 
       if (error) {
-        console.error("❌ Supabase error:", error);
-        return;
-      }
-
-      if (data) {
+        console.error("❌ Supabase fetch error:", error);
+        setInventory([]);
+      } else if (data) {
         setInventory(data);
         console.log(`✅ Loaded ${data.length} items from Supabase`);
       }
     } catch (err) {
-      console.error("❌ Inventory load failed:", err);
+      console.error("❌ Unexpected error loading inventory:", err);
+      setInventory([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Filter inventory
+  useEffect(() => {
+    loadInventory();
+  }, []);
+
+  // Filter inventory based on search and store filter
   const filteredInventory = inventory.filter((item) => {
     const matchesSearch =
       searchTerm === "" ||
@@ -153,24 +158,18 @@ const Inventory = () => {
     return matchesSearch && matchesStore;
   });
 
+  // Get unique stores for filter dropdown
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
-
     inventory.forEach((item) => {
       const storeId = item.storeId || item.store_id || item.store?.id;
       const storeName = item.store?.name || storeId || "Unknown Store";
-
       if (storeId) stores[storeId] = storeName;
     });
-
     return stores;
   };
 
   const storeSummary = analyzeStores(inventory);
-
-  useEffect(() => {
-    loadInventory();
-  }, []);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -194,6 +193,7 @@ const Inventory = () => {
       {showDebug && (
         <div className="mb-6 p-4 border-2 border-red-300 rounded-lg bg-red-50">
           <h3 className="text-lg font-semibold text-red-800 mb-3">🛠️ Debug Panel</h3>
+
           <div className="flex gap-2 mb-3 flex-wrap">
             <button
               onClick={debugAllStorage}
@@ -214,7 +214,7 @@ const Inventory = () => {
               <strong>Local Storage:</strong>
               <div className="text-xs text-gray-600 mt-1">
                 {Object.keys(debugInfo.localStorage || {}).length > 0
-                  ? Object.keys(debugInfo.localStorage || {}).join(", ")
+                  ? Object.keys(debugInfo.localStorage).join(", ")
                   : "No inventory data found"}
               </div>
             </div>
@@ -222,7 +222,7 @@ const Inventory = () => {
               <strong>Session Storage:</strong>
               <div className="text-xs text-gray-600 mt-1">
                 {Object.keys(debugInfo.sessionStorage || {}).length > 0
-                  ? Object.keys(debugInfo.sessionStorage || {}).join(", ")
+                  ? Object.keys(debugInfo.sessionStorage).join(", ")
                   : "No session data"}
               </div>
             </div>
@@ -250,6 +250,7 @@ const Inventory = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
+
           <div className="md:w-64">
             <label htmlFor="store-filter" className="block text-sm font-medium text-gray-700 mb-1">
               Filter by Store
@@ -281,7 +282,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* Store Summary */}
+      {/* Store Summary Cards */}
       {Object.keys(storeSummary).length > 0 && (
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Store Summary</h2>
@@ -306,7 +307,7 @@ const Inventory = () => {
         </div>
       )}
 
-      {/* Inventory Table */}
+      {/* Inventory Items */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {loading ? (
           <div className="p-8 text-center">
@@ -314,9 +315,23 @@ const Inventory = () => {
             <p className="mt-4 text-gray-600">Loading inventory...</p>
           </div>
         ) : filteredInventory.length === 0 ? (
-          <div className="p-8 text-center text-gray-600">No items found for the selected filters.</div>
+          <div className="p-8 text-center">
+            <div className="text-gray-400 text-6xl mb-4">📦</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
+            <p className="text-gray-600 mb-4">
+              {inventory.length === 0
+                ? "No inventory data available. Check the debug panel for issues."
+                : "No items match your current filters."}
+            </p>
+            {inventory.length === 0 && (
+              <button onClick={loadInventory} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                Retry Loading
+              </button>
+            )}
+          </div>
         ) : (
           <div className="overflow-hidden">
+            {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
               <div className="col-span-4">Item</div>
               <div className="col-span-2">SKU</div>
@@ -324,6 +339,8 @@ const Inventory = () => {
               <div className="col-span-2 text-right">Price</div>
               <div className="col-span-2">Store</div>
             </div>
+
+            {/* Table Rows */}
             {filteredInventory.map((item) => (
               <div
                 key={item.id}
