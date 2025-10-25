@@ -57,26 +57,25 @@ const Inventory: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Load Inventory
-  const loadInventory = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.from("store_inventory").select(`*, item:items (*), store:stores (*)`);
-      if (error) throw error;
-      setInventory(data || []);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadInventory();
+    const fetchInventory = async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.from("store_inventory").select(`*, item:items (*), store:stores (*)`);
+        if (error) throw error;
+        setInventory(data || []);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInventory();
 
-    // Real-time subscription
+    // Realtime subscription
     const subscription = supabase
       .channel("public:store_inventory")
-      .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, (payload: any) => {
         setInventory((prev) => {
           const updated = [...prev];
           const index = updated.findIndex((i) => i.id === payload.new?.id);
@@ -91,7 +90,9 @@ const Inventory: React.FC = () => {
       })
       .subscribe();
 
-    return () => supabase.removeChannel(subscription);
+    return () => {
+      supabase.removeChannel(subscription);
+    };
   }, []);
 
   // Total stock across all stores
@@ -134,10 +135,8 @@ const Inventory: React.FC = () => {
       let aValue: any;
       let bValue: any;
       if (sortField === "total_quantity") {
-        const totalA = inventory.filter((i) => i.item_id === a.item_id).reduce((sum, i) => sum + i.quantity, 0);
-        const totalB = inventory.filter((i) => i.item_id === b.item_id).reduce((sum, i) => sum + i.quantity, 0);
-        aValue = totalA;
-        bValue = totalB;
+        aValue = totalStockMap[a.item_id] || 0;
+        bValue = totalStockMap[b.item_id] || 0;
       } else if (sortField.startsWith("item.")) {
         const key = sortField.split(".")[1] as keyof Item;
         aValue = a.item[key];
@@ -150,7 +149,7 @@ const Inventory: React.FC = () => {
       if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
-  }, [filteredInventory, sortField, sortDirection, inventory]);
+  }, [filteredInventory, sortField, sortDirection, totalStockMap]);
 
   // Pagination
   const totalPages = Math.ceil(sortedInventory.length / ITEMS_PER_PAGE);
