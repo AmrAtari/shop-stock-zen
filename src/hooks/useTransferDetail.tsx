@@ -179,62 +179,101 @@ export const useReceiveTransfer = () => {
         }
         
         if (itemId) {
-          // Fetch current inventory quantity
-          const { data: inventoryItem, error: fetchError } = await supabase
-            .from("items")
-            .select("quantity, sku, name")
-            .eq("id", itemId)
-            .maybeSingle();
-
-          if (fetchError) throw fetchError;
-          
-          if (!inventoryItem) {
-            console.warn(`Item with ID ${itemId} not found in inventory`);
-            continue;
-          }
-
-          const currentQty = inventoryItem.quantity;
           const transferQty = item.quantity;
-          
-          // For a simple inventory system without store-specific quantities,
-          // we don't change the total quantity, but we log the transfer
-          // However, since user wants to see quantity increase at destination,
-          // we'll increment the quantity (treating it as destination store inventory)
-          const newQuantity = currentQty + transferQty;
 
-          // Update inventory quantity
-          const { error: updateError } = await supabase
-            .from("items")
-            .update({
-              quantity: newQuantity,
-              last_restocked: new Date().toISOString(),
-            })
-            .eq("id", itemId);
+          // 1. Decrease quantity in from_store (if specified)
+          if (fromStoreId) {
+            const { data: fromInv } = await supabase
+              .from("store_inventory")
+              .select("id, quantity")
+              .eq("item_id", itemId)
+              .eq("store_id", fromStoreId)
+              .maybeSingle();
 
-          if (updateError) {
-            console.error(`Failed to update item ${itemId}:`, updateError);
-            throw updateError;
+            if (fromInv) {
+              const newFromQty = Math.max(0, fromInv.quantity - transferQty);
+              
+              const { error: updateFromErr } = await supabase
+                .from("store_inventory")
+                .update({ quantity: newFromQty })
+                .eq("id", fromInv.id);
+
+              if (updateFromErr) throw updateFromErr;
+
+              // Create stock adjustment for from_store
+              await supabase.from("stock_adjustments").insert({
+                item_id: itemId,
+                store_id: fromStoreId,
+                previous_quantity: fromInv.quantity,
+                new_quantity: newFromQty,
+                adjustment: -transferQty,
+                reason: "Transfer sent",
+                reference_number: transferNumber,
+                notes: `Transfer ${transferNumber}: Sent ${transferQty} units to ${toStoreName}`,
+              });
+            }
           }
 
-          // Create stock adjustment record for the received items
-          const { error: adjustmentError } = await supabase
-            .from("stock_adjustments")
-            .insert({
-              item_id: itemId,
-              previous_quantity: currentQty,
-              new_quantity: newQuantity,
-              adjustment: transferQty,
-              reason: "Transfer received",
-              reference_number: transferNumber,
-              notes: `Transfer ${transferNumber}: Received ${transferQty} units from ${fromStoreName} to ${toStoreName}`,
-            });
+          // 2. Increase quantity in to_store (if specified)
+          if (toStoreId) {
+            const { data: toInv } = await supabase
+              .from("store_inventory")
+              .select("id, quantity")
+              .eq("item_id", itemId)
+              .eq("store_id", toStoreId)
+              .maybeSingle();
 
-          if (adjustmentError) {
-            console.error(`Failed to create stock adjustment for item ${itemId}:`, adjustmentError);
-            throw adjustmentError;
+            if (toInv) {
+              // Update existing
+              const newToQty = toInv.quantity + transferQty;
+              
+              const { error: updateToErr } = await supabase
+                .from("store_inventory")
+                .update({
+                  quantity: newToQty,
+                  last_restocked: new Date().toISOString(),
+                })
+                .eq("id", toInv.id);
+
+              if (updateToErr) throw updateToErr;
+
+              await supabase.from("stock_adjustments").insert({
+                item_id: itemId,
+                store_id: toStoreId,
+                previous_quantity: toInv.quantity,
+                new_quantity: newToQty,
+                adjustment: transferQty,
+                reason: "Transfer received",
+                reference_number: transferNumber,
+                notes: `Transfer ${transferNumber}: Received ${transferQty} units from ${fromStoreName}`,
+              });
+            } else {
+              // Insert new record
+              const { error: insertToErr } = await supabase
+                .from("store_inventory")
+                .insert({
+                  item_id: itemId,
+                  store_id: toStoreId,
+                  quantity: transferQty,
+                  last_restocked: new Date().toISOString(),
+                });
+
+              if (insertToErr) throw insertToErr;
+
+              await supabase.from("stock_adjustments").insert({
+                item_id: itemId,
+                store_id: toStoreId,
+                previous_quantity: 0,
+                new_quantity: transferQty,
+                adjustment: transferQty,
+                reason: "Transfer received",
+                reference_number: transferNumber,
+                notes: `Transfer ${transferNumber}: Received ${transferQty} units from ${fromStoreName}`,
+              });
+            }
           }
-          
-          console.log(`Successfully updated inventory: ${inventoryItem.name} (${inventoryItem.sku}) - ${currentQty} → ${newQuantity} (+${transferQty})`);
+
+          console.log(`Successfully processed transfer for item ${itemId}: ${fromStoreName} → ${toStoreName} (${transferQty} units)`);
         } else {
           console.warn(`Could not find inventory item for SKU: ${item.sku}`);
         }
@@ -259,6 +298,7 @@ export const useReceiveTransfer = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(variables.transferId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
     },

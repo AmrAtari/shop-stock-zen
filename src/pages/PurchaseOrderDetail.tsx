@@ -155,57 +155,82 @@ const PurchaseOrderDetail = () => {
 
       for (const item of items) {
         let targetItemId: string | null = null;
-        let currentGlobalQty = 0;
 
-        // 1. Find the Item ID and Current Global Quantity
+        // 1. Find the Item ID
         if (item.item_id) {
           const { data: byId, error: byIdErr } = await supabase
             .from("items")
-            .select("id, quantity")
+            .select("id")
             .eq("id", item.item_id)
             .maybeSingle();
 
           if (byIdErr) throw byIdErr;
           if (byId) {
             targetItemId = byId.id as string;
-            currentGlobalQty = (byId.quantity as number) ?? 0;
           }
         } else if (item.sku) {
           const { data: bySku, error: bySkuErr } = await supabase
             .from("items")
-            .select("id, quantity")
+            .select("id")
             .eq("sku", item.sku)
             .maybeSingle();
 
           if (bySkuErr) throw bySkuErr;
           if (bySku) {
             targetItemId = bySku.id as string;
-            currentGlobalQty = (bySku.quantity as number) ?? 0;
           }
         }
 
         if (targetItemId) {
-          // 2. Update Global Inventory (items table)
-          const { error: globalUpdateErr } = await supabase
-            .from("items")
-            .update({
-              quantity: currentGlobalQty + item.quantity,
-              // Location field is now relational and removed from this global update
-              last_restocked: new Date().toISOString(),
-            })
-            .eq("id", targetItemId);
-          if (globalUpdateErr) throw globalUpdateErr;
-
-          // 3. Update Location-Specific Inventory (NEW ARCHITECTURE)
+          // 2. Update Store Inventory
           if (po.store_id) {
-            // FIX: Add 'as any' to bypass TypeScript error for custom RPC name
-            const { error: locationUpdateErr } = await supabase.rpc("increment_location_stock" as any, {
-              p_item_id: targetItemId,
-              p_store_id: po.store_id,
-              p_quantity_to_add: item.quantity,
-            });
+            // Check if store inventory record exists
+            const { data: existingStoreInv } = await supabase
+              .from("store_inventory")
+              .select("id, quantity")
+              .eq("item_id", targetItemId)
+              .eq("store_id", po.store_id)
+              .maybeSingle();
 
-            if (locationUpdateErr) throw locationUpdateErr;
+            if (existingStoreInv) {
+              // Update existing record
+              const { error: updateErr } = await supabase
+                .from("store_inventory")
+                .update({
+                  quantity: existingStoreInv.quantity + item.quantity,
+                  last_restocked: new Date().toISOString(),
+                })
+                .eq("id", existingStoreInv.id);
+              
+              if (updateErr) throw updateErr;
+            } else {
+              // Insert new record
+              const { error: insertErr } = await supabase
+                .from("store_inventory")
+                .insert({
+                  item_id: targetItemId,
+                  store_id: po.store_id,
+                  quantity: item.quantity,
+                  last_restocked: new Date().toISOString(),
+                });
+              
+              if (insertErr) throw insertErr;
+            }
+
+            // Create stock adjustment record
+            const { error: adjustmentErr } = await supabase
+              .from("stock_adjustments")
+              .insert({
+                item_id: targetItemId,
+                store_id: po.store_id,
+                previous_quantity: existingStoreInv?.quantity || 0,
+                new_quantity: (existingStoreInv?.quantity || 0) + item.quantity,
+                adjustment: item.quantity,
+                reason: `PO Receipt: ${po.po_number}`,
+                reference_number: po.po_number,
+              });
+            
+            if (adjustmentErr) throw adjustmentErr;
           }
 
           updatedCount += 1;
@@ -213,7 +238,7 @@ const PurchaseOrderDetail = () => {
           if (item.sku) notFoundSkus.push(item.sku);
         }
 
-        // Update received quantity in PO items regardless to reflect processing
+        // Update received quantity in PO items
         const { error: poiErr } = await supabase
           .from("purchase_order_items")
           .update({ received_quantity: item.quantity })
@@ -223,8 +248,10 @@ const PurchaseOrderDetail = () => {
 
       if (updatedCount > 0) {
         await updateStatusMutation.mutateAsync("completed");
-        // Refresh all related caches so Inventory and Reports reflect latest stock
+        // Refresh all related caches
         await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+        await queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
+        await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
 
         toast({
           title: "PO Received",

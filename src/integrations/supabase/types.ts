@@ -880,6 +880,7 @@ export type Database = {
           previous_quantity: number
           reason: string
           reference_number: string | null
+          store_id: string | null
         }
         Insert: {
           adjustment: number
@@ -891,6 +892,7 @@ export type Database = {
           previous_quantity: number
           reason: string
           reference_number?: string | null
+          store_id?: string | null
         }
         Update: {
           adjustment?: number
@@ -902,6 +904,7 @@ export type Database = {
           previous_quantity?: number
           reason?: string
           reference_number?: string | null
+          store_id?: string | null
         }
         Relationships: [
           {
@@ -909,6 +912,61 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_inventory: {
+        Row: {
+          created_at: string
+          id: string
+          item_id: string
+          last_restocked: string | null
+          min_stock: number
+          quantity: number
+          store_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_id: string
+          last_restocked?: string | null
+          min_stock?: number
+          quantity?: number
+          store_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_id?: string
+          last_restocked?: string | null
+          min_stock?: number
+          quantity?: number
+          store_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
             referencedColumns: ["id"]
           },
         ]
@@ -1206,7 +1264,38 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_store_stock_levels: {
+        Row: {
+          brand: string | null
+          category: string | null
+          id: string | null
+          item_id: string | null
+          item_name: string | null
+          last_restocked: string | null
+          min_stock: number | null
+          quantity: number | null
+          sku: string | null
+          store_id: string | null
+          store_name: string | null
+          unit: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       check_low_stock_notifications: { Args: never; Returns: undefined }
