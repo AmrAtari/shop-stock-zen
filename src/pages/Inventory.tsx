@@ -1,9 +1,8 @@
-// src/pages/Inventory.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Database } from "@/integrations/supabase/types";
 
-// Types
 interface Attribute {
   id: string;
   name: string;
@@ -17,7 +16,7 @@ interface Item {
   name: string;
   sku: string;
   category: string;
-  [key: string]: any; // dynamic attributes
+  [key: string]: any;
 }
 
 const Inventory: React.FC = () => {
@@ -26,7 +25,6 @@ const Inventory: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Fetch all attributes dynamically
   const fetchAttributes = async () => {
     const { data, error } = await supabase
       .from<Database["public"]["Tables"]["item_attributes"]["Row"]>("item_attributes")
@@ -40,13 +38,11 @@ const Inventory: React.FC = () => {
     setAttributes(data || []);
   };
 
-  // Fetch all items
   const fetchItems = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from<Database["public"]["Tables"]["inventory"]["Row"]>("inventory")
       .select("*");
-
     setLoading(false);
 
     if (error) {
@@ -62,22 +58,12 @@ const Inventory: React.FC = () => {
     fetchItems();
   }, []);
 
-  // Add new item handler
-  const handleAddNewItem = async () => {
-    // Open a modal or redirect to Add Item page
-    // For now, just show a toast
-    toast.toast({ title: "Add New Item clicked", type: "foreground" });
-  };
-
-  // Import Excel / Google Sheets handler
-  const handleImport = () => {
-    toast.toast({ title: "Import clicked (Excel / Google Sheets)", type: "foreground" });
-  };
+  const handleAddNewItem = () => toast.toast({ title: "Add New Item clicked", type: "foreground" });
+  const handleImport = () => toast.toast({ title: "Import clicked (Excel / Google Sheets)", type: "foreground" });
 
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Inventory</h1>
-
       <div className="flex gap-2 mb-4">
         <button onClick={handleAddNewItem} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           Add New Item
@@ -86,9 +72,7 @@ const Inventory: React.FC = () => {
           Import (Excel / Google Sheets)
         </button>
       </div>
-
       {loading && <p>Loading...</p>}
-
       <table className="w-full table-auto border border-gray-300">
         <thead>
           <tr className="bg-gray-100">
