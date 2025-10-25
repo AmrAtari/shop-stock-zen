@@ -76,8 +76,6 @@ const Inventory = () => {
             id,
             name,
             sku,
-            price,
-            cost,
             description,
             min_stock
           ),
@@ -210,7 +208,6 @@ const Inventory = () => {
                   <th className="px-4 py-2">SKU</th>
                   <th className="px-4 py-2">Quantity</th>
                   <th className="px-4 py-2">Min Stock</th>
-                  <th className="px-4 py-2">Price</th>
                   <th className="px-4 py-2">Store</th>
                 </tr>
               </thead>
@@ -219,9 +216,12 @@ const Inventory = () => {
                   <tr key={entry.id} className="border-b">
                     <td className="px-4 py-2">{entry.item.name}</td>
                     <td className="px-4 py-2">{entry.item.sku || "N/A"}</td>
-                    <td className="px-4 py-2">{entry.quantity}</td>
+                    <td
+                      className={`px-4 py-2 font-semibold ${entry.quantity <= (entry.min_stock || entry.item.min_stock || 0) ? "text-red-600" : "text-green-600"}`}
+                    >
+                      {entry.quantity}
+                    </td>
                     <td className="px-4 py-2">{entry.min_stock || entry.item.min_stock || "-"}</td>
-                    <td className="px-4 py-2">{entry.item.price ? `$${entry.item.price.toFixed(2)}` : "N/A"}</td>
                     <td className="px-4 py-2">{entry.store.name}</td>
                   </tr>
                 ))}
