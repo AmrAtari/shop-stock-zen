@@ -11,116 +11,119 @@ interface InventoryItem {
   sku: string;
   quantity: number;
   min_stock: number;
-  category: string | null;
-  brand: string | null;
-  gender: string | null;
-  season: string | null;
+  category?: string | null;
+  brand?: string | null;
+  gender?: string | null;
+  season?: string | null;
 }
 
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [filteredInventory, setFilteredInventory] = useState<InventoryItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
   const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [brands, setBrands] = useState<string[]>([]);
-  const [seasons, setSeasons] = useState<string[]>([]);
   const [genders, setGenders] = useState<string[]>([]);
+  const [seasons, setSeasons] = useState<string[]>([]);
 
-  const [filters, setFilters] = useState({
-    store: "",
-    category: "",
-    brand: "",
-    season: "",
-    gender: "",
-    search: "",
-  });
-
-  const [currentPage, setCurrentPage] = useState(1);
-
-  // Fetch stores
-  const fetchStores = async () => {
-    const { data, error } = await supabase.from("stores").select("*");
-    if (error) console.error(error);
-    else setStores(data || []);
-  };
-
-  // Fetch inventory with joins
-  const fetchInventory = async () => {
-    const { data, error } = await supabase.from("v_store_stock_levels").select("*");
-
-    if (error) console.error(error);
-    else {
-      // Filter out stores with zero quantity if needed
-      const filtered = data?.filter((i) => i.quantity && i.store_name) || [];
-      setInventory(filtered as InventoryItem[]);
-    }
-  };
-
-  // Fetch filter options
-  const fetchFilters = async () => {
-    const [cats, brs, sns, gds] = await Promise.all([
-      supabase.from("categories").select("name"),
-      supabase.from("brands").select("name"),
-      supabase.from("seasons").select("name"),
-      supabase.from("genders").select("name"),
-    ]);
-
-    if (!cats.error) setCategories(cats.data.map((c) => c.name));
-    if (!brs.error) setBrands(brs.data.map((b) => b.name));
-    if (!sns.error) setSeasons(sns.data.map((s) => s.name));
-    if (!gds.error) setGenders(gds.data.map((g) => g.name));
-  };
+  const [selectedStore, setSelectedStore] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedGender, setSelectedGender] = useState<string>("");
+  const [selectedSeason, setSelectedSeason] = useState<string>("");
 
   useEffect(() => {
     fetchStores();
-    fetchInventory();
     fetchFilters();
+    fetchInventory();
   }, []);
 
-  // Apply filters
-  const filteredStock = useMemo(() => {
-    return inventory.filter((item) => {
-      return (
-        (!filters.store || item.store_name === filters.store) &&
-        (!filters.category || item.category === filters.category) &&
-        (!filters.brand || item.brand === filters.brand) &&
-        (!filters.season || item.season === filters.season) &&
-        (!filters.gender || item.gender === filters.gender) &&
-        (!filters.search ||
-          item.item_name.toLowerCase().includes(filters.search.toLowerCase()) ||
-          item.sku.toLowerCase().includes(filters.search.toLowerCase()))
+  const fetchStores = async () => {
+    const { data } = await supabase.from("stores").select("id, name");
+    if (data) setStores(data);
+  };
+
+  const fetchFilters = async () => {
+    const { data: categoriesData } = await supabase.from("categories").select("name");
+    if (categoriesData) setCategories(categoriesData.map((c) => c.name));
+
+    const { data: gendersData } = await supabase.from("genders").select("name");
+    if (gendersData) setGenders(gendersData.map((g) => g.name));
+
+    const { data: seasonsData } = await supabase.from("seasons").select("name");
+    if (seasonsData) setSeasons(seasonsData.map((s) => s.name));
+  };
+
+  const fetchInventory = async () => {
+    const { data } = await supabase.from("v_store_stock_levels").select("*");
+    if (data) {
+      const formatted = data.map((item) => ({
+        store_id: item.store_id!,
+        store_name: item.store_name!,
+        item_id: item.item_id!,
+        item_name: item.item_name!,
+        sku: item.sku!,
+        quantity: item.quantity!,
+        min_stock: item.min_stock!,
+        category: item.category,
+        brand: item.brand,
+        gender: item.gender,
+        season: item.season,
+      }));
+      setInventory(formatted);
+      setFilteredInventory(formatted);
+    }
+  };
+
+  useEffect(() => {
+    let filtered = [...inventory];
+
+    if (search) {
+      const s = search.toLowerCase();
+      filtered = filtered.filter(
+        (item) => item.item_name.toLowerCase().includes(s) || item.sku.toLowerCase().includes(s),
       );
-    });
-  }, [inventory, filters]);
+    }
 
-  // Pagination
-  const totalPages = Math.ceil(filteredStock.length / ITEMS_PER_PAGE);
-  const paginatedStock = filteredStock.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    if (selectedStore) filtered = filtered.filter((item) => item.store_id === selectedStore);
+    if (selectedCategory) filtered = filtered.filter((item) => item.category === selectedCategory);
+    if (selectedGender) filtered = filtered.filter((item) => item.gender === selectedGender);
+    if (selectedSeason) filtered = filtered.filter((item) => item.season === selectedSeason);
 
-  // CSV download
-  const downloadCSV = (data: InventoryItem[], filename = "inventory.csv") => {
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [
-        ["Store", "Item Name", "SKU", "Quantity", "Min Stock", "Category", "Brand", "Gender", "Season"].join(","),
-        ...data.map((d) =>
-          [
-            d.store_name,
-            d.item_name,
-            d.sku,
-            d.quantity,
-            d.min_stock,
-            d.category || "",
-            d.brand || "",
-            d.gender || "",
-            d.season || "",
-          ].join(","),
-        ),
-      ].join("\n");
+    setFilteredInventory(filtered);
+    setPage(1);
+  }, [search, selectedStore, selectedCategory, selectedGender, selectedSeason, inventory]);
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    return filteredInventory.slice(start, start + ITEMS_PER_PAGE);
+  }, [page, filteredInventory]);
+
+  // CSV Export
+  const exportCSV = () => {
+    if (!filteredInventory.length) return;
+
+    const headers = ["Store", "Item", "SKU", "Quantity", "Min Stock", "Category", "Brand", "Gender", "Season"];
+
+    const rows = filteredInventory.map((item) => [
+      item.store_name,
+      item.item_name,
+      item.sku,
+      item.quantity,
+      item.min_stock,
+      item.category || "",
+      item.brand || "",
+      item.gender || "",
+      item.season || "",
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
+    link.setAttribute("download", "inventory_export.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -128,20 +131,32 @@ const Inventory = () => {
 
   return (
     <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Inventory</h1>
+      <h1 className="text-2xl font-bold mb-4">Inventory</h1>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select value={filters.store} onChange={(e) => setFilters({ ...filters, store: e.target.value })}>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <input
+          type="text"
+          placeholder="Search by name or SKU"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="border p-1 rounded"
+        />
+
+        <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} className="border p-1 rounded">
           <option value="">All Stores</option>
           {stores.map((s) => (
-            <option key={s.id} value={s.name}>
+            <option key={s.id} value={s.id}>
               {s.name}
             </option>
           ))}
         </select>
 
-        <select value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className="border p-1 rounded"
+        >
           <option value="">All Categories</option>
           {categories.map((c) => (
             <option key={c} value={c}>
@@ -150,25 +165,11 @@ const Inventory = () => {
           ))}
         </select>
 
-        <select value={filters.brand} onChange={(e) => setFilters({ ...filters, brand: e.target.value })}>
-          <option value="">All Brands</option>
-          {brands.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-
-        <select value={filters.season} onChange={(e) => setFilters({ ...filters, season: e.target.value })}>
-          <option value="">All Seasons</option>
-          {seasons.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-
-        <select value={filters.gender} onChange={(e) => setFilters({ ...filters, gender: e.target.value })}>
+        <select
+          value={selectedGender}
+          onChange={(e) => setSelectedGender(e.target.value)}
+          className="border p-1 rounded"
+        >
           <option value="">All Genders</option>
           {genders.map((g) => (
             <option key={g} value={g}>
@@ -177,68 +178,72 @@ const Inventory = () => {
           ))}
         </select>
 
-        <input
-          type="text"
-          placeholder="Search by name or SKU"
-          value={filters.search}
-          onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-          className="border px-2"
-        />
+        <select
+          value={selectedSeason}
+          onChange={(e) => setSelectedSeason(e.target.value)}
+          className="border p-1 rounded"
+        >
+          <option value="">All Seasons</option>
+          {seasons.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+
+        <button onClick={exportCSV} className="bg-blue-500 text-white px-2 py-1 rounded">
+          Export CSV
+        </button>
       </div>
 
-      {/* CSV Export */}
-      <button onClick={() => downloadCSV(filteredStock)} className="px-3 py-1 bg-blue-500 text-white rounded mb-4">
-        Export CSV
-      </button>
-
       {/* Inventory Table */}
-      <table className="w-full border border-gray-300">
+      <table className="w-full border-collapse border">
         <thead>
-          <tr className="bg-gray-100">
-            <th className="border px-2 py-1">Store</th>
-            <th className="border px-2 py-1">Item Name</th>
-            <th className="border px-2 py-1">SKU</th>
-            <th className="border px-2 py-1">Quantity</th>
-            <th className="border px-2 py-1">Min Stock</th>
-            <th className="border px-2 py-1">Category</th>
-            <th className="border px-2 py-1">Brand</th>
-            <th className="border px-2 py-1">Gender</th>
-            <th className="border px-2 py-1">Season</th>
+          <tr>
+            <th className="border p-2">Store</th>
+            <th className="border p-2">Item</th>
+            <th className="border p-2">SKU</th>
+            <th className="border p-2">Quantity</th>
+            <th className="border p-2">Min Stock</th>
+            <th className="border p-2">Category</th>
+            <th className="border p-2">Brand</th>
+            <th className="border p-2">Gender</th>
+            <th className="border p-2">Season</th>
           </tr>
         </thead>
         <tbody>
-          {paginatedStock.map((item) => (
+          {paginated.map((item) => (
             <tr key={item.item_id + item.store_id}>
-              <td className="border px-2 py-1">{item.store_name}</td>
-              <td className="border px-2 py-1">{item.item_name}</td>
-              <td className="border px-2 py-1">{item.sku}</td>
-              <td className="border px-2 py-1">{item.quantity}</td>
-              <td className="border px-2 py-1">{item.min_stock}</td>
-              <td className="border px-2 py-1">{item.category}</td>
-              <td className="border px-2 py-1">{item.brand}</td>
-              <td className="border px-2 py-1">{item.gender}</td>
-              <td className="border px-2 py-1">{item.season}</td>
+              <td className="border p-2">{item.store_name}</td>
+              <td className="border p-2">{item.item_name}</td>
+              <td className="border p-2">{item.sku}</td>
+              <td className="border p-2">{item.quantity}</td>
+              <td className="border p-2">{item.min_stock}</td>
+              <td className="border p-2">{item.category}</td>
+              <td className="border p-2">{item.brand}</td>
+              <td className="border p-2">{item.gender}</td>
+              <td className="border p-2">{item.season}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
       {/* Pagination */}
-      <div className="flex justify-between mt-4">
+      <div className="flex gap-2 mt-4">
         <button
-          disabled={currentPage === 1}
-          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-          className="px-3 py-1 border rounded disabled:opacity-50"
+          disabled={page === 1}
+          onClick={() => setPage((p) => p - 1)}
+          className="border px-2 py-1 rounded disabled:opacity-50"
         >
           Previous
         </button>
-        <span>
-          Page {currentPage} of {totalPages}
+        <span className="px-2 py-1">
+          Page {page} of {Math.ceil(filteredInventory.length / ITEMS_PER_PAGE)}
         </span>
         <button
-          disabled={currentPage === totalPages}
-          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-          className="px-3 py-1 border rounded disabled:opacity-50"
+          disabled={page === Math.ceil(filteredInventory.length / ITEMS_PER_PAGE)}
+          onClick={() => setPage((p) => p + 1)}
+          className="border px-2 py-1 rounded disabled:opacity-50"
         >
           Next
         </button>
