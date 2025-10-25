@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -301,6 +301,7 @@ const InventoryNew = () => {
   const [editingItem, setEditingItem] = useState<Item | undefined>();
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
   const [selectedItems, setSelectedItems] = useState<Item[]>([]);
+  const [fallbackInventory, setFallbackInventory] = useState<Item[]>([]);
 
   // Filter states
   const [modelNumberFilter, setModelNumberFilter] = useState<string>("all");
@@ -318,33 +319,90 @@ const InventoryNew = () => {
   );
   const { data: aggregatedInventory = [], isLoading: aggLoading } = useAggregatedInventory();
 
+  // Debug: Log the raw data
+  useEffect(() => {
+    console.log("🔍 DEBUG INVENTORY DATA:");
+    console.log("Store Inventory:", storeInventory);
+    console.log("Aggregated Inventory:", aggregatedInventory);
+    console.log("Store Filter:", storeFilter);
+    console.log("Store Inventory count:", storeInventory.length);
+    console.log("Aggregated Inventory count:", aggregatedInventory.length);
+  }, [storeInventory, aggregatedInventory, storeFilter]);
+
   // Use store inventory when a specific store is selected, otherwise use aggregated
-  const inventory =
-    storeFilter === "all"
-      ? aggregatedInventory
-      : storeInventory.map((si) => ({
-          id: si.item_id,
-          sku: si.sku,
-          name: si.item_name,
-          category: si.category,
-          brand: si.brand || "",
-          quantity: si.quantity,
-          min_stock: si.min_stock,
-          unit: si.unit,
-          store_name: si.store_name,
-          store_id: si.store_id,
-        }));
+  const inventory = useMemo(() => {
+    if (storeFilter === "all") {
+      return aggregatedInventory;
+    } else {
+      return storeInventory.map((si) => ({
+        id: si.item_id || si.id,
+        sku: si.sku,
+        name: si.item_name || si.name,
+        category: si.category || "",
+        brand: si.brand || "",
+        quantity: si.quantity || 0,
+        min_stock: si.min_stock || 0,
+        unit: si.unit || "pcs",
+        store_name: si.store_name,
+        store_id: si.store_id,
+        item_number: si.item_number,
+        season: si.season,
+        main_group: si.main_group,
+      }));
+    }
+  }, [storeFilter, aggregatedInventory, storeInventory]);
+
+  console.log("Final Inventory count:", inventory.length);
+
+  // Fallback direct fetch if hooks don't return data
+  useEffect(() => {
+    const fetchAllItemsDirectly = async () => {
+      console.log("🔄 Attempting direct fetch from database...");
+      const { data, error } = await supabase.from("items").select("*").order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Direct fetch error:", error);
+        return;
+      }
+
+      console.log("Direct fetch result:", data?.length, "items");
+      setFallbackInventory(data || []);
+    };
+
+    // Only use fallback if no data from hooks after loading completes
+    if (!storeInvLoading && !aggLoading && inventory.length === 0) {
+      console.log("📦 No data from hooks, using fallback...");
+      fetchAllItemsDirectly();
+    }
+  }, [inventory.length, storeInvLoading, aggLoading]);
+
+  // Use fallback if main inventory is empty
+  const finalInventory = useMemo(() => {
+    if (inventory.length > 0) {
+      console.log("✅ Using inventory from hooks:", inventory.length, "items");
+      return inventory;
+    } else if (fallbackInventory.length > 0) {
+      console.log("🔄 Using fallback inventory:", fallbackInventory.length, "items");
+      return fallbackInventory;
+    }
+    console.log("❌ No inventory data available");
+    return [];
+  }, [inventory, fallbackInventory]);
 
   const isLoading = storeInvLoading || aggLoading;
 
   const filteredInventory = useMemo(() => {
-    return (inventory as Item[]).filter((item) => {
+    console.log("🔍 Filtering inventory. Total items:", finalInventory.length);
+    console.log("Search term:", searchTerm);
+
+    const filtered = (finalInventory as Item[]).filter((item) => {
       // Safely handle potentially undefined properties with fallbacks
       const name = item.name || "";
       const sku = item.sku || "";
       const category = item.category || "";
 
       const matchesSearch =
+        searchTerm === "" ||
         name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
         category.toLowerCase().includes(searchTerm.toLowerCase());
@@ -359,34 +417,51 @@ const InventoryNew = () => {
         matchesSearch && matchesModelNumber && matchesStore && matchesSeason && matchesMainGroup && matchesCategory
       );
     });
-  }, [inventory, searchTerm, modelNumberFilter, storeFilter, seasonFilter, mainGroupFilter, categoryFilter]);
+
+    console.log("✅ Filtered result:", filtered.length, "items");
+    return filtered;
+  }, [finalInventory, searchTerm, modelNumberFilter, storeFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
   // Unique values for filters
   const uniqueModelNumbers = useMemo(
-    () => [...new Set((inventory as Item[]).map((i) => i.item_number).filter(Boolean))].sort(),
-    [inventory],
+    () => [...new Set((finalInventory as Item[]).map((i) => i.item_number).filter(Boolean))].sort(),
+    [finalInventory],
   );
   const uniqueSeasons = useMemo(
-    () => [...new Set((inventory as Item[]).map((i) => i.season).filter(Boolean))].sort(),
-    [inventory],
+    () => [...new Set((finalInventory as Item[]).map((i) => i.season).filter(Boolean))].sort(),
+    [finalInventory],
   );
   const uniqueMainGroups = useMemo(
-    () => [...new Set((inventory as Item[]).map((i) => i.main_group).filter(Boolean))].sort(),
-    [inventory],
+    () => [...new Set((finalInventory as Item[]).map((i) => i.main_group).filter(Boolean))].sort(),
+    [finalInventory],
   );
   const uniqueCategories = useMemo(
-    () => [...new Set((inventory as Item[]).map((i) => i.category).filter(Boolean))].sort(),
-    [inventory],
+    () => [...new Set((finalInventory as Item[]).map((i) => i.category).filter(Boolean))].sort(),
+    [finalInventory],
   );
+
+  console.log("📊 Filter counts:", {
+    modelNumbers: uniqueModelNumbers.length,
+    seasons: uniqueSeasons.length,
+    mainGroups: uniqueMainGroups.length,
+    categories: uniqueCategories.length,
+  });
 
   const pagination = usePagination({
     totalItems: filteredInventory.length,
-    itemsPerPage: 20,
+    itemsPerPage: 50, // Increased to show more items
     initialPage: 1,
   });
 
   const paginatedInventory = useMemo(() => {
-    return filteredInventory.slice(pagination.startIndex, pagination.endIndex);
+    const result = filteredInventory.slice(pagination.startIndex, pagination.endIndex);
+    console.log("📄 Pagination:", {
+      total: filteredInventory.length,
+      start: pagination.startIndex,
+      end: pagination.endIndex,
+      showing: result.length,
+    });
+    return result;
   }, [filteredInventory, pagination.startIndex, pagination.endIndex]);
 
   const toggleItemSelection = (item: Item) => {
@@ -430,7 +505,7 @@ const InventoryNew = () => {
   };
 
   const handleExport = () => {
-    const worksheet = XLSX.utils.json_to_sheet(inventory);
+    const worksheet = XLSX.utils.json_to_sheet(finalInventory);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory");
     XLSX.writeFile(workbook, `inventory_${new Date().toISOString().split("T")[0]}.xlsx`);
@@ -444,7 +519,7 @@ const InventoryNew = () => {
   };
 
   if (isLoading) {
-    return <div className="p-8">Loading...</div>;
+    return <div className="p-8">Loading inventory data...</div>;
   }
 
   return (
@@ -453,6 +528,9 @@ const InventoryNew = () => {
         <div>
           <h1 className="text-3xl font-bold">Inventory</h1>
           <p className="text-muted-foreground mt-1">Manage your clothing and shoes inventory</p>
+          <p className="text-sm text-blue-600 mt-1">
+            Showing {filteredInventory.length} of {finalInventory.length} total items
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate("/inventory/physical")}>
@@ -501,7 +579,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Model Number" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Model Numbers</SelectItem>
+              <SelectItem value="all">All Model Numbers ({uniqueModelNumbers.length})</SelectItem>
               {uniqueModelNumbers.map((num) => (
                 <SelectItem key={num} value={num}>
                   {num}
@@ -515,7 +593,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Store" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem>
+              <SelectItem value="all">All Stores ({stores.length})</SelectItem>
               {stores.map((store) => (
                 <SelectItem key={store.id} value={store.id}>
                   {store.name}
@@ -529,7 +607,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Season" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Seasons</SelectItem>
+              <SelectItem value="all">All Seasons ({uniqueSeasons.length})</SelectItem>
               {uniqueSeasons.map((season) => (
                 <SelectItem key={season} value={season}>
                   {season}
@@ -543,7 +621,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Main Group" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Main Groups</SelectItem>
+              <SelectItem value="all">All Main Groups ({uniqueMainGroups.length})</SelectItem>
               {uniqueMainGroups.map((group) => (
                 <SelectItem key={group} value={group}>
                   {group}
@@ -557,7 +635,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="all">All Categories ({uniqueCategories.length})</SelectItem>
               {uniqueCategories.map((cat) => (
                 <SelectItem key={cat} value={cat}>
                   {cat}
@@ -597,63 +675,71 @@ const InventoryNew = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedInventory.map((item) => {
-              const status = getStockStatus(item);
-              const isSelected = selectedItems.some((selected) => selected.id === item.id);
+            {paginatedInventory.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                  {finalInventory.length === 0 ? "No inventory items found." : "No items match your filters."}
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginatedInventory.map((item) => {
+                const status = getStockStatus(item);
+                const isSelected = selectedItems.some((selected) => selected.id === item.id);
 
-              return (
-                <TableRow key={item.id}>
-                  <TableCell>
-                    <Checkbox checked={isSelected} onCheckedChange={() => toggleItemSelection(item)} />
-                  </TableCell>
-                  <TableCell className="font-medium">{item.sku}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.category}</TableCell>
-                  <TableCell>{item.brand || "-"}</TableCell>
-                  <TableCell>
-                    {storeFilter === "all" ? (
-                      <div className="space-y-1">
-                        <div className="font-medium text-sm">Multiple Stores</div>
-                        <div className="text-xs text-muted-foreground">
-                          {(item as any).stores?.map((s: any) => (
-                            <div key={s.store_id}>
-                              {s.store_name}: {s.quantity}
-                            </div>
-                          ))}
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <Checkbox checked={isSelected} onCheckedChange={() => toggleItemSelection(item)} />
+                    </TableCell>
+                    <TableCell className="font-medium">{item.sku}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.category || "-"}</TableCell>
+                    <TableCell>{item.brand || "-"}</TableCell>
+                    <TableCell>
+                      {storeFilter === "all" ? (
+                        <div className="space-y-1">
+                          <div className="font-medium text-sm">Multiple Stores</div>
+                          <div className="text-xs text-muted-foreground">
+                            {(item as any).stores?.map((s: any) => (
+                              <div key={s.store_id}>
+                                {s.store_name}: {s.quantity}
+                              </div>
+                            ))}
+                          </div>
                         </div>
+                      ) : (
+                        (item as any).store_name || "-"
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {storeFilter === "all" ? (item as any).total_quantity : item.quantity}
+                    </TableCell>
+                    <TableCell>{item.unit}</TableCell>
+                    <TableCell>{item.min_stock}</TableCell>
+                    <TableCell>
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditingItem(item);
+                            setDialogOpen(true);
+                          }}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                    ) : (
-                      (item as any).store_name || "-"
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {storeFilter === "all" ? (item as any).total_quantity : item.quantity}
-                  </TableCell>
-                  <TableCell>{item.unit}</TableCell>
-                  <TableCell>{item.min_stock}</TableCell>
-                  <TableCell>
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setEditingItem(item);
-                          setDialogOpen(true);
-                        }}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
       </div>
