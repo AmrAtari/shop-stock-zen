@@ -1,30 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client"; // your client
+import type { Database } from "@/integrations/supabase/types";
 
-// Initialize Supabase client
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-
-interface InventoryItem {
-  id: string;
-  name: string;
-  sku?: string;
-  quantity: number;
-  price?: number;
-  cost?: number;
-  category?: string;
-  storeId?: string;
-  store_id?: string;
-  store?: {
-    id: string;
-    name: string;
-  };
-  barcode?: string;
-  description?: string;
-  min_stock?: number;
-  max_stock?: number;
-  created_at?: string;
-  updated_at?: string;
-}
+type InventoryItem = Database["public"]["Tables"]["inventory"]["Row"];
 
 interface StoreSummary {
   [storeId: string]: {
@@ -37,20 +15,17 @@ interface StoreSummary {
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showDebug, setShowDebug] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
   const [debugInfo, setDebugInfo] = useState<any>({});
 
-  /** Debug storage and global variables */
+  /** Debug storage */
   const debugAllStorage = () => {
     const storageData: any = {
       localStorage: {},
       sessionStorage: {},
-      globalVariables: {},
       urlParams: window.location.search,
       currentPath: window.location.pathname,
-      userAgent: window.navigator.userAgent,
     };
 
     for (let i = 0; i < localStorage.length; i++) {
@@ -77,30 +52,8 @@ const Inventory = () => {
       }
     }
 
-    const globalVars = ["inventory", "storeData", "supabase", "queryClient", "react"];
-    globalVars.forEach((varName) => {
-      if ((window as any)[varName]) {
-        storageData.globalVariables[varName] = (window as any)[varName];
-      }
-    });
-
     setDebugInfo(storageData);
     return storageData;
-  };
-
-  /** Analyze inventory to create store summary */
-  const analyzeStores = (inventoryData: InventoryItem[]): StoreSummary => {
-    const stores: StoreSummary = {};
-    inventoryData.forEach((item) => {
-      const storeId = item.storeId || item.store_id || item.store?.id || "unknown-store";
-      const storeName = item.store?.name || storeId;
-      if (!stores[storeId]) {
-        stores[storeId] = { count: 0, items: [], storeName };
-      }
-      stores[storeId].count++;
-      stores[storeId].items.push(item);
-    });
-    return stores;
   };
 
   /** Load inventory from Supabase */
@@ -109,11 +62,10 @@ const Inventory = () => {
       setLoading(true);
       debugAllStorage();
 
-      // Fetch inventory with store info if available
-      const { data, error } = await supabase.from("inventory").select("*, store:storeId(*)"); // Adjust column and relationship
+      const { data, error } = await supabase.from("inventory").select("*, store:storeId(*)"); // include related store info if exists
 
       if (error) throw error;
-      if (data) setInventory(data as InventoryItem[]);
+      setInventory(data || []);
       console.log(`✅ Loaded ${data?.length || 0} items from Supabase`);
     } catch (err) {
       console.error("❌ Inventory load failed:", err);
@@ -123,7 +75,7 @@ const Inventory = () => {
     }
   };
 
-  /** Filtered inventory based on search and store filter */
+  /** Filtered inventory */
   const filteredInventory = useMemo(
     () =>
       inventory.filter((item) => {
@@ -132,17 +84,32 @@ const Inventory = () => {
           item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+
         const matchesStore =
           storeFilter === "all" ||
           item.storeId === storeFilter ||
           item.store_id === storeFilter ||
           item.store?.id === storeFilter;
+
         return matchesSearch && matchesStore;
       }),
     [inventory, searchTerm, storeFilter],
   );
 
-  /** Unique stores for dropdown */
+  /** Store summary */
+  const storeSummary = useMemo(() => {
+    const stores: StoreSummary = {};
+    inventory.forEach((item) => {
+      const storeId = item.storeId || item.store_id || item.store?.id || "unknown-store";
+      const storeName = item.store?.name || storeId;
+      if (!stores[storeId]) stores[storeId] = { count: 0, items: [], storeName };
+      stores[storeId].count++;
+      stores[storeId].items.push(item);
+    });
+    return stores;
+  }, [inventory]);
+
+  /** Unique stores for filter dropdown */
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
     inventory.forEach((item) => {
@@ -152,9 +119,6 @@ const Inventory = () => {
     });
     return stores;
   };
-
-  /** Memoized store summary */
-  const storeSummary = useMemo(() => analyzeStores(inventory), [inventory]);
 
   useEffect(() => {
     loadInventory();
@@ -169,61 +133,82 @@ const Inventory = () => {
           <p className="text-gray-600 mt-2">Manage and track your inventory across all stores</p>
         </div>
         <button
-          onClick={() => setShowDebug(!showDebug)}
-          className={`px-4 py-2 rounded-md font-medium ${
-            showDebug ? "bg-red-500 hover:bg-red-600 text-white" : "bg-green-500 hover:bg-green-600 text-white"
-          }`}
+          onClick={() => debugAllStorage()}
+          className="px-4 py-2 rounded-md bg-blue-500 text-white hover:bg-blue-600"
         >
-          {showDebug ? "Hide Debug" : "Show Debug"}
+          Debug Storage
         </button>
       </div>
 
-      {/* Debug Panel */}
-      {showDebug && (
-        <div className="mb-6 p-4 border-2 border-red-300 rounded-lg bg-red-50">
-          <h3 className="text-lg font-semibold text-red-800 mb-3">🛠️ Debug Panel</h3>
-          <div className="flex gap-2 mb-3 flex-wrap">
-            <button
-              onClick={debugAllStorage}
-              className="px-3 py-2 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600"
-            >
-              Debug Storage
-            </button>
-            <button
-              onClick={loadInventory}
-              className="px-3 py-2 bg-green-500 text-white rounded-md text-sm hover:bg-green-600"
-            >
-              Reload Inventory
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <input
+          type="text"
+          placeholder="Search by name, SKU, or description..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 px-3 py-2 border rounded-md"
+        />
+        <select
+          value={storeFilter}
+          onChange={(e) => setStoreFilter(e.target.value)}
+          className="md:w-64 px-3 py-2 border rounded-md"
+        >
+          {Object.entries(getUniqueStores()).map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Store Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        {Object.entries(storeSummary).map(([storeId, storeData]) => (
+          <div key={storeId} className="bg-white p-4 rounded-lg shadow-sm border">
+            <h3 className="font-semibold text-gray-900">{storeData.storeName}</h3>
+            <div className="text-2xl font-bold text-blue-600">{storeData.count}</div>
+            <div className="text-sm text-gray-600">items in stock</div>
+            <button onClick={() => setStoreFilter(storeId)} className="mt-2 text-sm text-blue-600 hover:text-blue-800">
+              View items →
             </button>
           </div>
+        ))}
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <strong>Local Storage:</strong>
-              <div className="text-xs text-gray-600 mt-1">
-                {Object.keys(debugInfo.localStorage || {}).length > 0
-                  ? Object.keys(debugInfo.localStorage || {}).join(", ")
-                  : "No inventory data found"}
-              </div>
-            </div>
-            <div>
-              <strong>Session Storage:</strong>
-              <div className="text-xs text-gray-600 mt-1">
-                {Object.keys(debugInfo.sessionStorage || {}).length > 0
-                  ? Object.keys(debugInfo.sessionStorage || {}).join(", ")
-                  : "No session data"}
-              </div>
-            </div>
-            <div>
-              <strong>Total Items:</strong>
-              <div className="text-xs text-gray-600 mt-1">{inventory.length} items loaded</div>
-            </div>
+      {/* Inventory Table */}
+      <div className="border rounded-lg overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center">Loading inventory...</div>
+        ) : filteredInventory.length === 0 ? (
+          <div className="p-8 text-center">No items found.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-4 py-2">Item</th>
+                  <th className="px-4 py-2">SKU</th>
+                  <th className="px-4 py-2">Quantity</th>
+                  <th className="px-4 py-2">Price</th>
+                  <th className="px-4 py-2">Store</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInventory.map((item) => (
+                  <tr key={item.id} className="border-b">
+                    <td className="px-4 py-2">{item.name}</td>
+                    <td className="px-4 py-2">{item.sku || "N/A"}</td>
+                    <td className="px-4 py-2">{item.quantity}</td>
+                    <td className="px-4 py-2">{item.price ? `$${item.price.toFixed(2)}` : "N/A"}</td>
+                    <td className="px-4 py-2">{item.store?.name || item.storeId || "Unknown"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
-
-      {/* Filters, Store Summary, and Inventory Table */}
-      {/* ... Keep your existing filter and table UI here ... */}
+        )}
+      </div>
     </div>
   );
 };
