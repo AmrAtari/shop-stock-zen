@@ -1,144 +1,228 @@
-import React, { useState, useMemo } from "react";
-import { useStoreInventoryView, StoreInventoryView } from "@/hooks/useStoreInventoryView";
+import React, { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import XLSX from "xlsx";
 
-interface StoreSummary {
-  [storeId: string]: {
-    count: number;
-    items: StoreInventoryView[];
-    storeName: string;
-  };
+// --- Types ---
+interface Attribute {
+  id: string;
+  name: string;
 }
 
-const Inventory = () => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [storeFilter, setStoreFilter] = useState("all");
+interface Item {
+  id: string;
+  [key: string]: any;
+}
 
-  // Fetch inventory using your hook
-  const { data: inventory = [], isLoading } = useStoreInventoryView();
+interface User {
+  id: string;
+  role: string; // 'admin' | 'user'
+}
 
-  /** Filtered inventory */
-  const filteredInventory = useMemo(
-    () =>
-      inventory.filter((item) => {
-        const matchesSearch =
-          !searchTerm ||
-          item.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (item.brand?.toLowerCase() || "").includes(searchTerm.toLowerCase());
+const InventoryPage: React.FC<{ user: User }> = ({ user }) => {
+  const [items, setItems] = useState<Item[]>([]);
+  const [attributes, setAttributes] = useState<Attribute[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newItem, setNewItem] = useState<Record<string, any>>({});
+  const [showGoogleSheetModal, setShowGoogleSheetModal] = useState(false);
+  const [googleSheetUrl, setGoogleSheetUrl] = useState("");
 
-        const matchesStore = storeFilter === "all" || item.store_id === storeFilter;
+  // --- Fetch inventory and attributes ---
+  const fetchInventory = async () => {
+    const { data: attrs } = await supabase.from("item_attributes").select("*");
+    setAttributes(attrs || []);
 
-        return matchesSearch && matchesStore;
-      }),
-    [inventory, searchTerm, storeFilter],
-  );
+    const { data: itemsData } = await supabase.from("items").select("*");
+    setItems(itemsData || []);
+  };
 
-  /** Store summary */
-  const storeSummary = useMemo(() => {
-    const stores: StoreSummary = {};
-    inventory.forEach((item) => {
-      const storeId = item.store_id;
-      const storeName = item.store_name || storeId;
-      if (!stores[storeId]) stores[storeId] = { count: 0, items: [], storeName };
-      stores[storeId].count++;
-      stores[storeId].items.push(item);
+  useEffect(() => {
+    fetchInventory();
+  }, []);
+
+  // --- Add Item ---
+  const handleAddItem = async () => {
+    const itemToInsert: Record<string, any> = {};
+    attributes.forEach((attr) => {
+      itemToInsert[attr.name] = newItem[attr.name] ?? "";
     });
-    return stores;
-  }, [inventory]);
 
-  /** Unique stores for filter dropdown */
-  const getUniqueStores = () => {
-    const stores: { [key: string]: string } = { all: "All Stores" };
-    inventory.forEach((item) => {
-      stores[item.store_id] = item.store_name || item.store_id;
-    });
-    return stores;
+    const { error } = await supabase.from("items").insert([itemToInsert]);
+    if (error) toast({ title: "Error adding item", description: error.message, type: "error" });
+    else {
+      toast({ title: "Item added successfully", type: "success" });
+      setShowAddModal(false);
+      setNewItem({});
+      fetchInventory();
+    }
+  };
+
+  // --- Excel Import ---
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      let jsonData = XLSX.utils.sheet_to_json(sheet) as Record<string, any>[];
+
+      jsonData = jsonData.map((row) => {
+        const sanitized: Record<string, any> = {};
+        attributes.forEach((attr) => {
+          sanitized[attr.name] = row[attr.name] ?? "";
+        });
+        return sanitized;
+      });
+
+      const { error } = await supabase.from("items").insert(jsonData);
+      if (error) toast({ title: "Error importing items", description: error.message, type: "error" });
+      else {
+        toast({ title: "Items imported successfully", type: "success" });
+        fetchInventory();
+      }
+    } catch (err) {
+      toast({ title: "Error reading file", description: (err as Error).message, type: "error" });
+    }
+  };
+
+  // --- Google Sheets Import ---
+  const handleGoogleSheetImport = async () => {
+    try {
+      const sheetIdMatch = googleSheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (!sheetIdMatch) throw new Error("Invalid Google Sheet URL");
+
+      const sheetId = sheetIdMatch[1];
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+
+      const res = await fetch(csvUrl);
+      const csvText = await res.text();
+      const workbook = XLSX.read(csvText, { type: "string" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      let jsonData = XLSX.utils.sheet_to_json(sheet) as Record<string, any>[];
+
+      jsonData = jsonData.map((row) => {
+        const sanitized: Record<string, any> = {};
+        attributes.forEach((attr) => {
+          sanitized[attr.name] = row[attr.name] ?? "";
+        });
+        return sanitized;
+      });
+
+      const { error } = await supabase.from("items").insert(jsonData);
+      if (error) toast({ title: "Error importing items", description: error.message, type: "error" });
+      else {
+        toast({ title: "Items imported from Google Sheets successfully", type: "success" });
+        fetchInventory();
+      }
+    } catch (err) {
+      toast({ title: "Error importing Google Sheet", description: (err as Error).message, type: "error" });
+    } finally {
+      setShowGoogleSheetModal(false);
+      setGoogleSheetUrl("");
+    }
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
-          <p className="text-gray-600 mt-2">Manage and track your inventory across all stores</p>
+    <div className="p-4">
+      <h1 className="text-2xl mb-4">Inventory</h1>
+
+      {/* --- Admin Buttons --- */}
+      {user.role === "admin" && (
+        <div className="flex gap-2 mb-4">
+          <button onClick={() => setShowAddModal(true)} className="px-4 py-2 bg-blue-500 text-white rounded">
+            Add New Item
+          </button>
+
+          <label className="px-4 py-2 bg-green-500 text-white rounded cursor-pointer">
+            Import Excel
+            <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} className="hidden" />
+          </label>
+
+          <button onClick={() => setShowGoogleSheetModal(true)} className="px-4 py-2 bg-orange-500 text-white rounded">
+            Import Google Sheets
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <input
-          type="text"
-          placeholder="Search by name, SKU, brand, or category..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1 px-3 py-2 border rounded-md"
-        />
-        <select
-          value={storeFilter}
-          onChange={(e) => setStoreFilter(e.target.value)}
-          className="md:w-64 px-3 py-2 border rounded-md"
-        >
-          {Object.entries(getUniqueStores()).map(([id, name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
+      {/* --- Items Table --- */}
+      <table className="w-full border-collapse border border-gray-300">
+        <thead>
+          <tr>
+            {attributes.map((attr) => (
+              <th key={attr.id} className="border p-2 text-left">
+                {attr.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id}>
+              {attributes.map((attr) => (
+                <td key={attr.id} className="border p-2">
+                  {item[attr.name]}
+                </td>
+              ))}
+            </tr>
           ))}
-        </select>
-      </div>
+        </tbody>
+      </table>
 
-      {/* Store Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {Object.entries(storeSummary).map(([storeId, storeData]) => (
-          <div key={storeId} className="bg-white p-4 rounded-lg shadow-sm border">
-            <h3 className="font-semibold text-gray-900">{storeData.storeName}</h3>
-            <div className="text-2xl font-bold text-blue-600">{storeData.count}</div>
-            <div className="text-sm text-gray-600">items in stock</div>
-            <button onClick={() => setStoreFilter(storeId)} className="mt-2 text-sm text-blue-600 hover:text-blue-800">
-              View items →
-            </button>
+      {/* --- Add Item Modal --- */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+          <div className="bg-white p-4 rounded w-1/2">
+            <h2 className="text-xl mb-4">Add New Item</h2>
+            {attributes.map((attr) => (
+              <div key={attr.id} className="mb-2">
+                <label className="block mb-1">{attr.name}</label>
+                <input
+                  type="text"
+                  className="border p-1 w-full"
+                  value={newItem[attr.name] || ""}
+                  onChange={(e) => setNewItem({ ...newItem, [attr.name]: e.target.value })}
+                />
+              </div>
+            ))}
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-300 rounded">
+                Cancel
+              </button>
+              <button onClick={handleAddItem} className="px-4 py-2 bg-blue-500 text-white rounded">
+                Add Item
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
-      {/* Inventory Table */}
-      <div className="border rounded-lg overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center">Loading inventory...</div>
-        ) : filteredInventory.length === 0 ? (
-          <div className="p-8 text-center">No items found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-2">Item</th>
-                  <th className="px-4 py-2">SKU</th>
-                  <th className="px-4 py-2">Quantity</th>
-                  <th className="px-4 py-2">Store</th>
-                  <th className="px-4 py-2">Category</th>
-                  <th className="px-4 py-2">Brand</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInventory.map((item) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="px-4 py-2">{item.item_name}</td>
-                    <td className="px-4 py-2">{item.sku || "N/A"}</td>
-                    <td className="px-4 py-2">{item.quantity}</td>
-                    <td className="px-4 py-2">{item.store_name || item.store_id}</td>
-                    <td className="px-4 py-2">{item.category}</td>
-                    <td className="px-4 py-2">{item.brand || "N/A"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* --- Google Sheet Modal --- */}
+      {showGoogleSheetModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+          <div className="bg-white p-4 rounded w-1/2">
+            <h2 className="text-xl mb-4">Import Google Sheet</h2>
+            <input
+              type="text"
+              className="border p-2 w-full"
+              placeholder="Paste Google Sheet URL"
+              value={googleSheetUrl}
+              onChange={(e) => setGoogleSheetUrl(e.target.value)}
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowGoogleSheetModal(false)} className="px-4 py-2 bg-gray-300 rounded">
+                Cancel
+              </button>
+              <button onClick={handleGoogleSheetImport} className="px-4 py-2 bg-green-500 text-white rounded">
+                Import
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default Inventory;
+export default InventoryPage;
