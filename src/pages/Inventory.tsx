@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,6 +83,98 @@ const BulkUpdateConfirmationDialog = ({
             Only Selected SKUs
           </Button>
           <Button onClick={() => onConfirm(true)}>All Related SKUs</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Item Details Dialog
+interface ItemDetailsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: Item | null;
+}
+
+const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps) => {
+  if (!item) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Item Details</DialogTitle>
+          <DialogDescription>Complete information for {item.name}</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <div>
+              <Label className="text-sm font-medium">SKU</Label>
+              <p className="text-sm mt-1">{item.sku}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Name</Label>
+              <p className="text-sm mt-1">{item.name}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Category</Label>
+              <p className="text-sm mt-1">{item.category || "-"}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Brand</Label>
+              <p className="text-sm mt-1">{item.brand || "-"}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Model Number</Label>
+              <p className="text-sm mt-1">{item.item_number || "-"}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <Label className="text-sm font-medium">Current Quantity</Label>
+              <p className="text-sm mt-1">{item.quantity}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Minimum Stock</Label>
+              <p className="text-sm mt-1">{item.min_stock}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Unit</Label>
+              <p className="text-sm mt-1">{item.unit}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Season</Label>
+              <p className="text-sm mt-1">{item.season || "-"}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Main Group</Label>
+              <p className="text-sm mt-1">{item.main_group || "-"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Additional Information</Label>
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <span className="font-medium">Supplier:</span> {item.supplier || "-"}
+            </div>
+            <div>
+              <span className="font-medium">Department:</span> {item.department || "-"}
+            </div>
+            <div>
+              <span className="font-medium">Origin:</span> {item.origin || "-"}
+            </div>
+            <div>
+              <span className="font-medium">Theme:</span> {item.theme || "-"}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -303,7 +395,6 @@ interface StoreInventoryItem {
   unit: string;
   store_name: string;
   store_id: string;
-  // Add any additional fields that might be available
 }
 
 const InventoryNew = () => {
@@ -313,7 +404,9 @@ const InventoryNew = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | undefined>();
+  const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<{ id: string; name: string } | null>(null);
   const [selectedItems, setSelectedItems] = useState<Item[]>([]);
   const [fallbackInventory, setFallbackInventory] = useState<Item[]>([]);
@@ -342,7 +435,8 @@ const InventoryNew = () => {
     console.log("Store Filter:", storeFilter);
     console.log("Store Inventory count:", storeInventory.length);
     console.log("Aggregated Inventory count:", aggregatedInventory.length);
-  }, [storeInventory, aggregatedInventory, storeFilter]);
+    console.log("Available stores:", stores);
+  }, [storeInventory, aggregatedInventory, storeFilter, stores]);
 
   // Use store inventory when a specific store is selected, otherwise use aggregated
   const inventory = useMemo(() => {
@@ -534,6 +628,11 @@ const InventoryNew = () => {
     if (item.quantity === 0) return { label: "Out of Stock", variant: "destructive" as const };
     if (item.quantity <= item.min_stock) return { label: "Low Stock", variant: "warning" as const };
     return { label: "In Stock", variant: "success" as const };
+  };
+
+  const handleViewDetails = (item: Item) => {
+    setSelectedItemForDetails(item);
+    setDetailsOpen(true);
   };
 
   if (isLoading) {
@@ -742,14 +841,23 @@ const InventoryNew = () => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => handleViewDetails(item)}
+                          title="View Details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => {
                             setEditingItem(item);
                             setDialogOpen(true);
                           }}
+                          title="Edit Item"
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)} title="Delete Item">
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -782,6 +890,8 @@ const InventoryNew = () => {
         }}
       />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
+
+      <ItemDetailsDialog open={detailsOpen} onOpenChange={setDetailsOpen} item={selectedItemForDetails} />
 
       {selectedItemForHistory && (
         <PriceHistoryDialog
