@@ -1,10 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-// Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from "../supabaseClient"; // make sure you have this configured
 
 // TypeScript interfaces
 interface InventoryItem {
@@ -45,7 +40,7 @@ const Inventory = () => {
   const [storeFilter, setStoreFilter] = useState("all");
   const [debugInfo, setDebugInfo] = useState<any>({});
 
-  // Debug storage and global info
+  // Debugging functions
   const debugAllStorage = () => {
     console.log("🛠️ === COMPREHENSIVE STORAGE DEBUGGING ===");
 
@@ -57,33 +52,30 @@ const Inventory = () => {
       currentPath: window.location.pathname,
     };
 
-    // localStorage
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key) {
         try {
           const value = localStorage.getItem(key);
           storageData.localStorage[key] = value ? JSON.parse(value) : null;
-        } catch (e) {
+        } catch {
           storageData.localStorage[key] = localStorage.getItem(key);
         }
       }
     }
 
-    // sessionStorage
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
       if (key) {
         try {
           const value = sessionStorage.getItem(key);
           storageData.sessionStorage[key] = value ? JSON.parse(value) : null;
-        } catch (e) {
+        } catch {
           storageData.sessionStorage[key] = sessionStorage.getItem(key);
         }
       }
     }
 
-    // global variables
     const globalVars = ["inventory", "storeData", "supabase", "queryClient", "react"];
     globalVars.forEach((varName) => {
       if ((window as any)[varName]) {
@@ -96,7 +88,6 @@ const Inventory = () => {
     return storageData;
   };
 
-  // Analyze stores
   const analyzeStores = (inventoryData: InventoryItem[]) => {
     if (!inventoryData || inventoryData.length === 0) return {};
 
@@ -127,7 +118,7 @@ const Inventory = () => {
       setLoading(true);
       console.log("🔄 Loading inventory from Supabase...");
 
-      const { data, error } = await supabase.from<InventoryItem>("inventory").select("*, store(*)");
+      const { data, error } = await supabase.from<InventoryItem, InventoryItem>("inventory").select("*, store(*)");
 
       if (error) {
         console.error("❌ Supabase error:", error);
@@ -145,7 +136,7 @@ const Inventory = () => {
     }
   };
 
-  // Filtered inventory
+  // Filter inventory
   const filteredInventory = inventory.filter((item) => {
     const matchesSearch =
       searchTerm === "" ||
@@ -162,14 +153,16 @@ const Inventory = () => {
     return matchesSearch && matchesStore;
   });
 
-  // Unique stores for dropdown
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
+
     inventory.forEach((item) => {
       const storeId = item.storeId || item.store_id || item.store?.id;
       const storeName = item.store?.name || storeId || "Unknown Store";
+
       if (storeId) stores[storeId] = storeName;
     });
+
     return stores;
   };
 
@@ -201,7 +194,6 @@ const Inventory = () => {
       {showDebug && (
         <div className="mb-6 p-4 border-2 border-red-300 rounded-lg bg-red-50">
           <h3 className="text-lg font-semibold text-red-800 mb-3">🛠️ Debug Panel</h3>
-
           <div className="flex gap-2 mb-3 flex-wrap">
             <button
               onClick={debugAllStorage}
@@ -223,7 +215,7 @@ const Inventory = () => {
               <div className="text-xs text-gray-600 mt-1">
                 {Object.keys(debugInfo.localStorage || {}).length > 0
                   ? Object.keys(debugInfo.localStorage || {}).join(", ")
-                  : "No local storage data"}
+                  : "No inventory data found"}
               </div>
             </div>
             <div>
@@ -258,7 +250,6 @@ const Inventory = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-
           <div className="md:w-64">
             <label htmlFor="store-filter" className="block text-sm font-medium text-gray-700 mb-1">
               Filter by Store
@@ -290,7 +281,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* Store Summary Cards */}
+      {/* Store Summary */}
       {Object.keys(storeSummary).length > 0 && (
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Store Summary</h2>
@@ -323,11 +314,7 @@ const Inventory = () => {
             <p className="mt-4 text-gray-600">Loading inventory...</p>
           </div>
         ) : filteredInventory.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="text-gray-400 text-6xl mb-4">📦</div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
-            <p className="text-gray-600 mb-4">No items match your current filters.</p>
-          </div>
+          <div className="p-8 text-center text-gray-600">No items found for the selected filters.</div>
         ) : (
           <div className="overflow-hidden">
             <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
@@ -337,7 +324,6 @@ const Inventory = () => {
               <div className="col-span-2 text-right">Price</div>
               <div className="col-span-2">Store</div>
             </div>
-
             {filteredInventory.map((item) => (
               <div
                 key={item.id}
@@ -349,11 +335,9 @@ const Inventory = () => {
                     <div className="text-sm text-gray-600 mt-1 line-clamp-2">{item.description}</div>
                   )}
                 </div>
-
                 <div className="col-span-2">
                   <code className="text-sm bg-gray-100 px-2 py-1 rounded">{item.sku || "N/A"}</code>
                 </div>
-
                 <div className="col-span-2 text-right">
                   <span
                     className={`font-semibold ${
@@ -368,7 +352,6 @@ const Inventory = () => {
                   </span>
                   {item.min_stock && <div className="text-xs text-gray-500 mt-1">min: {item.min_stock}</div>}
                 </div>
-
                 <div className="col-span-2 text-right">
                   {item.price ? (
                     <>
@@ -379,7 +362,6 @@ const Inventory = () => {
                     <span className="text-gray-400">N/A</span>
                   )}
                 </div>
-
                 <div className="col-span-2">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                     {item.store?.name || item.storeId || "Unknown Store"}
