@@ -1,4 +1,4 @@
-// App.tsx
+// src/App.tsx
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,13 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AIReports from "./pages/AIReports";
 
-// Standard App Components
-// FIX: Using relative paths from src/ and removing file extensions
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// Standard Page Components
-// FIX: Using relative paths from src/ and removing file extensions
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
@@ -31,11 +27,8 @@ import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
 import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
 import NotFound from "./pages/NotFound";
 
-// New Notifications Page
 import Notifications from "./pages/Notifications";
 
-// POS Pages
-// FIX: Using relative paths from src/ and removing file extensions
 import POSHome from "./pages/POS/POSHome";
 import POSReceipts from "./pages/POS/POSReceipts";
 import POSRefunds from "./pages/POS/POSRefunds";
@@ -51,13 +44,8 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* --- Public Auth --- */}
           <Route path="/auth" element={<Auth />} />
 
-          {/* =======================================================
-              POS ROUTES (Full Screen / No Layout)
-              Wrapped with POSProvider to share cashier session state
-          ======================================================= */}
           <Route
             path="/pos/*"
             element={
@@ -100,9 +88,6 @@ const App = () => (
             }
           />
 
-          {/* =======================================================
-              MAIN APP ROUTES (With Sidebar Layout)
-          ======================================================= */}
           <Route
             path="/"
             element={
@@ -113,8 +98,6 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-
-          {/* AI Reports (Protected + with Layout) */}
           <Route
             path="/ai-reports"
             element={
@@ -125,7 +108,6 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/inventory"
             element={
@@ -136,7 +118,6 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/inventory/physical"
             element={
@@ -167,8 +148,6 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-
-          {/* --- Purchases --- */}
           <Route
             path="/purchase-orders"
             element={
@@ -209,8 +188,6 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-
-          {/* --- Transfers --- */}
           <Route
             path="/transfers"
             element={
@@ -231,8 +208,6 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-
-          {/* --- Approvals/Notifications Page --- */}
           <Route
             path="/approvals"
             element={
@@ -243,8 +218,6 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-
-          {/* --- Misc Pages --- */}
           <Route
             path="/alerts"
             element={
@@ -296,7 +269,6 @@ const App = () => (
             }
           />
 
-          {/* --- Fallback --- */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
