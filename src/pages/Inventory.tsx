@@ -1,39 +1,29 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { CSVLink } from "react-csv";
 
 interface Item {
   id: string;
-  name: string;
   sku?: string;
-  category?: string;
-  brand?: string;
-  size?: string;
-  color?: string;
-  gender?: string;
-  season?: string;
-  unit?: string;
-  quantity?: number;
-  min_stock?: number;
+  name: string;
+  brand: string;
+  category: string;
+  color: string;
+  color_id: string;
+  department: string;
   description?: string;
-  pos_description?: string;
-  item_number?: string;
-  department?: string;
-  main_group?: string;
-  origin?: string;
-  theme?: string;
-  color_id?: string;
+  gender: string;
   item_color_code?: string;
-  tax?: number;
-  created_at?: string;
-  updated_at?: string;
+  item_number?: string;
+  min_stock: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Store {
   id: string;
   name: string;
-  location?: string;
-  created_at?: string;
+  location: string;
+  created_at: string;
 }
 
 interface StoreInventory {
@@ -60,7 +50,7 @@ const Inventory: React.FC = () => {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // --- Load Inventory ---
+  // Load Inventory
   const loadInventory = async () => {
     setLoading(true);
     try {
@@ -74,29 +64,20 @@ const Inventory: React.FC = () => {
     }
   };
 
-  // --- Realtime Subscription ---
   useEffect(() => {
     loadInventory();
-
+    // Realtime updates
     const subscription = supabase
       .channel("public:store_inventory")
-      .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, async (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, (payload) => {
         setInventory((prev) => {
           const updated = [...prev];
           const index = updated.findIndex((i) => i.id === payload.new?.id);
           if (payload.eventType === "DELETE") {
             if (index !== -1) updated.splice(index, 1);
           } else if (payload.new) {
-            const newItem = payload.new;
-            // If exists, update
-            if (index !== -1) {
-              updated[index] = { ...updated[index], ...newItem };
-            } else {
-              // Fetch item and store data if new
-              fetchItemAndStore(newItem.item_id, newItem.store_id).then((entry) =>
-                setInventory((prev) => [...prev, entry]),
-              );
-            }
+            if (index !== -1) updated[index] = { ...updated[index], ...payload.new };
+            else updated.push(payload.new as StoreInventory);
           }
           return updated;
         });
@@ -106,41 +87,23 @@ const Inventory: React.FC = () => {
     return () => supabase.removeChannel(subscription);
   }, []);
 
-  const fetchItemAndStore = async (item_id: string, store_id: string) => {
-    const { data: itemData } = await supabase.from("items").select("*").eq("id", item_id).single();
-    const { data: storeData } = await supabase.from("stores").select("*").eq("id", store_id).single();
-    return {
-      ...itemData,
-      store_id,
-      item_id,
-      quantity: 0,
-      min_stock: itemData?.min_stock || 0,
-      item: itemData,
-      store: storeData,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      id: `${item_id}-${store_id}-${Date.now()}`,
-    } as StoreInventory;
-  };
-
-  // --- Filter Inventory ---
+  // Filter
   const filteredInventory = useMemo(() => {
     return inventory.filter((i) => {
       const matchesStore = storeFilter === "all" || i.store_id === storeFilter;
       const matchesSearch =
         !searchTerm ||
         i.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        i.item.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+        (i.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
       return matchesStore && matchesSearch;
     });
   }, [inventory, storeFilter, searchTerm]);
 
-  // --- Sorting ---
+  // Sorting
   const sortedInventory = useMemo(() => {
     return [...filteredInventory].sort((a, b) => {
       let aValue: any;
       let bValue: any;
-
       if (sortField === "total_quantity") {
         const totalA = inventory.filter((i) => i.item_id === a.item_id).reduce((sum, i) => sum + i.quantity, 0);
         const totalB = inventory.filter((i) => i.item_id === b.item_id).reduce((sum, i) => sum + i.quantity, 0);
@@ -154,18 +117,17 @@ const Inventory: React.FC = () => {
         aValue = (a as any)[sortField];
         bValue = (b as any)[sortField];
       }
-
       if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
       if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
   }, [filteredInventory, sortField, sortDirection, inventory]);
 
-  // --- Pagination ---
+  // Pagination
   const totalPages = Math.ceil(sortedInventory.length / ITEMS_PER_PAGE);
   const paginatedInventory = sortedInventory.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  // --- Total Stock Across All Stores ---
+  // Total stock across all stores
   const totalStockMap = useMemo(() => {
     const map: { [itemId: string]: number } = {};
     inventory.forEach((i) => {
@@ -175,26 +137,47 @@ const Inventory: React.FC = () => {
     return map;
   }, [inventory]);
 
-  // --- CSV Export ---
-  const csvData = inventory.map((i) => ({
-    "Item Name": i.item.name,
-    SKU: i.item.sku,
-    Store: i.store.name,
-    Quantity: i.quantity,
-    "Min Stock": i.min_stock,
-    "Total Stock": totalStockMap[i.item_id] || i.quantity,
-  }));
+  // CSV export
+  const exportCSV = () => {
+    const header = ["Item Name", "SKU", "Store", "Quantity", "Min Stock", "Total Stock"];
+    const rows = inventory.map((i) => [
+      i.item.name,
+      i.item.sku,
+      i.store.name,
+      i.quantity.toString(),
+      i.min_stock.toString(),
+      (totalStockMap[i.item_id] || i.quantity).toString(),
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].map((e) => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "inventory_report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
-  // --- Low Stock Count ---
-  const lowStockCount = inventory.filter((i) => i.quantity <= (i.min_stock || 0)).length;
+  // Summary
+  const totalItems = useMemo(() => new Set(inventory.map((i) => i.item_id)).size, [inventory]);
+  const totalQuantity = useMemo(() => inventory.reduce((sum, i) => sum + i.quantity, 0), [inventory]);
+  const lowStockCount = useMemo(() => inventory.filter((i) => i.quantity <= i.min_stock).length, [inventory]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold">Inventory Management</h1>
-        {lowStockCount > 0 && (
-          <span className="px-3 py-1 bg-red-600 text-white rounded">{lowStockCount} Critical Items</span>
-        )}
+      <h1 className="text-3xl font-bold mb-4">Inventory Management</h1>
+
+      {/* Dashboard */}
+      <div className="flex gap-4 mb-6">
+        <div className="px-4 py-2 bg-blue-100 rounded">
+          Total Items: <strong>{totalItems}</strong>
+        </div>
+        <div className="px-4 py-2 bg-green-100 rounded">
+          Total Quantity: <strong>{totalQuantity}</strong>
+        </div>
+        <div className="px-4 py-2 bg-red-100 rounded">
+          Low Stock Items: <strong>{lowStockCount}</strong>
+        </div>
       </div>
 
       {/* Filters */}
@@ -221,13 +204,9 @@ const Inventory: React.FC = () => {
               </option>
             ))}
         </select>
-        <CSVLink
-          data={csvData}
-          filename={"inventory_report.csv"}
-          className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
+        <button onClick={exportCSV} className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
           Export CSV
-        </CSVLink>
+        </button>
       </div>
 
       {/* Table */}
@@ -281,7 +260,7 @@ const Inventory: React.FC = () => {
               <td className="px-4 py-2">{i.item.sku}</td>
               <td className="px-4 py-2">{i.store.name}</td>
               <td
-                className={`px-4 py-2 text-right ${i.quantity <= (i.min_stock || 0) ? "text-red-600 font-bold" : i.quantity <= (i.min_stock || 0) * 2 ? "text-yellow-600" : "text-green-600"}`}
+                className={`px-4 py-2 text-right ${i.quantity <= i.min_stock ? "text-red-600 font-bold" : i.quantity <= i.min_stock * 2 ? "text-yellow-600" : "text-green-600"}`}
               >
                 {i.quantity}
               </td>
