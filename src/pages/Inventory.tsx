@@ -3,20 +3,32 @@ import { supabase } from "../integrations/supabase/client";
 
 interface InventoryItem {
   id: string;
-  name: string;
   sku?: string;
-  quantity: number;
+  name: string;
   category?: string;
-  store_id?: string;
-  store?: {
-    id: string;
-    name: string;
-  };
-  description?: string;
+  brand?: string;
+  size?: string;
+  color?: string;
+  gender?: string;
+  season?: string;
+  unit?: string;
+  quantity: number;
   min_stock?: number;
-  max_stock?: number;
+  location?: string;
+  supplier?: string;
+  last_restocked?: string;
   created_at?: string;
   updated_at?: string;
+  description?: string;
+  pos_description?: string;
+  item_number?: string;
+  department?: string;
+  main_group?: string;
+  origin?: string;
+  theme?: string;
+  color_id?: string;
+  item_color_code?: string;
+  tax?: number;
 }
 
 const Inventory: React.FC = () => {
@@ -24,7 +36,7 @@ const Inventory: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load data from Supabase
+  // Load all inventory items
   const loadInventory = async () => {
     try {
       setLoading(true);
@@ -32,25 +44,37 @@ const Inventory: React.FC = () => {
 
       const { data, error } = await supabase.from("items").select(`
           id,
-          name,
           sku,
-          quantity,
+          name,
           category,
-          store_id,
-          description,
+          brand,
+          size,
+          color,
+          gender,
+          season,
+          unit,
+          quantity,
           min_stock,
-          max_stock,
+          location,
+          supplier,
+          last_restocked,
           created_at,
           updated_at,
-          store:store_id ( id, name )
+          description,
+          pos_description,
+          item_number,
+          department,
+          main_group,
+          origin,
+          theme,
+          color_id,
+          item_color_code,
+          tax
         `);
 
       if (error) throw error;
-
-      if (data) {
-        setInventory(data as InventoryItem[]);
-        console.log(`✅ Loaded ${data.length} items from Supabase`);
-      }
+      setInventory(data as InventoryItem[]);
+      console.log(`✅ Loaded ${data.length} items from Supabase`);
     } catch (err: any) {
       console.error("❌ Error loading inventory:", err);
       setError(err.message || "Unknown error");
@@ -75,22 +99,25 @@ const Inventory: React.FC = () => {
           <table className="min-w-full text-sm text-left">
             <thead className="bg-gray-100">
               <tr>
-                <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">SKU</th>
+                <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Category</th>
+                <th className="px-4 py-2">Brand</th>
                 <th className="px-4 py-2">Quantity</th>
-                <th className="px-4 py-2">Store</th>
                 <th className="px-4 py-2">Min Stock</th>
-                <th className="px-4 py-2">Max Stock</th>
-                <th className="px-4 py-2">Last Updated</th>
+                <th className="px-4 py-2">Location</th>
+                <th className="px-4 py-2">Supplier</th>
+                <th className="px-4 py-2">Last Restocked</th>
+                <th className="px-4 py-2">Updated At</th>
               </tr>
             </thead>
             <tbody>
               {inventory.map((item) => (
                 <tr key={item.id} className="border-t hover:bg-gray-50 transition">
-                  <td className="px-4 py-2 font-medium">{item.name}</td>
                   <td className="px-4 py-2">{item.sku || "-"}</td>
+                  <td className="px-4 py-2 font-medium">{item.name}</td>
                   <td className="px-4 py-2">{item.category || "-"}</td>
+                  <td className="px-4 py-2">{item.brand || "-"}</td>
                   <td
                     className={`px-4 py-2 font-semibold ${
                       item.quantity <= (item.min_stock || 0) ? "text-red-600" : ""
@@ -98,9 +125,12 @@ const Inventory: React.FC = () => {
                   >
                     {item.quantity}
                   </td>
-                  <td className="px-4 py-2">{item.store ? item.store.name : "-"}</td>
                   <td className="px-4 py-2">{item.min_stock ?? "-"}</td>
-                  <td className="px-4 py-2">{item.max_stock ?? "-"}</td>
+                  <td className="px-4 py-2">{item.location || "-"}</td>
+                  <td className="px-4 py-2">{item.supplier || "-"}</td>
+                  <td className="px-4 py-2">
+                    {item.last_restocked ? new Date(item.last_restocked).toLocaleDateString() : "-"}
+                  </td>
                   <td className="px-4 py-2">{item.updated_at ? new Date(item.updated_at).toLocaleString() : "-"}</td>
                 </tr>
               ))}
