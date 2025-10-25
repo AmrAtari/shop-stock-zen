@@ -1,197 +1,162 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-
-const ITEMS_PER_PAGE = 20;
-
-interface Item {
-  id: string;
-  sku?: string;
-  name: string;
-  min_stock?: number;
-  description?: string;
-}
+import { CSVLink } from "react-csv";
 
 interface Store {
   id: string;
   name: string;
-  location?: string;
 }
 
-interface StoreInventory {
-  id: string;
-  item_id: string;
+interface ItemStock {
   store_id: string;
-  quantity: number;
-  item: Item;
-  store: Store;
+  store_name: string;
+  item_id: string | null;
+  item_name: string | null;
+  sku: string | null;
+  quantity: number | null;
+  min_stock: number | null;
 }
+
+const ITEMS_PER_PAGE = 20;
 
 const Inventory = () => {
-  const [inventory, setInventory] = useState<StoreInventory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [storeFilter, setStoreFilter] = useState("all");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [stock, setStock] = useState<ItemStock[]>([]);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
 
-  const loadInventory = async () => {
+  useEffect(() => {
+    fetchStoresAndStock();
+  }, []);
+
+  const fetchStoresAndStock = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("store_inventory").select(`
-        *,
-        item:items (id, sku, name, min_stock, description),
-        store:stores (id, name)
-      `);
-    if (error) console.error(error);
-    else if (data) setInventory(data as StoreInventory[]);
+    // 1️⃣ Fetch all stores
+    const { data: storeData, error: storeError } = await supabase.from("stores").select("id, name").order("name");
+
+    if (storeError) {
+      console.error(storeError);
+      setLoading(false);
+      return;
+    }
+
+    setStores(storeData || []);
+
+    // 2️⃣ Fetch stock for all stores
+    const { data: stockData, error: stockError } = await supabase.from("v_store_stock_levels").select("*");
+
+    if (stockError) {
+      console.error(stockError);
+      setLoading(false);
+      return;
+    }
+
+    // 3️⃣ Merge stores with stock so every store appears
+    const merged: ItemStock[] = [];
+
+    (storeData || []).forEach((store) => {
+      const items = (stockData || []).filter((s) => s.store_id === store.id);
+      if (items.length > 0) {
+        merged.push(...items);
+      } else {
+        // store exists but has no items
+        merged.push({
+          store_id: store.id,
+          store_name: store.name,
+          item_id: null,
+          item_name: null,
+          sku: null,
+          quantity: null,
+          min_stock: null,
+        });
+      }
+    });
+
+    setStock(merged);
     setLoading(false);
   };
 
-  useEffect(() => {
-    loadInventory();
-  }, []);
+  const filteredStock = useMemo(() => {
+    return stock.filter(
+      (s) =>
+        s.store_name?.toLowerCase().includes(search.toLowerCase()) ||
+        s.item_name?.toLowerCase().includes(search.toLowerCase()) ||
+        s.sku?.toLowerCase().includes(search.toLowerCase()),
+    );
+  }, [stock, search]);
 
-  const filteredInventory = useMemo(() => {
-    return inventory.filter((entry) => {
-      const matchesSearch =
-        entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-        (entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
-
-      const matchesStore = storeFilter === "all" || entry.store.id === storeFilter;
-
-      return matchesSearch && matchesStore;
-    });
-  }, [inventory, searchTerm, storeFilter]);
-
-  const paginatedInventory = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredInventory.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredInventory, currentPage]);
-
-  const totalPages = Math.ceil(filteredInventory.length / ITEMS_PER_PAGE);
-
-  const uniqueStores = useMemo(() => {
-    const stores: { [key: string]: string } = { all: "All Stores" };
-    inventory.forEach((inv) => {
-      if (inv.store) stores[inv.store.id] = inv.store.name;
-    });
-    return stores;
-  }, [inventory]);
-
-  const totalStockMap = useMemo(() => {
-    const map: { [itemId: string]: number } = {};
-    inventory.forEach((entry) => {
-      map[entry.item_id] = (map[entry.item_id] || 0) + entry.quantity;
-    });
-    return map;
-  }, [inventory]);
-
-  const exportCSV = () => {
-    const csvRows = [
-      ["Item Name", "SKU", "Store", "Quantity", "Min Stock", "Total Stock"],
-      ...filteredInventory.map((entry) => [
-        entry.item.name,
-        entry.item.sku || "",
-        entry.store.name,
-        entry.quantity,
-        entry.item.min_stock || 0,
-        totalStockMap[entry.item_id] || 0,
-      ]),
-    ];
-    const csvContent = "data:text/csv;charset=utf-8," + csvRows.map((e) => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "inventory_report.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const paginatedStock = useMemo(() => {
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    return filteredStock.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredStock, page]);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4">Inventory Management</h1>
+    <div className="p-4">
+      <h2 className="text-2xl font-bold mb-4">Inventory</h2>
 
-      <div className="flex flex-col md:flex-row gap-4 mb-4">
+      <div className="mb-4 flex gap-2">
         <input
           type="text"
-          placeholder="Search by name, SKU, or description..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="border rounded px-3 py-2 flex-1"
+          placeholder="Search by store, item, or SKU"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="border px-2 py-1 rounded"
         />
-        <select
-          value={storeFilter}
-          onChange={(e) => setStoreFilter(e.target.value)}
-          className="border rounded px-3 py-2 md:w-64"
+        <CSVLink
+          data={filteredStock}
+          filename={`inventory_export.csv`}
+          className="px-3 py-1 bg-blue-500 text-white rounded"
         >
-          {Object.entries(uniqueStores).map(([id, name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          ))}
-        </select>
-        <button onClick={exportCSV} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           Export CSV
+        </CSVLink>
+      </div>
+
+      {loading ? (
+        <p>Loading inventory...</p>
+      ) : (
+        <table className="w-full border border-gray-300">
+          <thead className="bg-gray-200">
+            <tr>
+              <th className="border px-2 py-1">Store</th>
+              <th className="border px-2 py-1">Item Name</th>
+              <th className="border px-2 py-1">SKU</th>
+              <th className="border px-2 py-1">Quantity</th>
+              <th className="border px-2 py-1">Min Stock</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedStock.map((s, idx) => (
+              <tr key={`${s.store_id}-${s.item_id || idx}`}>
+                <td className="border px-2 py-1">{s.store_name}</td>
+                <td className="border px-2 py-1">{s.item_name || "-"}</td>
+                <td className="border px-2 py-1">{s.sku || "-"}</td>
+                <td
+                  className={`border px-2 py-1 ${
+                    s.quantity !== null && s.min_stock !== null && s.quantity <= s.min_stock ? "bg-red-200" : ""
+                  }`}
+                >
+                  {s.quantity ?? 0}
+                </td>
+                <td className="border px-2 py-1">{s.min_stock ?? 0}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="mt-2 flex justify-between">
+        <button onClick={() => setPage((p) => Math.max(p - 1, 1))} className="px-3 py-1 border rounded">
+          Prev
+        </button>
+        <span>Page {page}</span>
+        <button
+          onClick={() => setPage((p) => (p * ITEMS_PER_PAGE < filteredStock.length ? p + 1 : p))}
+          className="px-3 py-1 border rounded"
+        >
+          Next
         </button>
       </div>
-
-      <div className="overflow-x-auto bg-white rounded shadow border">
-        {loading ? (
-          <div className="p-8 text-center">Loading inventory...</div>
-        ) : filteredInventory.length === 0 ? (
-          <div className="p-8 text-center">No items found.</div>
-        ) : (
-          <table className="min-w-full border-collapse">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-4 py-2">Item</th>
-                <th className="text-left px-4 py-2">SKU</th>
-                <th className="text-left px-4 py-2">Store</th>
-                <th className="text-right px-4 py-2">Quantity</th>
-                <th className="text-right px-4 py-2">Min Stock</th>
-                <th className="text-right px-4 py-2">Total Stock</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedInventory.map((entry) => {
-                const qty = entry.quantity;
-                const min = entry.item.min_stock || 0;
-                let colorClass = "text-green-600";
-                if (qty <= min) colorClass = "text-red-600";
-                else if (qty <= min * 2) colorClass = "text-yellow-600";
-
-                return (
-                  <tr key={entry.id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-2">{entry.item.name}</td>
-                    <td className="px-4 py-2">{entry.item.sku || "N/A"}</td>
-                    <td className="px-4 py-2">{entry.store.name}</td>
-                    <td className={`px-4 py-2 text-right font-semibold ${colorClass}`}>{qty}</td>
-                    <td className="px-4 py-2 text-right">{min}</td>
-                    <td className="px-4 py-2 text-right">{totalStockMap[entry.item_id]}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-2 mt-4">
-          <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} className="px-3 py-1 border rounded">
-            Prev
-          </button>
-          <span>
-            Page {currentPage} / {totalPages}
-          </span>
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-            className="px-3 py-1 border rounded"
-          >
-            Next
-          </button>
-        </div>
-      )}
     </div>
   );
 };
