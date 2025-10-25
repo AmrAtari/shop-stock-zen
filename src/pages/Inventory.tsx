@@ -1,146 +1,145 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { CSVLink } from "react-csv";
 
-// Types
+const ITEMS_PER_PAGE = 20;
+
 interface Item {
   id: string;
+  sku?: string;
   name: string;
-  sku: string;
-  category: string;
-  brand: string;
-  size: string;
-  color: string;
-  gender: string;
-  season: string;
-  unit: string;
-  description: string;
-  min_stock: number;
+  category?: string;
+  brand?: string;
+  size?: string;
+  color?: string;
+  gender?: string;
+  season?: string;
+  unit?: string;
+  quantity: number;
+  min_stock?: number;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface Store {
   id: string;
   name: string;
-  location: string;
+  location?: string;
+  created_at?: string;
 }
 
-interface InventoryEntry {
+interface StoreInventory {
   id: string;
   item_id: string;
   store_id: string;
   quantity: number;
-  min_stock: number;
-  last_restocked: string;
-  created_at: string;
-  updated_at: string;
+  min_stock?: number;
+  last_restocked?: string;
+  created_at?: string;
+  updated_at?: string;
   item: Item;
   store: Store;
 }
 
-const ITEMS_PER_PAGE = 20;
-
 const Inventory = () => {
-  const [inventory, setInventory] = useState<InventoryEntry[]>([]);
-  const [allStores, setAllStores] = useState<Store[]>([]);
+  const [inventory, setInventory] = useState<StoreInventory[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
-  const [sortField, setSortField] = useState<keyof InventoryEntry | "total_stock">("item.name");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Fetch all stores
-  useEffect(() => {
-    const fetchStores = async () => {
-      const { data: storesData, error } = await supabase.from("stores").select("*");
-      if (error) console.error(error);
-      else setAllStores(storesData || []);
-    };
-    fetchStores();
-  }, []);
+  // Load inventory data from Supabase
+  const loadInventory = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.from("store_inventory").select(`
+          *,
+          item:items (
+            id, sku, name, description, min_stock
+          ),
+          store:stores (
+            id, name, location
+          )
+        `);
 
-  // Fetch inventory with joins
-  useEffect(() => {
-    const fetchInventory = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase.from("store_inventory").select(`
-            *,
-            item:items (*),
-            store:stores (*)
-          `);
-        if (error) throw error;
-        setInventory(data || []);
-      } catch (error) {
-        console.error("Failed to load inventory:", error);
-      } finally {
-        setLoading(false);
+      if (error) {
+        console.error("Error fetching inventory:", error);
+      } else if (data) {
+        setInventory(data as StoreInventory[]);
       }
-    };
-    fetchInventory();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInventory();
   }, []);
 
-  // Calculate total stock across all stores per item
+  // Filtered inventory
+  const filteredInventory = useMemo(() => {
+    return inventory.filter((entry) => {
+      const matchesSearch =
+        entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesStore = storeFilter === "all" || entry.store.id === storeFilter;
+
+      return matchesSearch && matchesStore;
+    });
+  }, [inventory, searchTerm, storeFilter]);
+
+  // Pagination
+  const paginatedInventory = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredInventory.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredInventory, currentPage]);
+
+  const totalPages = Math.ceil(filteredInventory.length / ITEMS_PER_PAGE);
+
+  // Get unique stores for filter dropdown
+  const uniqueStores = useMemo(() => {
+    const stores: { [key: string]: string } = { all: "All Stores" };
+    inventory.forEach((inv) => {
+      if (inv.store) stores[inv.store.id] = inv.store.name;
+    });
+    return stores;
+  }, [inventory]);
+
+  // Compute total stock per item across all stores
   const totalStockMap = useMemo(() => {
     const map: { [itemId: string]: number } = {};
     inventory.forEach((entry) => {
-      if (!map[entry.item_id]) map[entry.item_id] = 0;
-      map[entry.item_id] += entry.quantity;
+      map[entry.item_id] = (map[entry.item_id] || 0) + entry.quantity;
     });
     return map;
   }, [inventory]);
 
-  // Filtered and sorted inventory
-  const filteredInventory = useMemo(() => {
-    let filtered = inventory.filter((entry) => {
-      const matchesSearch =
-        searchTerm === "" ||
-        entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStore = storeFilter === "all" || entry.store_id === storeFilter;
-      return matchesSearch && matchesStore;
-    });
-
-    filtered.sort((a, b) => {
-      let aValue: any, bValue: any;
-      if (sortField === "total_stock") {
-        aValue = totalStockMap[a.item_id];
-        bValue = totalStockMap[b.item_id];
-      } else if (sortField.startsWith("item.")) {
-        const key = sortField.split(".")[1] as keyof Item;
-        aValue = a.item[key];
-        bValue = b.item[key];
-      } else {
-        aValue = (a as any)[sortField];
-        bValue = (b as any)[sortField];
-      }
-      if (typeof aValue === "string") aValue = aValue.toLowerCase();
-      if (typeof bValue === "string") bValue = bValue.toLowerCase();
-      if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
-      if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
-      return 0;
-    });
-
-    return filtered;
-  }, [inventory, searchTerm, storeFilter, sortField, sortOrder, totalStockMap]);
-
-  const toggleSort = (field: keyof InventoryEntry | "total_stock") => {
-    if (sortField === field) setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-    else {
-      setSortField(field);
-      setSortOrder("asc");
-    }
+  // CSV export
+  const exportCSV = () => {
+    const csvRows = [
+      ["Item Name", "SKU", "Store", "Quantity", "Min Stock", "Total Stock"],
+      ...filteredInventory.map((entry) => [
+        entry.item.name,
+        entry.item.sku || "",
+        entry.store.name,
+        entry.quantity,
+        entry.item.min_stock || 0,
+        totalStockMap[entry.item_id] || 0,
+      ]),
+    ];
+    const csvContent = "data:text/csv;charset=utf-8," + csvRows.map((e) => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "inventory_report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
-
-  // CSV Export
-  const csvData = filteredInventory.map((entry) => ({
-    "Item Name": entry.item.name,
-    SKU: entry.item.sku,
-    Store: entry.store.name,
-    Quantity: entry.quantity,
-    "Min Stock": entry.min_stock,
-    "Total Stock Across All Stores": totalStockMap[entry.item_id],
-  }));
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -150,89 +149,86 @@ const Inventory = () => {
       <div className="flex flex-col md:flex-row gap-4 mb-4">
         <input
           type="text"
-          placeholder="Search by name, SKU, description..."
+          placeholder="Search by name, SKU, or description..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="border px-3 py-2 rounded flex-1"
+          className="border rounded px-3 py-2 flex-1"
         />
         <select
           value={storeFilter}
           onChange={(e) => setStoreFilter(e.target.value)}
-          className="border px-3 py-2 rounded"
+          className="border rounded px-3 py-2 md:w-64"
         >
-          <option value="all">All Stores</option>
-          {allStores.map((store) => (
-            <option key={store.id} value={store.id}>
-              {store.name}
+          {Object.entries(uniqueStores).map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
             </option>
           ))}
         </select>
-        <CSVLink
-          data={csvData}
-          filename="inventory_report.csv"
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
+        <button onClick={exportCSV} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           Export CSV
-        </CSVLink>
+        </button>
       </div>
 
-      {/* Inventory Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full border border-gray-200">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-4 py-2 cursor-pointer" onClick={() => toggleSort("item.name")}>
-                Item Name
-              </th>
-              <th className="px-4 py-2 cursor-pointer" onClick={() => toggleSort("item.sku")}>
-                SKU
-              </th>
-              <th className="px-4 py-2 cursor-pointer" onClick={() => toggleSort("store.name")}>
-                Store
-              </th>
-              <th className="px-4 py-2 cursor-pointer" onClick={() => toggleSort("quantity")}>
-                Quantity
-              </th>
-              <th className="px-4 py-2">Min Stock</th>
-              <th className="px-4 py-2 cursor-pointer" onClick={() => toggleSort("total_stock")}>
-                Total Stock Across All Stores
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+      {/* Table */}
+      <div className="overflow-x-auto bg-white rounded shadow border">
+        {loading ? (
+          <div className="p-8 text-center">Loading inventory...</div>
+        ) : filteredInventory.length === 0 ? (
+          <div className="p-8 text-center">No items found.</div>
+        ) : (
+          <table className="min-w-full border-collapse">
+            <thead className="bg-gray-50 border-b">
               <tr>
-                <td colSpan={6} className="text-center py-8">
-                  Loading...
-                </td>
+                <th className="text-left px-4 py-2">Item</th>
+                <th className="text-left px-4 py-2">SKU</th>
+                <th className="text-left px-4 py-2">Store</th>
+                <th className="text-right px-4 py-2">Quantity</th>
+                <th className="text-right px-4 py-2">Min Stock</th>
+                <th className="text-right px-4 py-2">Total Stock</th>
               </tr>
-            ) : filteredInventory.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center py-8">
-                  No items found
-                </td>
-              </tr>
-            ) : (
-              filteredInventory.map((entry) => {
-                let quantityColor = "text-green-700";
-                if (entry.quantity <= entry.min_stock) quantityColor = "text-red-700 font-bold";
-                else if (entry.quantity <= entry.min_stock * 2) quantityColor = "text-yellow-600 font-semibold";
+            </thead>
+            <tbody>
+              {paginatedInventory.map((entry) => {
+                const qty = entry.quantity;
+                const min = entry.item.min_stock || 0;
+                let colorClass = "text-green-600";
+                if (qty <= min) colorClass = "text-red-600";
+                else if (qty <= min * 2) colorClass = "text-yellow-600";
 
                 return (
-                  <tr key={entry.id} className="border-t">
+                  <tr key={entry.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-2">{entry.item.name}</td>
-                    <td className="px-4 py-2">{entry.item.sku}</td>
+                    <td className="px-4 py-2">{entry.item.sku || "N/A"}</td>
                     <td className="px-4 py-2">{entry.store.name}</td>
-                    <td className={`px-4 py-2 ${quantityColor}`}>{entry.quantity}</td>
-                    <td className="px-4 py-2">{entry.min_stock}</td>
-                    <td className="px-4 py-2">{totalStockMap[entry.item_id]}</td>
+                    <td className={`px-4 py-2 text-right font-semibold ${colorClass}`}>{qty}</td>
+                    <td className="px-4 py-2 text-right">{min}</td>
+                    <td className="px-4 py-2 text-right">{totalStockMap[entry.item_id]}</td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-2 mt-4">
+          <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} className="px-3 py-1 border rounded">
+            Prev
+          </button>
+          <span>
+            Page {currentPage} / {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            className="px-3 py-1 border rounded"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 };
