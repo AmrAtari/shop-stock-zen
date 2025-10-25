@@ -1,3 +1,4 @@
+// src/pages/Inventory.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -8,86 +9,110 @@ interface Attribute {
   name: string;
   label?: string;
   icon?: string;
-  table_name?: string;
   created_at?: string;
 }
 
 interface Item {
-  id?: string;
+  id: string;
   name: string;
-  sku?: string;
+  sku: string;
   category: string;
-  [key: string]: any; // for dynamic attributes
+  [key: string]: any; // dynamic attributes
 }
 
 const Inventory: React.FC = () => {
+  const toast = useToast();
   const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+
+  // Fetch all attributes dynamically
+  const fetchAttributes = async () => {
+    const { data, error } = await supabase
+      .from<Database["public"]["Tables"]["item_attributes"]["Row"]>("item_attributes")
+      .select("*");
+
+    if (error) {
+      toast.toast({ title: "Error fetching attributes", type: "foreground" });
+      return;
+    }
+
+    setAttributes(data || []);
+  };
+
+  // Fetch all items
+  const fetchItems = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from<Database["public"]["Tables"]["inventory"]["Row"]>("inventory")
+      .select("*");
+
+    setLoading(false);
+
+    if (error) {
+      toast.toast({ title: "Error fetching items", type: "foreground" });
+      return;
+    }
+
+    setItems(data || []);
+  };
 
   useEffect(() => {
     fetchAttributes();
     fetchItems();
   }, []);
 
-  // Fetch dynamic attributes
-  const fetchAttributes = async () => {
-    const { data, error } = await supabase.from("item_attributes").select("*");
-
-    if (error) {
-      toast.toast({ title: "Error fetching attributes", type: "error" });
-      return;
-    }
-
-    // Type assertion to Attribute[]
-    setAttributes(data as unknown as Attribute[]);
+  // Add new item handler
+  const handleAddNewItem = async () => {
+    // Open a modal or redirect to Add Item page
+    // For now, just show a toast
+    toast.toast({ title: "Add New Item clicked", type: "foreground" });
   };
 
-  // Fetch inventory items
-  const fetchItems = async () => {
-    const { data, error } = await supabase.from("inventory").select("*");
-
-    if (error) {
-      toast.toast({ title: "Error fetching items", type: "error" });
-      return;
-    }
-
-    // Type assertion to Item[]
-    setItems(data as unknown as Item[]);
+  // Import Excel / Google Sheets handler
+  const handleImport = () => {
+    toast.toast({ title: "Import clicked (Excel / Google Sheets)", type: "foreground" });
   };
 
   return (
     <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Inventory</h1>
+      <h1 className="text-2xl font-bold mb-4">Inventory</h1>
 
-      {/* Add New Item button */}
-      <button
-        className="bg-blue-600 text-white px-4 py-2 rounded mb-4"
-        onClick={() => toast.toast({ title: "Add Item clicked" })}
-      >
-        Add New Item
-      </button>
+      <div className="flex gap-2 mb-4">
+        <button onClick={handleAddNewItem} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+          Add New Item
+        </button>
+        <button onClick={handleImport} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+          Import (Excel / Google Sheets)
+        </button>
+      </div>
 
-      {/* Items Table */}
-      <table className="w-full border">
+      {loading && <p>Loading...</p>}
+
+      <table className="w-full table-auto border border-gray-300">
         <thead>
-          <tr>
-            {["Name", "SKU", "Category", ...attributes.map((a) => a.name)].map((col) => (
-              <th key={col} className="border p-2 text-left">
-                {col}
+          <tr className="bg-gray-100">
+            <th className="border px-2 py-1">ID</th>
+            <th className="border px-2 py-1">SKU</th>
+            <th className="border px-2 py-1">Name</th>
+            <th className="border px-2 py-1">Category</th>
+            {attributes.map((attr) => (
+              <th key={attr.id} className="border px-2 py-1">
+                {attr.label || attr.name}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.id}>
-              <td className="border p-2">{item.name}</td>
-              <td className="border p-2">{item.sku}</td>
-              <td className="border p-2">{item.category}</td>
+            <tr key={item.id} className="hover:bg-gray-50">
+              <td className="border px-2 py-1">{item.id}</td>
+              <td className="border px-2 py-1">{item.sku}</td>
+              <td className="border px-2 py-1">{item.name}</td>
+              <td className="border px-2 py-1">{item.category}</td>
               {attributes.map((attr) => (
-                <td key={attr.id} className="border p-2">
-                  {item[attr.name] || "-"}
+                <td key={attr.id} className="border px-2 py-1">
+                  {item[attr.name] ?? "-"}
                 </td>
               ))}
             </tr>
