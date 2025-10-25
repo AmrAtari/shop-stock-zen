@@ -53,6 +53,28 @@ const Inventory = () => {
     }
   };
 
+  // --- Realtime Subscription ---
+  useEffect(() => {
+    loadInventory();
+
+    const subscription = supabase
+      .from("store_inventory")
+      .on("*", (payload) => {
+        setInventory((prev) => {
+          const updatedEntry = payload.new;
+          if (!updatedEntry) return prev;
+          // Remove old entry if exists
+          const filtered = prev.filter((e) => e.id !== updatedEntry.id);
+          return [...filtered, updatedEntry];
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeSubscription(subscription);
+    };
+  }, []);
+
   // --- Total Quantity Map ---
   const totalQuantityMap = useMemo(() => {
     const map: { [itemId: string]: number } = {};
@@ -163,7 +185,6 @@ const Inventory = () => {
     return summary;
   }, [lowStockItems]);
 
-  // --- Browser Notification for Low Stock ---
   useEffect(() => {
     if (lowStockItems.length > 0 && "Notification" in window) {
       if (Notification.permission === "granted") {
@@ -182,15 +203,11 @@ const Inventory = () => {
     }
   }, [lowStockItems]);
 
-  useEffect(() => {
-    loadInventory();
-  }, []);
-
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4">Inventory Management</h1>
+      {/* --- Filters & Controls --- */}
+      <h1 className="text-3xl font-bold mb-4">Inventory Management (Realtime)</h1>
 
-      {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input
           type="text"
@@ -210,30 +227,12 @@ const Inventory = () => {
             </option>
           ))}
         </select>
-        <select
-          value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as SortKey)}
-          className="md:w-64 px-3 py-2 border rounded-md"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="totalQty">Sort by Total Quantity</option>
-          <option value="storeQty">Sort by Store Quantity</option>
-          <option value="minStock">Sort by Min Stock</option>
-        </select>
-        <select
-          value={sortOrder}
-          onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-          className="md:w-64 px-3 py-2 border rounded-md"
-        >
-          <option value="asc">Ascending</option>
-          <option value="desc">Descending</option>
-        </select>
         <button onClick={exportCSV} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600">
           Export CSV
         </button>
       </div>
 
-      {/* Low Stock Alerts */}
+      {/* --- Low Stock Alerts --- */}
       {lowStockItems.length > 0 && (
         <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg">
           <h2 className="text-lg font-semibold text-red-800 mb-2">⚠️ Low Stock Alerts</h2>
@@ -247,7 +246,7 @@ const Inventory = () => {
         </div>
       )}
 
-      {/* Inventory Table */}
+      {/* --- Inventory Table --- */}
       <div className="overflow-x-auto border rounded-lg shadow-sm">
         <table className="min-w-full table-auto">
           <thead className="bg-gray-50">
@@ -277,7 +276,6 @@ const Inventory = () => {
               paginatedInventory.map((entry) => {
                 const minStock = entry.min_stock || entry.item.min_stock || 0;
                 const isLow = entry.quantity <= minStock;
-
                 return (
                   <tr key={entry.id} className={isLow ? "bg-red-50" : ""}>
                     <td className="px-4 py-2">{entry.item.name}</td>
@@ -296,7 +294,7 @@ const Inventory = () => {
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* --- Pagination --- */}
       {totalPages > 1 && (
         <div className="mt-4 flex justify-center gap-2">
           <button
