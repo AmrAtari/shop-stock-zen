@@ -37,6 +37,7 @@ interface StoreInventory {
   updated_at: string;
   item: Item;
   store: Store;
+  updating?: boolean; // For inline editing feedback
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -66,6 +67,7 @@ const Inventory: React.FC = () => {
 
   useEffect(() => {
     loadInventory();
+
     // Realtime updates
     const subscription = supabase
       .channel("public:store_inventory")
@@ -156,6 +158,14 @@ const Inventory: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Inline update quantity
+  const updateQuantity = async (id: string, value: number) => {
+    setInventory((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: value, updating: true } : i)));
+    const { error } = await supabase.from("store_inventory").update({ quantity: value }).eq("id", id);
+    setInventory((prev) => prev.map((i) => (i.id === id ? { ...i, updating: false } : i)));
+    if (error) alert("Failed to update quantity: " + error.message);
   };
 
   // Summary
@@ -255,14 +265,19 @@ const Inventory: React.FC = () => {
         </thead>
         <tbody>
           {paginatedInventory.map((i) => (
-            <tr key={i.id} className="hover:bg-gray-50">
+            <tr key={i.id} className={`hover:bg-gray-50 ${i.updating ? "bg-green-100 animate-pulse" : ""}`}>
               <td className="px-4 py-2">{i.item.name}</td>
               <td className="px-4 py-2">{i.item.sku}</td>
               <td className="px-4 py-2">{i.store.name}</td>
               <td
                 className={`px-4 py-2 text-right ${i.quantity <= i.min_stock ? "text-red-600 font-bold" : i.quantity <= i.min_stock * 2 ? "text-yellow-600" : "text-green-600"}`}
               >
-                {i.quantity}
+                <input
+                  type="number"
+                  value={i.quantity}
+                  onChange={(e) => updateQuantity(i.id, parseInt(e.target.value) || 0)}
+                  className="w-16 text-right border rounded px-1 py-0.5"
+                />
               </td>
               <td className="px-4 py-2 text-right">{i.min_stock}</td>
               <td className="px-4 py-2 text-right">{totalStockMap[i.item_id] || i.quantity}</td>
