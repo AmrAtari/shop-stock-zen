@@ -291,6 +291,21 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
   );
 };
 
+// Define the proper type for store inventory items
+interface StoreInventoryItem {
+  item_id: string;
+  sku: string;
+  item_name: string;
+  category: string;
+  brand?: string;
+  quantity: number;
+  min_stock: number;
+  unit: string;
+  store_name: string;
+  store_id: string;
+  // Add any additional fields that might be available
+}
+
 const InventoryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -334,10 +349,11 @@ const InventoryNew = () => {
     if (storeFilter === "all") {
       return aggregatedInventory;
     } else {
-      return storeInventory.map((si) => ({
-        id: si.item_id || si.id,
+      // Cast storeInventory to the correct type and transform
+      return (storeInventory as StoreInventoryItem[]).map((si) => ({
+        id: si.item_id,
         sku: si.sku,
-        name: si.item_name || si.name,
+        name: si.item_name, // Use item_name from StoreInventoryView
         category: si.category || "",
         brand: si.brand || "",
         quantity: si.quantity || 0,
@@ -345,9 +361,10 @@ const InventoryNew = () => {
         unit: si.unit || "pcs",
         store_name: si.store_name,
         store_id: si.store_id,
-        item_number: si.item_number,
-        season: si.season,
-        main_group: si.main_group,
+        // These might not be available in StoreInventoryView, so we'll leave them empty
+        item_number: "", // Not available in StoreInventoryView
+        season: "", // Not available in StoreInventoryView
+        main_group: "", // Not available in StoreInventoryView
       }));
     }
   }, [storeFilter, aggregatedInventory, storeInventory]);
@@ -407,9 +424,10 @@ const InventoryNew = () => {
         sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
         category.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesModelNumber = modelNumberFilter === "all" || (item as any).item_number === modelNumberFilter;
+      // For store-specific view, we might not have all filter properties
+      const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
       const matchesStore = storeFilter === "all" || (item as any).store_id === storeFilter;
-      const matchesSeason = seasonFilter === "all" || (item as any).season === seasonFilter;
+      const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
 
@@ -422,7 +440,7 @@ const InventoryNew = () => {
     return filtered;
   }, [finalInventory, searchTerm, modelNumberFilter, storeFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
-  // Unique values for filters
+  // Unique values for filters - handle cases where properties might not exist
   const uniqueModelNumbers = useMemo(
     () => [...new Set((finalInventory as Item[]).map((i) => i.item_number).filter(Boolean))].sort(),
     [finalInventory],
