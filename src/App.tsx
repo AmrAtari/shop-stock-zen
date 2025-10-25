@@ -1,4 +1,4 @@
-// src/App.tsx
+import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -22,16 +22,24 @@ import TransferDetail from "./pages/TransferDetail";
 import PhysicalInventory from "./pages/PhysicalInventory";
 import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
 import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
-import NotFound from "./pages/NotFound";
 import Notifications from "./pages/Notifications";
+import NotFound from "./pages/NotFound";
+import AIReports from "./pages/AIReports";
 
-// Layout & Protected Route
+// POS
+import POSHome from "./pages/POS/POSHome";
+import POSReceipts from "./pages/POS/POSReceipts";
+import POSRefunds from "./pages/POS/POSRefunds";
+import ClosingCash from "./pages/POS/ClosingCash";
+import { POSProvider } from "./pages/POS/POSContext";
+
+// Layout & ProtectedRoute
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
-const App = () => {
+const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -39,10 +47,53 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Public */}
+            {/* Public Auth */}
             <Route path="/auth" element={<Auth />} />
 
-            {/* Main App Routes */}
+            {/* POS Routes */}
+            <Route
+              path="/pos/*"
+              element={
+                <POSProvider>
+                  <Routes>
+                    <Route
+                      path=""
+                      element={
+                        <ProtectedRoute>
+                          <POSHome />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="receipts"
+                      element={
+                        <ProtectedRoute>
+                          <POSReceipts />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="refunds"
+                      element={
+                        <ProtectedRoute>
+                          <POSRefunds />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="closing"
+                      element={
+                        <ProtectedRoute>
+                          <ClosingCash />
+                        </ProtectedRoute>
+                      }
+                    />
+                  </Routes>
+                </POSProvider>
+              }
+            />
+
+            {/* Main App Routes with Layout */}
             <Route
               path="/"
               element={
@@ -53,7 +104,16 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
-
+            <Route
+              path="/ai-reports"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AIReports />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/inventory"
               element={
@@ -64,7 +124,6 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/inventory/physical"
               element={
@@ -160,7 +219,7 @@ const App = () => {
               }
             />
 
-            {/* Notifications */}
+            {/* Notifications / Approvals */}
             <Route
               path="/approvals"
               element={
@@ -172,7 +231,7 @@ const App = () => {
               }
             />
 
-            {/* Misc */}
+            {/* Misc Pages */}
             <Route
               path="/alerts"
               element={
