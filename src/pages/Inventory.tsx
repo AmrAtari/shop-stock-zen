@@ -1,91 +1,20 @@
-import React, { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
-
-type InventoryItem = Database["public"]["Tables"]["inventory"]["Row"] & {
-  store?: { id: string; name: string };
-  gender?: string | null;
-  season?: string | null;
-};
+import React, { useState, useMemo } from "react";
+import { useStoreInventoryView, StoreInventoryView } from "@/hooks/useStoreInventoryView";
 
 interface StoreSummary {
   [storeId: string]: {
     count: number;
-    items: InventoryItem[];
+    items: StoreInventoryView[];
     storeName: string;
   };
 }
 
 const Inventory = () => {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
-  const [debugInfo, setDebugInfo] = useState<any>({});
 
-  /** Debug storage */
-  const debugAllStorage = () => {
-    const storageData: any = {
-      localStorage: {},
-      sessionStorage: {},
-      urlParams: window.location.search,
-      currentPath: window.location.pathname,
-    };
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        try {
-          const value = localStorage.getItem(key);
-          storageData.localStorage[key] = value ? JSON.parse(value) : null;
-        } catch {
-          storageData.localStorage[key] = localStorage.getItem(key);
-        }
-      }
-    }
-
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i);
-      if (key) {
-        try {
-          const value = sessionStorage.getItem(key);
-          storageData.sessionStorage[key] = value ? JSON.parse(value) : null;
-        } catch {
-          storageData.sessionStorage[key] = sessionStorage.getItem(key);
-        }
-      }
-    }
-
-    setDebugInfo(storageData);
-    return storageData;
-  };
-
-  /** Load inventory from Supabase */
-  const loadInventory = async () => {
-    try {
-      setLoading(true);
-      debugAllStorage();
-
-      const { data, error } = await supabase.from("inventory").select("*, store:storeId(*)"); // include related store info
-
-      if (error) throw error;
-
-      // ensure optional fields exist
-      const formattedData = (data || []).map((item: any) => ({
-        ...item,
-        gender: item.gender || null,
-        season: item.season || null,
-      }));
-
-      setInventory(formattedData);
-      console.log(`✅ Loaded ${data?.length || 0} items from Supabase`);
-    } catch (err) {
-      console.error("❌ Inventory load failed:", err);
-      setInventory([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Fetch inventory using your hook
+  const { data: inventory = [], isLoading } = useStoreInventoryView();
 
   /** Filtered inventory */
   const filteredInventory = useMemo(
@@ -93,15 +22,12 @@ const Inventory = () => {
       inventory.filter((item) => {
         const matchesSearch =
           !searchTerm ||
-          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+          item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (item.brand?.toLowerCase() || "").includes(searchTerm.toLowerCase());
 
-        const matchesStore =
-          storeFilter === "all" ||
-          item.storeId === storeFilter ||
-          item.store_id === storeFilter ||
-          item.store?.id === storeFilter;
+        const matchesStore = storeFilter === "all" || item.store_id === storeFilter;
 
         return matchesSearch && matchesStore;
       }),
@@ -112,8 +38,8 @@ const Inventory = () => {
   const storeSummary = useMemo(() => {
     const stores: StoreSummary = {};
     inventory.forEach((item) => {
-      const storeId = item.storeId || item.store_id || item.store?.id || "unknown-store";
-      const storeName = item.store?.name || storeId;
+      const storeId = item.store_id;
+      const storeName = item.store_name || storeId;
       if (!stores[storeId]) stores[storeId] = { count: 0, items: [], storeName };
       stores[storeId].count++;
       stores[storeId].items.push(item);
@@ -125,33 +51,10 @@ const Inventory = () => {
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
     inventory.forEach((item) => {
-      const storeId = item.storeId || item.store_id || item.store?.id;
-      const storeName = item.store?.name || storeId || "Unknown Store";
-      if (storeId) stores[storeId] = storeName;
+      stores[item.store_id] = item.store_name || item.store_id;
     });
     return stores;
   };
-
-  /** CSV export helper */
-  const exportCSV = () => {
-    if (inventory.length === 0) return;
-    const headers = Object.keys(inventory[0]);
-    const csvRows = [
-      headers.join(","), // header row
-      ...inventory.map((item) => headers.map((h) => `"${(item as any)[h] ?? ""}"`).join(",")),
-    ];
-    const csvData = csvRows.join("\n");
-    const blob = new Blob([csvData], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "inventory.csv");
-    link.click();
-  };
-
-  useEffect(() => {
-    loadInventory();
-  }, []);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -161,27 +64,13 @@ const Inventory = () => {
           <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
           <p className="text-gray-600 mt-2">Manage and track your inventory across all stores</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => debugAllStorage()}
-            className="px-4 py-2 rounded-md bg-blue-500 text-white hover:bg-blue-600"
-          >
-            Debug Storage
-          </button>
-          <button
-            onClick={() => exportCSV()}
-            className="px-4 py-2 rounded-md bg-green-500 text-white hover:bg-green-600"
-          >
-            Export CSV
-          </button>
-        </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input
           type="text"
-          placeholder="Search by name, SKU, or description..."
+          placeholder="Search by name, SKU, brand, or category..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="flex-1 px-3 py-2 border rounded-md"
@@ -215,7 +104,7 @@ const Inventory = () => {
 
       {/* Inventory Table */}
       <div className="border rounded-lg overflow-hidden">
-        {loading ? (
+        {isLoading ? (
           <div className="p-8 text-center">Loading inventory...</div>
         ) : filteredInventory.length === 0 ? (
           <div className="p-8 text-center">No items found.</div>
@@ -227,22 +116,20 @@ const Inventory = () => {
                   <th className="px-4 py-2">Item</th>
                   <th className="px-4 py-2">SKU</th>
                   <th className="px-4 py-2">Quantity</th>
-                  <th className="px-4 py-2">Price</th>
                   <th className="px-4 py-2">Store</th>
-                  <th className="px-4 py-2">Gender</th>
-                  <th className="px-4 py-2">Season</th>
+                  <th className="px-4 py-2">Category</th>
+                  <th className="px-4 py-2">Brand</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredInventory.map((item) => (
                   <tr key={item.id} className="border-b">
-                    <td className="px-4 py-2">{item.name}</td>
+                    <td className="px-4 py-2">{item.item_name}</td>
                     <td className="px-4 py-2">{item.sku || "N/A"}</td>
                     <td className="px-4 py-2">{item.quantity}</td>
-                    <td className="px-4 py-2">{item.price ? `$${item.price.toFixed(2)}` : "N/A"}</td>
-                    <td className="px-4 py-2">{item.store?.name || item.storeId || "Unknown"}</td>
-                    <td className="px-4 py-2">{item.gender || "N/A"}</td>
-                    <td className="px-4 py-2">{item.season || "N/A"}</td>
+                    <td className="px-4 py-2">{item.store_name || item.store_id}</td>
+                    <td className="px-4 py-2">{item.category}</td>
+                    <td className="px-4 py-2">{item.brand || "N/A"}</td>
                   </tr>
                 ))}
               </tbody>
