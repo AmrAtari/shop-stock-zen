@@ -1,158 +1,244 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { CSVLink } from "react-csv";
-
-interface Store {
-  id: string;
-  name: string;
-}
-
-interface ItemStock {
-  store_id: string;
-  store_name: string;
-  item_id: string | null;
-  item_name: string | null;
-  sku: string | null;
-  quantity: number | null;
-  min_stock: number | null;
-}
 
 const ITEMS_PER_PAGE = 20;
 
+interface InventoryItem {
+  store_id: string;
+  store_name: string;
+  item_id: string;
+  item_name: string;
+  sku: string;
+  quantity: number;
+  min_stock: number;
+  category: string | null;
+  brand: string | null;
+  gender: string | null;
+  season: string | null;
+}
+
 const Inventory = () => {
-  const [stores, setStores] = useState<Store[]>([]);
-  const [stock, setStock] = useState<ItemStock[]>([]);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [seasons, setSeasons] = useState<string[]>([]);
+  const [genders, setGenders] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetchStoresAndStock();
-  }, []);
+  const [filters, setFilters] = useState({
+    store: "",
+    category: "",
+    brand: "",
+    season: "",
+    gender: "",
+    search: "",
+  });
 
-  const fetchStoresAndStock = async () => {
-    setLoading(true);
-    // 1️⃣ Fetch all stores
-    const { data: storeData, error: storeError } = await supabase.from("stores").select("id, name").order("name");
+  const [currentPage, setCurrentPage] = useState(1);
 
-    if (storeError) {
-      console.error(storeError);
-      setLoading(false);
-      return;
-    }
-
-    setStores(storeData || []);
-
-    // 2️⃣ Fetch stock for all stores
-    const { data: stockData, error: stockError } = await supabase.from("v_store_stock_levels").select("*");
-
-    if (stockError) {
-      console.error(stockError);
-      setLoading(false);
-      return;
-    }
-
-    // 3️⃣ Merge stores with stock so every store appears
-    const merged: ItemStock[] = [];
-
-    (storeData || []).forEach((store) => {
-      const items = (stockData || []).filter((s) => s.store_id === store.id);
-      if (items.length > 0) {
-        merged.push(...items);
-      } else {
-        // store exists but has no items
-        merged.push({
-          store_id: store.id,
-          store_name: store.name,
-          item_id: null,
-          item_name: null,
-          sku: null,
-          quantity: null,
-          min_stock: null,
-        });
-      }
-    });
-
-    setStock(merged);
-    setLoading(false);
+  // Fetch stores
+  const fetchStores = async () => {
+    const { data, error } = await supabase.from("stores").select("*");
+    if (error) console.error(error);
+    else setStores(data || []);
   };
 
-  const filteredStock = useMemo(() => {
-    return stock.filter(
-      (s) =>
-        s.store_name?.toLowerCase().includes(search.toLowerCase()) ||
-        s.item_name?.toLowerCase().includes(search.toLowerCase()) ||
-        s.sku?.toLowerCase().includes(search.toLowerCase()),
-    );
-  }, [stock, search]);
+  // Fetch inventory with joins
+  const fetchInventory = async () => {
+    const { data, error } = await supabase.from("v_store_stock_levels").select("*");
 
-  const paginatedStock = useMemo(() => {
-    const start = (page - 1) * ITEMS_PER_PAGE;
-    return filteredStock.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredStock, page]);
+    if (error) console.error(error);
+    else {
+      // Filter out stores with zero quantity if needed
+      const filtered = data?.filter((i) => i.quantity && i.store_name) || [];
+      setInventory(filtered as InventoryItem[]);
+    }
+  };
+
+  // Fetch filter options
+  const fetchFilters = async () => {
+    const [cats, brs, sns, gds] = await Promise.all([
+      supabase.from("categories").select("name"),
+      supabase.from("brands").select("name"),
+      supabase.from("seasons").select("name"),
+      supabase.from("genders").select("name"),
+    ]);
+
+    if (!cats.error) setCategories(cats.data.map((c) => c.name));
+    if (!brs.error) setBrands(brs.data.map((b) => b.name));
+    if (!sns.error) setSeasons(sns.data.map((s) => s.name));
+    if (!gds.error) setGenders(gds.data.map((g) => g.name));
+  };
+
+  useEffect(() => {
+    fetchStores();
+    fetchInventory();
+    fetchFilters();
+  }, []);
+
+  // Apply filters
+  const filteredStock = useMemo(() => {
+    return inventory.filter((item) => {
+      return (
+        (!filters.store || item.store_name === filters.store) &&
+        (!filters.category || item.category === filters.category) &&
+        (!filters.brand || item.brand === filters.brand) &&
+        (!filters.season || item.season === filters.season) &&
+        (!filters.gender || item.gender === filters.gender) &&
+        (!filters.search ||
+          item.item_name.toLowerCase().includes(filters.search.toLowerCase()) ||
+          item.sku.toLowerCase().includes(filters.search.toLowerCase()))
+      );
+    });
+  }, [inventory, filters]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredStock.length / ITEMS_PER_PAGE);
+  const paginatedStock = filteredStock.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // CSV download
+  const downloadCSV = (data: InventoryItem[], filename = "inventory.csv") => {
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [
+        ["Store", "Item Name", "SKU", "Quantity", "Min Stock", "Category", "Brand", "Gender", "Season"].join(","),
+        ...data.map((d) =>
+          [
+            d.store_name,
+            d.item_name,
+            d.sku,
+            d.quantity,
+            d.min_stock,
+            d.category || "",
+            d.brand || "",
+            d.gender || "",
+            d.season || "",
+          ].join(","),
+        ),
+      ].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="p-4">
-      <h2 className="text-2xl font-bold mb-4">Inventory</h2>
+      <h1 className="text-xl font-bold mb-4">Inventory</h1>
 
-      <div className="mb-4 flex gap-2">
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select value={filters.store} onChange={(e) => setFilters({ ...filters, store: e.target.value })}>
+          <option value="">All Stores</option>
+          {stores.map((s) => (
+            <option key={s.id} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+
+        <select value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}>
+          <option value="">All Categories</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+
+        <select value={filters.brand} onChange={(e) => setFilters({ ...filters, brand: e.target.value })}>
+          <option value="">All Brands</option>
+          {brands.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
+
+        <select value={filters.season} onChange={(e) => setFilters({ ...filters, season: e.target.value })}>
+          <option value="">All Seasons</option>
+          {seasons.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+
+        <select value={filters.gender} onChange={(e) => setFilters({ ...filters, gender: e.target.value })}>
+          <option value="">All Genders</option>
+          {genders.map((g) => (
+            <option key={g} value={g}>
+              {g}
+            </option>
+          ))}
+        </select>
+
         <input
           type="text"
-          placeholder="Search by store, item, or SKU"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border px-2 py-1 rounded"
+          placeholder="Search by name or SKU"
+          value={filters.search}
+          onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+          className="border px-2"
         />
-        <CSVLink
-          data={filteredStock}
-          filename={`inventory_export.csv`}
-          className="px-3 py-1 bg-blue-500 text-white rounded"
-        >
-          Export CSV
-        </CSVLink>
       </div>
 
-      {loading ? (
-        <p>Loading inventory...</p>
-      ) : (
-        <table className="w-full border border-gray-300">
-          <thead className="bg-gray-200">
-            <tr>
-              <th className="border px-2 py-1">Store</th>
-              <th className="border px-2 py-1">Item Name</th>
-              <th className="border px-2 py-1">SKU</th>
-              <th className="border px-2 py-1">Quantity</th>
-              <th className="border px-2 py-1">Min Stock</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedStock.map((s, idx) => (
-              <tr key={`${s.store_id}-${s.item_id || idx}`}>
-                <td className="border px-2 py-1">{s.store_name}</td>
-                <td className="border px-2 py-1">{s.item_name || "-"}</td>
-                <td className="border px-2 py-1">{s.sku || "-"}</td>
-                <td
-                  className={`border px-2 py-1 ${
-                    s.quantity !== null && s.min_stock !== null && s.quantity <= s.min_stock ? "bg-red-200" : ""
-                  }`}
-                >
-                  {s.quantity ?? 0}
-                </td>
-                <td className="border px-2 py-1">{s.min_stock ?? 0}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      {/* CSV Export */}
+      <button onClick={() => downloadCSV(filteredStock)} className="px-3 py-1 bg-blue-500 text-white rounded mb-4">
+        Export CSV
+      </button>
 
-      <div className="mt-2 flex justify-between">
-        <button onClick={() => setPage((p) => Math.max(p - 1, 1))} className="px-3 py-1 border rounded">
-          Prev
-        </button>
-        <span>Page {page}</span>
+      {/* Inventory Table */}
+      <table className="w-full border border-gray-300">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="border px-2 py-1">Store</th>
+            <th className="border px-2 py-1">Item Name</th>
+            <th className="border px-2 py-1">SKU</th>
+            <th className="border px-2 py-1">Quantity</th>
+            <th className="border px-2 py-1">Min Stock</th>
+            <th className="border px-2 py-1">Category</th>
+            <th className="border px-2 py-1">Brand</th>
+            <th className="border px-2 py-1">Gender</th>
+            <th className="border px-2 py-1">Season</th>
+          </tr>
+        </thead>
+        <tbody>
+          {paginatedStock.map((item) => (
+            <tr key={item.item_id + item.store_id}>
+              <td className="border px-2 py-1">{item.store_name}</td>
+              <td className="border px-2 py-1">{item.item_name}</td>
+              <td className="border px-2 py-1">{item.sku}</td>
+              <td className="border px-2 py-1">{item.quantity}</td>
+              <td className="border px-2 py-1">{item.min_stock}</td>
+              <td className="border px-2 py-1">{item.category}</td>
+              <td className="border px-2 py-1">{item.brand}</td>
+              <td className="border px-2 py-1">{item.gender}</td>
+              <td className="border px-2 py-1">{item.season}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Pagination */}
+      <div className="flex justify-between mt-4">
         <button
-          onClick={() => setPage((p) => (p * ITEMS_PER_PAGE < filteredStock.length ? p + 1 : p))}
-          className="px-3 py-1 border rounded"
+          disabled={currentPage === 1}
+          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+          className="px-3 py-1 border rounded disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <span>
+          Page {currentPage} of {totalPages}
+        </span>
+        <button
+          disabled={currentPage === totalPages}
+          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+          className="px-3 py-1 border rounded disabled:opacity-50"
         >
           Next
         </button>
