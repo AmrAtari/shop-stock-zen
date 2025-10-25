@@ -469,40 +469,30 @@ const InventoryNew = () => {
     if (storeFilter === "all") {
       return aggregatedInventory || [];
     } else {
-      console.log("🔄 Transforming store inventory for store:", storeFilter);
-      console.log("Raw store inventory data:", storeInventory);
+      console.log("🔄 Using aggregated data with store filtering for store:", storeFilter);
 
-      // CORRECTED transformation - handle both StoreInventoryView and any potential variations
-      const transformedItems = storeInventory.map((si: any) => {
-        // Debug each item to see its structure
-        console.log("Processing store inventory item:", si);
+      // Instead of relying on storeInventory, filter the aggregated data
+      // This ensures we always have data to work with
+      const storeSpecificItems = (aggregatedInventory || []).filter((item: any) => {
+        const hasStore = item.stores?.some((store: any) => store.store_id === storeFilter);
+        return hasStore;
+      });
+
+      console.log("Store-specific items found:", storeSpecificItems.length);
+
+      // Transform to include store-specific quantity
+      const transformedItems = storeSpecificItems.map((item: any) => {
+        const storeData = item.stores?.find((store: any) => store.store_id === storeFilter);
 
         return {
-          id: si.item_id || si.id, // Use item_id as primary, fallback to id
-          sku: si.sku || "",
-          name: si.item_name || si.name || "",
-          category: si.category || "",
-          brand: si.brand || "",
-          quantity: si.quantity || 0,
-          min_stock: si.min_stock || 0,
-          unit: si.unit || "pcs",
-          store_name: si.store_name || "",
-          store_id: si.store_id || storeFilter,
-          // Add other required Item properties with defaults
-          item_number: si.item_number || "",
-          season: si.season || "",
-          main_group: si.main_group || "",
-          supplier: si.supplier || "",
-          department: si.department || "",
-          origin: si.origin || "",
-          theme: si.theme || "",
-          created_at: si.created_at || "",
-          updated_at: si.updated_at || "",
+          ...item,
+          quantity: storeData?.quantity || 0,
+          store_name: storeData?.store_name || "",
+          store_id: storeFilter,
         };
       });
 
       console.log("✅ Transformed store inventory:", transformedItems);
-      console.log("Transformed items count:", transformedItems.length);
       return transformedItems as unknown as Item[];
     }
   }, [storeFilter, aggregatedInventory, storeInventory]);
@@ -566,10 +556,7 @@ const InventoryNew = () => {
       const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
 
       // IMPROVED: More robust store matching
-      const matchesStore =
-        storeFilter === "all" ||
-        (item as any).store_id === storeFilter ||
-        (item as any).store_name?.toLowerCase().includes(storeFilter.toLowerCase());
+      const matchesStore = storeFilter === "all" || (item as any).store_id === storeFilter;
 
       const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
@@ -600,6 +587,7 @@ const InventoryNew = () => {
           store_name: (item as any).store_name,
           has_store_id: !!(item as any).store_id,
           has_store_name: !!(item as any).store_name,
+          stores: (item as any).stores,
         });
       });
     }
@@ -616,23 +604,16 @@ const InventoryNew = () => {
     console.log("finalInventory length:", finalInventory.length);
     console.log("filteredInventory length:", filteredInventory.length);
 
-    if (storeFilter !== "all" && storeInventory.length > 0) {
+    if (storeFilter !== "all" && aggregatedInventory && aggregatedInventory.length > 0) {
       console.log("🔍 DEEP STORE INVENTORY ANALYSIS:");
-      console.log("First store inventory item:", storeInventory[0]);
-      console.log(
-        "All store IDs:",
-        storeInventory.map((item: any) => ({
-          store_id: item.store_id,
-          store_name: item.store_name,
-          item_name: item.item_name,
-          quantity: item.quantity,
-        })),
+
+      // Check which items have the selected store
+      const itemsWithStore = aggregatedInventory.filter((item: any) =>
+        item.stores?.some((store: any) => store.store_id === storeFilter),
       );
 
-      const hebronItems = storeInventory.filter(
-        (item: any) => item.store_id === storeFilter || item.store_name?.toLowerCase().includes("hebron"),
-      );
-      console.log(`Items for store ${storeFilter}:`, hebronItems);
+      console.log(`Items with store ${storeFilter}:`, itemsWithStore.length);
+      console.log("First item with store data:", itemsWithStore[0]?.stores);
     }
   }, [storeFilter, storeInventory, aggregatedInventory, inventory, finalInventory, filteredInventory]);
 
