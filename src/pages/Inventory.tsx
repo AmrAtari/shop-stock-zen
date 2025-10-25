@@ -546,36 +546,6 @@ const InventoryNew = () => {
 
   const isLoading = storeInvLoading || aggLoading;
 
-  // Add this debug effect to understand the data flow - MOVED AFTER finalInventory definition
-  useEffect(() => {
-    console.log("=== INVENTORY DATA FLOW DEBUG ===");
-    console.log("storeFilter:", storeFilter);
-    console.log("storeInventory length:", storeInventory.length);
-    console.log("aggregatedInventory length:", aggregatedInventory?.length || 0);
-    console.log("inventory length:", inventory.length);
-    console.log("finalInventory length:", finalInventory.length);
-    console.log("filteredInventory length:", filteredInventory.length);
-
-    if (storeFilter !== "all" && storeInventory.length > 0) {
-      console.log("🔍 DEEP STORE INVENTORY ANALYSIS:");
-      console.log("First store inventory item:", storeInventory[0]);
-      console.log(
-        "All store IDs:",
-        storeInventory.map((item: any) => ({
-          store_id: item.store_id,
-          store_name: item.store_name,
-          item_name: item.item_name,
-          quantity: item.quantity,
-        })),
-      );
-
-      const hebronItems = storeInventory.filter(
-        (item: any) => item.store_id === storeFilter || item.store_name?.toLowerCase().includes("hebron"),
-      );
-      console.log(`Items for store ${storeFilter}:`, hebronItems);
-    }
-  }, [storeFilter, storeInventory, aggregatedInventory, inventory, finalInventory, filteredInventory]);
-
   const filteredInventory = useMemo(() => {
     console.log("🔍 Filtering inventory. Total items:", finalInventory.length);
     console.log("Search term:", searchTerm);
@@ -635,6 +605,36 @@ const InventoryNew = () => {
     }
     return filtered;
   }, [finalInventory, searchTerm, modelNumberFilter, storeFilter, seasonFilter, mainGroupFilter, categoryFilter]);
+
+  // Add this debug effect to understand the data flow - MOVED AFTER filteredInventory definition
+  useEffect(() => {
+    console.log("=== INVENTORY DATA FLOW DEBUG ===");
+    console.log("storeFilter:", storeFilter);
+    console.log("storeInventory length:", storeInventory.length);
+    console.log("aggregatedInventory length:", aggregatedInventory?.length || 0);
+    console.log("inventory length:", inventory.length);
+    console.log("finalInventory length:", finalInventory.length);
+    console.log("filteredInventory length:", filteredInventory.length);
+
+    if (storeFilter !== "all" && storeInventory.length > 0) {
+      console.log("🔍 DEEP STORE INVENTORY ANALYSIS:");
+      console.log("First store inventory item:", storeInventory[0]);
+      console.log(
+        "All store IDs:",
+        storeInventory.map((item: any) => ({
+          store_id: item.store_id,
+          store_name: item.store_name,
+          item_name: item.item_name,
+          quantity: item.quantity,
+        })),
+      );
+
+      const hebronItems = storeInventory.filter(
+        (item: any) => item.store_id === storeFilter || item.store_name?.toLowerCase().includes("hebron"),
+      );
+      console.log(`Items for store ${storeFilter}:`, hebronItems);
+    }
+  }, [storeFilter, storeInventory, aggregatedInventory, inventory, finalInventory, filteredInventory]);
 
   // Unique values for filters - handle cases where properties might not exist
   const uniqueModelNumbers = useMemo(
