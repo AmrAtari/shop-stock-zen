@@ -423,6 +423,18 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
   );
 };
 
+// Extended interface for inventory items with store data
+interface InventoryItemWithStores extends Item {
+  stores?: Array<{
+    store_id: string;
+    store_name: string;
+    quantity: number;
+  }>;
+  total_quantity?: number;
+  store_name?: string;
+  store_id?: string;
+}
+
 const InventoryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -467,22 +479,22 @@ const InventoryNew = () => {
   // Use store inventory when a specific store is selected, otherwise use aggregated
   const inventory = useMemo(() => {
     if (storeFilter === "all") {
-      return aggregatedInventory || [];
+      return (aggregatedInventory as InventoryItemWithStores[]) || [];
     } else {
       console.log("🔄 Using aggregated data with store filtering for store:", storeFilter);
 
       // Instead of relying on storeInventory, filter the aggregated data
       // This ensures we always have data to work with
-      const storeSpecificItems = (aggregatedInventory || []).filter((item: any) => {
-        const hasStore = item.stores?.some((store: any) => store.store_id === storeFilter);
+      const storeSpecificItems = ((aggregatedInventory as InventoryItemWithStores[]) || []).filter((item) => {
+        const hasStore = item.stores?.some((store) => store.store_id === storeFilter);
         return hasStore;
       });
 
       console.log("Store-specific items found:", storeSpecificItems.length);
 
       // Transform to include store-specific quantity
-      const transformedItems = storeSpecificItems.map((item: any) => {
-        const storeData = item.stores?.find((store: any) => store.store_id === storeFilter);
+      const transformedItems = storeSpecificItems.map((item) => {
+        const storeData = item.stores?.find((store) => store.store_id === storeFilter);
 
         return {
           ...item,
@@ -556,7 +568,7 @@ const InventoryNew = () => {
       const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
 
       // IMPROVED: More robust store matching
-      const matchesStore = storeFilter === "all" || (item as any).store_id === storeFilter;
+      const matchesStore = storeFilter === "all" || (item as InventoryItemWithStores).store_id === storeFilter;
 
       const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
@@ -568,8 +580,8 @@ const InventoryNew = () => {
       if (shouldInclude && storeFilter !== "all") {
         console.log("✅ Including item for store filter:", {
           name: item.name,
-          store_id: (item as any).store_id,
-          store_name: (item as any).store_name,
+          store_id: (item as InventoryItemWithStores).store_id,
+          store_name: (item as InventoryItemWithStores).store_name,
           quantity: item.quantity,
         });
       }
@@ -581,13 +593,14 @@ const InventoryNew = () => {
     if (storeFilter !== "all" && filtered.length === 0) {
       console.log("❌ No items matched store filter. Available store data:");
       finalInventory.forEach((item, index) => {
+        const itemWithStores = item as InventoryItemWithStores;
         console.log(`Item ${index}:`, {
           name: item.name,
-          store_id: (item as any).store_id,
-          store_name: (item as any).store_name,
-          has_store_id: !!(item as any).store_id,
-          has_store_name: !!(item as any).store_name,
-          stores: (item as any).stores,
+          store_id: itemWithStores.store_id,
+          store_name: itemWithStores.store_name,
+          has_store_id: !!itemWithStores.store_id,
+          has_store_name: !!itemWithStores.store_name,
+          stores: itemWithStores.stores,
         });
       });
     }
@@ -608,12 +621,14 @@ const InventoryNew = () => {
       console.log("🔍 DEEP STORE INVENTORY ANALYSIS:");
 
       // Check which items have the selected store
-      const itemsWithStore = aggregatedInventory.filter((item: any) =>
-        item.stores?.some((store: any) => store.store_id === storeFilter),
+      const itemsWithStore = (aggregatedInventory as InventoryItemWithStores[]).filter((item) =>
+        item.stores?.some((store) => store.store_id === storeFilter),
       );
 
       console.log(`Items with store ${storeFilter}:`, itemsWithStore.length);
-      console.log("First item with store data:", itemsWithStore[0]?.stores);
+      if (itemsWithStore.length > 0) {
+        console.log("First item with store data:", itemsWithStore[0]?.stores);
+      }
     }
   }, [storeFilter, storeInventory, aggregatedInventory, inventory, finalInventory, filteredInventory]);
 
@@ -885,6 +900,7 @@ const InventoryNew = () => {
               paginatedInventory.map((item) => {
                 const status = getStockStatus(item);
                 const isSelected = selectedItems.some((selected) => selected.id === item.id);
+                const itemWithStores = item as InventoryItemWithStores;
 
                 return (
                   <TableRow key={item.id}>
@@ -900,7 +916,7 @@ const InventoryNew = () => {
                         <div className="space-y-1">
                           <div className="font-medium text-sm">Multiple Stores</div>
                           <div className="text-xs text-muted-foreground">
-                            {(item as any).stores?.map((s: any) => (
+                            {itemWithStores.stores?.map((s) => (
                               <div key={s.store_id}>
                                 {s.store_name}: {s.quantity}
                               </div>
@@ -908,11 +924,11 @@ const InventoryNew = () => {
                           </div>
                         </div>
                       ) : (
-                        (item as any).store_name || "-"
+                        itemWithStores.store_name || "-"
                       )}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {storeFilter === "all" ? (item as any).total_quantity || item.quantity : item.quantity}
+                      {storeFilter === "all" ? itemWithStores.total_quantity || item.quantity : item.quantity}
                     </TableCell>
                     <TableCell>{item.unit}</TableCell>
                     <TableCell>{item.min_stock}</TableCell>
