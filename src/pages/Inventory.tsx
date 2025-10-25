@@ -7,25 +7,14 @@ interface Item {
   id: string;
   sku?: string;
   name: string;
-  category?: string;
-  brand?: string;
-  size?: string;
-  color?: string;
-  gender?: string;
-  season?: string;
-  unit?: string;
-  quantity: number;
   min_stock?: number;
   description?: string;
-  created_at?: string;
-  updated_at?: string;
 }
 
 interface Store {
   id: string;
   name: string;
   location?: string;
-  created_at?: string;
 }
 
 interface StoreInventory {
@@ -33,10 +22,6 @@ interface StoreInventory {
   item_id: string;
   store_id: string;
   quantity: number;
-  min_stock?: number;
-  last_restocked?: string;
-  created_at?: string;
-  updated_at?: string;
   item: Item;
   store: Store;
 }
@@ -48,43 +33,28 @@ const Inventory = () => {
   const [storeFilter, setStoreFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Load inventory data from Supabase
   const loadInventory = async () => {
     setLoading(true);
-    try {
-      const { data, error } = await supabase.from("store_inventory").select(`
-          *,
-          item:items (
-            id, sku, name, description, min_stock
-          ),
-          store:stores (
-            id, name, location
-          )
-        `);
-
-      if (error) {
-        console.error("Error fetching inventory:", error);
-      } else if (data) {
-        setInventory(data as StoreInventory[]);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    const { data, error } = await supabase.from("store_inventory").select(`
+        *,
+        item:items (id, sku, name, min_stock, description),
+        store:stores (id, name)
+      `);
+    if (error) console.error(error);
+    else if (data) setInventory(data as StoreInventory[]);
+    setLoading(false);
   };
 
   useEffect(() => {
     loadInventory();
   }, []);
 
-  // Filtered inventory
   const filteredInventory = useMemo(() => {
     return inventory.filter((entry) => {
       const matchesSearch =
         entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+        (entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+        (entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
 
       const matchesStore = storeFilter === "all" || entry.store.id === storeFilter;
 
@@ -92,7 +62,6 @@ const Inventory = () => {
     });
   }, [inventory, searchTerm, storeFilter]);
 
-  // Pagination
   const paginatedInventory = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredInventory.slice(start, start + ITEMS_PER_PAGE);
@@ -100,7 +69,6 @@ const Inventory = () => {
 
   const totalPages = Math.ceil(filteredInventory.length / ITEMS_PER_PAGE);
 
-  // Get unique stores for filter dropdown
   const uniqueStores = useMemo(() => {
     const stores: { [key: string]: string } = { all: "All Stores" };
     inventory.forEach((inv) => {
@@ -109,7 +77,6 @@ const Inventory = () => {
     return stores;
   }, [inventory]);
 
-  // Compute total stock per item across all stores
   const totalStockMap = useMemo(() => {
     const map: { [itemId: string]: number } = {};
     inventory.forEach((entry) => {
@@ -118,7 +85,6 @@ const Inventory = () => {
     return map;
   }, [inventory]);
 
-  // CSV export
   const exportCSV = () => {
     const csvRows = [
       ["Item Name", "SKU", "Store", "Quantity", "Min Stock", "Total Stock"],
@@ -145,7 +111,6 @@ const Inventory = () => {
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">Inventory Management</h1>
 
-      {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 mb-4">
         <input
           type="text"
@@ -170,7 +135,6 @@ const Inventory = () => {
         </button>
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto bg-white rounded shadow border">
         {loading ? (
           <div className="p-8 text-center">Loading inventory...</div>
@@ -212,7 +176,6 @@ const Inventory = () => {
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex justify-center items-center gap-2 mt-4">
           <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} className="px-3 py-1 border rounded">
