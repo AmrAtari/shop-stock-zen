@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Database } from "@/integrations/supabase/types";
 
 interface Attribute {
   id: string;
@@ -26,9 +25,7 @@ const Inventory: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const fetchAttributes = async () => {
-    const { data, error } = await supabase
-      .from<Database["public"]["Tables"]["item_attributes"]["Row"]>("item_attributes")
-      .select("*");
+    const { data, error } = await supabase.from("item_attributes").select("*");
 
     if (error) {
       toast.toast({ title: "Error fetching attributes", type: "foreground" });
@@ -40,9 +37,7 @@ const Inventory: React.FC = () => {
 
   const fetchItems = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from<Database["public"]["Tables"]["inventory"]["Row"]>("inventory")
-      .select("*");
+    const { data, error } = await supabase.from("inventory").select("*");
     setLoading(false);
 
     if (error) {
@@ -59,6 +54,7 @@ const Inventory: React.FC = () => {
   }, []);
 
   const handleAddNewItem = () => toast.toast({ title: "Add New Item clicked", type: "foreground" });
+
   const handleImport = () => toast.toast({ title: "Import clicked (Excel / Google Sheets)", type: "foreground" });
 
   return (
@@ -72,7 +68,9 @@ const Inventory: React.FC = () => {
           Import (Excel / Google Sheets)
         </button>
       </div>
+
       {loading && <p>Loading...</p>}
+
       <table className="w-full table-auto border border-gray-300">
         <thead>
           <tr className="bg-gray-100">
