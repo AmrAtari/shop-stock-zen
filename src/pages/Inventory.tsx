@@ -20,7 +20,6 @@ interface StoreSummary {
 }
 
 const PAGE_SIZE = 20;
-
 type SortKey = "name" | "totalQty" | "storeQty" | "minStock";
 type SortOrder = "asc" | "desc";
 
@@ -37,7 +36,6 @@ const Inventory = () => {
   const loadInventory = async () => {
     try {
       setLoading(true);
-
       const { data, error } = await supabase.from("store_inventory").select(`
           *,
           item:items (*),
@@ -64,7 +62,7 @@ const Inventory = () => {
     return map;
   }, [inventory]);
 
-  // --- Filtered Inventory ---
+  // --- Filtered and Sorted Inventory ---
   const filteredInventory = useMemo(() => {
     return inventory
       .filter((entry) => {
@@ -138,6 +136,7 @@ const Inventory = () => {
     document.body.removeChild(link);
   };
 
+  // --- Unique Stores ---
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
     inventory.forEach((entry) => {
@@ -147,6 +146,41 @@ const Inventory = () => {
     });
     return stores;
   };
+
+  // --- Low Stock Alerts ---
+  const lowStockItems = useMemo(() => {
+    return filteredInventory.filter((entry) => {
+      const minStock = entry.min_stock || entry.item.min_stock || 0;
+      return entry.quantity <= minStock;
+    });
+  }, [filteredInventory]);
+
+  const lowStockSummary = useMemo(() => {
+    const summary: { [storeId: string]: number } = {};
+    lowStockItems.forEach((entry) => {
+      summary[entry.store.id] = (summary[entry.store.id] || 0) + 1;
+    });
+    return summary;
+  }, [lowStockItems]);
+
+  // --- Browser Notification for Low Stock ---
+  useEffect(() => {
+    if (lowStockItems.length > 0 && "Notification" in window) {
+      if (Notification.permission === "granted") {
+        new Notification("⚠️ Low Stock Alert", {
+          body: `${lowStockItems.length} items are below min stock`,
+        });
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then((permission) => {
+          if (permission === "granted") {
+            new Notification("⚠️ Low Stock Alert", {
+              body: `${lowStockItems.length} items are below min stock`,
+            });
+          }
+        });
+      }
+    }
+  }, [lowStockItems]);
 
   useEffect(() => {
     loadInventory();
@@ -199,70 +233,91 @@ const Inventory = () => {
         </button>
       </div>
 
+      {/* Low Stock Alerts */}
+      {lowStockItems.length > 0 && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg">
+          <h2 className="text-lg font-semibold text-red-800 mb-2">⚠️ Low Stock Alerts</h2>
+          <div className="flex flex-wrap gap-4">
+            {Object.entries(lowStockSummary).map(([storeId, count]) => (
+              <div key={storeId} className="bg-red-100 px-3 py-2 rounded-md text-red-900 font-medium">
+                {count} item{count > 1 ? "s" : ""} low in <strong>{getUniqueStores()[storeId]}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Inventory Table */}
-      <div className="border rounded-lg overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">Loading inventory...</div>
-        ) : filteredInventory.length === 0 ? (
-          <div className="p-8 text-center">No items found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-2">Item</th>
-                  <th className="px-4 py-2">SKU</th>
-                  <th className="px-4 py-2">Total Qty</th>
-                  <th className="px-4 py-2">Store Qty</th>
-                  <th className="px-4 py-2">Min Stock</th>
-                  <th className="px-4 py-2">Store</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedInventory.map((entry) => (
-                  <tr key={entry.id} className="border-b">
+      <div className="overflow-x-auto border rounded-lg shadow-sm">
+        <table className="min-w-full table-auto">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left">Item</th>
+              <th className="px-4 py-2 text-left">SKU</th>
+              <th className="px-4 py-2 text-right">Total Qty</th>
+              <th className="px-4 py-2 text-right">Store Qty</th>
+              <th className="px-4 py-2 text-right">Min Stock</th>
+              <th className="px-4 py-2 text-left">Store</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="text-center py-10 text-gray-500">
+                  Loading...
+                </td>
+              </tr>
+            ) : paginatedInventory.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="text-center py-10 text-gray-500">
+                  No items found
+                </td>
+              </tr>
+            ) : (
+              paginatedInventory.map((entry) => {
+                const minStock = entry.min_stock || entry.item.min_stock || 0;
+                const isLow = entry.quantity <= minStock;
+
+                return (
+                  <tr key={entry.id} className={isLow ? "bg-red-50" : ""}>
                     <td className="px-4 py-2">{entry.item.name}</td>
                     <td className="px-4 py-2">{entry.item.sku || "N/A"}</td>
-                    <td className="px-4 py-2 font-semibold">{totalQuantityMap[entry.item_id]}</td>
-                    <td
-                      className={`px-4 py-2 font-semibold ${
-                        entry.quantity <= (entry.min_stock || entry.item.min_stock || 0)
-                          ? "text-red-600"
-                          : "text-green-600"
-                      }`}
-                    >
+                    <td className="px-4 py-2 text-right">{totalQuantityMap[entry.item_id]}</td>
+                    <td className={`px-4 py-2 text-right font-semibold ${isLow ? "text-red-600" : "text-green-600"}`}>
                       {entry.quantity}
                     </td>
-                    <td className="px-4 py-2">{entry.min_stock || entry.item.min_stock || "-"}</td>
+                    <td className="px-4 py-2 text-right">{minStock}</td>
                     <td className="px-4 py-2">{entry.store.name}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Pagination */}
-            <div className="flex justify-between items-center mt-4">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-4 py-2 bg-gray-200 rounded-md disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <span>
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-4 py-2 bg-gray-200 rounded-md disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex justify-center gap-2">
+          <button
+            disabled={page === 1}
+            onClick={() => setPage(page - 1)}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <span className="px-3 py-1 border rounded">
+            Page {page} / {totalPages}
+          </span>
+          <button
+            disabled={page === totalPages}
+            onClick={() => setPage(page + 1)}
+            className="px-3 py-1 border rounded disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 };
