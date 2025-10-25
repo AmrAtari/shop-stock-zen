@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-// Define your types
 interface Item {
   id: string;
   name: string;
@@ -47,6 +46,8 @@ interface InventoryEntry {
 
 type SortKey = keyof InventoryEntry | "item.name" | "item.sku" | "store.name";
 
+const PAGE_SIZE = 20;
+
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,8 +55,9 @@ const Inventory = () => {
   const [storeFilter, setStoreFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("item.name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Load inventory data
+  // Load inventory
   const loadInventory = async () => {
     setLoading(true);
     try {
@@ -97,7 +99,7 @@ const Inventory = () => {
     };
   }, []);
 
-  // Filtered & Sorted inventory
+  // Filter & Sort
   const filteredInventory = inventory
     .filter((item) => {
       const matchesSearch =
@@ -140,6 +142,10 @@ const Inventory = () => {
       return 0;
     });
 
+  // Pagination
+  const totalPages = Math.ceil(filteredInventory.length / PAGE_SIZE);
+  const paginatedInventory = filteredInventory.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
     inventory.forEach((item) => {
@@ -148,13 +154,13 @@ const Inventory = () => {
     return stores;
   };
 
-  // Calculate total stock per item
+  // Total Stock per Item
   const totalStockMap: { [itemId: string]: number } = {};
   inventory.forEach((entry) => {
     totalStockMap[entry.item_id] = (totalStockMap[entry.item_id] || 0) + entry.quantity;
   });
 
-  // Export CSV
+  // CSV Export
   const exportCSV = () => {
     const header = ["Item Name", "SKU", "Store", "Quantity", "Total Stock", "Min Stock", "Description"];
     const rows = filteredInventory.map((entry) => [
@@ -166,7 +172,6 @@ const Inventory = () => {
       entry.min_stock,
       entry.item.description,
     ]);
-
     const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].map((e) => e.join(",")).join("\n");
 
     const encodedUri = encodeURI(csvContent);
@@ -176,6 +181,20 @@ const Inventory = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const highlightText = (text: string) => {
+    if (!searchTerm) return text;
+    const regex = new RegExp(`(${searchTerm})`, "gi");
+    return text.split(regex).map((part, i) =>
+      part.toLowerCase() === searchTerm.toLowerCase() ? (
+        <mark key={i} className="bg-yellow-200">
+          {part}
+        </mark>
+      ) : (
+        part
+      ),
+    );
   };
 
   return (
@@ -193,12 +212,18 @@ const Inventory = () => {
           type="text"
           placeholder="Search by name, SKU, or description"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setCurrentPage(1); // reset page when searching
+          }}
           className="px-3 py-2 border rounded-md flex-1"
         />
         <select
           value={storeFilter}
-          onChange={(e) => setStoreFilter(e.target.value)}
+          onChange={(e) => {
+            setStoreFilter(e.target.value);
+            setCurrentPage(1);
+          }}
           className="px-3 py-2 border rounded-md md:w-64"
         >
           {Object.entries(getUniqueStores()).map(([id, name]) => (
@@ -230,10 +255,10 @@ const Inventory = () => {
 
         {loading ? (
           <div className="p-8 text-center">Loading...</div>
-        ) : filteredInventory.length === 0 ? (
+        ) : paginatedInventory.length === 0 ? (
           <div className="p-8 text-center">No items found.</div>
         ) : (
-          filteredInventory.map((entry) => {
+          paginatedInventory.map((entry) => {
             const stockColor =
               entry.quantity <= entry.min_stock
                 ? "text-red-600"
@@ -246,8 +271,8 @@ const Inventory = () => {
                 key={entry.id}
                 className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
               >
-                <div className="col-span-3">{entry.item.name}</div>
-                <div className="col-span-2">{entry.item.sku}</div>
+                <div className="col-span-3">{highlightText(entry.item.name)}</div>
+                <div className="col-span-2">{highlightText(entry.item.sku)}</div>
                 <div className={`col-span-2 text-right font-semibold ${stockColor}`}>{entry.quantity}</div>
                 <div className="col-span-2 text-right">{totalStockMap[entry.item_id]}</div>
                 <div className="col-span-1 text-right">{entry.min_stock}</div>
@@ -256,6 +281,27 @@ const Inventory = () => {
             );
           })
         )}
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="flex justify-between items-center mt-4">
+        <button
+          disabled={currentPage === 1}
+          onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+          className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <span>
+          Page {currentPage} of {totalPages}
+        </span>
+        <button
+          disabled={currentPage === totalPages}
+          onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+          className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
+        >
+          Next
+        </button>
       </div>
     </div>
   );
