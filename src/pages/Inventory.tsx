@@ -423,47 +423,6 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
   );
 };
 
-// Define the proper type for store inventory items
-interface StoreInventoryItem {
-  id: string;
-  item_id: string;
-  store_id: string;
-  quantity: number;
-  min_stock: number;
-  last_restocked: string | null;
-  sku: string;
-  item_name: string;
-  store_name: string;
-  category: string;
-  brand: string | null;
-  unit: string;
-}
-
-// Create a minimal type that only includes the properties we actually use
-interface InventoryItemDisplay {
-  id: string;
-  sku: string;
-  name: string;
-  category: string;
-  brand: string;
-  quantity: number;
-  min_stock: number;
-  unit: string;
-  store_name?: string;
-  store_id?: string;
-  item_number?: string;
-  season?: string;
-  main_group?: string;
-  supplier?: string;
-  department?: string;
-  origin?: string;
-  theme?: string;
-  created_at?: string;
-  updated_at?: string;
-  // Add any additional properties that might exist
-  [key: string]: any;
-}
-
 const InventoryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -505,55 +464,78 @@ const InventoryNew = () => {
     console.log("Available stores:", stores);
   }, [storeInventory, aggregatedInventory, storeFilter, stores]);
 
-  // Debug store inventory data
-  useEffect(() => {
-    if (storeFilter !== "all" && storeInventory.length > 0) {
-      console.log("🔍 STORE INVENTORY DEBUG:");
-      console.log("Raw store inventory:", storeInventory);
-      console.log(
-        "Store IDs in data:",
-        storeInventory.map((si: any) => si.store_id),
-      );
-      console.log("Looking for store:", storeFilter);
-
-      const matchingItems = storeInventory.filter((si: any) => si.store_id === storeFilter);
-      console.log(`Items matching store ${storeFilter}:`, matchingItems.length);
-    }
-  }, [storeInventory, storeFilter]);
-
   // Use store inventory when a specific store is selected, otherwise use aggregated
   const inventory = useMemo(() => {
     if (storeFilter === "all") {
       return aggregatedInventory || [];
     } else {
-      // CORRECTED transformation - preserve the actual item structure
-      const transformedItems = storeInventory.map((si: any) => ({
-        id: si.item_id, // Use item_id as the main ID for the item
-        sku: si.sku,
-        name: si.item_name,
-        category: si.category || "",
-        brand: si.brand || "",
-        quantity: si.quantity || 0,
-        min_stock: si.min_stock || 0,
-        unit: si.unit || "pcs",
-        store_name: si.store_name,
-        store_id: si.store_id,
-        // Add other required Item properties with defaults
-        item_number: "",
-        season: "",
-        main_group: "",
-        supplier: "",
-        department: "",
-        origin: "",
-        theme: "",
-        created_at: "",
-        updated_at: "",
-      }));
+      console.log("🔄 Transforming store inventory for store:", storeFilter);
+      console.log("Raw store inventory data:", storeInventory);
 
-      console.log("Transformed store inventory:", transformedItems);
+      // CORRECTED transformation - handle both StoreInventoryView and any potential variations
+      const transformedItems = storeInventory.map((si: any) => {
+        // Debug each item to see its structure
+        console.log("Processing store inventory item:", si);
+
+        return {
+          id: si.item_id || si.id, // Use item_id as primary, fallback to id
+          sku: si.sku || "",
+          name: si.item_name || si.name || "",
+          category: si.category || "",
+          brand: si.brand || "",
+          quantity: si.quantity || 0,
+          min_stock: si.min_stock || 0,
+          unit: si.unit || "pcs",
+          store_name: si.store_name || "",
+          store_id: si.store_id || storeFilter,
+          // Add other required Item properties with defaults
+          item_number: si.item_number || "",
+          season: si.season || "",
+          main_group: si.main_group || "",
+          supplier: si.supplier || "",
+          department: si.department || "",
+          origin: si.origin || "",
+          theme: si.theme || "",
+          created_at: si.created_at || "",
+          updated_at: si.updated_at || "",
+        };
+      });
+
+      console.log("✅ Transformed store inventory:", transformedItems);
+      console.log("Transformed items count:", transformedItems.length);
       return transformedItems as unknown as Item[];
     }
   }, [storeFilter, aggregatedInventory, storeInventory]);
+
+  // Add this debug effect to understand the data flow
+  useEffect(() => {
+    console.log("=== INVENTORY DATA FLOW DEBUG ===");
+    console.log("storeFilter:", storeFilter);
+    console.log("storeInventory length:", storeInventory.length);
+    console.log("aggregatedInventory length:", aggregatedInventory?.length || 0);
+    console.log("inventory length:", inventory.length);
+    console.log("finalInventory length:", finalInventory.length);
+    console.log("filteredInventory length:", filteredInventory.length);
+
+    if (storeFilter !== "all" && storeInventory.length > 0) {
+      console.log("🔍 DEEP STORE INVENTORY ANALYSIS:");
+      console.log("First store inventory item:", storeInventory[0]);
+      console.log(
+        "All store IDs:",
+        storeInventory.map((item: any) => ({
+          store_id: item.store_id,
+          store_name: item.store_name,
+          item_name: item.item_name,
+          quantity: item.quantity,
+        })),
+      );
+
+      const hebronItems = storeInventory.filter(
+        (item: any) => item.store_id === storeFilter || item.store_name?.toLowerCase().includes("hebron"),
+      );
+      console.log(`Items for store ${storeFilter}:`, hebronItems);
+    }
+  }, [storeFilter, storeInventory, aggregatedInventory, inventory, finalInventory, filteredInventory]);
 
   console.log("Final Inventory count:", inventory.length);
 
@@ -597,6 +579,7 @@ const InventoryNew = () => {
   const filteredInventory = useMemo(() => {
     console.log("🔍 Filtering inventory. Total items:", finalInventory.length);
     console.log("Search term:", searchTerm);
+    console.log("Store filter:", storeFilter);
 
     const filtered = finalInventory.filter((item) => {
       // Safely handle potentially undefined properties with fallbacks
@@ -611,17 +594,45 @@ const InventoryNew = () => {
         category.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
-      const matchesStore = storeFilter === "all" || (item as any).store_id === storeFilter;
+
+      // IMPROVED: More robust store matching
+      const matchesStore =
+        storeFilter === "all" ||
+        (item as any).store_id === storeFilter ||
+        (item as any).store_name?.toLowerCase().includes(storeFilter.toLowerCase());
+
       const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
       const matchesMainGroup = mainGroupFilter === "all" || item.main_group === mainGroupFilter;
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
 
-      return (
-        matchesSearch && matchesModelNumber && matchesStore && matchesSeason && matchesMainGroup && matchesCategory
-      );
+      const shouldInclude =
+        matchesSearch && matchesModelNumber && matchesStore && matchesSeason && matchesMainGroup && matchesCategory;
+
+      if (shouldInclude && storeFilter !== "all") {
+        console.log("✅ Including item for store filter:", {
+          name: item.name,
+          store_id: (item as any).store_id,
+          store_name: (item as any).store_name,
+          quantity: item.quantity,
+        });
+      }
+
+      return shouldInclude;
     });
 
     console.log("✅ Filtered result:", filtered.length, "items");
+    if (storeFilter !== "all" && filtered.length === 0) {
+      console.log("❌ No items matched store filter. Available store data:");
+      finalInventory.forEach((item, index) => {
+        console.log(`Item ${index}:`, {
+          name: item.name,
+          store_id: (item as any).store_id,
+          store_name: (item as any).store_name,
+          has_store_id: !!(item as any).store_id,
+          has_store_name: !!(item as any).store_name,
+        });
+      });
+    }
     return filtered;
   }, [finalInventory, searchTerm, modelNumberFilter, storeFilter, seasonFilter, mainGroupFilter, categoryFilter]);
 
