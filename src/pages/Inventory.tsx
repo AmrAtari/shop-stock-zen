@@ -1,40 +1,34 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+// Define your types
 interface Item {
   id: string;
-  sku: string;
   name: string;
+  sku: string;
+  description: string;
   category: string;
   brand: string;
-  size?: string;
-  color?: string;
-  gender?: string;
-  season?: string;
-  unit?: string;
-  quantity?: number;
-  min_stock?: number;
-  location?: string;
-  supplier?: string;
-  last_restocked?: string;
+  size: string;
+  color: string;
+  gender: string;
+  season: string;
+  unit: string;
+  min_stock: number;
+  max_stock?: number;
+  department: string;
+  item_number: string;
+  item_color_code: string;
+  origin: string;
+  theme: string;
   created_at: string;
   updated_at: string;
-  description?: string;
-  pos_description?: string;
-  item_number?: string;
-  department?: string;
-  main_group?: string;
-  origin?: string;
-  theme?: string;
-  color_id?: string;
-  item_color_code?: string;
-  tax?: number;
 }
 
 interface Store {
   id: string;
   name: string;
-  location?: string;
+  location: string;
   created_at: string;
 }
 
@@ -43,51 +37,49 @@ interface InventoryEntry {
   item_id: string;
   store_id: string;
   quantity: number;
-  min_stock?: number;
-  last_restocked?: string;
+  min_stock: number;
+  last_restocked: string;
   created_at: string;
   updated_at: string;
   item: Item;
   store: Store;
 }
 
-const ITEMS_PER_PAGE = 10;
+type SortKey = keyof InventoryEntry | "item.name" | "item.sku" | "store.name";
 
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [sortKey, setSortKey] = useState<keyof InventoryEntry | "item.name">("item.name");
+  const [sortKey, setSortKey] = useState<SortKey>("item.name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
-  // --- Fetch inventory from Supabase ---
+  // Load inventory data
   const loadInventory = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase.from("store_inventory").select(`
           *,
-          item:items (
-            id, sku, name, category, brand, min_stock, description, created_at, updated_at
-          ),
-          store:stores (
-            id, name, location, created_at
-          )
+          item:items(*),
+          store:stores(*)
         `);
 
       if (error) throw error;
-      if (data) setInventory(data as InventoryEntry[]);
+      if (!data) return;
+
+      setInventory(data as InventoryEntry[]);
     } catch (err) {
-      console.error("Failed to load inventory:", err);
+      console.error("Error loading inventory:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // --- Realtime subscription ---
+  // Realtime subscription
   useEffect(() => {
-    loadInventory();
+    const fetchData = async () => await loadInventory();
+    fetchData();
 
     const channel = supabase
       .channel("inventory_changes")
@@ -100,25 +92,46 @@ const Inventory = () => {
       })
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  // --- Filtered & Sorted Inventory ---
-  const filteredInventory = useMemo(() => {
-    let data = inventory.filter((entry) => {
+  // Filtered & Sorted inventory
+  const filteredInventory = inventory
+    .filter((item) => {
       const matchesSearch =
         searchTerm === "" ||
-        entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+        item.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.item.description.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesStore = storeFilter === "all" || entry.store_id === storeFilter;
+      const matchesStore = storeFilter === "all" || item.store_id === storeFilter;
+
       return matchesSearch && matchesStore;
-    });
+    })
+    .sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
 
-    data.sort((a, b) => {
-      let aVal: any = sortKey === "item.name" ? a.item.name : a[sortKey];
-      let bVal: any = sortKey === "item.name" ? b.item.name : b[sortKey];
+      switch (sortKey) {
+        case "item.name":
+          aVal = a.item.name;
+          bVal = b.item.name;
+          break;
+        case "item.sku":
+          aVal = a.item.sku;
+          bVal = b.item.sku;
+          break;
+        case "store.name":
+          aVal = a.store.name;
+          bVal = b.store.name;
+          break;
+        default:
+          aVal = a[sortKey as keyof InventoryEntry];
+          bVal = b[sortKey as keyof InventoryEntry];
+      }
+
       if (typeof aVal === "string") aVal = aVal.toLowerCase();
       if (typeof bVal === "string") bVal = bVal.toLowerCase();
 
@@ -127,49 +140,68 @@ const Inventory = () => {
       return 0;
     });
 
-    return data;
-  }, [inventory, searchTerm, storeFilter, sortKey, sortOrder]);
-
-  // --- Pagination ---
-  const totalPages = Math.ceil(filteredInventory.length / ITEMS_PER_PAGE);
-  const paginatedInventory = filteredInventory.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
-
-  // --- Unique stores for filter dropdown ---
-  const stores = useMemo(() => {
-    const map: Record<string, string> = { all: "All Stores" };
-    inventory.forEach((entry) => {
-      map[entry.store.id] = entry.store.name;
+  const getUniqueStores = () => {
+    const stores: { [key: string]: string } = { all: "All Stores" };
+    inventory.forEach((item) => {
+      stores[item.store_id] = item.store.name;
     });
-    return map;
-  }, [inventory]);
+    return stores;
+  };
 
-  // --- Determine row color based on stock ---
-  const getStockColor = (entry: InventoryEntry) => {
-    const minStock = entry.min_stock || entry.item.min_stock || 0;
-    if (entry.quantity <= minStock) return "bg-red-50 text-red-600";
-    if (entry.quantity <= minStock * 2) return "bg-yellow-50 text-yellow-600";
-    return "bg-green-50 text-green-600";
+  // Calculate total stock per item
+  const totalStockMap: { [itemId: string]: number } = {};
+  inventory.forEach((entry) => {
+    totalStockMap[entry.item_id] = (totalStockMap[entry.item_id] || 0) + entry.quantity;
+  });
+
+  // Export CSV
+  const exportCSV = () => {
+    const header = ["Item Name", "SKU", "Store", "Quantity", "Total Stock", "Min Stock", "Description"];
+    const rows = filteredInventory.map((entry) => [
+      entry.item.name,
+      entry.item.sku,
+      entry.store.name,
+      entry.quantity,
+      totalStockMap[entry.item_id],
+      entry.min_stock,
+      entry.item.description,
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].map((e) => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "inventory_report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4">Inventory Management</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
+        <button onClick={exportCSV} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600">
+          Export CSV
+        </button>
+      </div>
 
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 mb-4">
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input
           type="text"
           placeholder="Search by name, SKU, or description"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="px-3 py-2 border rounded w-full md:w-1/2"
+          className="px-3 py-2 border rounded-md flex-1"
         />
         <select
           value={storeFilter}
           onChange={(e) => setStoreFilter(e.target.value)}
-          className="px-3 py-2 border rounded w-full md:w-1/4"
+          className="px-3 py-2 border rounded-md md:w-64"
         >
-          {Object.entries(stores).map(([id, name]) => (
+          {Object.entries(getUniqueStores()).map(([id, name]) => (
             <option key={id} value={id}>
               {name}
             </option>
@@ -177,92 +209,54 @@ const Inventory = () => {
         </select>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto border rounded">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-gray-100">
-              <th
-                className="px-4 py-2 cursor-pointer"
-                onClick={() => {
-                  setSortKey("item.name");
-                  setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-                }}
-              >
-                Item Name
-              </th>
-              <th
-                className="px-4 py-2 cursor-pointer"
-                onClick={() => {
-                  setSortKey("item.sku");
-                  setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-                }}
-              >
-                SKU
-              </th>
-              <th
-                className="px-4 py-2 cursor-pointer text-right"
-                onClick={() => {
-                  setSortKey("quantity");
-                  setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-                }}
-              >
-                Quantity
-              </th>
-              <th className="px-4 py-2 text-right">Min Stock</th>
-              <th className="px-4 py-2">Store</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="text-center py-10 text-gray-500">
-                  Loading...
-                </td>
-              </tr>
-            ) : paginatedInventory.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="text-center py-10 text-gray-500">
-                  No items found
-                </td>
-              </tr>
-            ) : (
-              paginatedInventory.map((entry) => (
-                <tr key={entry.id} className={getStockColor(entry)}>
-                  <td className="px-4 py-2">{entry.item.name}</td>
-                  <td className="px-4 py-2">{entry.item.sku || "N/A"}</td>
-                  <td className="px-4 py-2 text-right font-semibold">{entry.quantity}</td>
-                  <td className="px-4 py-2 text-right">{entry.min_stock || entry.item.min_stock}</td>
-                  <td className="px-4 py-2">{entry.store.name}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Prev
-          </button>
-          <span className="px-3 py-1 border rounded">
-            Page {page} / {totalPages}
-          </span>
-          <button
-            disabled={page === totalPages}
-            onClick={() => setPage(page + 1)}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Next
-          </button>
+      {/* Inventory Table */}
+      <div className="overflow-x-auto bg-white border rounded-lg shadow-sm">
+        <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
+          <div className="col-span-3 cursor-pointer" onClick={() => setSortKey("item.name")}>
+            Item {sortKey === "item.name" ? (sortOrder === "asc" ? "▲" : "▼") : ""}
+          </div>
+          <div className="col-span-2 cursor-pointer" onClick={() => setSortKey("item.sku")}>
+            SKU {sortKey === "item.sku" ? (sortOrder === "asc" ? "▲" : "▼") : ""}
+          </div>
+          <div className="col-span-2 text-right cursor-pointer" onClick={() => setSortKey("quantity")}>
+            Quantity
+          </div>
+          <div className="col-span-2 text-right">Total Stock</div>
+          <div className="col-span-1 text-right">Min Stock</div>
+          <div className="col-span-2 cursor-pointer" onClick={() => setSortKey("store.name")}>
+            Store
+          </div>
         </div>
-      )}
+
+        {loading ? (
+          <div className="p-8 text-center">Loading...</div>
+        ) : filteredInventory.length === 0 ? (
+          <div className="p-8 text-center">No items found.</div>
+        ) : (
+          filteredInventory.map((entry) => {
+            const stockColor =
+              entry.quantity <= entry.min_stock
+                ? "text-red-600"
+                : entry.quantity <= entry.min_stock * 2
+                  ? "text-yellow-600"
+                  : "text-green-600";
+
+            return (
+              <div
+                key={entry.id}
+                className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+              >
+                <div className="col-span-3">{entry.item.name}</div>
+                <div className="col-span-2">{entry.item.sku}</div>
+                <div className={`col-span-2 text-right font-semibold ${stockColor}`}>{entry.quantity}</div>
+                <div className="col-span-2 text-right">{totalStockMap[entry.item_id]}</div>
+                <div className="col-span-1 text-right">{entry.min_stock}</div>
+                <div className="col-span-2">{entry.store.name}</div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 };
