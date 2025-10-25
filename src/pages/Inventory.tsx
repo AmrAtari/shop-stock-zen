@@ -242,8 +242,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
 
       if (applyToAll) {
         // Group items by item_number to update all related SKUs
-        // FIX: Add explicit cast to selectedItems for .reduce()
-        const itemsByParent = (selectedItems as Item[]).reduce(
+        const itemsByParent = selectedItems.reduce(
           (acc, item) => {
             const parentKey = item.item_number || item.id;
             if (!acc[parentKey]) {
@@ -271,8 +270,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         }
       } else {
         // Apply only to selected items
-        // FIX: Add explicit cast to selectedItems for iteration
-        for (const item of selectedItems as Item[]) {
+        for (const item of selectedItems) {
           await supabase.from("items").update(bulkFormData).eq("id", item.id);
           totalUpdated++;
         }
@@ -287,16 +285,14 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
     }
   };
 
-  // FIX: Add explicit cast to resolve TS2339 (Property 'length' does not exist on type 'unknown')
-  if ((selectedItems as Item[]).length === 0) return null;
+  if (selectedItems.length === 0) return null;
 
-  // FIX: Add explicit cast to resolve TS2488 (Type 'unknown' must have a '[Symbol.iterator]()' method)
-  const parentItemsCount = (selectedItems as Item[]).filter((item) => item.item_number).length;
+  const parentItemsCount = selectedItems.filter((item) => item.item_number).length;
 
   return (
     <>
       <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-        <span className="text-sm font-medium">{(selectedItems as Item[]).length} item(s) selected</span>
+        <span className="text-sm font-medium">{selectedItems.length} item(s) selected</span>
         <Button variant="outline" size="sm" onClick={handleBulkUpdateClick}>
           Bulk Update
         </Button>
@@ -309,7 +305,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Bulk Update {(selectedItems as Item[]).length} Items</DialogTitle>
+            <DialogTitle>Bulk Update {selectedItems.length} Items</DialogTitle>
             <DialogDescription>
               Update shared fields across selected items. Leave fields empty to keep current values.
             </DialogDescription>
@@ -376,7 +372,7 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
         open={showBulkConfirmation}
         onOpenChange={setShowBulkConfirmation}
         onConfirm={handleBulkConfirmation}
-        selectedCount={(selectedItems as Item[]).length}
+        selectedCount={selectedItems.length}
         parentItemsCount={parentItemsCount}
       />
     </>
@@ -385,16 +381,18 @@ const BulkActions = ({ selectedItems, onBulkUpdate, onClearSelection }: BulkActi
 
 // Define the proper type for store inventory items
 interface StoreInventoryItem {
+  id: string;
   item_id: string;
-  sku: string;
-  item_name: string;
-  category: string;
-  brand?: string;
+  store_id: string;
   quantity: number;
   min_stock: number;
-  unit: string;
+  last_restocked: string | null;
+  sku: string;
+  item_name: string;
   store_name: string;
-  store_id: string;
+  category: string;
+  brand: string | null;
+  unit: string;
 }
 
 const InventoryNew = () => {
@@ -434,20 +432,20 @@ const InventoryNew = () => {
     console.log("Aggregated Inventory:", aggregatedInventory);
     console.log("Store Filter:", storeFilter);
     console.log("Store Inventory count:", storeInventory.length);
-    console.log("Aggregated Inventory count:", aggregatedInventory.length);
+    console.log("Aggregated Inventory count:", aggregatedInventory?.length);
     console.log("Available stores:", stores);
   }, [storeInventory, aggregatedInventory, storeFilter, stores]);
 
   // Use store inventory when a specific store is selected, otherwise use aggregated
   const inventory = useMemo(() => {
     if (storeFilter === "all") {
-      return aggregatedInventory;
+      return aggregatedInventory || [];
     } else {
-      // Cast storeInventory to the correct type and transform
+      // Cast storeInventory to the correct type and transform to Item format
       return (storeInventory as StoreInventoryItem[]).map((si) => ({
         id: si.item_id,
         sku: si.sku,
-        name: si.item_name, // Use item_name from StoreInventoryView
+        name: si.item_name,
         category: si.category || "",
         brand: si.brand || "",
         quantity: si.quantity || 0,
@@ -456,10 +454,16 @@ const InventoryNew = () => {
         store_name: si.store_name,
         store_id: si.store_id,
         // These might not be available in StoreInventoryView, so we'll leave them empty
-        item_number: "", // Not available in StoreInventoryView
-        season: "", // Not available in StoreInventoryView
-        main_group: "", // Not available in StoreInventoryView
-      }));
+        item_number: "",
+        season: "",
+        main_group: "",
+        supplier: "",
+        department: "",
+        origin: "",
+        theme: "",
+        created_at: "",
+        updated_at: "",
+      })) as Item[];
     }
   }, [storeFilter, aggregatedInventory, storeInventory]);
 
@@ -506,7 +510,7 @@ const InventoryNew = () => {
     console.log("🔍 Filtering inventory. Total items:", finalInventory.length);
     console.log("Search term:", searchTerm);
 
-    const filtered = (finalInventory as Item[]).filter((item) => {
+    const filtered = finalInventory.filter((item) => {
       // Safely handle potentially undefined properties with fallbacks
       const name = item.name || "";
       const sku = item.sku || "";
@@ -518,7 +522,6 @@ const InventoryNew = () => {
         sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
         category.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // For store-specific view, we might not have all filter properties
       const matchesModelNumber = modelNumberFilter === "all" || item.item_number === modelNumberFilter;
       const matchesStore = storeFilter === "all" || (item as any).store_id === storeFilter;
       const matchesSeason = seasonFilter === "all" || item.season === seasonFilter;
@@ -536,19 +539,19 @@ const InventoryNew = () => {
 
   // Unique values for filters - handle cases where properties might not exist
   const uniqueModelNumbers = useMemo(
-    () => [...new Set((finalInventory as Item[]).map((i) => i.item_number).filter(Boolean))].sort(),
+    () => [...new Set(finalInventory.map((i) => i.item_number).filter(Boolean))].sort(),
     [finalInventory],
   );
   const uniqueSeasons = useMemo(
-    () => [...new Set((finalInventory as Item[]).map((i) => i.season).filter(Boolean))].sort(),
+    () => [...new Set(finalInventory.map((i) => i.season).filter(Boolean))].sort(),
     [finalInventory],
   );
   const uniqueMainGroups = useMemo(
-    () => [...new Set((finalInventory as Item[]).map((i) => i.main_group).filter(Boolean))].sort(),
+    () => [...new Set(finalInventory.map((i) => i.main_group).filter(Boolean))].sort(),
     [finalInventory],
   );
   const uniqueCategories = useMemo(
-    () => [...new Set((finalInventory as Item[]).map((i) => i.category).filter(Boolean))].sort(),
+    () => [...new Set(finalInventory.map((i) => i.category).filter(Boolean))].sort(),
     [finalInventory],
   );
 
@@ -829,7 +832,7 @@ const InventoryNew = () => {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {storeFilter === "all" ? (item as any).total_quantity : item.quantity}
+                      {storeFilter === "all" ? (item as any).total_quantity || item.quantity : item.quantity}
                     </TableCell>
                     <TableCell>{item.unit}</TableCell>
                     <TableCell>{item.min_stock}</TableCell>
