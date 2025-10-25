@@ -1,252 +1,254 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 
-const ITEMS_PER_PAGE = 20;
-
-interface InventoryItem {
-  store_id: string;
-  store_name: string;
-  item_id: string;
-  item_name: string;
-  sku: string;
-  quantity: number;
-  min_stock: number;
-  category?: string | null;
-  brand?: string | null;
+type InventoryItem = Database["public"]["Tables"]["inventory"]["Row"] & {
+  store?: { id: string; name: string };
   gender?: string | null;
   season?: string | null;
+};
+
+interface StoreSummary {
+  [storeId: string]: {
+    count: number;
+    items: InventoryItem[];
+    storeName: string;
+  };
 }
 
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [filteredInventory, setFilteredInventory] = useState<InventoryItem[]>([]);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [storeFilter, setStoreFilter] = useState("all");
+  const [debugInfo, setDebugInfo] = useState<any>({});
 
-  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [genders, setGenders] = useState<string[]>([]);
-  const [seasons, setSeasons] = useState<string[]>([]);
+  /** Debug storage */
+  const debugAllStorage = () => {
+    const storageData: any = {
+      localStorage: {},
+      sessionStorage: {},
+      urlParams: window.location.search,
+      currentPath: window.location.pathname,
+    };
 
-  const [selectedStore, setSelectedStore] = useState<string>("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
-  const [selectedGender, setSelectedGender] = useState<string>("");
-  const [selectedSeason, setSelectedSeason] = useState<string>("");
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        try {
+          const value = localStorage.getItem(key);
+          storageData.localStorage[key] = value ? JSON.parse(value) : null;
+        } catch {
+          storageData.localStorage[key] = localStorage.getItem(key);
+        }
+      }
+    }
+
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key) {
+        try {
+          const value = sessionStorage.getItem(key);
+          storageData.sessionStorage[key] = value ? JSON.parse(value) : null;
+        } catch {
+          storageData.sessionStorage[key] = sessionStorage.getItem(key);
+        }
+      }
+    }
+
+    setDebugInfo(storageData);
+    return storageData;
+  };
+
+  /** Load inventory from Supabase */
+  const loadInventory = async () => {
+    try {
+      setLoading(true);
+      debugAllStorage();
+
+      const { data, error } = await supabase.from("inventory").select("*, store:storeId(*)"); // include related store info
+
+      if (error) throw error;
+
+      // ensure optional fields exist
+      const formattedData = (data || []).map((item: any) => ({
+        ...item,
+        gender: item.gender || null,
+        season: item.season || null,
+      }));
+
+      setInventory(formattedData);
+      console.log(`✅ Loaded ${data?.length || 0} items from Supabase`);
+    } catch (err) {
+      console.error("❌ Inventory load failed:", err);
+      setInventory([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Filtered inventory */
+  const filteredInventory = useMemo(
+    () =>
+      inventory.filter((item) => {
+        const matchesSearch =
+          !searchTerm ||
+          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesStore =
+          storeFilter === "all" ||
+          item.storeId === storeFilter ||
+          item.store_id === storeFilter ||
+          item.store?.id === storeFilter;
+
+        return matchesSearch && matchesStore;
+      }),
+    [inventory, searchTerm, storeFilter],
+  );
+
+  /** Store summary */
+  const storeSummary = useMemo(() => {
+    const stores: StoreSummary = {};
+    inventory.forEach((item) => {
+      const storeId = item.storeId || item.store_id || item.store?.id || "unknown-store";
+      const storeName = item.store?.name || storeId;
+      if (!stores[storeId]) stores[storeId] = { count: 0, items: [], storeName };
+      stores[storeId].count++;
+      stores[storeId].items.push(item);
+    });
+    return stores;
+  }, [inventory]);
+
+  /** Unique stores for filter dropdown */
+  const getUniqueStores = () => {
+    const stores: { [key: string]: string } = { all: "All Stores" };
+    inventory.forEach((item) => {
+      const storeId = item.storeId || item.store_id || item.store?.id;
+      const storeName = item.store?.name || storeId || "Unknown Store";
+      if (storeId) stores[storeId] = storeName;
+    });
+    return stores;
+  };
+
+  /** CSV export helper */
+  const exportCSV = () => {
+    if (inventory.length === 0) return;
+    const headers = Object.keys(inventory[0]);
+    const csvRows = [
+      headers.join(","), // header row
+      ...inventory.map((item) => headers.map((h) => `"${(item as any)[h] ?? ""}"`).join(",")),
+    ];
+    const csvData = csvRows.join("\n");
+    const blob = new Blob([csvData], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "inventory.csv");
+    link.click();
+  };
 
   useEffect(() => {
-    fetchStores();
-    fetchFilters();
-    fetchInventory();
+    loadInventory();
   }, []);
 
-  const fetchStores = async () => {
-    const { data } = await supabase.from("stores").select("id, name");
-    if (data) setStores(data);
-  };
-
-  const fetchFilters = async () => {
-    const { data: categoriesData } = await supabase.from("categories").select("name");
-    if (categoriesData) setCategories(categoriesData.map((c) => c.name));
-
-    const { data: gendersData } = await supabase.from("genders").select("name");
-    if (gendersData) setGenders(gendersData.map((g) => g.name));
-
-    const { data: seasonsData } = await supabase.from("seasons").select("name");
-    if (seasonsData) setSeasons(seasonsData.map((s) => s.name));
-  };
-
-  const fetchInventory = async () => {
-    const { data } = await supabase.from("v_store_stock_levels").select("*");
-    if (data) {
-      const formatted = data.map((item) => ({
-        store_id: item.store_id!,
-        store_name: item.store_name!,
-        item_id: item.item_id!,
-        item_name: item.item_name!,
-        sku: item.sku!,
-        quantity: item.quantity!,
-        min_stock: item.min_stock!,
-        category: item.category,
-        brand: item.brand,
-        gender: item.gender,
-        season: item.season,
-      }));
-      setInventory(formatted);
-      setFilteredInventory(formatted);
-    }
-  };
-
-  useEffect(() => {
-    let filtered = [...inventory];
-
-    if (search) {
-      const s = search.toLowerCase();
-      filtered = filtered.filter(
-        (item) => item.item_name.toLowerCase().includes(s) || item.sku.toLowerCase().includes(s),
-      );
-    }
-
-    if (selectedStore) filtered = filtered.filter((item) => item.store_id === selectedStore);
-    if (selectedCategory) filtered = filtered.filter((item) => item.category === selectedCategory);
-    if (selectedGender) filtered = filtered.filter((item) => item.gender === selectedGender);
-    if (selectedSeason) filtered = filtered.filter((item) => item.season === selectedSeason);
-
-    setFilteredInventory(filtered);
-    setPage(1);
-  }, [search, selectedStore, selectedCategory, selectedGender, selectedSeason, inventory]);
-
-  const paginated = useMemo(() => {
-    const start = (page - 1) * ITEMS_PER_PAGE;
-    return filteredInventory.slice(start, start + ITEMS_PER_PAGE);
-  }, [page, filteredInventory]);
-
-  // CSV Export
-  const exportCSV = () => {
-    if (!filteredInventory.length) return;
-
-    const headers = ["Store", "Item", "SKU", "Quantity", "Min Stock", "Category", "Brand", "Gender", "Season"];
-
-    const rows = filteredInventory.map((item) => [
-      item.store_name,
-      item.item_name,
-      item.sku,
-      item.quantity,
-      item.min_stock,
-      item.category || "",
-      item.brand || "",
-      item.gender || "",
-      item.season || "",
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "inventory_export.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">Inventory</h1>
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
+          <p className="text-gray-600 mt-2">Manage and track your inventory across all stores</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => debugAllStorage()}
+            className="px-4 py-2 rounded-md bg-blue-500 text-white hover:bg-blue-600"
+          >
+            Debug Storage
+          </button>
+          <button
+            onClick={() => exportCSV()}
+            className="px-4 py-2 rounded-md bg-green-500 text-white hover:bg-green-600"
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
 
       {/* Filters */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input
           type="text"
-          placeholder="Search by name or SKU"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border p-1 rounded"
+          placeholder="Search by name, SKU, or description..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 px-3 py-2 border rounded-md"
         />
-
-        <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} className="border p-1 rounded">
-          <option value="">All Stores</option>
-          {stores.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-
         <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="border p-1 rounded"
+          value={storeFilter}
+          onChange={(e) => setStoreFilter(e.target.value)}
+          className="md:w-64 px-3 py-2 border rounded-md"
         >
-          <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
+          {Object.entries(getUniqueStores()).map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
             </option>
           ))}
         </select>
+      </div>
 
-        <select
-          value={selectedGender}
-          onChange={(e) => setSelectedGender(e.target.value)}
-          className="border p-1 rounded"
-        >
-          <option value="">All Genders</option>
-          {genders.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={selectedSeason}
-          onChange={(e) => setSelectedSeason(e.target.value)}
-          className="border p-1 rounded"
-        >
-          <option value="">All Seasons</option>
-          {seasons.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-
-        <button onClick={exportCSV} className="bg-blue-500 text-white px-2 py-1 rounded">
-          Export CSV
-        </button>
+      {/* Store Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        {Object.entries(storeSummary).map(([storeId, storeData]) => (
+          <div key={storeId} className="bg-white p-4 rounded-lg shadow-sm border">
+            <h3 className="font-semibold text-gray-900">{storeData.storeName}</h3>
+            <div className="text-2xl font-bold text-blue-600">{storeData.count}</div>
+            <div className="text-sm text-gray-600">items in stock</div>
+            <button onClick={() => setStoreFilter(storeId)} className="mt-2 text-sm text-blue-600 hover:text-blue-800">
+              View items →
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* Inventory Table */}
-      <table className="w-full border-collapse border">
-        <thead>
-          <tr>
-            <th className="border p-2">Store</th>
-            <th className="border p-2">Item</th>
-            <th className="border p-2">SKU</th>
-            <th className="border p-2">Quantity</th>
-            <th className="border p-2">Min Stock</th>
-            <th className="border p-2">Category</th>
-            <th className="border p-2">Brand</th>
-            <th className="border p-2">Gender</th>
-            <th className="border p-2">Season</th>
-          </tr>
-        </thead>
-        <tbody>
-          {paginated.map((item) => (
-            <tr key={item.item_id + item.store_id}>
-              <td className="border p-2">{item.store_name}</td>
-              <td className="border p-2">{item.item_name}</td>
-              <td className="border p-2">{item.sku}</td>
-              <td className="border p-2">{item.quantity}</td>
-              <td className="border p-2">{item.min_stock}</td>
-              <td className="border p-2">{item.category}</td>
-              <td className="border p-2">{item.brand}</td>
-              <td className="border p-2">{item.gender}</td>
-              <td className="border p-2">{item.season}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Pagination */}
-      <div className="flex gap-2 mt-4">
-        <button
-          disabled={page === 1}
-          onClick={() => setPage((p) => p - 1)}
-          className="border px-2 py-1 rounded disabled:opacity-50"
-        >
-          Previous
-        </button>
-        <span className="px-2 py-1">
-          Page {page} of {Math.ceil(filteredInventory.length / ITEMS_PER_PAGE)}
-        </span>
-        <button
-          disabled={page === Math.ceil(filteredInventory.length / ITEMS_PER_PAGE)}
-          onClick={() => setPage((p) => p + 1)}
-          className="border px-2 py-1 rounded disabled:opacity-50"
-        >
-          Next
-        </button>
+      <div className="border rounded-lg overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center">Loading inventory...</div>
+        ) : filteredInventory.length === 0 ? (
+          <div className="p-8 text-center">No items found.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-4 py-2">Item</th>
+                  <th className="px-4 py-2">SKU</th>
+                  <th className="px-4 py-2">Quantity</th>
+                  <th className="px-4 py-2">Price</th>
+                  <th className="px-4 py-2">Store</th>
+                  <th className="px-4 py-2">Gender</th>
+                  <th className="px-4 py-2">Season</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInventory.map((item) => (
+                  <tr key={item.id} className="border-b">
+                    <td className="px-4 py-2">{item.name}</td>
+                    <td className="px-4 py-2">{item.sku || "N/A"}</td>
+                    <td className="px-4 py-2">{item.quantity}</td>
+                    <td className="px-4 py-2">{item.price ? `$${item.price.toFixed(2)}` : "N/A"}</td>
+                    <td className="px-4 py-2">{item.store?.name || item.storeId || "Unknown"}</td>
+                    <td className="px-4 py-2">{item.gender || "N/A"}</td>
+                    <td className="px-4 py-2">{item.season || "N/A"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
