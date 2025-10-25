@@ -21,12 +21,17 @@ interface StoreSummary {
 
 const PAGE_SIZE = 20;
 
+type SortKey = "name" | "totalQty" | "storeQty" | "minStock";
+type SortOrder = "asc" | "desc";
+
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
   // --- Load Inventory from Supabase ---
   const loadInventory = async () => {
@@ -50,21 +55,57 @@ const Inventory = () => {
     }
   };
 
+  // --- Total Quantity Map ---
+  const totalQuantityMap = useMemo(() => {
+    const map: { [itemId: string]: number } = {};
+    inventory.forEach((entry) => {
+      map[entry.item_id] = (map[entry.item_id] || 0) + entry.quantity;
+    });
+    return map;
+  }, [inventory]);
+
   // --- Filtered Inventory ---
   const filteredInventory = useMemo(() => {
-    const filtered = inventory.filter((entry) => {
-      const matchesSearch =
-        !searchTerm ||
-        entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    return inventory
+      .filter((entry) => {
+        const matchesSearch =
+          !searchTerm ||
+          entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesStore = storeFilter === "all" || entry.store.id === storeFilter;
+        const matchesStore = storeFilter === "all" || entry.store.id === storeFilter;
 
-      return matchesSearch && matchesStore;
-    });
-    return filtered;
-  }, [inventory, searchTerm, storeFilter]);
+        return matchesSearch && matchesStore;
+      })
+      .sort((a, b) => {
+        let valA: string | number = "";
+        let valB: string | number = "";
+
+        switch (sortKey) {
+          case "name":
+            valA = a.item.name.toLowerCase();
+            valB = b.item.name.toLowerCase();
+            break;
+          case "totalQty":
+            valA = totalQuantityMap[a.item_id];
+            valB = totalQuantityMap[b.item_id];
+            break;
+          case "storeQty":
+            valA = a.quantity;
+            valB = b.quantity;
+            break;
+          case "minStock":
+            valA = a.min_stock || a.item.min_stock || 0;
+            valB = b.min_stock || b.item.min_stock || 0;
+            break;
+        }
+
+        if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+        if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+        return 0;
+      });
+  }, [inventory, searchTerm, storeFilter, sortKey, sortOrder, totalQuantityMap]);
 
   // --- Pagination ---
   const paginatedInventory = useMemo(() => {
@@ -74,27 +115,28 @@ const Inventory = () => {
 
   const totalPages = Math.ceil(filteredInventory.length / PAGE_SIZE);
 
-  // --- Total Quantity per Item ---
-  const totalQuantityMap = useMemo(() => {
-    const map: { [itemId: string]: number } = {};
-    inventory.forEach((entry) => {
-      map[entry.item_id] = (map[entry.item_id] || 0) + entry.quantity;
-    });
-    return map;
-  }, [inventory]);
+  // --- CSV Export ---
+  const exportCSV = () => {
+    const headers = ["Item", "SKU", "Total Qty", "Store Qty", "Min Stock", "Store"];
+    const rows = filteredInventory.map((entry) => [
+      entry.item.name,
+      entry.item.sku || "",
+      totalQuantityMap[entry.item_id],
+      entry.quantity,
+      entry.min_stock || entry.item.min_stock || "",
+      entry.store.name,
+    ]);
 
-  // --- Store Summary ---
-  const storeSummary = useMemo(() => {
-    const stores: StoreSummary = {};
-    inventory.forEach((entry) => {
-      const storeId = entry.store.id || "unknown-store";
-      const storeName = entry.store.name || storeId;
-      if (!stores[storeId]) stores[storeId] = { count: 0, items: [], storeName };
-      stores[storeId].count++;
-      stores[storeId].items.push(entry);
-    });
-    return stores;
-  }, [inventory]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map((r) => r.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "inventory_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
@@ -134,6 +176,27 @@ const Inventory = () => {
             </option>
           ))}
         </select>
+        <select
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as SortKey)}
+          className="md:w-64 px-3 py-2 border rounded-md"
+        >
+          <option value="name">Sort by Name</option>
+          <option value="totalQty">Sort by Total Quantity</option>
+          <option value="storeQty">Sort by Store Quantity</option>
+          <option value="minStock">Sort by Min Stock</option>
+        </select>
+        <select
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+          className="md:w-64 px-3 py-2 border rounded-md"
+        >
+          <option value="asc">Ascending</option>
+          <option value="desc">Descending</option>
+        </select>
+        <button onClick={exportCSV} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600">
+          Export CSV
+        </button>
       </div>
 
       {/* Inventory Table */}
@@ -177,7 +240,7 @@ const Inventory = () => {
               </tbody>
             </table>
 
-            {/* Pagination Controls */}
+            {/* Pagination */}
             <div className="flex justify-between items-center mt-4">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
