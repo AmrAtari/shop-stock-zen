@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
-// Types
+// --- Types ---
 type Item = Database["public"]["Tables"]["items"]["Row"];
 type Store = Database["public"]["Tables"]["stores"]["Row"];
 type StoreInventory = Database["public"]["Tables"]["store_inventory"]["Row"];
@@ -20,6 +20,7 @@ interface StoreSummary {
   };
 }
 
+// --- Component ---
 const Inventory = () => {
   const [inventory, setInventory] = useState<InventoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +28,7 @@ const Inventory = () => {
   const [storeFilter, setStoreFilter] = useState("all");
   const [debugInfo, setDebugInfo] = useState<any>({});
 
-  /** Debug storage */
+  // --- Debug Storage ---
   const debugAllStorage = () => {
     const storageData: any = {
       localStorage: {},
@@ -64,7 +65,7 @@ const Inventory = () => {
     return storageData;
   };
 
-  /** Load inventory from Supabase */
+  // --- Load Inventory from Supabase ---
   const loadInventory = async () => {
     try {
       setLoading(true);
@@ -73,7 +74,7 @@ const Inventory = () => {
       const { data, error } = await supabase.from("store_inventory").select(`
           *,
           item:items (*),
-          store:stores (id, name)
+          store:stores (*)
         `);
 
       if (error) throw error;
@@ -87,7 +88,7 @@ const Inventory = () => {
     }
   };
 
-  /** Filtered inventory */
+  // --- Filtered Inventory ---
   const filteredInventory = useMemo(
     () =>
       inventory.filter((entry) => {
@@ -104,7 +105,7 @@ const Inventory = () => {
     [inventory, searchTerm, storeFilter],
   );
 
-  /** Store summary */
+  // --- Store Summary ---
   const storeSummary = useMemo(() => {
     const stores: StoreSummary = {};
     inventory.forEach((entry) => {
@@ -117,7 +118,7 @@ const Inventory = () => {
     return stores;
   }, [inventory]);
 
-  /** Unique stores for filter dropdown */
+  // --- Unique Stores for Filter Dropdown ---
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
     inventory.forEach((entry) => {
@@ -140,10 +141,7 @@ const Inventory = () => {
           <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
           <p className="text-gray-600 mt-2">Manage and track your inventory across all stores</p>
         </div>
-        <button
-          onClick={() => debugAllStorage()}
-          className="px-4 py-2 rounded-md bg-blue-500 text-white hover:bg-blue-600"
-        >
+        <button onClick={debugAllStorage} className="px-4 py-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">
           Debug Storage
         </button>
       </div>
