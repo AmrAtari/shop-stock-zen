@@ -72,17 +72,8 @@ const Inventory = () => {
 
       const { data, error } = await supabase.from("store_inventory").select(`
           *,
-          item:items (
-            id,
-            name,
-            sku,
-            description,
-            min_stock
-          ),
-          store:stores (
-            id,
-            name
-          )
+          item:items (*),
+          store:stores (id, name)
         `);
 
       if (error) throw error;
@@ -217,7 +208,11 @@ const Inventory = () => {
                     <td className="px-4 py-2">{entry.item.name}</td>
                     <td className="px-4 py-2">{entry.item.sku || "N/A"}</td>
                     <td
-                      className={`px-4 py-2 font-semibold ${entry.quantity <= (entry.min_stock || entry.item.min_stock || 0) ? "text-red-600" : "text-green-600"}`}
+                      className={`px-4 py-2 font-semibold ${
+                        entry.quantity <= (entry.min_stock || entry.item.min_stock || 0)
+                          ? "text-red-600"
+                          : "text-green-600"
+                      }`}
                     >
                       {entry.quantity}
                     </td>
