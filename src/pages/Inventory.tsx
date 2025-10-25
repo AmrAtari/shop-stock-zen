@@ -505,14 +505,30 @@ const InventoryNew = () => {
     console.log("Available stores:", stores);
   }, [storeInventory, aggregatedInventory, storeFilter, stores]);
 
+  // Debug store inventory data
+  useEffect(() => {
+    if (storeFilter !== "all" && storeInventory.length > 0) {
+      console.log("🔍 STORE INVENTORY DEBUG:");
+      console.log("Raw store inventory:", storeInventory);
+      console.log(
+        "Store IDs in data:",
+        storeInventory.map((si: any) => si.store_id),
+      );
+      console.log("Looking for store:", storeFilter);
+
+      const matchingItems = storeInventory.filter((si: any) => si.store_id === storeFilter);
+      console.log(`Items matching store ${storeFilter}:`, matchingItems.length);
+    }
+  }, [storeInventory, storeFilter]);
+
   // Use store inventory when a specific store is selected, otherwise use aggregated
   const inventory = useMemo(() => {
     if (storeFilter === "all") {
       return aggregatedInventory || [];
     } else {
-      // Create a simple transformation that only includes the properties we need for display
-      const transformedItems = (storeInventory as StoreInventoryItem[]).map((si) => ({
-        id: si.item_id,
+      // CORRECTED transformation - preserve the actual item structure
+      const transformedItems = storeInventory.map((si: any) => ({
+        id: si.item_id, // Use item_id as the main ID for the item
         sku: si.sku,
         name: si.item_name,
         category: si.category || "",
@@ -522,6 +538,7 @@ const InventoryNew = () => {
         unit: si.unit || "pcs",
         store_name: si.store_name,
         store_id: si.store_id,
+        // Add other required Item properties with defaults
         item_number: "",
         season: "",
         main_group: "",
@@ -533,6 +550,7 @@ const InventoryNew = () => {
         updated_at: "",
       }));
 
+      console.log("Transformed store inventory:", transformedItems);
       return transformedItems as unknown as Item[];
     }
   }, [storeFilter, aggregatedInventory, storeInventory]);
