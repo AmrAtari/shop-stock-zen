@@ -37,8 +37,11 @@ interface StoreInventory {
   updated_at: string;
   item: Item;
   store: Store;
-  updating?: boolean; // For inline editing feedback
-  selected?: boolean; // For batch selection
+}
+
+interface Notification {
+  id: string;
+  message: string;
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -51,7 +54,7 @@ const Inventory: React.FC = () => {
   const [sortField, setSortField] = useState<keyof StoreInventory | "item.name" | "total_quantity">("item.name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [batchValue, setBatchValue] = useState<number>(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Load Inventory
   const loadInventory = async () => {
@@ -70,6 +73,7 @@ const Inventory: React.FC = () => {
   useEffect(() => {
     loadInventory();
 
+    // Real-time subscription
     const subscription = supabase
       .channel("public:store_inventory")
       .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, (payload) => {
@@ -89,6 +93,28 @@ const Inventory: React.FC = () => {
 
     return () => supabase.removeChannel(subscription);
   }, []);
+
+  // Total stock across all stores
+  const totalStockMap = useMemo(() => {
+    const map: { [itemId: string]: number } = {};
+    inventory.forEach((i) => {
+      if (!map[i.item_id]) map[i.item_id] = 0;
+      map[i.item_id] += i.quantity;
+    });
+    return map;
+  }, [inventory]);
+
+  // Notifications for low stock
+  useEffect(() => {
+    const newNotifications: Notification[] = [];
+    Object.entries(totalStockMap).forEach(([itemId, totalQty]) => {
+      const item = inventory.find((i) => i.item_id === itemId)?.item;
+      if (item && totalQty <= item.min_stock) {
+        newNotifications.push({ id: itemId, message: `Low stock alert: ${item.name} (${totalQty} units)` });
+      }
+    });
+    setNotifications(newNotifications);
+  }, [totalStockMap, inventory]);
 
   // Filter
   const filteredInventory = useMemo(() => {
@@ -130,16 +156,6 @@ const Inventory: React.FC = () => {
   const totalPages = Math.ceil(sortedInventory.length / ITEMS_PER_PAGE);
   const paginatedInventory = sortedInventory.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  // Total stock across all stores
-  const totalStockMap = useMemo(() => {
-    const map: { [itemId: string]: number } = {};
-    inventory.forEach((i) => {
-      if (!map[i.item_id]) map[i.item_id] = 0;
-      map[i.item_id] += i.quantity;
-    });
-    return map;
-  }, [inventory]);
-
   // CSV export
   const exportCSV = () => {
     const header = ["Item Name", "SKU", "Store", "Quantity", "Min Stock", "Total Stock"];
@@ -161,27 +177,20 @@ const Inventory: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Inline update quantity
-  const updateQuantity = async (id: string, value: number) => {
-    setInventory((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: value, updating: true } : i)));
-    const { error } = await supabase.from("store_inventory").update({ quantity: value }).eq("id", id);
-    setInventory((prev) => prev.map((i) => (i.id === id ? { ...i, updating: false } : i)));
-    if (error) alert("Failed to update quantity: " + error.message);
-  };
-
-  // Batch update
-  const updateSelectedBatch = async () => {
-    const selectedIds = inventory.filter((i) => i.selected).map((i) => i.id);
-    if (!selectedIds.length) return;
-    setInventory((prev) => prev.map((i) => (i.selected ? { ...i, quantity: batchValue, updating: true } : i)));
-    const { error } = await supabase.from("store_inventory").update({ quantity: batchValue }).in("id", selectedIds);
-    setInventory((prev) => prev.map((i) => (i.selected ? { ...i, updating: false } : i)));
-    if (error) alert("Batch update failed: " + error.message);
-  };
-
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">Inventory Management</h1>
+
+      {/* Notifications */}
+      {notifications.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {notifications.map((n) => (
+            <div key={n.id} className="px-4 py-2 bg-red-200 text-red-800 rounded">
+              {n.message}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-4 mb-4">
@@ -212,97 +221,28 @@ const Inventory: React.FC = () => {
         </button>
       </div>
 
-      {/* Batch Update */}
-      <div className="flex gap-2 mb-4 items-center">
-        <input
-          type="number"
-          placeholder="Batch quantity"
-          value={batchValue}
-          onChange={(e) => setBatchValue(parseInt(e.target.value) || 0)}
-          className="border px-3 py-2 rounded w-32"
-        />
-        <button onClick={updateSelectedBatch} className="px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600">
-          Update Selected
-        </button>
-      </div>
-
       {/* Table */}
       <table className="min-w-full border border-gray-200">
         <thead className="bg-gray-50">
           <tr>
-            <th className="px-4 py-2">
-              <input
-                type="checkbox"
-                onChange={(e) => setInventory((prev) => prev.map((i) => ({ ...i, selected: e.target.checked })))}
-              />
-            </th>
-            <th
-              className="px-4 py-2 cursor-pointer"
-              onClick={() => {
-                setSortField("item.name");
-                setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-              }}
-            >
-              Item
-            </th>
-            <th
-              className="px-4 py-2 cursor-pointer"
-              onClick={() => {
-                setSortField("item.sku");
-                setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-              }}
-            >
-              SKU
-            </th>
+            <th className="px-4 py-2">Item</th>
+            <th className="px-4 py-2">SKU</th>
             <th className="px-4 py-2">Store</th>
-            <th
-              className="px-4 py-2 cursor-pointer text-right"
-              onClick={() => {
-                setSortField("quantity");
-                setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-              }}
-            >
-              Quantity
-            </th>
+            <th className="px-4 py-2 text-right">Quantity</th>
             <th className="px-4 py-2 text-right">Min Stock</th>
-            <th
-              className="px-4 py-2 text-right cursor-pointer"
-              onClick={() => {
-                setSortField("total_quantity");
-                setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-              }}
-            >
-              Total Stock
-            </th>
+            <th className="px-4 py-2 text-right">Total Stock</th>
           </tr>
         </thead>
         <tbody>
           {paginatedInventory.map((i) => (
-            <tr key={i.id} className={`${i.updating ? "bg-green-100 animate-pulse" : ""}`}>
-              <td className="px-4 py-2">
-                <input
-                  type="checkbox"
-                  checked={i.selected || false}
-                  onChange={(e) =>
-                    setInventory((prev) =>
-                      prev.map((inv) => (inv.id === i.id ? { ...inv, selected: e.target.checked } : inv)),
-                    )
-                  }
-                />
-              </td>
+            <tr
+              key={i.id}
+              className={`${totalStockMap[i.item_id] <= i.min_stock ? "bg-red-100" : totalStockMap[i.item_id] <= i.min_stock * 2 ? "bg-yellow-100" : "bg-green-100"}`}
+            >
               <td className="px-4 py-2">{i.item.name}</td>
               <td className="px-4 py-2">{i.item.sku}</td>
               <td className="px-4 py-2">{i.store.name}</td>
-              <td
-                className={`px-4 py-2 text-right ${totalStockMap[i.item_id] <= i.min_stock ? "text-red-600 font-bold" : totalStockMap[i.item_id] <= i.min_stock * 2 ? "text-yellow-600" : "text-green-600"}`}
-              >
-                <input
-                  type="number"
-                  value={i.quantity}
-                  onChange={(e) => updateQuantity(i.id, parseInt(e.target.value) || 0)}
-                  className="w-16 text-right border rounded px-1 py-0.5"
-                />
-              </td>
+              <td className="px-4 py-2 text-right">{i.quantity}</td>
               <td className="px-4 py-2 text-right">{i.min_stock}</td>
               <td className="px-4 py-2 text-right">{totalStockMap[i.item_id]}</td>
             </tr>
