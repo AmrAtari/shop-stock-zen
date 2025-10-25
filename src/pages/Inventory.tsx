@@ -14,11 +14,11 @@ interface Item {
   name: string;
   sku: string;
   category: string;
-  [key: string]: any; // dynamic attributes
+  [key: string]: any;
 }
 
 interface InventoryProps {
-  user: User;
+  user: User & { role: string }; // ensure role exists
 }
 
 const Inventory: React.FC<InventoryProps> = ({ user }) => {
@@ -27,23 +27,15 @@ const Inventory: React.FC<InventoryProps> = ({ user }) => {
   const [newItem, setNewItem] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
 
-  // Fetch dynamic attributes from Supabase
   const fetchAttributes = async () => {
     const { data, error } = await supabase.from("item_attributes").select("id, name");
-    if (error) {
-      toast({ title: "Error fetching attributes", description: error.message, type: "foreground" });
-      return;
-    }
+    if (error) return toast({ title: "Error", description: error.message, type: "foreground" });
     setAttributes(data as Attribute[]);
   };
 
-  // Fetch items from Supabase
   const fetchItems = async () => {
     const { data, error } = await supabase.from("items").select("*");
-    if (error) {
-      toast({ title: "Error fetching items", description: error.message, type: "foreground" });
-      return;
-    }
+    if (error) return toast({ title: "Error", description: error.message, type: "foreground" });
     setItems(data as Item[]);
   };
 
@@ -52,7 +44,6 @@ const Inventory: React.FC<InventoryProps> = ({ user }) => {
     fetchItems();
   }, []);
 
-  // Add new item (Admin only)
   const handleAddItem = async () => {
     setLoading(true);
     try {
@@ -62,10 +53,8 @@ const Inventory: React.FC<InventoryProps> = ({ user }) => {
         category: newItem.category || "",
         ...newItem,
       };
-
       const { error } = await supabase.from("items").insert([itemToInsert]);
       if (error) throw error;
-
       toast({ title: "Item added", type: "foreground" });
       setNewItem({});
       fetchItems();
@@ -76,12 +65,10 @@ const Inventory: React.FC<InventoryProps> = ({ user }) => {
     }
   };
 
-  // Import items from Excel/CSV
   const handleImportFile = async (file: File) => {
     toast({ title: "Import feature not implemented yet", type: "foreground" });
   };
 
-  // Google Sheets import placeholder
   const handleGoogleSheets = () => {
     toast({ title: "Google Sheets import not implemented yet", type: "foreground" });
   };
@@ -90,7 +77,6 @@ const Inventory: React.FC<InventoryProps> = ({ user }) => {
     <div className="inventory-page">
       <h1>Inventory</h1>
 
-      {/* Admin Add Item Section */}
       {user.role === "admin" && (
         <div className="add-new-item">
           <h2>Add New Item</h2>
@@ -119,7 +105,6 @@ const Inventory: React.FC<InventoryProps> = ({ user }) => {
         </div>
       )}
 
-      {/* Item List Table */}
       <div className="item-list">
         <h2>Items</h2>
         <table>
