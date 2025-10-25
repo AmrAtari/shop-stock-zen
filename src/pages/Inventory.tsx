@@ -1,19 +1,27 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client"; // your client
+import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
-type InventoryItem = Database["public"]["Tables"]["inventory"]["Row"];
+// Types
+type Item = Database["public"]["Tables"]["items"]["Row"];
+type Store = Database["public"]["Tables"]["stores"]["Row"];
+type StoreInventory = Database["public"]["Tables"]["store_inventory"]["Row"];
+
+interface InventoryEntry extends StoreInventory {
+  item: Item;
+  store: Store;
+}
 
 interface StoreSummary {
   [storeId: string]: {
     count: number;
-    items: InventoryItem[];
+    items: InventoryEntry[];
     storeName: string;
   };
 }
 
 const Inventory = () => {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventory, setInventory] = useState<InventoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
@@ -62,11 +70,26 @@ const Inventory = () => {
       setLoading(true);
       debugAllStorage();
 
-      const { data, error } = await supabase.from("inventory").select("*, store:storeId(*)"); // include related store info if exists
+      const { data, error } = await supabase.from("store_inventory").select(`
+          *,
+          item:items (
+            id,
+            name,
+            sku,
+            price,
+            cost,
+            description,
+            min_stock
+          ),
+          store:stores (
+            id,
+            name
+          )
+        `);
 
       if (error) throw error;
       setInventory(data || []);
-      console.log(`✅ Loaded ${data?.length || 0} items from Supabase`);
+      console.log(`✅ Loaded ${data?.length || 0} inventory entries from Supabase`);
     } catch (err) {
       console.error("❌ Inventory load failed:", err);
       setInventory([]);
@@ -78,18 +101,14 @@ const Inventory = () => {
   /** Filtered inventory */
   const filteredInventory = useMemo(
     () =>
-      inventory.filter((item) => {
+      inventory.filter((entry) => {
         const matchesSearch =
           !searchTerm ||
-          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+          entry.item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          entry.item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          entry.item.description?.toLowerCase().includes(searchTerm.toLowerCase());
 
-        const matchesStore =
-          storeFilter === "all" ||
-          item.storeId === storeFilter ||
-          item.store_id === storeFilter ||
-          item.store?.id === storeFilter;
+        const matchesStore = storeFilter === "all" || entry.store.id === storeFilter;
 
         return matchesSearch && matchesStore;
       }),
@@ -99,12 +118,12 @@ const Inventory = () => {
   /** Store summary */
   const storeSummary = useMemo(() => {
     const stores: StoreSummary = {};
-    inventory.forEach((item) => {
-      const storeId = item.storeId || item.store_id || item.store?.id || "unknown-store";
-      const storeName = item.store?.name || storeId;
+    inventory.forEach((entry) => {
+      const storeId = entry.store.id || "unknown-store";
+      const storeName = entry.store.name || storeId;
       if (!stores[storeId]) stores[storeId] = { count: 0, items: [], storeName };
       stores[storeId].count++;
-      stores[storeId].items.push(item);
+      stores[storeId].items.push(entry);
     });
     return stores;
   }, [inventory]);
@@ -112,9 +131,9 @@ const Inventory = () => {
   /** Unique stores for filter dropdown */
   const getUniqueStores = () => {
     const stores: { [key: string]: string } = { all: "All Stores" };
-    inventory.forEach((item) => {
-      const storeId = item.storeId || item.store_id || item.store?.id;
-      const storeName = item.store?.name || storeId || "Unknown Store";
+    inventory.forEach((entry) => {
+      const storeId = entry.store.id;
+      const storeName = entry.store.name;
       if (storeId) stores[storeId] = storeName;
     });
     return stores;
@@ -190,18 +209,20 @@ const Inventory = () => {
                   <th className="px-4 py-2">Item</th>
                   <th className="px-4 py-2">SKU</th>
                   <th className="px-4 py-2">Quantity</th>
+                  <th className="px-4 py-2">Min Stock</th>
                   <th className="px-4 py-2">Price</th>
                   <th className="px-4 py-2">Store</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredInventory.map((item) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="px-4 py-2">{item.name}</td>
-                    <td className="px-4 py-2">{item.sku || "N/A"}</td>
-                    <td className="px-4 py-2">{item.quantity}</td>
-                    <td className="px-4 py-2">{item.price ? `$${item.price.toFixed(2)}` : "N/A"}</td>
-                    <td className="px-4 py-2">{item.store?.name || item.storeId || "Unknown"}</td>
+                {filteredInventory.map((entry) => (
+                  <tr key={entry.id} className="border-b">
+                    <td className="px-4 py-2">{entry.item.name}</td>
+                    <td className="px-4 py-2">{entry.item.sku || "N/A"}</td>
+                    <td className="px-4 py-2">{entry.quantity}</td>
+                    <td className="px-4 py-2">{entry.min_stock || entry.item.min_stock || "-"}</td>
+                    <td className="px-4 py-2">{entry.item.price ? `$${entry.item.price.toFixed(2)}` : "N/A"}</td>
+                    <td className="px-4 py-2">{entry.store.name}</td>
                   </tr>
                 ))}
               </tbody>
