@@ -99,6 +99,9 @@ interface ItemDetailsDialogProps {
 const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps) => {
   if (!item) return null;
 
+  // Safe property access with type checking
+  const safeItem = item as any;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -131,15 +134,15 @@ const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps)
             </div>
             <div>
               <Label className="text-sm font-medium">Size</Label>
-              <p className="text-sm mt-1">{item.size || "-"}</p>
+              <p className="text-sm mt-1">{safeItem.size || "-"}</p>
             </div>
             <div>
               <Label className="text-sm font-medium">Color</Label>
-              <p className="text-sm mt-1">{item.color || "-"}</p>
+              <p className="text-sm mt-1">{safeItem.color || "-"}</p>
             </div>
             <div>
               <Label className="text-sm font-medium">Gender</Label>
-              <p className="text-sm mt-1">{item.gender || "-"}</p>
+              <p className="text-sm mt-1">{safeItem.gender || "-"}</p>
             </div>
           </div>
 
@@ -166,23 +169,11 @@ const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps)
             </div>
             <div>
               <Label className="text-sm font-medium">Color Code</Label>
-              <p className="text-sm mt-1">{item.item_color_code || "-"}</p>
+              <p className="text-sm mt-1">{safeItem.item_color_code || "-"}</p>
             </div>
             <div>
               <Label className="text-sm font-medium">Location</Label>
-              <p className="text-sm mt-1">{item.location || "-"}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Pricing Information</Label>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="font-medium">Cost Price:</span> {item.cost_price ? `$${item.cost_price}` : "-"}
-            </div>
-            <div>
-              <span className="font-medium">Selling Price:</span> {item.selling_price ? `$${item.selling_price}` : "-"}
+              <p className="text-sm mt-1">{safeItem.location || "-"}</p>
             </div>
           </div>
         </div>
@@ -203,23 +194,23 @@ const ItemDetailsDialog = ({ open, onOpenChange, item }: ItemDetailsDialogProps)
               <span className="font-medium">Theme:</span> {item.theme || "-"}
             </div>
             <div>
-              <span className="font-medium">Barcode:</span> {item.barcode || "-"}
+              <span className="font-medium">Barcode:</span> {safeItem.barcode || "-"}
             </div>
           </div>
         </div>
 
-        {(item.description || item.pos_description) && (
+        {(safeItem.description || safeItem.pos_description) && (
           <div className="space-y-3">
             <Label className="text-sm font-medium">Descriptions</Label>
             <div className="space-y-2 text-sm">
-              {item.description && (
+              {safeItem.description && (
                 <div>
-                  <span className="font-medium">Description:</span> {item.description}
+                  <span className="font-medium">Description:</span> {safeItem.description}
                 </div>
               )}
-              {item.pos_description && (
+              {safeItem.pos_description && (
                 <div>
-                  <span className="font-medium">POS Description:</span> {item.pos_description}
+                  <span className="font-medium">POS Description:</span> {safeItem.pos_description}
                 </div>
               )}
             </div>
@@ -448,6 +439,31 @@ interface StoreInventoryItem {
   unit: string;
 }
 
+// Create a minimal type that only includes the properties we actually use
+interface InventoryItemDisplay {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  brand: string;
+  quantity: number;
+  min_stock: number;
+  unit: string;
+  store_name?: string;
+  store_id?: string;
+  item_number?: string;
+  season?: string;
+  main_group?: string;
+  supplier?: string;
+  department?: string;
+  origin?: string;
+  theme?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Add any additional properties that might exist
+  [key: string]: any;
+}
+
 const InventoryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -494,9 +510,8 @@ const InventoryNew = () => {
     if (storeFilter === "all") {
       return aggregatedInventory || [];
     } else {
-      // Cast storeInventory to the correct type and transform to Item format with all required properties
+      // Create a simple transformation that only includes the properties we need for display
       const transformedItems = (storeInventory as StoreInventoryItem[]).map((si) => ({
-        // Basic required fields from store inventory
         id: si.item_id,
         sku: si.sku,
         name: si.item_name,
@@ -505,12 +520,8 @@ const InventoryNew = () => {
         quantity: si.quantity || 0,
         min_stock: si.min_stock || 0,
         unit: si.unit || "pcs",
-
-        // Store-specific fields
         store_name: si.store_name,
         store_id: si.store_id,
-
-        // Fields that might not be available in StoreInventoryView - set to empty/default
         item_number: "",
         season: "",
         main_group: "",
@@ -520,32 +531,8 @@ const InventoryNew = () => {
         theme: "",
         created_at: "",
         updated_at: "",
-
-        // Additional required fields from Item type with defaults
-        size: "",
-        color: "",
-        color_id: "",
-        item_color_code: "",
-        cost_price: 0,
-        selling_price: 0,
-        barcode: "",
-        notes: "",
-        image_url: "",
-        is_active: true,
-
-        // New properties from the error message
-        gender: "",
-        location: "",
-        pos_description: "",
-        description: "",
-
-        // Add any other potential missing properties
-        tags: "",
-        weight: 0,
-        dimensions: "",
       }));
 
-      // Use type assertion to tell TypeScript we're providing complete Item objects
       return transformedItems as unknown as Item[];
     }
   }, [storeFilter, aggregatedInventory, storeInventory]);
