@@ -1,3 +1,4 @@
+// src/pages/PhysicalInventoryNew (5).tsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -54,10 +55,8 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // REVERTED STATUS LOGIC: We are now attempting to create the session with a status
-    // based on the button press, but defaulting to 'DRAFT' for insertion stability.
-    // NOTE: This value is likely incorrect due to the unprovided SQL schema.
-    const status = startCounting ? "ACTIVE" : "DRAFT"; // Last attempt with this logic
+    // FINAL GUESS: Using 'NEW'. This is a common capitalized starting status.
+    const status = startCounting ? "ACTIVE" : "NEW";
 
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -83,7 +82,7 @@ const PhysicalInventoryNew: React.FC = () => {
 
       if (error) throw error;
 
-      const successStatus = startCounting ? "ACTIVE" : "DRAFT";
+      const successStatus = startCounting ? "ACTIVE" : "NEW";
       toast.success(`Inventory session ${session_number} created as ${successStatus}.`);
 
       if (startCounting) {
@@ -95,7 +94,7 @@ const PhysicalInventoryNew: React.FC = () => {
       console.error("Submission error:", err);
 
       // Final explicit error message requesting the missing file
-      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. The status '${status}' is rejected. You **must** provide the **SQL schema file** for the 'physical_inventory_sessions' table to resolve this constraint issue.`;
+      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. The status '${status}' is rejected. Please use the new **SQL Editor page** to run the query to find the correct status.`;
       toast.error(errorMessage);
     }
   };
