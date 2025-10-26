@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
-import { toast } from "@/components/ui/toaster";
 
 const PhysicalInventoryDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,57 +10,63 @@ const PhysicalInventoryDetail: React.FC = () => {
 
   // Fetch session info
   const fetchSession = async () => {
-    const { data, error } = await supabase
-      .from("physical_inventory_sessions")
-      .select("id, store_id, session_number, created_at, stores(name)")
-      .eq("id", id)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from("physical_inventory_sessions")
+        .select("id, store_id, session_number, created_at, stores(name)")
+        .eq("id", id)
+        .single();
 
-    if (error) throw error;
+      if (error) throw error;
 
-    setSession({
-      id: data.id,
-      store_id: data.store_id,
-      store_name: data.stores?.name || "",
-      session_number: data.session_number,
-      created_at: data.created_at,
-    });
+      setSession({
+        id: data.id,
+        store_id: data.store_id,
+        store_name: data.stores?.name || "",
+        session_number: data.session_number,
+        created_at: data.created_at,
+      });
+    } catch (err: any) {
+      console.error("Error fetching session:", err.message);
+    }
   };
 
   // Fetch all items for this session (multi-store aware)
   const fetchCounts = async () => {
     if (!session) return;
 
-    const { data, error } = await supabase
-      .from("store_inventory")
-      .select("id, item_id, sku, quantity, stores(name)")
-      .eq("store_id", session.store_id);
+    try {
+      const { data, error } = await supabase
+        .from("store_inventory")
+        .select("id, item_id, sku, quantity, stores(name)")
+        .eq("store_id", session.store_id);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const countsData: PhysicalInventoryCount[] = data.map((item: any) => ({
-      session_id: session.id,
-      item_id: item.item_id,
-      sku: item.sku,
-      item_name: item.stores?.name || "",
-      system_quantity: item.quantity || 0,
-      counted_quantity: 0,
-      status: "pending",
-      variance: 0,
-      variance_percentage: 0,
-    }));
+      const countsData: PhysicalInventoryCount[] = data.map((item: any) => ({
+        session_id: session.id,
+        item_id: item.item_id,
+        sku: item.sku,
+        item_name: item.stores?.name || "",
+        system_quantity: item.quantity || 0,
+        counted_quantity: 0,
+        status: "pending",
+        variance: 0,
+        variance_percentage: 0,
+      }));
 
-    setCounts(countsData);
+      setCounts(countsData);
+    } catch (err: any) {
+      console.error("Error fetching inventory counts:", err.message);
+    }
   };
 
   useEffect(() => {
-    fetchSession().catch((err) => toast({ title: "Error fetching session", description: err.message }));
+    fetchSession();
   }, [id]);
 
   useEffect(() => {
-    if (session) {
-      fetchCounts().catch((err) => toast({ title: "Error fetching items", description: err.message }));
-    }
+    if (session) fetchCounts();
   }, [session]);
 
   const handleCountChange = (itemId: string, counted: number) => {
@@ -81,24 +85,25 @@ const PhysicalInventoryDetail: React.FC = () => {
   };
 
   const saveCounts = async () => {
-    const insertData = counts.map((c) => ({
-      session_id: c.session_id,
-      item_id: c.item_id,
-      sku: c.sku,
-      item_name: c.item_name,
-      system_quantity: c.system_quantity,
-      counted_quantity: c.counted_quantity,
-      status: c.status,
-      variance: c.variance,
-      variance_percentage: c.variance_percentage,
-    }));
+    try {
+      const insertData = counts.map((c) => ({
+        session_id: c.session_id,
+        item_id: c.item_id,
+        sku: c.sku,
+        item_name: c.item_name,
+        system_quantity: c.system_quantity,
+        counted_quantity: c.counted_quantity,
+        status: c.status,
+        variance: c.variance,
+        variance_percentage: c.variance_percentage,
+      }));
 
-    const { error } = await supabase.from("physical_inventory_counts").upsert(insertData);
+      const { error } = await supabase.from("physical_inventory_counts").upsert(insertData);
+      if (error) throw error;
 
-    if (error) {
-      toast({ title: "Error saving counts", description: error.message });
-    } else {
-      toast({ title: "Counts saved successfully" });
+      console.log("Counts saved successfully");
+    } catch (err: any) {
+      console.error("Error saving counts:", err.message);
     }
   };
 
