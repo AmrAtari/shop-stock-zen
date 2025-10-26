@@ -55,8 +55,8 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // FINAL GUESS: Using 'NEW'. This is a common capitalized starting status.
-    const status = startCounting ? "ACTIVE" : "NEW";
+    // Reverting to the most standard capitalized forms for DRAFT/ACTIVE.
+    const status = startCounting ? "ACTIVE" : "DRAFT";
 
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -82,7 +82,7 @@ const PhysicalInventoryNew: React.FC = () => {
 
       if (error) throw error;
 
-      const successStatus = startCounting ? "ACTIVE" : "NEW";
+      const successStatus = startCounting ? "ACTIVE" : "DRAFT";
       toast.success(`Inventory session ${session_number} created as ${successStatus}.`);
 
       if (startCounting) {
@@ -93,8 +93,7 @@ const PhysicalInventoryNew: React.FC = () => {
     } catch (err: any) {
       console.error("Submission error:", err);
 
-      // Final explicit error message requesting the missing file
-      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. The status '${status}' is rejected. Please use the new **SQL Editor page** to run the query to find the correct status.`;
+      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. The status '${status}' is rejected. Please use the **SQL Editor page** to run the query: \`SELECT condef FROM pg_constraint WHERE conname = 'physical_inventory_sessions_status_check';\` to find the correct status.`;
       toast.error(errorMessage);
     }
   };
