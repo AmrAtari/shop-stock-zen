@@ -36,13 +36,14 @@ type PhysicalInventoryFormData = z.infer<typeof piSchema>;
 // --- Component ---
 const PhysicalInventoryNew: React.FC = () => {
   const navigate = useNavigate();
+  // Ensure the useStores hook is correctly fetching store data
   const { data: stores, isLoading: isLoadingStores } = useStores();
 
   const form = useForm<PhysicalInventoryFormData>({
     resolver: zodResolver(piSchema),
     defaultValues: {
       countDate: new Date().toISOString().split("T")[0],
-      storeId: undefined, // Let Select handle initial state
+      storeId: undefined,
       countType: "full",
       responsiblePerson: "",
       department: "",
@@ -70,7 +71,10 @@ const PhysicalInventoryNew: React.FC = () => {
       responsible_person: data.responsiblePerson,
       status: status,
       notes: data.notes,
-      // Include other fields like department, purpose, etc. if needed in DB
+      // Add other fields from the form if they map directly to DB columns
+      department: data.department,
+      purpose: data.purpose,
+      location_filter: data.locationFilter, // Assuming a column named location_filter
     };
 
     try {
@@ -144,7 +148,7 @@ const PhysicalInventoryNew: React.FC = () => {
                 )}
               />
 
-              {/* Store ID (Select) - Simplified to fix layout */}
+              {/* Store ID (Select) - Corrected structure */}
               <FormField
                 control={form.control}
                 name="storeId"
@@ -194,7 +198,7 @@ const PhysicalInventoryNew: React.FC = () => {
               <CardTitle>Scope and Type</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Count Type (Radio Group) - Simplified to fix layout */}
+              {/* Count Type (Radio Group) - Corrected structure */}
               <FormField
                 control={form.control}
                 name="countType"
@@ -273,7 +277,7 @@ const PhysicalInventoryNew: React.FC = () => {
             <CardContent>
               <FormField
                 control={form.control}
-                name="notes" // Using 'notes' to match the schema
+                name="notes"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Notes/Instructions</FormLabel>
