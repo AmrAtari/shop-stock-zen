@@ -54,8 +54,8 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // Retaining 'DRAFT' as the current best guess for the status constraint.
-    const status = "DRAFT";
+    // FINAL ATTEMPT GUESS: Using 'ACTIVE'
+    const status = startCounting ? "ACTIVE" : "DRAFT";
 
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -65,7 +65,7 @@ const PhysicalInventoryNew: React.FC = () => {
       count_date: data.countDate,
       count_type: data.countType,
       responsible_person: data.responsiblePerson,
-      status: status, // Status is guaranteed to be 'DRAFT'
+      status: status,
       notes: data.notes,
       department: data.department,
       purpose: data.purpose,
@@ -81,18 +81,18 @@ const PhysicalInventoryNew: React.FC = () => {
 
       if (error) throw error;
 
+      const successStatus = startCounting ? "ACTIVE" : "DRAFT";
+      toast.success(`Inventory session ${session_number} created as ${successStatus}.`);
+
       if (startCounting) {
-        // Success: Session created as 'DRAFT'. Navigate to the detail page.
-        toast.success(`Inventory session ${session_number} created (DRAFT). Starting count...`);
         navigate(`/inventory/physical/${insertedData.id}`);
       } else {
-        toast.success(`Inventory session ${session_number} saved as DRAFT.`);
         navigate(`/inventory/physical`);
       }
     } catch (err: any) {
       console.error("Submission error:", err);
 
-      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. The status 'DRAFT' is also rejected. Please provide the **SQL schema file** for the 'physical_inventory_sessions' table to resolve this constraint issue.`;
+      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. All status guesses (Draft, Pending, Active) have been rejected. You must provide the **SQL schema file** for the 'physical_inventory_sessions' table to resolve this constraint issue.`;
       toast.error(errorMessage);
     }
   };
@@ -239,7 +239,6 @@ const PhysicalInventoryNew: React.FC = () => {
                 name="locationFilter"
                 render={({ field }) => (
                   <FormItem>
-                    {/* FIX: Corrected FormLabel closing tag from </Label> to </FormLabel> */}
                     <FormLabel>Location Filter (Optional)</FormLabel>
                     <FormControl>
                       <Textarea placeholder="e.g., Aisle 5, Section B, Shelf 3..." {...field} rows={4} />
