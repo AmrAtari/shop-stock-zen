@@ -18,32 +18,27 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 
-// Define a local interface that extends the imported Item type,
-// making sellingPrice potentially optional or allowing null/undefined
-// to account for missing data from the database.
+// Define a local interface that extends the imported Item type.
 interface ItemWithDetails extends Item {
   location: string;
   min_stock: number;
   quantity: number;
   unit: string;
-  sellingPrice?: number | null; // <-- Adjusted to allow null/undefined
+  sellingPrice?: number | null;
 }
 
-// 1. Supabase Data Fetching Function
+// Supabase Data Fetching Function
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Fetch from the 'items' table.
   const { data, error } = await supabase.from("items").select("*");
 
   if (error) {
     console.error("Supabase Inventory Fetch Error:", error);
     throw new Error("Failed to fetch inventory data.");
   }
-
-  // Cast the data to ItemWithDetails.
   return data as ItemWithDetails[];
 };
 
-// 2. Data Hook connected to React Query
+// Data Hook connected to React Query
 const useInventoryQuery = () => {
   return useQuery<ItemWithDetails[]>({
     queryKey: queryKeys.inventory.all,
@@ -84,7 +79,6 @@ const InventoryNew: React.FC = () => {
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
-  // 3. Use the real database hook
   const { data: inventoryData, isLoading, error } = useInventoryQuery();
   const allInventory = inventoryData || [];
 
@@ -96,13 +90,11 @@ const InventoryNew: React.FC = () => {
     );
   }, [allInventory, searchTerm]);
 
-  // Use the usePagination hook with the required props object
   const pagination = usePagination({
     totalItems: filteredInventory.length,
     itemsPerPage: 10,
   });
 
-  // Calculate currentItems based on the hook's returned indices
   const currentItems = useMemo(() => {
     return filteredInventory.slice(pagination.startIndex, pagination.endIndex);
   }, [filteredInventory, pagination.startIndex, pagination.endIndex]);
@@ -116,7 +108,6 @@ const InventoryNew: React.FC = () => {
       if (error) throw error;
 
       toast.success("Product deleted successfully.");
-      // Invalidate the query to refetch data from the database
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     } catch (error) {
       console.error("Deletion error:", error);
@@ -139,7 +130,6 @@ const InventoryNew: React.FC = () => {
     if (selectedItems.length === currentItems.length) {
       setSelectedItems([]);
     } else {
-      // Select all items on the current page
       setSelectedItems(currentItems);
     }
   };
@@ -149,7 +139,6 @@ const InventoryNew: React.FC = () => {
   }
 
   if (error) {
-    // Display error if fetching failed
     return <div className="p-8 text-red-500">Error loading inventory: {error.message}</div>;
   }
 
@@ -158,14 +147,14 @@ const InventoryNew: React.FC = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Inventory</h1>
         <div className="flex space-x-3">
-          {/* Physical Inventory Button */}
+          {/* FIX: Changed navigation to the Physical Inventory List page */}
           <Button
             variant="outline"
-            onClick={() => navigate("/inventory/physical/new")}
+            onClick={() => navigate("/inventory/physical")} // <-- Navigates to the List page
             className="bg-purple-100 text-purple-800 hover:bg-purple-200"
           >
             <Layers className="w-4 h-4 mr-2" />
-            Start Physical Inventory
+            View/Manage Counts
           </Button>
 
           <Button
@@ -231,8 +220,6 @@ const InventoryNew: React.FC = () => {
             {currentItems.map((item) => {
               const isSelected = selectedItems.some((i) => i.id === item.id);
               const isLowStock = item.quantity <= item.min_stock;
-
-              // Safely access sellingPrice, defaulting to 0 if null/undefined
               const price = item.sellingPrice ?? 0;
 
               return (
@@ -256,9 +243,7 @@ const InventoryNew: React.FC = () => {
                   </TableCell>
                   <TableCell>{item.location || "N/A"}</TableCell>
                   <TableCell>{item.category}</TableCell>
-                  <TableCell className="text-right">
-                    {/* FIX: Use the 'price' variable which is guaranteed to be a number */}${price.toFixed(2)}
-                  </TableCell>
+                  <TableCell className="text-right">${price.toFixed(2)}</TableCell>
                   <TableCell className="text-center">
                     <div className="flex justify-center space-x-1">
                       <Button
