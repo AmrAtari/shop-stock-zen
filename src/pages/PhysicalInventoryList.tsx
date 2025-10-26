@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
-// Ensure queryKeys is correctly imported
 import { queryKeys } from "@/hooks/queryKeys";
 
 // Define a minimal type for the session list view
@@ -21,7 +20,7 @@ interface InventorySession {
 
 // Function to fetch inventory sessions
 const fetchInventorySessions = async (): Promise<InventorySession[]> => {
-  // Select the necessary fields. We join with the 'stores' table to get the store name.
+  // Select the necessary fields and join with the 'stores' table to get the store name.
   const { data, error } = await supabase
     .from("physical_inventory_sessions")
     .select(
@@ -41,7 +40,6 @@ const fetchInventorySessions = async (): Promise<InventorySession[]> => {
     throw new Error("Failed to fetch physical inventory sessions.");
   }
 
-  // Map the Supabase result to the desired InventorySession interface
   return data.map((session) => ({
     id: session.id,
     session_number: session.session_number,
@@ -56,8 +54,8 @@ const fetchInventorySessions = async (): Promise<InventorySession[]> => {
 // Data Hook connected to React Query
 const useInventorySessionsQuery = () => {
   return useQuery<InventorySession[]>({
-    // FIX: Corrected queryKey usage
-    queryKey: queryKeys.physicalInventory.list,
+    // FIX: Correctly using 'all' property from queryKeys.physicalInventory
+    queryKey: queryKeys.physicalInventory.all,
     queryFn: fetchInventorySessions,
   });
 };
@@ -84,7 +82,6 @@ const PhysicalInventoryList: React.FC = () => {
   }
 
   if (error) {
-    // Display the database error message
     return <div className="p-8 text-red-500">Error: {error.message}</div>;
   }
 
