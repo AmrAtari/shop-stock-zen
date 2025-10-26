@@ -7,21 +7,18 @@ import { toast } from "sonner";
 import { FileDown, CheckCircle, Save } from "lucide-react";
 
 // FIX: Explicitly define the types needed locally to resolve conflicts with imported types.
-// This resolves TS2430, TS2353, and TS2339 errors related to status fields.
-
-// 1. Session Type with explicit status field
 interface SessionWithStatus extends PhysicalInventorySession {
   status: "draft" | "in_progress" | "completed";
-  finished_at?: string;
+  // Removed finished_at as per TS error showing it doesn't exist in DB
 }
 
-// 2. Count Type with variance fields
+// FIX: Narrowing the status to the two values used in the component logic to resolve TS2430
 interface ItemCountWithVariance extends PhysicalInventoryCount {
   system_quantity: number;
   counted_quantity: number;
   variance: number;
   variance_percentage: number;
-  status: "pending" | "counted" | "reviewed" | "final";
+  status: "pending" | "counted";
 }
 
 const PhysicalInventoryDetail: React.FC = () => {
@@ -38,12 +35,14 @@ const PhysicalInventoryDetail: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from("physical_inventory_sessions")
-        .select("id, store_id, session_number, created_at, status, finished_at, stores(name)")
+        // FIX 1: Removed 'finished_at' from select query
+        .select("id, store_id, session_number, created_at, status, stores(name)")
         .eq("id", id)
         .single();
 
       if (error) throw error;
 
+      // FIX 2: Removed finished_at from setSession object
       setSession({
         id: data.id,
         store_id: data.store_id,
@@ -51,7 +50,6 @@ const PhysicalInventoryDetail: React.FC = () => {
         session_number: data.session_number,
         created_at: data.created_at,
         status: data.status,
-        finished_at: data.finished_at,
       } as SessionWithStatus);
     } catch (err: any) {
       console.error("Error fetching session:", err.message);
@@ -97,7 +95,7 @@ const PhysicalInventoryDetail: React.FC = () => {
     if (session) fetchCounts();
   }, [session?.id]);
 
-  // --- HANDLERS & CALCULATIONS (Unchanged) ---
+  // --- HANDLERS & CALCULATIONS ---
 
   const summary = useMemo(() => {
     const totalSystemQty = counts.reduce((sum, c) => sum + c.system_quantity, 0);
@@ -158,7 +156,7 @@ const PhysicalInventoryDetail: React.FC = () => {
     }
   };
 
-  // --- SUBMISSION LOGIC (The crucial new part) ---
+  // --- SUBMISSION LOGIC ---
 
   const submitInventoryChanges = async () => {
     if (session?.status === "completed") {
@@ -194,12 +192,6 @@ const PhysicalInventoryDetail: React.FC = () => {
           .eq("store_id", update.store_id);
 
         if (updateError) throw updateError;
-
-        // NOTE: The previous attempt to insert into 'inventory_transactions' caused a type error (TS2769).
-        // Since this table is not recognized by your Supabase client types, we omit this line.
-        // To enable auditing, you must either:
-        // 1. Ensure 'inventory_transactions' is exposed in your Supabase schema types.
-        // 2. Use a Supabase database function (RPC) to handle the transaction insertion on the server.
       });
 
       await Promise.all(updatePromises);
@@ -207,7 +199,8 @@ const PhysicalInventoryDetail: React.FC = () => {
       // 3. Mark the session as completed
       const { error: sessionError } = await supabase
         .from("physical_inventory_sessions")
-        .update({ status: "completed", finished_at: new Date().toISOString() })
+        // FIX 3: Removed finished_at from the update call
+        .update({ status: "completed" })
         .eq("id", id);
 
       if (sessionError) throw sessionError;
@@ -225,7 +218,30 @@ const PhysicalInventoryDetail: React.FC = () => {
   };
 
   const exportResults = () => {
-    // Basic CSV export logic (omitted for brevity, assume correct)
+    // Basic CSV export logic (implementation omitted for brevity)
+    if (counts.length === 0) {
+      toast.info("No data to export.");
+      return;
+    }
+
+    const header = ["SKU", "Item Name", "System Qty", "Counted Qty", "Variance", "Variance %"];
+
+    const csvContent = counts
+      .map((c) =>
+        [c.sku, c.item_name, c.system_quantity, c.counted_quantity, c.variance, c.variance_percentage.toFixed(2)].join(
+          ",",
+        ),
+      )
+      .join("\n");
+
+    const csv = [header.join(","), csvContent].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `PI_Results_${session?.session_number || id}.csv`);
+    link.click();
+    toast.success("Count results exported successfully.");
   };
 
   // --- RENDER ---
@@ -256,10 +272,78 @@ const PhysicalInventoryDetail: React.FC = () => {
       </div>
 
       {/* Summary Card */}
-      {/* ... (Summary Card JSX remains the same) ... */}
+      <div className="grid grid-cols-4 gap-4 p-4 bg-muted rounded-lg shadow-sm">
+        <div className="text-center p-2 border-r">
+          <div className="text-xl font-bold">{summary.totalItems}</div>
+          <div className="text-sm text-muted-foreground">Items in Count List</div>
+        </div>
+        <div className="text-center p-2 border-r">
+          <div className="text-xl font-bold">{summary.countedItems}</div>
+          <div className="text-sm text-muted-foreground">Items Counted</div>
+        </div>
+        <div className="text-center p-2 border-r">
+          <div
+            className={`text-xl font-bold ${summary.totalVariance > 0 ? "text-green-600" : summary.totalVariance < 0 ? "text-red-600" : "text-gray-700"}`}
+          >
+            {summary.totalVariance > 0 ? "+" : ""}
+            {summary.totalVariance}
+          </div>
+          <div className="text-sm text-muted-foreground">Total Variance (Units)</div>
+        </div>
+        <div className="text-center p-2">
+          <div
+            className={`text-xl font-bold ${summary.totalVariancePercentage > 0.01 ? "text-red-600" : summary.totalVariancePercentage < -0.01 ? "text-red-600" : "text-gray-700"}`}
+          >
+            {summary.totalVariancePercentage.toFixed(2)}%
+          </div>
+          <div className="text-sm text-muted-foreground">Variance %</div>
+        </div>
+      </div>
 
       {/* Main Table */}
-      {/* ... (Table JSX remains the same) ... */}
+      <div className="border rounded-lg overflow-hidden">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="p-3 text-left">SKU</th>
+              <th className="p-3 text-left">Item Name</th>
+              <th className="p-3 text-right">System Qty</th>
+              <th className="p-3 text-right">Counted Qty</th>
+              <th className="p-3 text-right">Variance</th>
+              <th className="p-3 text-right">Variance %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {counts.map((item) => (
+              <tr key={item.item_id} className="border-t hover:bg-gray-50">
+                <td className="p-3 font-mono text-sm">{item.sku}</td>
+                <td className="p-3">{item.item_name}</td>
+                <td className="p-3 text-right">{item.system_quantity}</td>
+                <td className="p-3 text-right">
+                  <input
+                    type="number"
+                    min="0"
+                    value={item.counted_quantity}
+                    onChange={(e) => handleCountChange(item.item_id, Number(e.target.value))}
+                    className={`border p-1 w-24 text-right ${isCompleted ? "bg-gray-100 cursor-not-allowed" : "border-gray-300"}`}
+                    disabled={isCompleted}
+                  />
+                </td>
+                <td
+                  className={`p-3 text-right font-medium ${item.variance > 0 ? "text-green-600" : item.variance < 0 ? "text-red-600" : "text-gray-700"}`}
+                >
+                  {item.variance}
+                </td>
+                <td
+                  className={`p-3 text-right ${Math.abs(item.variance_percentage) > 5 ? "font-bold text-red-600" : ""}`}
+                >
+                  {item.variance_percentage.toFixed(2)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {/* Action Buttons */}
       <div className="flex justify-between items-center pt-4">
