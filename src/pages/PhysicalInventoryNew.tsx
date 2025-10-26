@@ -54,10 +54,9 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // FIX: Set status to 'Draft' for initial insertion to bypass CHECK constraint.
+    // FINAL FIX: Always set status to 'Draft' for insertion to bypass CHECK constraint.
     const status = "Draft";
 
-    // Simple way to generate a session number (e.g., PI-YYYYMMDD-ID)
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const newSession = {
@@ -66,7 +65,7 @@ const PhysicalInventoryNew: React.FC = () => {
       count_date: data.countDate,
       count_type: data.countType,
       responsible_person: data.responsiblePerson,
-      status: status, // Status is always 'Draft' here
+      status: status, // Status is guaranteed to be 'Draft'
       notes: data.notes,
       department: data.department,
       purpose: data.purpose,
@@ -82,25 +81,9 @@ const PhysicalInventoryNew: React.FC = () => {
 
       if (error) throw error;
 
-      // If "Start Counting" was clicked, we perform an immediate status update
       if (startCounting) {
-        // Now that the row is created, update the status to the desired active state.
-        // Assuming your constraint allows 'Counting' or 'Active' after insertion, but not as the initial status.
-        // We'll try 'Counting' again, as this is the user's intent.
-        const { error: updateError } = await supabase
-          .from("physical_inventory_sessions")
-          .update({ status: "Counting" }) // Try 'Counting' again in a separate call
-          .eq("id", insertedData.id);
-
-        if (updateError) {
-          // Log a warning if the update fails, but still proceed to the detail page.
-          console.warn(
-            "Status update failed (still likely due to constraint). Proceeding to detail page. Session status is currently 'Draft'.",
-            updateError,
-          );
-        }
-
-        toast.success(`Inventory session ${session_number} created and started.`);
+        // Success: Session is created as 'Draft', now navigate to the detail page.
+        toast.success(`Inventory session ${session_number} created (Draft). Starting count...`);
         navigate(`/inventory/physical/${insertedData.id}`);
       } else {
         toast.success(`Inventory session ${session_number} saved as Draft.`);
@@ -108,8 +91,10 @@ const PhysicalInventoryNew: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Submission error:", err);
-      // The error should now be resolved by setting the initial status to 'Draft'.
-      toast.error(`Failed to create session: ${err.message || "Unknown error"}`);
+      // This error should now be impossible if 'Draft' is an allowed status.
+      toast.error(
+        `Failed to create session: Please verify that 'Draft' is an allowed status in your Supabase table schema. Error: ${err.message}`,
+      );
     }
   };
 
