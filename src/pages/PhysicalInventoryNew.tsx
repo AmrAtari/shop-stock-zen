@@ -15,20 +15,19 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { ArrowLeft, Save, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useStores } from "@/hooks/usePhysicalInventorySessions";
+import { useStores } from "@/hooks/usePhysicalInventorySessions"; 
 
 // --- ZOD Schema ---
 const piSchema = z.object({
   countDate: z.string().min(1, "Count date is required"),
-  // Fix: changed storeId to be required (min(1)) if it was optional previously, as it's a key field.
-  storeId: z.string().min(1, "Store is required"),
+  storeId: z.string().min(1, "Store is required"), 
   countType: z.enum(["full", "partial", "cycle"]),
   responsiblePerson: z.string().min(1, "Responsible person is required"),
   department: z.string().optional(),
   purpose: z.string().optional(),
   locationFilter: z.string().optional(),
   expectedItems: z.string().optional(),
-  notes: z.string().optional(),
+  notes: z.string().optional(), 
 });
 
 type PhysicalInventoryFormData = z.infer<typeof piSchema>;
@@ -36,13 +35,13 @@ type PhysicalInventoryFormData = z.infer<typeof piSchema>;
 // --- Component ---
 const PhysicalInventoryNew: React.FC = () => {
   const navigate = useNavigate();
-  const { data: stores, isLoading: isLoadingStores } = useStores();
-
+  const { data: stores, isLoading: isLoadingStores } = useStores(); 
+  
   const form = useForm<PhysicalInventoryFormData>({
     resolver: zodResolver(piSchema),
     defaultValues: {
-      countDate: new Date().toISOString().split("T")[0],
-      storeId: undefined,
+      countDate: new Date().toISOString().split('T')[0],
+      storeId: undefined, 
       countType: "full",
       responsiblePerson: "",
       department: "",
@@ -57,46 +56,49 @@ const PhysicalInventoryNew: React.FC = () => {
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
     // FIX: Using the exact, case-sensitive strings confirmed by the database schema image
-    const status = startCounting ? "Active" : "Draft";
-
-    const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const status = startCounting ? 'Active' : 'Draft'; 
+    
+    const session_number = `PI-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const newSession = {
-      session_number,
-      store_id: data.storeId,
-      count_date: data.countDate,
-      count_type: data.countType,
-      responsible_person: data.responsiblePerson,
-      status: status, // THIS IS THE FIXED VALUE
-      notes: data.notes,
-      department: data.department,
-      purpose: data.purpose,
-      location_filter: data.locationFilter,
+        session_number,
+        store_id: data.storeId,
+        count_date: data.countDate,
+        count_type: data.countType,
+        responsible_person: data.responsiblePerson,
+        status: status, // FIXED VALUE
+        notes: data.notes,
+        department: data.department,
+        purpose: data.purpose,
+        location_filter: data.locationFilter, 
     };
-
+    
     try {
-      const { data: insertedData, error } = await supabase
-        .from("physical_inventory_sessions")
-        .insert(newSession)
-        .select("id")
-        .single();
+        const { data: insertedData, error } = await supabase
+            .from('physical_inventory_sessions')
+            .insert(newSession)
+            .select('id')
+            .single();
 
-      if (error) throw error;
+        if (error) throw error;
+        
+        const successStatus = startCounting ? 'Active' : 'Draft';
+        toast.success(`Inventory session ${session_number} created as ${successStatus}.`);
+        
+        if (startCounting) {
+            navigate(`/inventory/physical/${insertedData.id}`);
+        } else {
+            navigate(`/inventory/physical`);
+        }
 
-      const successStatus = startCounting ? "Active" : "Draft";
-      toast.success(`Inventory session ${session_number} created as ${successStatus}.`);
-
-      if (startCounting) {
-        navigate(`/inventory/physical/${insertedData.id}`);
-      } else {
-        navigate(`/inventory/physical`);
-      }
     } catch (err: any) {
-      console.error("Submission error:", err);
-
-      // Removed specific error requesting schema, as we now have it
-      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}.`;
-      toast.error(errorMessage);
+        console.error("Submission error:", err);
+        
+        // Final, explicit instruction on how to fix if this still fails.
+        const errorMessage = `Failed to create session: ${err.message || 'Unknown error'}. 
+        The status '${status}' is rejected even though the schema shows it's valid. 
+        This is likely a **Supabase ENUM issue**. Please manually try inserting a test row in your Supabase table with the value 'Draft' and then 'Active' to confirm the exact casing the DB accepts.`;
+        toast.error(errorMessage);
     }
   };
 
@@ -118,6 +120,7 @@ const PhysicalInventoryNew: React.FC = () => {
               <CardDescription>Configure the basic parameters for this count session.</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
               {/* Count Date */}
               <FormField
                 control={form.control}
@@ -147,7 +150,7 @@ const PhysicalInventoryNew: React.FC = () => {
                   </FormItem>
                 )}
               />
-
+              
               {/* Store ID (Select) */}
               <FormField
                 control={form.control}
@@ -174,7 +177,7 @@ const PhysicalInventoryNew: React.FC = () => {
                   </FormItem>
                 )}
               />
-
+              
               {/* Department (Input) */}
               <FormField
                 control={form.control}
@@ -198,74 +201,86 @@ const PhysicalInventoryNew: React.FC = () => {
               <CardTitle>Scope and Type</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Count Type (Radio Group) */}
-              <FormField
-                control={form.control}
-                name="countType"
-                render={({ field }) => (
-                  <FormItem className="space-y-3">
-                    <FormLabel>Type of Count</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        className="flex flex-col space-y-1"
-                      >
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="full" />
-                          </FormControl>
-                          <FormLabel className="font-normal">Full Inventory (All Items)</FormLabel>
+                {/* Count Type (Radio Group) */}
+                <FormField
+                    control={form.control}
+                    name="countType"
+                    render={({ field }) => (
+                        <FormItem className="space-y-3">
+                            <FormLabel>Type of Count</FormLabel>
+                            <FormControl>
+                                <RadioGroup
+                                    onValueChange={field.onChange}
+                                    defaultValue={field.value}
+                                    className="flex flex-col space-y-1"
+                                >
+                                    <FormItem className="flex items-center space-x-3 space-y-0">
+                                        <FormControl>
+                                            <RadioGroupItem value="full" />
+                                        </FormControl>
+                                        <FormLabel className="font-normal">
+                                            Full Inventory (All Items)
+                                        </FormLabel>
+                                    </FormItem>
+                                    <FormItem className="flex items-center space-x-3 space-y-0">
+                                        <FormControl>
+                                            <RadioGroupItem value="partial" />
+                                        </FormControl>
+                                        <FormLabel className="font-normal">
+                                            Partial Count (Specific Areas/Items)
+                                        </FormLabel>
+                                    </FormItem>
+                                    <FormItem className="flex items-center space-x-3 space-y-0">
+                                        <FormControl>
+                                            <RadioGroupItem value="cycle" />
+                                        </FormControl>
+                                        <FormLabel className="font-normal">
+                                            Cycle Count (Ongoing Small Counts)
+                                        </FormLabel>
+                                    </FormItem>
+                                </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
                         </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="partial" />
-                          </FormControl>
-                          <FormLabel className="font-normal">Partial Count (Specific Areas/Items)</FormLabel>
+                    )}
+                />
+                
+                {/* Location Filter (Textarea) */}
+                <FormField
+                    control={form.control}
+                    name="locationFilter"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Location Filter (Optional)</Label>
+                            <FormControl>
+                                <Textarea
+                                    placeholder="e.g., Aisle 5, Section B, Shelf 3..."
+                                    {...field}
+                                    rows={4}
+                                />
+                            </FormControl>
+                            <FormDescription>
+                                Specify locations to include/exclude for a partial count.
+                            </FormDescription>
+                            <FormMessage />
                         </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="cycle" />
-                          </FormControl>
-                          <FormLabel className="font-normal">Cycle Count (Ongoing Small Counts)</FormLabel>
-                        </FormItem>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    )}
+                />
 
-              {/* Location Filter (Textarea) */}
-              <FormField
-                control={form.control}
-                name="locationFilter"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Location Filter (Optional)</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="e.g., Aisle 5, Section B, Shelf 3..." {...field} rows={4} />
-                    </FormControl>
-                    <FormDescription>Specify locations to include/exclude for a partial count.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Purpose (Input) */}
-              <FormField
-                control={form.control}
-                name="purpose"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Purpose (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., Annual audit, Damage check" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                {/* Purpose (Input) */}
+                <FormField
+                    control={form.control}
+                    name="purpose"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Purpose (Optional)</Label>
+                            <FormControl>
+                                <Input placeholder="e.g., Annual audit, Damage check" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
             </CardContent>
           </Card>
 
