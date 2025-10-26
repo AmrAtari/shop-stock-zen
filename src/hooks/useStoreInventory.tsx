@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { queryKeys } from "./queryKeys";
 import { toast } from "sonner";
+import { invalidateInventoryData } from "./queryKeys";
 
 export interface StoreInventoryItem {
   id: string;
@@ -141,10 +141,8 @@ export const useUpdateStoreInventory = () => {
         if (adjustmentError) throw adjustmentError;
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    onSuccess: async () => {
+      await invalidateInventoryData(queryClient);
       toast.success("Store inventory updated successfully");
     },
     onError: (error) => {

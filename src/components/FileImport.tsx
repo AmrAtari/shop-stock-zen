@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 
 interface FileImportProps {
@@ -425,18 +425,13 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       );
 
       // Invalidate all related queries for real-time updates
-      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
+      await invalidateInventoryData(queryClient);
 
       onImportComplete();
       onOpenChange(false);
       setFile(null);
 
     setIsUploading(false);
-    queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
   };
 
   const exportDuplicateLog = () => {

@@ -12,7 +12,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 
 // Assuming Item type is defined globally, using any for type safety bypass
 type Item = any;
@@ -287,9 +287,7 @@ const PurchaseOrderDetail = () => {
       if (updatedCount > 0) {
         await updateStatusMutation.mutateAsync("completed");
         // Refresh all related caches
-        await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-        await queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
-        await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        await invalidateInventoryData(queryClient);
 
         toast({
           title: "PO Received",

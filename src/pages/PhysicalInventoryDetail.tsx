@@ -22,7 +22,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PhysicalInventoryScanner from "@/components/PhysicalInventoryScanner";
 import PhysicalInventoryImport from "@/components/PhysicalInventoryImport";
 import PhysicalInventoryReport from "@/components/PhysicalInventoryReport";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { usePhysicalInventorySession } from "@/hooks/usePhysicalInventorySessions";
 import { format } from "date-fns";
 
@@ -204,8 +204,7 @@ const PhysicalInventoryDetail = () => {
       if (sessionError) throw sessionError;
 
       // Invalidate queries
-      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+      await invalidateInventoryData(queryClient);
       await queryClient.invalidateQueries({ queryKey: queryKeys.physicalInventory.all });
 
       toast.success("Physical inventory session completed");

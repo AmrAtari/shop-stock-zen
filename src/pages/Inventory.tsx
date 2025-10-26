@@ -25,7 +25,7 @@ import { Item } from "@/types/database";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { Label } from "@/components/ui/label";
 
 interface BulkActionsProps {
@@ -405,10 +405,7 @@ const InventoryNew = () => {
       const { error } = await supabase.from("items").delete().eq("id", id);
       if (error) throw error;
       toast.success("Item deleted successfully");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
+      await invalidateInventoryData(queryClient);
     } catch (error: any) {
       toast.error(error.message);
     }

@@ -17,7 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { History } from "lucide-react";
 import PriceHistoryDialog from "./PriceHistoryDialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { useAttributeTypes } from "@/hooks/useAttributeTypes";
 
 interface ProductDialogNewProps {
@@ -283,10 +283,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
         toast.success("Product added successfully");
 
         // Invalidate all related queries
-        await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
+        await invalidateInventoryData(queryClient);
 
         onSave();
         onOpenChange(false);
@@ -360,10 +357,7 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
     toast.success(applyToAll ? "Product and all related SKUs updated successfully" : "Product updated successfully");
 
     // Invalidate all related queries
-    await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
+    await invalidateInventoryData(queryClient);
 
     onSave();
     onOpenChange(false);

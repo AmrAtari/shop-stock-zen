@@ -18,7 +18,7 @@ import { useTransfers, useStores } from "@/hooks/useTransfers";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -160,8 +160,7 @@ const Transfers = () => {
 
       // Invalidate queries to refresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+      await invalidateInventoryData(queryClient);
     } catch (error: any) {
       toast.error("Failed to receive transfer: " + error.message);
     }

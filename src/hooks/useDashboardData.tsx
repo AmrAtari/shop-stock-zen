@@ -63,7 +63,7 @@ export const useDashboardData = () => {
 
       return { totalItems, totalValue, lowStockCount, totalProducts };
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   // Fetch category distribution for charts
@@ -120,7 +120,7 @@ export const useDashboardData = () => {
 
       return { categoryQuantity, categoryValue };
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   // Fetch low stock items
@@ -145,7 +145,7 @@ export const useDashboardData = () => {
           minStock: item.min_stock,
         }));
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   // Fetch stock movement trends (last 30 days)
@@ -175,7 +175,7 @@ export const useDashboardData = () => {
         adjustments,
       }));
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   // Fetch ABC analysis distribution
@@ -225,7 +225,7 @@ export const useDashboardData = () => {
         { name: 'C Items', value: cCount },
       ];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   return {

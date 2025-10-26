@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { queryKeys } from "./queryKeys";
+import { queryKeys, invalidateInventoryData } from "./queryKeys";
 import { Transfer, TransferItem } from "@/types/database";
 
 export const useTransferDetail = (id: string) => {
@@ -294,13 +294,10 @@ export const useReceiveTransfer = () => {
       
       console.log(`Transfer ${transferNumber} successfully received and inventory updated`);
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(variables.transferId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-      queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock });
+      await invalidateInventoryData(queryClient);
     },
   });
 };

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { queryKeys } from "./queryKeys";
 
 interface CategoryValue {
   category: string;
@@ -32,7 +33,7 @@ interface RecentAdjustment {
 
 export const useReportsData = () => {
   const inventoryOnHandQuery = useQuery({
-    queryKey: ["reports", "inventoryOnHand"],
+    queryKey: queryKeys.reports.inventoryOnHand,
     queryFn: async () => {
       const { data: items, error: itemsError } = await supabase.from("items").select("*");
       if (itemsError) throw itemsError;
@@ -53,11 +54,11 @@ export const useReportsData = () => {
         };
       }) || [];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const categoryValueQuery = useQuery({
-    queryKey: ["reports", "categoryValue"],
+    queryKey: queryKeys.reports.categoryValue,
     queryFn: async () => {
       const { data: items, error: itemsError } = await supabase.from("items").select("category, quantity, id");
 
@@ -90,22 +91,22 @@ export const useReportsData = () => {
         total_items: data.total_items,
       }));
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const lowStockQuery = useQuery({
-    queryKey: ["reports", "lowStock"],
+    queryKey: queryKeys.reports.lowStock,
     queryFn: async () => {
       const { data, error } = await supabase.from("items").select("*");
       
       if (error) throw error;
       return data?.filter((item) => item.quantity <= item.min_stock) || [];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const inventoryAgingQuery = useQuery({
-    queryKey: ["reports", "inventoryAging"],
+    queryKey: queryKeys.reports.inventoryAging,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("items")
@@ -121,11 +122,11 @@ export const useReportsData = () => {
           : null,
       })) || [];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const stockMovementQuery = useQuery({
-    queryKey: ["reports", "stockMovement"],
+    queryKey: queryKeys.reports.stockMovement,
     queryFn: async () => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -144,11 +145,11 @@ export const useReportsData = () => {
         adjustment: adj.adjustment,
       })) as StockMovement[];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const abcAnalysisQuery = useQuery({
-    queryKey: ["reports", "abcAnalysis"],
+    queryKey: queryKeys.reports.abcAnalysis,
     queryFn: async () => {
       const { data: items, error: itemsError } = await supabase.from("items").select("id, name, quantity, sku");
       if (itemsError) throw itemsError;
@@ -180,11 +181,11 @@ export const useReportsData = () => {
         return { ...item, classification };
       });
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const recentAdjustmentsQuery = useQuery({
-    queryKey: ["reports", "recentAdjustments"],
+    queryKey: queryKeys.reports.recentAdjustments,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_adjustments")
@@ -203,41 +204,41 @@ export const useReportsData = () => {
         reason: adj.reason,
       })) as RecentAdjustment[];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const storesQuery = useQuery({
-    queryKey: ["reports", "stores"],
+    queryKey: queryKeys.reports.stores,
     queryFn: async () => {
       const { data, error } = await supabase.from("items").select("location");
       if (error) throw error;
       return Array.from(new Set(data?.map((item) => item.location).filter(Boolean) || []));
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const categoriesQuery = useQuery({
-    queryKey: ["reports", "categories"],
+    queryKey: queryKeys.reports.categories,
     queryFn: async () => {
       const { data, error } = await supabase.from("items").select("category");
       if (error) throw error;
       return Array.from(new Set(data?.map((item) => item.category).filter(Boolean) || []));
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const brandsQuery = useQuery({
-    queryKey: ["reports", "brands"],
+    queryKey: queryKeys.reports.brands,
     queryFn: async () => {
       const { data, error } = await supabase.from("items").select("brand");
       if (error) throw error;
       return Array.from(new Set(data?.map((item) => item.brand).filter(Boolean) || []));
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const stockMovementTransactionQuery = useQuery({
-    queryKey: ["reports", "stockMovementTransaction"],
+    queryKey: queryKeys.reports.stockMovementTransaction,
     queryFn: async () => {
       // Fetch stock adjustments
       const { data: adjustments, error: adjError } = await supabase
@@ -284,7 +285,7 @@ export const useReportsData = () => {
 
       return formattedAdjustments;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   return {
