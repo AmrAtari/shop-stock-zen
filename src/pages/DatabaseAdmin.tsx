@@ -4,20 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Code, Play, Eye, AlertTriangle, ChevronDown } from "lucide-react";
+import { Code, Play, Eye, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-// List of essential tables to display in the viewer
-const DB_TABLES = [
-  "physical_inventory_sessions",
-  "stores",
-  "items", // Assuming you have an 'items' or 'inventory' table
-  "suppliers",
-];
+import { Separator } from "@/components/ui/separator";
 
 // --- SQL Editor Logic ---
 
@@ -76,7 +69,7 @@ const SqlEditorComponent: React.FC = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         <Textarea
-          placeholder="e.g., SELECT * FROM physical_inventory_sessions; OR UPDATE items SET price = 100 WHERE id = 1;"
+          placeholder="e.g., SELECT * FROM items LIMIT 10;"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           rows={8}
@@ -119,10 +112,38 @@ interface TableViewerProps {
 }
 
 const TableViewerComponent: React.FC<TableViewerProps> = ({ refreshKey }) => {
-  const [selectedTable, setSelectedTable] = useState(DB_TABLES[0]);
+  // MODIFIED: State to hold dynamically loaded table names
+  const [availableTables, setAvailableTables] = useState<string[]>([]);
+  const [selectedTable, setSelectedTable] = useState<string | undefined>(undefined);
   const [tableData, setTableData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [columns, setColumns] = useState<string[]>([]);
+
+  // NEW FUNCTION: Fetch all table and view names from the database schema
+  const fetchTableNames = async () => {
+    try {
+      // NOTE: This relies on a Supabase function 'get_schema_tables_and_views'
+      const { data, error } = await supabase.rpc("get_schema_tables_and_views");
+
+      if (error) throw error;
+
+      const tableNames = (data || []).map((t: { table_name: string }) => t.table_name);
+      setAvailableTables(tableNames.sort());
+
+      // Set the first table in the list as the selected table if none is set
+      if (tableNames.length > 0) {
+        // Only change selectedTable if it's currently undefined or not in the new list
+        if (!selectedTable || !tableNames.includes(selectedTable)) {
+          setSelectedTable(tableNames[0]);
+        }
+      } else {
+        setSelectedTable(undefined);
+      }
+    } catch (err: any) {
+      console.error("Error fetching table names:", err);
+      toast.error("Failed to load table list: Check if 'get_schema_tables_and_views' function exists.");
+    }
+  };
 
   const fetchTableData = useCallback(async (tableName: string) => {
     setLoading(true);
@@ -150,6 +171,12 @@ const TableViewerComponent: React.FC<TableViewerProps> = ({ refreshKey }) => {
   }, []);
 
   useEffect(() => {
+    // Load table names on component mount
+    fetchTableNames();
+  }, []);
+
+  useEffect(() => {
+    // Fetch data whenever selectedTable or refreshKey changes
     if (selectedTable) {
       fetchTableData(selectedTable);
     }
@@ -176,30 +203,38 @@ const TableViewerComponent: React.FC<TableViewerProps> = ({ refreshKey }) => {
           <Eye className="w-6 h-6" />
           <span>Table Data Viewer</span>
         </CardTitle>
-        <p className="text-sm text-muted-foreground">View the first 50 rows of essential database tables.</p>
+        <p className="text-sm text-muted-foreground">View the first 50 rows of **all** database tables and views.</p>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center space-x-2">
-          <Select value={selectedTable} onValueChange={handleTableSelect}>
+          <Select
+            value={selectedTable}
+            onValueChange={handleTableSelect}
+            disabled={loading || availableTables.length === 0}
+          >
             <SelectTrigger className="w-[280px]">
               <SelectValue placeholder="Select a table" />
             </SelectTrigger>
             <SelectContent>
-              {DB_TABLES.map((table) => (
+              {availableTables.map((table) => (
                 <SelectItem key={table} value={table}>
                   {table}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={() => fetchTableData(selectedTable)} disabled={loading} variant="outline">
+          <Button
+            onClick={() => selectedTable && fetchTableData(selectedTable)}
+            disabled={loading || !selectedTable}
+            variant="outline"
+          >
             {loading ? "Refreshing..." : "Refresh Data"}
           </Button>
         </div>
 
         <div className="border rounded-lg overflow-hidden">
           {loading ? (
-            <div className="p-4 text-center text-muted-foreground">Loading data for {selectedTable}...</div>
+            <div className="p-4 text-center text-muted-foreground">Loading data for {selectedTable || "table"}...</div>
           ) : (
             <ScrollArea className="h-[400px] w-full">
               <Table>
@@ -227,7 +262,7 @@ const TableViewerComponent: React.FC<TableViewerProps> = ({ refreshKey }) => {
                         colSpan={columns.length || 1}
                         className="text-center italic text-muted-foreground py-10"
                       >
-                        No data found in "{selectedTable}".
+                        {selectedTable ? `No data found in "${selectedTable}".` : "Select a table to view its data."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -248,20 +283,14 @@ const DatabaseAdmin: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0); // Key to force viewer refresh after editor runs
 
   // Simple handler to trigger a viewer refresh after running a query in the editor
-  const handleEditorAction = () => {
-    setRefreshKey((prev) => prev + 1);
-  };
+  // const handleEditorAction = () => { // Removed, logic now in SQL Editor component for simplicity.
+  //     setRefreshKey(prev => prev + 1);
+  // }
 
-  // NOTE: This component is for ADMIN use. It exposes database access.
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Database Administration Tool</h1>
-      <p className="text-muted-foreground">
-        **ADMIN WARNING:** Use this tool with extreme caution. All changes are immediate and permanent.
-      </p>
-
+    <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="viewer">
             <Eye className="w-4 h-4 mr-2" />
             Table Viewer
@@ -277,26 +306,53 @@ const DatabaseAdmin: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="editor" className="mt-4">
-          {/* Placeholder for the SQL editor component (You could integrate the editor logic here and pass handleEditorAction) */}
           <SqlEditorComponent />
         </TabsContent>
       </Tabs>
+
+      <Separator />
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <AlertTriangle className="w-6 h-6 text-red-500" />
-            <span>SQL Editor Setup Requirement</span>
+            <span>SQL Function Setup Requirements</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm space-y-3">
           <p>
-            For the **SQL Editor** tab to function, you **must** create the **`execute_raw_sql`** PostgreSQL function in
-            your Supabase project's SQL Editor. Run the following code in your Supabase SQL editor:
+            For the **Table Viewer** to list all tables and the **SQL Editor** to run queries, you must create the
+            following PostgreSQL functions in your Supabase project's SQL Editor:
           </p>
+          <h4 className="font-semibold mt-4">1. Function for Table List (`get_schema_tables_and_views`):</h4>
           <ScrollArea className="h-48 border rounded p-3 bg-gray-50 dark:bg-gray-800">
             <pre className="font-mono text-xs whitespace-pre-wrap">
-              {`CREATE OR REPLACE FUNCTION execute_raw_sql(sql_query TEXT)
+              {`CREATE OR REPLACE FUNCTION get_schema_tables_and_views()
+RETURNS TABLE(table_name TEXT)
+LANGUAGE sql
+AS $function$
+SELECT
+    table_name::TEXT
+FROM
+    information_schema.tables
+WHERE
+    table_schema = 'public' -- Restrict to public schema
+    AND table_type IN ('BASE TABLE', 'VIEW') -- Include both tables and views
+    AND table_name NOT IN ('spatial_ref_sys') -- Exclude standard system tables
+ORDER BY
+    table_name;
+$function$;
+
+GRANT EXECUTE ON FUNCTION get_schema_tables_and_views() TO authenticated;
+`}
+            </pre>
+          </ScrollArea>
+
+          <h4 className="font-semibold mt-4">2. Function for Query Execution (`execute_raw_sql`):</h4>
+          <ScrollArea className="h-48 border rounded p-3 bg-gray-50 dark:bg-gray-800">
+            <pre className="font-mono text-xs whitespace-pre-wrap">
+              {`-- WARNING: This exposes raw SQL execution. Secure it properly.
+CREATE OR REPLACE FUNCTION execute_raw_sql(sql_query TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
 AS $function$
