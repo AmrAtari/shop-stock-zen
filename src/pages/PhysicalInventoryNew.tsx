@@ -15,6 +15,8 @@ import { ArrowLeft, Save, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useStores } from "@/hooks/usePhysicalInventorySessions";
+// Note: While the session interface in types/inventory doesn't explicitly list status,
+// we now know the database constraint requires 'pending', 'approved', or 'rejected'.
 
 // --- ZOD Schema ---
 const piSchema = z.object({
@@ -54,8 +56,9 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // FINAL FIX: Always set status to 'Draft' for insertion to bypass CHECK constraint.
-    const status = "Draft";
+    // FINAL FIX: Use the confirmed allowed status 'pending' for initial insertion.
+    // 'Draft' or 'Counting' are not allowed by your database schema.
+    const status = "pending";
 
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -65,7 +68,7 @@ const PhysicalInventoryNew: React.FC = () => {
       count_date: data.countDate,
       count_type: data.countType,
       responsible_person: data.responsiblePerson,
-      status: status, // Status is guaranteed to be 'Draft'
+      status: status, // Status is guaranteed to be 'pending'
       notes: data.notes,
       department: data.department,
       purpose: data.purpose,
@@ -82,19 +85,17 @@ const PhysicalInventoryNew: React.FC = () => {
       if (error) throw error;
 
       if (startCounting) {
-        // Success: Session is created as 'Draft', now navigate to the detail page.
-        toast.success(`Inventory session ${session_number} created (Draft). Starting count...`);
+        // Success: Session created as 'pending'. Navigate to the detail page.
+        toast.success(`Inventory session ${session_number} created (Pending). Starting count...`);
         navigate(`/inventory/physical/${insertedData.id}`);
       } else {
-        toast.success(`Inventory session ${session_number} saved as Draft.`);
+        toast.success(`Inventory session ${session_number} saved as Pending.`);
         navigate(`/inventory/physical`);
       }
     } catch (err: any) {
       console.error("Submission error:", err);
-      // This error should now be impossible if 'Draft' is an allowed status.
-      toast.error(
-        `Failed to create session: Please verify that 'Draft' is an allowed status in your Supabase table schema. Error: ${err.message}`,
-      );
+      // The error should now be resolved.
+      toast.error(`Failed to create session: ${err.message || "Unknown error"}. Please check your database statuses.`);
     }
   };
 
@@ -310,7 +311,7 @@ const PhysicalInventoryNew: React.FC = () => {
               disabled={isSubmitting}
             >
               <Save className="w-4 h-4 mr-2" />
-              Save as Draft
+              Save as Pending
             </Button>
             <Button
               type="button"
