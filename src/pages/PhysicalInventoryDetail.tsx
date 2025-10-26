@@ -6,14 +6,15 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { FileDown, CheckCircle, Save } from "lucide-react";
 
-// FIX: Explicitly define the types needed locally to resolve conflicts with imported types.
+// FIX: Explicitly define the types needed locally.
+
 interface SessionWithStatus extends PhysicalInventorySession {
   status: "draft" | "in_progress" | "completed";
-  // Removed finished_at as per TS error showing it doesn't exist in DB
 }
 
-// FIX: Narrowing the status to the two values used in the component logic to resolve TS2430
-interface ItemCountWithVariance extends PhysicalInventoryCount {
+// FIX: Use Omit<T, K> to exclude the restrictive 'status' property from the base
+// interface and redefine it with the required 'pending' | 'counted' type to fix TS2430.
+interface ItemCountWithVariance extends Omit<PhysicalInventoryCount, "status"> {
   system_quantity: number;
   counted_quantity: number;
   variance: number;
@@ -35,14 +36,12 @@ const PhysicalInventoryDetail: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from("physical_inventory_sessions")
-        // FIX 1: Removed 'finished_at' from select query
         .select("id, store_id, session_number, created_at, status, stores(name)")
         .eq("id", id)
         .single();
 
       if (error) throw error;
 
-      // FIX 2: Removed finished_at from setSession object
       setSession({
         id: data.id,
         store_id: data.store_id,
@@ -75,6 +74,7 @@ const PhysicalInventoryDetail: React.FC = () => {
         variance_percentage: item.system_quantity
           ? ((item.counted_quantity - item.system_quantity) / item.system_quantity) * 100
           : 0,
+        // The type cast here is necessary because the fetched status might be null or different from the local ItemCountWithVariance['status']
         status: item.counted_quantity > 0 ? "counted" : "pending",
       }));
 
@@ -146,6 +146,7 @@ const PhysicalInventoryDetail: React.FC = () => {
     }));
 
     try {
+      // NOTE: Supabase upsert uses existing record keys to determine insert vs update
       const { error } = await supabase.from("physical_inventory_counts").upsert(countsToSave);
       if (error) throw error;
 
@@ -173,6 +174,7 @@ const PhysicalInventoryDetail: React.FC = () => {
     setIsFinalizing(true);
 
     try {
+      // 1. Save final counts
       await saveCounts();
 
       const updates = counts.map((c) => ({
@@ -181,6 +183,7 @@ const PhysicalInventoryDetail: React.FC = () => {
         new_quantity: c.counted_quantity,
       }));
 
+      // 2. Update store_inventory quantities
       const updatePromises = updates.map(async (update) => {
         const { error: updateError } = await supabase
           .from("store_inventory")
@@ -199,7 +202,6 @@ const PhysicalInventoryDetail: React.FC = () => {
       // 3. Mark the session as completed
       const { error: sessionError } = await supabase
         .from("physical_inventory_sessions")
-        // FIX 3: Removed finished_at from the update call
         .update({ status: "completed" })
         .eq("id", id);
 
@@ -218,7 +220,7 @@ const PhysicalInventoryDetail: React.FC = () => {
   };
 
   const exportResults = () => {
-    // Basic CSV export logic (implementation omitted for brevity)
+    // Basic CSV export logic
     if (counts.length === 0) {
       toast.info("No data to export.");
       return;
