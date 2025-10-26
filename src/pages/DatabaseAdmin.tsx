@@ -1,36 +1,56 @@
-// src/pages/DatabaseAdmin.tsx
+// src/pages/DatabaseAdminPanel.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
-interface RowData {
+interface ColumnDef {
+  name: string;
+  type: string;
+  isPrimary?: boolean;
+}
+
+interface TableRow {
   [key: string]: any;
 }
 
-const DatabaseAdmin: React.FC = () => {
+const dataTypes = [
+  "text",
+  "varchar(255)",
+  "integer",
+  "bigint",
+  "boolean",
+  "date",
+  "timestamp",
+  "float",
+  "numeric",
+  "json",
+];
+
+const DatabaseAdminPanel: React.FC = () => {
+  // --- Tables ---
   const [tables, setTables] = useState<string[]>([]);
   const [selectedTable, setSelectedTable] = useState<string>("");
-  const [rows, setRows] = useState<RowData[]>([]);
-  const [columns, setColumns] = useState<string[]>([]);
-  const [primaryKey, setPrimaryKey] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [page, setPage] = useState(1);
-  const [selectedRows, setSelectedRows] = useState<Set<any>>(new Set());
-  const pageSize = 20;
+  const [newTableName, setNewTableName] = useState("");
 
-  // --- Load all public tables ---
+  // --- Columns for new table ---
+  const [columns, setColumns] = useState<ColumnDef[]>([]);
+  const [addColumnName, setAddColumnName] = useState("");
+  const [addColumnType, setAddColumnType] = useState("text");
+
+  // --- Data for selected table ---
+  const [rows, setRows] = useState<TableRow[]>([]);
+  const [loadingRows, setLoadingRows] = useState(false);
+
+  // --- Load all tables ---
   const fetchTables = async () => {
     try {
       const { data, error } = await supabase
         .from("information_schema.tables")
         .select("table_name")
         .eq("table_schema", "public");
-
       if (error) throw error;
       setTables(data.map((t: any) => t.table_name));
     } catch (err: any) {
@@ -39,253 +59,202 @@ const DatabaseAdmin: React.FC = () => {
     }
   };
 
-  // --- Detect primary key of table ---
-  const fetchPrimaryKey = async (table: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("information_schema.table_constraints")
-        .select("constraint_name")
-        .eq("table_name", table)
-        .eq("constraint_type", "PRIMARY KEY");
-
-      if (error) throw error;
-      if (data && data.length > 0) {
-        const constraint = data[0].constraint_name;
-        // Get the column name of the primary key
-        const { data: cols, error: colErr } = await supabase
-          .from("information_schema.key_column_usage")
-          .select("column_name")
-          .eq("table_name", table)
-          .eq("constraint_name", constraint)
-          .single();
-        if (colErr) throw colErr;
-        setPrimaryKey(cols.column_name);
-      } else {
-        setPrimaryKey(columns[0] || "");
-      }
-    } catch (err: any) {
-      console.error(err.message);
-      setPrimaryKey(columns[0] || "");
-    }
-  };
-
-  // --- Load rows for selected table with search and pagination ---
-  const fetchRows = async (table: string, page: number = 1, search: string = "") => {
-    if (!table) return;
-    setLoading(true);
-    try {
-      let query = supabase
-        .from(table)
-        .select("*")
-        .range((page - 1) * pageSize, page * pageSize - 1);
-      if (search) {
-        // Search in all string columns
-        columns.forEach((col) => {
-          query = query.ilike(col, `%${search}%`);
-        });
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      if (data && data.length > 0) {
-        setRows(data);
-        setColumns(Object.keys(data[0]));
-        fetchPrimaryKey(table);
-      } else {
-        setRows([]);
-      }
-    } catch (err: any) {
-      console.error(err.message);
-      toast.error("Failed to fetch rows.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // --- Insert a new row ---
-  const insertRow = async () => {
-    if (!selectedTable || columns.length === 0) return;
-
-    const emptyRow: RowData = {};
-    columns.forEach((col) => (emptyRow[col] = ""));
-    try {
-      const { error } = await supabase.from(selectedTable).insert([emptyRow]);
-      if (error) throw error;
-      toast.success("New row inserted!");
-      fetchRows(selectedTable, page, searchTerm);
-    } catch (err: any) {
-      console.error(err.message);
-      toast.error("Insert failed.");
-    }
-  };
-
-  // --- Update a row ---
-  const updateRow = async (row: RowData) => {
-    if (!selectedTable || !primaryKey) return;
-    try {
-      const { error } = await supabase.from(selectedTable).update([row]).eq(primaryKey, row[primaryKey]);
-      if (error) throw error;
-      toast.success("Row updated!");
-      fetchRows(selectedTable, page, searchTerm);
-    } catch (err: any) {
-      console.error(err.message);
-      toast.error("Update failed.");
-    }
-  };
-
-  // --- Delete selected rows ---
-  const deleteSelectedRows = async () => {
-    if (!selectedTable || !primaryKey || selectedRows.size === 0) return;
-    if (!window.confirm(`Delete ${selectedRows.size} selected rows?`)) return;
-
-    try {
-      for (const key of selectedRows) {
-        const { error } = await supabase.from(selectedTable).delete().eq(primaryKey, key);
-        if (error) throw error;
-      }
-      toast.success("Selected rows deleted!");
-      setSelectedRows(new Set());
-      fetchRows(selectedTable, page, searchTerm);
-    } catch (err: any) {
-      console.error(err.message);
-      toast.error("Delete failed.");
-    }
-  };
-
-  // --- Export table to CSV ---
-  const exportCSV = () => {
-    if (!rows.length) return;
-    const csvContent = [columns.join(","), ...rows.map((r) => columns.map((col) => r[col]).join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `${selectedTable}.csv`);
-    link.click();
-  };
-
   useEffect(() => {
     fetchTables();
   }, []);
 
+  // --- Load rows for selected table ---
+  const fetchRows = async (table: string) => {
+    if (!table) return;
+    setLoadingRows(true);
+    try {
+      const { data, error } = await supabase.from(table).select("*");
+      if (error) throw error;
+      setRows(data || []);
+    } catch (err: any) {
+      console.error(err.message);
+      toast.error("Failed to fetch table data.");
+    } finally {
+      setLoadingRows(false);
+    }
+  };
+
   useEffect(() => {
-    if (selectedTable) fetchRows(selectedTable, page, searchTerm);
-  }, [selectedTable, page, searchTerm]);
+    if (selectedTable) fetchRows(selectedTable);
+  }, [selectedTable]);
+
+  // --- Create new table ---
+  const createTable = async () => {
+    if (!newTableName || columns.length === 0) {
+      toast.warning("Table name and at least one column required.");
+      return;
+    }
+    const columnDefs = columns.map((c) => `${c.name} ${c.type}${c.isPrimary ? " PRIMARY KEY" : ""}`).join(", ");
+    const sql = `CREATE TABLE ${newTableName} (${columnDefs});`;
+
+    try {
+      const { error } = await supabase.rpc("execute_sql", { sql });
+      if (error) throw error;
+      toast.success(`Table ${newTableName} created!`);
+      setNewTableName("");
+      setColumns([]);
+      fetchTables();
+    } catch (err: any) {
+      console.error(err.message);
+      toast.error("Create table failed.");
+    }
+  };
+
+  // --- Add column to table ---
+  const addColumn = async () => {
+    if (!selectedTable || !addColumnName || !addColumnType) return;
+    const sql = `ALTER TABLE ${selectedTable} ADD COLUMN ${addColumnName} ${addColumnType};`;
+    try {
+      const { error } = await supabase.rpc("execute_sql", { sql });
+      if (error) throw error;
+      toast.success(`Column ${addColumnName} added!`);
+      setAddColumnName("");
+      setAddColumnType("text");
+      fetchRows(selectedTable);
+    } catch (err: any) {
+      console.error(err.message);
+      toast.error("Add column failed.");
+    }
+  };
+
+  // --- Delete table ---
+  const deleteTable = async () => {
+    if (!selectedTable) return;
+    if (!window.confirm(`Delete table ${selectedTable}? Cannot be undone.`)) return;
+    const sql = `DROP TABLE ${selectedTable};`;
+    try {
+      const { error } = await supabase.rpc("execute_sql", { sql });
+      if (error) throw error;
+      toast.success(`Table ${selectedTable} deleted!`);
+      setSelectedTable("");
+      setRows([]);
+      fetchTables();
+    } catch (err: any) {
+      console.error(err.message);
+      toast.error("Delete table failed.");
+    }
+  };
 
   return (
     <div className="p-8 space-y-6">
       <h1 className="text-2xl font-bold">Database Admin Panel</h1>
 
-      {/* Table Selector */}
-      <select
-        value={selectedTable}
-        onChange={(e) => {
-          setSelectedTable(e.target.value);
-          setPage(1);
-          setSearchTerm("");
-        }}
-      >
-        <option value="">Select Table</option>
-        {tables.map((t) => (
-          <option key={t} value={t}>
-            {t}
-          </option>
-        ))}
-      </select>
+      {/* Create Table */}
+      <div className="border p-4 rounded-lg space-y-2">
+        <h2 className="text-xl font-semibold">Create New Table</h2>
+        <Input placeholder="Table Name" value={newTableName} onChange={(e) => setNewTableName(e.target.value)} />
 
-      {/* Search */}
-      {selectedTable && columns.length > 0 && (
-        <div className="mt-2 flex gap-2">
-          <Input placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          <Button onClick={() => fetchRows(selectedTable, 1, searchTerm)}>Search</Button>
-        </div>
-      )}
-
-      {/* Actions */}
-      {selectedTable && (
-        <div className="mt-4 flex gap-2">
-          <Button onClick={insertRow}>Add New Row</Button>
-          <Button onClick={deleteSelectedRows} variant="destructive" disabled={selectedRows.size === 0}>
-            Delete Selected
-          </Button>
-          <Button onClick={exportCSV} disabled={rows.length === 0}>
-            Export CSV
+        {/* Add columns */}
+        <div className="flex gap-2 mt-2">
+          <Input placeholder="Column Name" value={addColumnName} onChange={(e) => setAddColumnName(e.target.value)} />
+          <Select onValueChange={setAddColumnType} defaultValue={addColumnType}>
+            <SelectTrigger>
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              {dataTypes.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={() => {
+              if (!addColumnName) return;
+              setColumns([...columns, { name: addColumnName, type: addColumnType }]);
+              setAddColumnName("");
+              setAddColumnType("text");
+            }}
+          >
+            Add Column
           </Button>
         </div>
-      )}
 
-      {/* Table */}
-      {selectedTable && (
-        <div className="mt-4 overflow-auto">
-          {loading ? (
-            <div>Loading...</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedRows.size === rows.length && rows.length > 0}
-                      onCheckedChange={(checked) => {
-                        if (checked) setSelectedRows(new Set(rows.map((r) => r[primaryKey])));
-                        else setSelectedRows(new Set());
-                      }}
-                    />
-                  </TableCell>
-                  {columns.map((col) => (
-                    <TableCell key={col}>{col}</TableCell>
-                  ))}
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedRows.has(row[primaryKey])}
-                        onCheckedChange={(checked) => {
-                          const newSet = new Set(selectedRows);
-                          if (checked) newSet.add(row[primaryKey]);
-                          else newSet.delete(row[primaryKey]);
-                          setSelectedRows(newSet);
-                        }}
-                      />
-                    </TableCell>
-                    {columns.map((col) => (
-                      <TableCell key={col}>
-                        <input
-                          value={row[col] ?? ""}
-                          onChange={(e) => (row[col] = e.target.value)}
-                          className="border p-1 w-full"
-                        />
-                      </TableCell>
+        {/* Column list */}
+        {columns.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {columns.map((c, idx) => (
+              <div key={idx} className="flex gap-2 items-center">
+                <span>{c.name}</span>
+                <span>{c.type}</span>
+                {c.isPrimary && <span className="text-green-600 font-bold">PK</span>}
+                <Button size="sm" variant="destructive" onClick={() => setColumns(columns.filter((_, i) => i !== idx))}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Button className="mt-2" onClick={createTable}>
+          Create Table
+        </Button>
+      </div>
+
+      {/* Existing Tables */}
+      <div className="border p-4 rounded-lg space-y-2">
+        <h2 className="text-xl font-semibold">Existing Tables</h2>
+        <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)} className="border p-2 rounded">
+          <option value="">Select Table</option>
+          {tables.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+
+        {selectedTable && (
+          <div className="flex gap-2 mt-2">
+            <Button onClick={addColumn}>Add Column</Button>
+            <Button variant="destructive" onClick={deleteTable}>
+              Delete Table
+            </Button>
+          </div>
+        )}
+
+        {/* Table Data */}
+        {selectedTable && (
+          <div className="mt-4 border p-2 rounded">
+            <h3 className="font-semibold mb-2">Data: {selectedTable}</h3>
+            {loadingRows ? (
+              <p>Loading...</p>
+            ) : rows.length === 0 ? (
+              <p>No data found.</p>
+            ) : (
+              <table className="table-auto border-collapse border w-full">
+                <thead>
+                  <tr className="bg-gray-100">
+                    {Object.keys(rows[0]).map((col) => (
+                      <th key={col} className="border px-2 py-1">
+                        {col}
+                      </th>
                     ))}
-                    <TableCell>
-                      <Button onClick={() => updateRow(row)} className="mr-2">
-                        Save
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-
-          {/* Pagination */}
-          {rows.length > 0 && (
-            <div className="flex gap-2 mt-4">
-              <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                Prev
-              </Button>
-              <span>Page {page}</span>
-              <Button disabled={rows.length < pageSize} onClick={() => setPage(page + 1)}>
-                Next
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, idx) => (
+                    <tr key={idx} className="border-t">
+                      {Object.values(row).map((val, i) => (
+                        <td key={i} className="border px-2 py-1">
+                          {val?.toString()}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
-export default DatabaseAdmin;
+export default DatabaseAdminPanel;
