@@ -1,11 +1,5 @@
-import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
-import { PriceLevel } from "@/types/database";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { format } from "date-fns";
+import { usePriceHistory } from "@/hooks/usePriceHistory"; // <--- Import the new hook
+import { Loader2, DollarSign, Calendar, TrendingUp } from "lucide-react"; // <--- Needed icons
 
 interface PriceHistoryDialogProps {
   open: boolean;
@@ -14,166 +8,83 @@ interface PriceHistoryDialogProps {
   itemName: string;
 }
 
-const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHistoryDialogProps) => {
-  const [priceHistory, setPriceHistory] = useState<PriceLevel[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (open && itemId) {
-      fetchPriceHistory();
-    }
-  }, [open, itemId]);
-
-  const fetchPriceHistory = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("price_levels")
-        .select("*")
-        .eq("item_id", itemId)
-        .order("effective_date", { ascending: false });
-
-      if (error) throw error;
-      setPriceHistory(data || []);
-    } catch (error) {
-      console.error("Error fetching price history:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const getPriceChange = (current: number, previous: number | null) => {
-    if (!previous) return null;
-    const change = ((current - previous) / previous) * 100;
-    return {
-      percentage: Math.abs(change).toFixed(1),
-      direction: change > 0 ? "up" : change < 0 ? "down" : "same",
-    };
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
-  };
+const PriceHistoryDialog: React.FC<PriceHistoryDialogProps> = ({ open, onOpenChange, itemId, itemName }) => {
+  // 1. Use the new hook to fetch data
+  const { data: historyData, isLoading, isError } = usePriceHistory(itemId, open);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Price History - {itemName}</DialogTitle>
+          <DialogTitle>Price History for {itemName}</DialogTitle>
+          <DialogDescription>Records of all price changes for this item.</DialogDescription>
         </DialogHeader>
 
-        {isLoading ? (
-          <div className="py-8 text-center text-muted-foreground">Loading...</div>
-        ) : priceHistory.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            No price history available
-          </div>
-        ) : (
-          <div className="space-y-4">
+        <div className="max-h-[400px] overflow-y-auto">
+          {/* 2. Display Loading/Error State */}
+          {isLoading && (
+            <div className="text-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" />
+              <p className="mt-2 text-muted-foreground">Loading price history...</p>
+            </div>
+          )}
+
+          {isError && (
+            <div className="text-center py-8 text-red-600">
+              <AlertTriangle className="w-6 h-6 mx-auto" />
+              <p className="mt-2">Failed to load history. Check the database table 'price_history'.</p>
+            </div>
+          )}
+
+          {/* 3. Display Data Table */}
+          {!isLoading && !isError && historyData && historyData.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Effective Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Cost Price</TableHead>
-                  <TableHead className="text-right">Selling Price</TableHead>
-                  <TableHead className="text-right">Wholesale Price</TableHead>
-                  <TableHead className="text-right">Margin</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead className="text-right">Old Price</TableHead>
+                  <TableHead className="text-right">New Price</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {priceHistory.map((price, index) => {
-                  const previousPrice = priceHistory[index + 1];
-                  const costChange = getPriceChange(
-                    price.cost_price,
-                    previousPrice?.cost_price || null
-                  );
-                  const sellingChange = getPriceChange(
-                    price.selling_price,
-                    previousPrice?.selling_price || null
-                  );
-                  const margin =
-                    ((price.selling_price - price.cost_price) / price.selling_price) * 100;
-
-                  return (
-                    <TableRow key={price.id}>
-                      <TableCell>
-                        {format(new Date(price.effective_date), "MMM dd, yyyy")}
-                      </TableCell>
-                      <TableCell>
-                        {price.is_current ? (
-                          <Badge variant="default">Current</Badge>
-                        ) : (
-                          <Badge variant="secondary">Historical</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {formatCurrency(price.cost_price)}
-                          {costChange && (
-                            <div className="flex items-center gap-1">
-                              {costChange.direction === "up" && (
-                                <TrendingUp className="w-3 h-3 text-destructive" />
-                              )}
-                              {costChange.direction === "down" && (
-                                <TrendingDown className="w-3 h-3 text-green-600" />
-                              )}
-                              {costChange.direction === "same" && (
-                                <Minus className="w-3 h-3 text-muted-foreground" />
-                              )}
-                              <span className="text-xs text-muted-foreground">
-                                {costChange.percentage}%
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {formatCurrency(price.selling_price)}
-                          {sellingChange && (
-                            <div className="flex items-center gap-1">
-                              {sellingChange.direction === "up" && (
-                                <TrendingUp className="w-3 h-3 text-green-600" />
-                              )}
-                              {sellingChange.direction === "down" && (
-                                <TrendingDown className="w-3 h-3 text-destructive" />
-                              )}
-                              {sellingChange.direction === "same" && (
-                                <Minus className="w-3 h-3 text-muted-foreground" />
-                              )}
-                              <span className="text-xs text-muted-foreground">
-                                {sellingChange.percentage}%
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {price.wholesale_price
-                          ? formatCurrency(price.wholesale_price)
-                          : "-"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge
-                          variant={margin > 30 ? "success" : margin > 15 ? "default" : "warning"}
-                        >
-                          {margin.toFixed(1)}%
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {historyData.map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="font-medium flex items-center gap-2">
+                      <Calendar className="w-3 h-3 text-muted-foreground" />
+                      {entry.change_date}
+                    </TableCell>
+                    <TableCell>{entry.source}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      <DollarSign className="w-3 h-3 inline mr-1" />
+                      {entry.old_price.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-green-600">
+                      <DollarSign className="w-3 h-3 inline mr-1" />
+                      {entry.new_price.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
-          </div>
-        )}
+          ) : (
+            // 4. No Data State
+            !isLoading &&
+            !isError && (
+              <div className="text-center py-8">
+                <History className="w-8 h-8 mx-auto text-muted-foreground" />
+                <p className="mt-2 text-muted-foreground">No price history found for this item.</p>
+              </div>
+            )
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)} variant="outline">
+            Close
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-
-export default PriceHistoryDialog;
