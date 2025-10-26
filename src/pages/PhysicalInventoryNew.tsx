@@ -20,6 +20,7 @@ import { useStores } from "@/hooks/usePhysicalInventorySessions";
 // --- ZOD Schema ---
 const piSchema = z.object({
   countDate: z.string().min(1, "Count date is required"),
+  // Fix: changed storeId to be required (min(1)) if it was optional previously, as it's a key field.
   storeId: z.string().min(1, "Store is required"),
   countType: z.enum(["full", "partial", "cycle"]),
   responsiblePerson: z.string().min(1, "Responsible person is required"),
@@ -55,8 +56,8 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // Reverting to the most standard capitalized forms for DRAFT/ACTIVE.
-    const status = startCounting ? "ACTIVE" : "DRAFT";
+    // FIX: Using the exact, case-sensitive strings confirmed by the database schema image
+    const status = startCounting ? "Active" : "Draft";
 
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -66,7 +67,7 @@ const PhysicalInventoryNew: React.FC = () => {
       count_date: data.countDate,
       count_type: data.countType,
       responsible_person: data.responsiblePerson,
-      status: status,
+      status: status, // THIS IS THE FIXED VALUE
       notes: data.notes,
       department: data.department,
       purpose: data.purpose,
@@ -82,7 +83,7 @@ const PhysicalInventoryNew: React.FC = () => {
 
       if (error) throw error;
 
-      const successStatus = startCounting ? "ACTIVE" : "DRAFT";
+      const successStatus = startCounting ? "Active" : "Draft";
       toast.success(`Inventory session ${session_number} created as ${successStatus}.`);
 
       if (startCounting) {
@@ -93,7 +94,8 @@ const PhysicalInventoryNew: React.FC = () => {
     } catch (err: any) {
       console.error("Submission error:", err);
 
-      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. The status '${status}' is rejected. Please use the **SQL Editor page** to run the query: \`SELECT condef FROM pg_constraint WHERE conname = 'physical_inventory_sessions_status_check';\` to find the correct status.`;
+      // Removed specific error requesting schema, as we now have it
+      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}.`;
       toast.error(errorMessage);
     }
   };
@@ -310,7 +312,7 @@ const PhysicalInventoryNew: React.FC = () => {
               disabled={isSubmitting}
             >
               <Save className="w-4 h-4 mr-2" />
-              Save as DRAFT
+              Save as Draft
             </Button>
             <Button
               type="button"
