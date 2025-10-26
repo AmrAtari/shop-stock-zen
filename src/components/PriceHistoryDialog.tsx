@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
-// NOTE: Since we don't have access to "@/types/database", we define a placeholder interface here.
-// Please ensure this matches your actual database schema and the types in your PriceLevel file.
-// If you have a types/database.ts file, remove this definition and ensure your imported type is correct.
+import { TrendingUp, TrendingDown, Minus, Loader2, AlertTriangle, XCircle } from "lucide-react";
+import { format } from "date-fns";
+import { toast } from "sonner";
+
+// NOTE: Placeholder interface matching your database structure (assuming you have one)
 interface PriceLevel {
   id: string;
   item_id: string;
@@ -17,10 +19,6 @@ interface PriceLevel {
   is_current: boolean;
   created_at: string;
 }
-
-import { TrendingUp, TrendingDown, Minus, Loader2, AlertTriangle, XCircle } from "lucide-react";
-import { format } from "date-fns";
-import { toast } from "sonner"; // Assuming you use sonner for notifications
 
 interface PriceHistoryDialogProps {
   open: boolean;
@@ -35,6 +33,7 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Only fetch data when the dialog opens and we have an item ID
     if (open && itemId) {
       setError(null);
       fetchPriceHistory();
@@ -45,8 +44,8 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
     setIsLoading(true);
     setPriceHistory([]);
     try {
-      // NOTE: This assumes the table is correctly named 'price_levels'
-      const { data, error } = await supabase
+      // Use 'as any' to bypass strict table typing if necessary, but keep the correct table name
+      const { data, error } = await (supabase as any)
         .from("price_levels")
         .select("*")
         .eq("item_id", itemId)
@@ -56,7 +55,6 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
       setPriceHistory(data || []);
     } catch (err: any) {
       console.error("Error fetching price history:", err);
-      // Display a toast for better visibility
       toast.error(`Failed to load price history: ${err.message}. Check RLS policy on 'price_levels' table.`);
       setError(err.message || "Unknown error fetching data.");
     } finally {
@@ -65,7 +63,7 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
   };
 
   const getPriceChange = (current: number, previous: number | null) => {
-    if (previous === null || previous === 0) return null; // Avoid division by zero
+    if (previous === null || previous === 0) return null;
     const change = ((current - previous) / previous) * 100;
     return {
       percentage: Math.abs(change).toFixed(1),
@@ -80,7 +78,6 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
     }).format(amount);
   };
 
-  // Helper to safely calculate margin, avoiding NaN
   const calculateMargin = (sell: number, cost: number) => {
     if (sell <= 0) return 0;
     return ((sell - cost) / sell) * 100;
@@ -104,7 +101,7 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
             <p className="font-semibold">Error loading history:</p>
             <p className="text-sm">{error}</p>
             <p className="text-xs mt-2 text-red-700">
-              *Tip: Ensure the 'price_levels' table exists and RLS allows reading.
+              *Tip: Ensure the **'price_levels'** table exists and RLS allows reading.
             </p>
           </div>
         ) : priceHistory.length === 0 ? (
@@ -127,7 +124,6 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
               </TableHeader>
               <TableBody>
                 {priceHistory.map((price, index) => {
-                  // Get the next (chronologically previous) price level for comparison
                   const previousPrice = priceHistory[index + 1];
 
                   const costChange = getPriceChange(price.cost_price, previousPrice?.cost_price || null);
@@ -192,10 +188,7 @@ const PriceHistoryDialog = ({ open, onOpenChange, itemId, itemName }: PriceHisto
                         {price.wholesale_price ? formatCurrency(price.wholesale_price) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Badge
-                          // Use neutral variant if margin is too low/high to avoid too many colors
-                          variant={margin > 30 ? "default" : margin > 15 ? "secondary" : "destructive"}
-                        >
+                        <Badge variant={margin > 30 ? "default" : margin > 15 ? "secondary" : "destructive"}>
                           {margin.toFixed(1)}%
                         </Badge>
                       </TableCell>
