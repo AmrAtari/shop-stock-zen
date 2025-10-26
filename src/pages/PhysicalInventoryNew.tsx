@@ -28,7 +28,7 @@ const piSchema = z.object({
   purpose: z.string().optional(),
   locationFilter: z.string().optional(),
   expectedItems: z.string().optional(),
-  notes: z.string().optional(), // Added 'notes' to schema to match the field usage
+  notes: z.string().optional(),
 });
 
 type PhysicalInventoryFormData = z.infer<typeof piSchema>;
@@ -36,7 +36,6 @@ type PhysicalInventoryFormData = z.infer<typeof piSchema>;
 // --- Component ---
 const PhysicalInventoryNew: React.FC = () => {
   const navigate = useNavigate();
-  // Ensure the useStores hook is correctly fetching store data
   const { data: stores, isLoading: isLoadingStores } = useStores();
 
   const form = useForm<PhysicalInventoryFormData>({
@@ -57,7 +56,6 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // Determine status based on the button clicked
     const status = startCounting ? "Counting" : "Draft";
 
     // Simple way to generate a session number (e.g., PI-YYYYMMDD-ID)
@@ -71,10 +69,9 @@ const PhysicalInventoryNew: React.FC = () => {
       responsible_person: data.responsiblePerson,
       status: status,
       notes: data.notes,
-      // Add other fields from the form if they map directly to DB columns
       department: data.department,
       purpose: data.purpose,
-      location_filter: data.locationFilter, // Assuming a column named location_filter
+      location_filter: data.locationFilter,
     };
 
     try {
@@ -88,7 +85,6 @@ const PhysicalInventoryNew: React.FC = () => {
 
       toast.success(`Inventory session ${session_number} created as ${status}.`);
 
-      // Navigate to the detail page for counting or back to the list
       if (startCounting) {
         navigate(`/inventory/physical/${insertedData.id}`);
       } else {
@@ -148,7 +144,7 @@ const PhysicalInventoryNew: React.FC = () => {
                 )}
               />
 
-              {/* Store ID (Select) - Corrected structure */}
+              {/* Store ID (Select) */}
               <FormField
                 control={form.control}
                 name="storeId"
@@ -198,7 +194,7 @@ const PhysicalInventoryNew: React.FC = () => {
               <CardTitle>Scope and Type</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Count Type (Radio Group) - Corrected structure */}
+              {/* Count Type (Radio Group) */}
               <FormField
                 control={form.control}
                 name="countType"
