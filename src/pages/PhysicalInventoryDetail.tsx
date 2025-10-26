@@ -18,26 +18,14 @@ import { CheckCircle, ArrowLeft, Scan, Upload, BarChart3 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PhysicalInventoryScanner from "@/components/PhysicalInventoryScanner";
 import PhysicalInventoryImport from "@/components/PhysicalInventoryImport";
 import PhysicalInventoryReport from "@/components/PhysicalInventoryReport";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { usePhysicalInventorySession } from "@/hooks/usePhysicalInventorySessions";
 import { format } from "date-fns";
-
-interface PhysicalInventoryCount {
-  id: string;
-  item_id: string | null;
-  sku: string;
-  item_name: string;
-  systemQuantity: number;
-  counted_quantity: number;
-  variance: number;
-  variance_percentage: number;
-  status: "pending" | "approved" | "rejected";
-  notes: string | null;
-}
+import { PhysicalInventoryCount } from "@/types/inventory"; // import centralized type
 
 const PhysicalInventoryDetail = () => {
   const navigate = useNavigate();
@@ -48,67 +36,42 @@ const PhysicalInventoryDetail = () => {
   const [selectedForUpdate, setSelectedForUpdate] = useState<Set<string>>(new Set());
   const [updateMode, setUpdateMode] = useState<"all" | "selected" | "none">("all");
 
+  // Fetch session by ID
   const { data: currentSession, isLoading: sessionLoading } = usePhysicalInventorySession(id);
 
   // Fetch counts for current session
   const { data: counts = [], refetch: refetchCounts } = useQuery({
     queryKey: queryKeys.physicalInventory.counts(id || ""),
-    queryFn: async (): Promise<PhysicalInventoryCount[]> => {
+    queryFn: async () => {
       if (!id) return [];
 
-      // Join store_inventory with items table to get sku and name
       const { data, error } = await supabase
-        .from("store_inventory")
-        .select(`
-          id,
-          item_id,
-          quantity,
-          store_id,
-          items:items(id, sku, name)
-        `)
-        .eq("store_id", currentSession?.store_id);
+        .from<PhysicalInventoryCount>("physical_inventory_counts")
+        .select("*")
+        .eq("session_id", id)
+        .order("sku");
 
       if (error) throw error;
-
-      return data.map((row: any) => ({
-        id: row.id,
-        item_id: row.item_id,
-        sku: row.items?.sku || "",
-        item_name: row.items?.name || "",
-        systemQuantity: row.quantity,
-        counted_quantity: 0,
-        variance: 0,
-        variance_percentage: 0,
-        status: "pending",
-        notes: null,
-      }));
+      return data;
     },
-    enabled: !!id && !!currentSession,
+    enabled: !!id,
   });
 
+  // Lookup SKU in store_inventory (all stores)
   const lookupSku = async (sku: string) => {
     const { data, error } = await supabase
-      .from("items")
-      .select("id, sku, name")
+      .from("store_inventory")
+      .select("item_id, sku, quantity as systemQuantity")
       .eq("sku", sku)
       .maybeSingle();
 
     if (error) throw error;
     if (!data) return null;
 
-    // Lookup systemQuantity from store_inventory for current session's store
-    const { data: storeData } = await supabase
-      .from("store_inventory")
-      .select("quantity")
-      .eq("item_id", data.id)
-      .eq("store_id", currentSession?.store_id)
-      .maybeSingle();
-
     return {
-      id: data.id,
+      id: data.item_id,
       sku: data.sku,
-      name: data.name,
-      systemQuantity: storeData?.quantity || 0,
+      systemQuantity: data.systemQuantity,
     };
   };
 
@@ -123,15 +86,19 @@ const PhysicalInventoryDetail = () => {
             session_id: currentSession.id,
             item_id: itemDetails?.id || null,
             sku: item.sku,
-            item_name: itemDetails?.name || item.sku,
-            systemQuantity: itemDetails?.systemQuantity || 0,
+            item_name: item.name,
+            system_quantity: itemDetails?.systemQuantity || 0,
             counted_quantity: item.countedQuantity,
             status: "pending" as const,
           };
         }),
       );
 
-      await supabase.from("physical_inventory_counts").upsert(countsToInsert);
+      const { error } = await supabase
+        .from("physical_inventory_counts")
+        .insert(countsToInsert);
+
+      if (error) throw error;
 
       refetchCounts();
       setActiveTab("report");
@@ -141,7 +108,38 @@ const PhysicalInventoryDetail = () => {
     }
   };
 
-  const handleImportItems = async (items: any[]) => handleScanItems(items);
+  const handleImportItems = async (items: any[]) => {
+    if (!currentSession) return;
+
+    try {
+      const countsToInsert = await Promise.all(
+        items.map(async (item) => {
+          const itemDetails = await lookupSku(item.sku);
+          return {
+            session_id: currentSession.id,
+            item_id: itemDetails?.id || null,
+            sku: item.sku,
+            item_name: item.name || item.sku,
+            system_quantity: itemDetails?.systemQuantity || 0,
+            counted_quantity: item.countedQuantity,
+            status: "pending" as const,
+          };
+        }),
+      );
+
+      const { error } = await supabase
+        .from("physical_inventory_counts")
+        .insert(countsToInsert);
+
+      if (error) throw error;
+
+      refetchCounts();
+      setActiveTab("report");
+      toast.success("Items imported successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Error importing items");
+    }
+  };
 
   const handleUpdateCount = async (id: string, countedQuantity: number, notes: string) => {
     const { error } = await supabase
@@ -162,31 +160,41 @@ const PhysicalInventoryDetail = () => {
     if (!currentSession) return;
 
     try {
-      const countsToUpdate =
-        updateMode === "all"
-          ? counts
-          : counts.filter((c) => selectedForUpdate.has(c.id));
+      // Update inventory quantities based on selection
+      if (updateMode !== "none") {
+        const countsToUpdate = updateMode === "all" ? counts : counts.filter((c) => selectedForUpdate.has(c.id));
 
-      for (const count of countsToUpdate) {
-        if (!count.item_id) continue;
+        for (const count of countsToUpdate) {
+          if (!count.item_id) continue;
 
-        await supabase
-          .from("store_inventory")
-          .update({ quantity: count.counted_quantity })
-          .eq("item_id", count.item_id)
-          .eq("store_id", currentSession.store_id);
+          // Update store_inventory quantity
+          const { error: updateError } = await supabase
+            .from("store_inventory")
+            .update({ quantity: count.counted_quantity })
+            .eq("item_id", count.item_id);
 
-        await supabase
-          .from("physical_inventory_counts")
-          .update({ status: "approved" })
-          .eq("id", count.id);
+          if (updateError) throw updateError;
+
+          // Mark as approved
+          await supabase
+            .from("physical_inventory_counts")
+            .update({ status: "approved" })
+            .eq("id", count.id);
+        }
       }
 
-      await supabase
+      // Complete session
+      const { error: sessionError } = await supabase
         .from("physical_inventory_sessions")
-        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+        })
         .eq("id", currentSession.id);
 
+      if (sessionError) throw sessionError;
+
+      // Invalidate queries
       await invalidateInventoryData(queryClient);
       await queryClient.invalidateQueries({ queryKey: queryKeys.physicalInventory.all });
 
@@ -201,7 +209,9 @@ const PhysicalInventoryDetail = () => {
   if (sessionLoading) {
     return (
       <div className="p-8 flex items-center justify-center">
-        <p className="text-muted-foreground">Loading session...</p>
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading session...</p>
+        </div>
       </div>
     );
   }
@@ -213,15 +223,18 @@ const PhysicalInventoryDetail = () => {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Physical Inventory
         </Button>
+
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>Session Not Found</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              The session you're looking for doesn't exist.
+              The physical inventory session you're looking for doesn't exist or has been deleted.
             </p>
-            <Button onClick={() => navigate("/inventory/physical")}>View All Sessions</Button>
+            <Button onClick={() => navigate("/inventory/physical")}>
+              View All Sessions
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -230,6 +243,7 @@ const PhysicalInventoryDetail = () => {
 
   return (
     <div className="p-8 space-y-6">
+      {/* Header with Session Details */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => navigate("/inventory/physical")}>
@@ -243,23 +257,24 @@ const PhysicalInventoryDetail = () => {
             </div>
             <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
               <span>
-                {currentSession.store?.name || "No Store"} |{" "}
-                {format(new Date(currentSession.count_date), "MMM dd, yyyy")}
+                {currentSession.stores?.name || "No Store"} | {format(new Date(currentSession.count_date), "MMM dd, yyyy")}
               </span>
               {currentSession.responsible_person && <span>By: {currentSession.responsible_person}</span>}
-              {currentSession.count_type && (
-                <Badge variant="outline" className="capitalize">{currentSession.count_type} Count</Badge>
-              )}
+              {currentSession.count_type && <Badge variant="outline" className="capitalize">{currentSession.count_type} Count</Badge>}
             </div>
           </div>
         </div>
 
-        <Button onClick={handleCompleteSession} disabled={counts.length === 0 || currentSession.status === "completed"}>
+        <Button 
+          onClick={handleCompleteSession} 
+          disabled={counts.length === 0 || currentSession.status === 'completed'}
+        >
           <CheckCircle className="w-4 h-4 mr-2" />
           Complete Session
         </Button>
       </div>
 
+      {/* Progress Summary */}
       {counts.length > 0 && (
         <Card>
           <CardContent className="pt-6">
@@ -330,13 +345,12 @@ const PhysicalInventoryDetail = () => {
         </TabsContent>
       </Tabs>
 
+      {/* Complete Session Dialog */}
       <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Complete Physical Inventory Session</DialogTitle>
-            <DialogDescription>
-              Choose how to update system quantities based on counted values
-            </DialogDescription>
+            <DialogDescription>Choose how to update system quantities based on counted values</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -360,8 +374,11 @@ const PhysicalInventoryDetail = () => {
                       checked={selectedForUpdate.has(count.id)}
                       onCheckedChange={(checked) => {
                         const newSet = new Set(selectedForUpdate);
-                        if (checked) newSet.add(count.id);
-                        else newSet.delete(count.id);
+                        if (checked) {
+                          newSet.add(count.id);
+                        } else {
+                          newSet.delete(count.id);
+                        }
                         setSelectedForUpdate(newSet);
                       }}
                     />
