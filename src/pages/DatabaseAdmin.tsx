@@ -32,19 +32,26 @@ const SqlEditorComponent: React.FC = () => {
     setResults(null);
 
     try {
-      // NOTE: This requires the 'execute_raw_sql' RPC function in your Supabase DB.
-      // We cast 'supabase.rpc' to 'any' to bypass the TypeScript typing error temporarily.
+      // FIX: Use 'as any' to allow calling the custom RPC function 'execute_raw_sql'
       const { data, error: rpcError } = await (supabase.rpc as any)("execute_raw_sql", {
         sql_query: query,
       });
 
       if (rpcError) throw rpcError;
 
+      // The function 'execute_raw_sql' is expected to return a JSON object with 'data' or 'message'
       setResults(data);
       toast.success("Query executed successfully!");
     } catch (err: any) {
-      setError(`Error executing query: ${err.message}`);
-      toast.error(`Query Failed: ${err.message}`);
+      // If error is from RPC itself
+      if (err.message && err.message.includes("execute_raw_sql")) {
+        setError(`Error: RPC Function Missing or Incorrectly Defined. Check your Supabase SQL setup.`);
+        toast.error(`Query Failed: RPC Error`);
+      } else {
+        // If error is from the function output
+        setError(`Error executing query: ${err.message || "Unknown error"}`);
+        toast.error(`Query Failed: ${err.message || "Unknown error"}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -55,6 +62,7 @@ const SqlEditorComponent: React.FC = () => {
       if (data.length === 0) return "[] (0 rows affected)";
       return JSON.stringify(data, null, 2);
     }
+    // Handle the case where the RPC function returns a single object (like status/error)
     return JSON.stringify(data, null, 2);
   };
 
@@ -122,17 +130,17 @@ const TableViewerComponent: React.FC<TableViewerProps> = ({ refreshKey }) => {
   // NEW FUNCTION: Fetch all table and view names from the database schema
   const fetchTableNames = async () => {
     try {
-      // NOTE: This relies on a Supabase function 'get_schema_tables_and_views'
-      const { data, error } = await supabase.rpc("get_schema_tables_and_views");
+      // FIX 1: Use 'as any' to allow calling the custom RPC function
+      const { data, error } = await (supabase.rpc as any)("get_schema_tables_and_views");
 
       if (error) throw error;
 
+      // FIX 2: Check for null/undefined data and ensure it is an array before calling .map()
       const tableNames = (data || []).map((t: { table_name: string }) => t.table_name);
       setAvailableTables(tableNames.sort());
 
       // Set the first table in the list as the selected table if none is set
       if (tableNames.length > 0) {
-        // Only change selectedTable if it's currently undefined or not in the new list
         if (!selectedTable || !tableNames.includes(selectedTable)) {
           setSelectedTable(tableNames[0]);
         }
@@ -151,17 +159,16 @@ const TableViewerComponent: React.FC<TableViewerProps> = ({ refreshKey }) => {
     setColumns([]);
 
     try {
-      // FIX: Cast supabase to 'any' to allow the dynamic table name (string)
-      // instead of strictly typed table names (like "v_store_stock_levels").
+      // Use 'as any' to bypass the strictly typed table names
       const { data, error } = await (supabase as any).from(tableName).select().limit(50); // Limit to 50 rows for performance
 
       if (error) throw error;
 
-      if (data.length > 0) {
+      if (data && data.length > 0) {
         // Get column names from the keys of the first object
         setColumns(Object.keys(data[0]));
       }
-      setTableData(data);
+      setTableData(data || []);
     } catch (err: any) {
       console.error("Error fetching table data:", err);
       toast.error(`Failed to fetch data for ${tableName}: ${err.message}`);
@@ -280,12 +287,7 @@ const TableViewerComponent: React.FC<TableViewerProps> = ({ refreshKey }) => {
 
 const DatabaseAdmin: React.FC = () => {
   const [activeTab, setActiveTab] = useState("viewer");
-  const [refreshKey, setRefreshKey] = useState(0); // Key to force viewer refresh after editor runs
-
-  // Simple handler to trigger a viewer refresh after running a query in the editor
-  // const handleEditorAction = () => { // Removed, logic now in SQL Editor component for simplicity.
-  //     setRefreshKey(prev => prev + 1);
-  // }
+  const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <div className="space-y-6">
@@ -352,6 +354,7 @@ GRANT EXECUTE ON FUNCTION get_schema_tables_and_views() TO authenticated;
           <ScrollArea className="h-48 border rounded p-3 bg-gray-50 dark:bg-gray-800">
             <pre className="font-mono text-xs whitespace-pre-wrap">
               {`-- WARNING: This exposes raw SQL execution. Secure it properly.
+-- NOTE: The RETURN type should be adjusted based on your needs (e.g., SETOF JSONB, or JSONB if wrapping results)
 CREATE OR REPLACE FUNCTION execute_raw_sql(sql_query TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -359,11 +362,14 @@ AS $function$
 DECLARE
     result JSONB;
 BEGIN
-    EXECUTE sql_query INTO result;
-    RETURN jsonb_build_object('status', 'success', 'data', result);
+    -- The use of INTO result will attempt to cast the result of the EXECUTE to JSONB.
+    -- This works best for SELECT queries returning a single row or simple statement results.
+    EXECUTE 'SELECT COALESCE(jsonb_agg(t), ''[]''::jsonb) FROM (' || sql_query || ') t' INTO result;
+    RETURN result;
 EXCEPTION
     WHEN others THEN
-        RETURN jsonb_build_object('status', 'error', 'message', SQLERRM);
+        -- Return a standardized error structure
+        RETURN jsonb_build_object('error', TRUE, 'message', SQLERRM, 'detail', SQLSTATE);
 END;
 $function$;
 
@@ -371,6 +377,10 @@ GRANT EXECUTE ON FUNCTION execute_raw_sql(TEXT) TO authenticated;
 `}
             </pre>
           </ScrollArea>
+          <p className="text-red-600 font-semibold mt-3">
+            ⚠️ **IMPORTANT:** You must run the two SQL scripts above in your Supabase database editor for the
+            application to function correctly.
+          </p>
         </CardContent>
       </Card>
     </div>
