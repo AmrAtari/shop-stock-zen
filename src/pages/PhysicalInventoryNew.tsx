@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,374 +11,314 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, ArrowLeft, Save, PlayCircle, ChevronRight, ChevronLeft } from "lucide-react";
+import { ArrowLeft, Save, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+// Assuming this hook is available and provides store data
 import { useStores } from "@/hooks/usePhysicalInventorySessions";
-import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
-import { Item } from "@/types/database"; // Assuming this is your full Item type
-import { POItemSelector } from "@/components/POItemSelector";
-import { POItemImport } from "@/components/POItemImport";
-import { POBarcodeScanner } from "@/components/POBarcodeScanner";
 
-// Define a specific type for the fetched inventory items
-interface BasicInventoryItem {
-  id: string;
-  sku: string;
-  name: string;
-  unit?: string;
-  quantity: number;
-}
-
-// --- ITEM TYPE DEFINITION ---
-interface PIItem {
-  item_id: string;
-  sku: string;
-  itemName: string;
-  system_quantity: number;
-  counted_quantity: number;
-}
-
-// --- ZOD SCHEMA (UNCHANGED) ---
+// --- ZOD Schema ---
 const piSchema = z.object({
   countDate: z.string().min(1, "Count date is required"),
-  storeId: z.string().optional(),
+  // Adjusted storeId to be required for a count session
+  storeId: z.string().min(1, "Store is required"),
   countType: z.enum(["full", "partial", "cycle"]),
   responsiblePerson: z.string().min(1, "Responsible person is required"),
   department: z.string().optional(),
   purpose: z.string().optional(),
   locationFilter: z.string().optional(),
   expectedItems: z.string().optional(),
-  notes: z.string().optional(),
+  notes: z.string().optional(), // Added 'notes' to schema to match the field usage
 });
 
-type PIFormValues = z.infer<typeof piSchema>;
+type PhysicalInventoryFormData = z.infer<typeof piSchema>;
 
-const PhysicalInventoryNew = () => {
+// --- Component ---
+const PhysicalInventoryNew: React.FC = () => {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [piItems, setPIItems] = useState<PIItem[]>([]);
-  const { data: stores = [] } = useStores();
+  const { data: stores, isLoading: isLoadingStores } = useStores();
 
-  const { data: inventory = [] } = useQuery<BasicInventoryItem[]>({
-    queryKey: ["allInventoryItems"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("items").select("id, sku, name, unit, quantity").order("name");
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const form = useForm<PIFormValues>({
+  const form = useForm<PhysicalInventoryFormData>({
     resolver: zodResolver(piSchema),
     defaultValues: {
       countDate: new Date().toISOString().split("T")[0],
+      storeId: undefined, // Let Select handle initial state
       countType: "full",
       responsiblePerson: "",
       department: "",
       purpose: "",
       locationFilter: "",
+      expectedItems: "",
       notes: "",
     },
   });
 
-  // --- HANDLER FUNCTIONS FOR ITEMS ---
+  const { isSubmitting } = form.formState;
 
-  const lookupSkuForBarcode = async (sku: string) => {
-    const item = inventory.find((i) => i.sku === sku);
-    if (item) {
-      return {
-        name: item.name,
-        price: 0,
-        system_quantity: item.quantity || 0,
-        item_id: item.id,
-      };
-    }
-    return null;
-  };
+  const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
+    // Determine status based on the button clicked
+    const status = startCounting ? "Counting" : "Draft";
 
-  const handleAddItemsFromSelector = (selected: Array<{ item: Item; quantity: number }>) => {
-    const newItems: PIItem[] = selected.map(({ item }) => ({
-      item_id: item.id,
-      sku: item.sku,
-      itemName: item.name,
-      system_quantity: item.quantity || 0,
-      counted_quantity: 0,
-    }));
+    // Simple way to generate a session number (e.g., PI-YYYYMMDD-ID)
+    const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
-    const existingSkus = piItems.map((i) => i.sku);
-    const uniqueNewItems = newItems.filter((item) => !existingSkus.includes(item.sku));
+    const newSession = {
+      session_number,
+      store_id: data.storeId,
+      count_date: data.countDate,
+      count_type: data.countType,
+      responsible_person: data.responsiblePerson,
+      status: status,
+      notes: data.notes,
+      // Include other fields like department, purpose, etc. if needed in DB
+    };
 
-    setPIItems([...piItems, ...uniqueNewItems]);
-    toast.success(`Added ${uniqueNewItems.length} unique items to the count list.`);
-  };
-
-  const handleImportItems = (imported: any[]) => {
-    const newItems: PIItem[] = imported.map((item) => {
-      const inventoryItem = inventory.find((i) => i.sku === item.sku);
-
-      return {
-        item_id: inventoryItem?.id || item.sku,
-        sku: item.sku,
-        itemName: inventoryItem?.name || item.itemName || item.sku,
-        system_quantity: inventoryItem?.quantity || 0,
-        counted_quantity: 0,
-      };
-    });
-
-    const existingSkus = piItems.map((i) => i.sku);
-    const uniqueNewItems = newItems
-      .filter((item) => !existingSkus.includes(item.sku))
-      .filter((item) => inventory.some((i) => i.sku === item.sku));
-
-    setPIItems([...piItems, ...uniqueNewItems]);
-    toast.success(
-      `Imported ${uniqueNewItems.length} unique items. ${newItems.length - uniqueNewItems.length} items were duplicates or not found in inventory.`,
-    );
-  };
-
-  const handleBarcodeScans = (scannedItems: any[]) => {
-    const updatedItems = [...piItems];
-    let newCount = 0;
-
-    scannedItems.forEach((newItem) => {
-      const inventoryItem = inventory.find((i) => i.sku === newItem.sku);
-
-      const piItem: PIItem = {
-        item_id: inventoryItem?.id || newItem.sku,
-        sku: newItem.sku,
-        itemName: inventoryItem?.name || newItem.sku,
-        system_quantity: inventoryItem?.quantity || 0,
-        counted_quantity: newItem.quantity || 0,
-      };
-
-      const existingIndex = updatedItems.findIndex((i) => i.sku === piItem.sku);
-      if (existingIndex > -1) {
-        if (piItem.counted_quantity > 0) {
-          updatedItems[existingIndex].counted_quantity = piItem.counted_quantity;
-        }
-      } else {
-        updatedItems.push(piItem);
-        newCount++;
-      }
-    });
-
-    setPIItems(updatedItems);
-    toast.success(`Scanned and added/updated ${scannedItems.length} items. ${newCount} were unique new additions.`);
-  };
-
-  const handleRemoveItem = (sku: string) => {
-    setPIItems(piItems.filter((i) => i.sku !== sku));
-    toast.info(`${sku} removed from count list.`);
-  };
-
-  // FIX: Function definition is placed here to be correctly scoped and accessible (TS2304)
-  const createSessionAndCounts = async (values: PIFormValues, startCounting: boolean) => {
-    setIsSubmitting(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      if (piItems.length === 0) {
-        throw new Error("Cannot start session: The count list is empty. Please add items.");
-      }
-
-      // 1. Generate session number
-      const { data: sessionNumber, error: funcError } = await supabase.rpc("generate_pi_session_number");
-      if (funcError) throw funcError;
-
-      // 2. Create session
-      const { data, error } = await supabase
+      const { data: insertedData, error } = await supabase
         .from("physical_inventory_sessions")
-        .insert({
-          session_number: sessionNumber,
-          started_by: user.id,
-          status: startCounting ? "in_progress" : "draft",
-          store_id: values.storeId || null,
-          count_date: values.countDate,
-          count_type: values.countType,
-          responsible_person: values.responsiblePerson,
-          department: values.department || null,
-          purpose: values.purpose || null,
-          location_filter: values.locationFilter || null,
-          expected_items: piItems.length,
-          notes: values.notes || null,
-        })
-        .select()
+        .insert(newSession)
+        .select("id")
         .single();
 
       if (error) throw error;
 
-      const sessionId = data.id;
+      toast.success(`Inventory session ${session_number} created as ${status}.`);
 
-      // 3. Create initial physical_inventory_counts records
-      const initialCounts = piItems.map((item) => ({
-        session_id: sessionId,
-        item_id: item.item_id,
-        sku: item.sku,
-        item_name: item.itemName,
-        system_quantity: item.system_quantity,
-        counted_quantity: item.counted_quantity,
-        status: item.counted_quantity > 0 ? "counted" : "pending",
-        variance: item.counted_quantity - item.system_quantity,
-        variance_percentage: item.system_quantity
-          ? ((item.counted_quantity - item.system_quantity) / item.system_quantity) * 100
-          : 0,
-      }));
-
-      const { error: countError } = await supabase.from("physical_inventory_counts").upsert(initialCounts);
-
-      if (countError) {
-        console.error("Error inserting initial counts:", countError);
-      }
-
-      toast.success(
-        startCounting ? `Session ${data.session_number} started` : `Session ${data.session_number} saved as draft`,
-      );
-
+      // Navigate to the detail page for counting or back to the list
       if (startCounting) {
-        navigate(`/inventory/physical/${sessionId}`);
+        navigate(`/inventory/physical/${insertedData.id}`);
       } else {
-        navigate("/inventory/physical");
+        navigate(`/inventory/physical`);
       }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create session");
-    } finally {
-      setIsSubmitting(false);
+    } catch (err: any) {
+      console.error("Submission error:", err);
+      toast.error(`Failed to create session: ${err.message || "Unknown error"}`);
     }
   };
 
-  // --- RENDER LOGIC ---
-
   return (
-    <div className="p-8 space-y-6">
-      {/* Header */}
+    <div className="p-8 max-w-4xl mx-auto space-y-6">
+      <Button variant="ghost" onClick={() => navigate("/inventory/physical")}>
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back to Sessions
+      </Button>
+
       <h1 className="text-3xl font-bold">New Physical Inventory Count</h1>
-      <p className="text-muted-foreground">Define a new inventory count session.</p>
 
       <Form {...form}>
         <form className="space-y-6">
-          {/* STEP 1: Session Details */}
-          {step === 1 && (
-            <>
-              {/* Card 1: Session Details (omitted for brevity) */}
-              {/* Card 2: Count Scope (omitted for brevity) */}
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  onClick={async () => {
-                    const isValid = await form.trigger(["countDate", "countType", "responsiblePerson"]);
-                    if (isValid) {
-                      setStep(2);
-                    } else {
-                      toast.error("Please fill in all required fields for Step 1.");
-                    }
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Next: Add Items <ChevronRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
-            </>
-          )}
+          {/* General Details Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Session Details</CardTitle>
+              <CardDescription>Configure the basic parameters for this count session.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Count Date */}
+              <FormField
+                control={form.control}
+                name="countDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Count Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-          {/* STEP 2: Item Selection/Import/Review */}
-          {step === 2 && (
-            <>
-              {/* Section 3: Add Items */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>3. Items to Count ({piItems.length})</CardTitle>
-                  <CardDescription>Select the items to include in this physical count session.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Tabs defaultValue="manual" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
-                      <TabsTrigger value="manual">Manual Selection</TabsTrigger>
-                      <TabsTrigger value="import">Excel/Sheet Import</TabsTrigger>
-                      <TabsTrigger value="barcode">Barcode Scanner</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="manual" className="mt-4">
-                      <POItemSelector items={inventory as Item[]} onSelect={handleAddItemsFromSelector} />
-                    </TabsContent>
-                    <TabsContent value="import" className="mt-4">
-                      <POItemImport onImport={handleImportItems} existingSkus={inventory.map((i) => i.sku)} />
-                    </TabsContent>
-                    <TabsContent value="barcode" className="mt-4">
-                      <POBarcodeScanner onScan={handleBarcodeScans} onLookupSku={lookupSkuForBarcode} />
-                    </TabsContent>
-                  </Tabs>
+              {/* Responsible Person */}
+              <FormField
+                control={form.control}
+                name="responsiblePerson"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Responsible Person</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter count manager's name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                  {/* Summary Table */}
-                  <div className="mt-6 border rounded-lg">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[100px]">SKU</TableHead>
-                          <TableHead>Item Name</TableHead>
-                          <TableHead className="text-right">System Qty</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {piItems.map((item) => (
-                          <TableRow key={item.sku}>
-                            <TableCell className="font-medium">{item.sku}</TableCell>
-                            <TableCell>{item.itemName}</TableCell>
-                            <TableCell className="text-right">{item.system_quantity}</TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleRemoveItem(item.sku)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
+              {/* Store ID (Select) - Simplified to fix layout */}
+              <FormField
+                control={form.control}
+                name="storeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Store/Location</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoadingStores}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a store/location" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {/* Assuming stores is an array of { id: string, name: string } */}
+                        {stores?.map((store) => (
+                          <SelectItem key={store.id} value={store.id}>
+                            {store.name}
+                          </SelectItem>
                         ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-              {/* Action Buttons for Step 2 */}
-              <div className="flex items-center justify-between gap-3">
-                <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={isSubmitting}>
-                  <ChevronLeft className="w-4 h-4 mr-2" />
-                  Previous Step
-                </Button>
-                <div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={form.handleSubmit((data) => createSessionAndCounts(data, false))}
-                    disabled={isSubmitting || piItems.length === 0}
-                    className="mr-3"
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    Save as Draft
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={form.handleSubmit((data) => createSessionAndCounts(data, true))}
-                    disabled={isSubmitting || piItems.length === 0}
-                  >
-                    <PlayCircle className="w-4 h-4 mr-2" />
-                    Start Counting
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
+              {/* Department (Input) */}
+              <FormField
+                control={form.control}
+                name="department"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Department (Optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Electronics" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Count Type Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Scope and Type</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Count Type (Radio Group) - Simplified to fix layout */}
+              <FormField
+                control={form.control}
+                name="countType"
+                render={({ field }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel>Type of Count</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        className="flex flex-col space-y-1"
+                      >
+                        <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="full" />
+                          </FormControl>
+                          <FormLabel className="font-normal">Full Inventory (All Items)</FormLabel>
+                        </FormItem>
+                        <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="partial" />
+                          </FormControl>
+                          <FormLabel className="font-normal">Partial Count (Specific Areas/Items)</FormLabel>
+                        </FormItem>
+                        <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="cycle" />
+                          </FormControl>
+                          <FormLabel className="font-normal">Cycle Count (Ongoing Small Counts)</FormLabel>
+                        </FormItem>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Location Filter (Textarea) */}
+              <FormField
+                control={form.control}
+                name="locationFilter"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Location Filter (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="e.g., Aisle 5, Section B, Shelf 3..." {...field} rows={4} />
+                    </FormControl>
+                    <FormDescription>Specify locations to include/exclude for a partial count.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Purpose (Input) */}
+              <FormField
+                control={form.control}
+                name="purpose"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Purpose (Optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Annual audit, Damage check" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Notes Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FormField
+                control={form.control}
+                name="notes" // Using 'notes' to match the schema
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes/Instructions</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Special instructions or notes for this count session..."
+                        {...field}
+                        rows={4}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate("/inventory/physical")}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={form.handleSubmit((data) => handleSubmit(data, false))}
+              disabled={isSubmitting}
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save as Draft
+            </Button>
+            <Button
+              type="button"
+              onClick={form.handleSubmit((data) => handleSubmit(data, true))}
+              disabled={isSubmitting}
+            >
+              <PlayCircle className="w-4 h-4 mr-2" />
+              Start Counting
+            </Button>
+          </div>
         </form>
       </Form>
     </div>
