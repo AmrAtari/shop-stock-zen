@@ -1,14 +1,11 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Clock, Layers, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { queryKeys } from "@/hooks/queryKeys";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Loader2, Plus, Search } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-// Define a minimal type for the session list view
 interface InventorySession {
   id: string;
   session_number: string;
@@ -16,140 +13,122 @@ interface InventorySession {
   status: "Draft" | "Counting" | "Completed";
   created_at: string;
   responsible_person: string;
+  stores?: { name: string }[]; // ✅ handle array structure
 }
 
-// Function to fetch inventory sessions
-const fetchInventorySessions = async (): Promise<InventorySession[]> => {
-  // Select the necessary fields and join with the 'stores' table to get the store name.
-  const { data, error } = await supabase
-    .from("physical_inventory_sessions")
-    .select(
-      `
-            id,
-            session_number,
-            status,
-            created_at,
-            responsible_person,
-            stores ( name )
-        `,
-    )
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Error fetching sessions from Supabase:", error);
-    throw new Error("Failed to fetch physical inventory sessions.");
-  }
-
-  return data.map((session) => ({
-    id: session.id,
-    session_number: session.session_number,
-    status: session.status as InventorySession["status"],
-    created_at: new Date(session.created_at).toLocaleDateString(),
-    responsible_person: session.responsible_person,
-    // Safely access the store name from the join
-    store_name: session.stores?.name || "N/A",
-  }));
-};
-
-// Data Hook connected to React Query
-const useInventorySessionsQuery = () => {
-  return useQuery<InventorySession[]>({
-    // FIX: Correctly using 'all' property from queryKeys.physicalInventory
-    queryKey: queryKeys.physicalInventory.all,
-    queryFn: fetchInventorySessions,
-  });
-};
-
-const PhysicalInventoryList: React.FC = () => {
+export default function PhysicalInventoryList() {
+  const [sessions, setSessions] = useState<InventorySession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
-  const { data: sessions, isLoading, error } = useInventorySessionsQuery();
 
-  const getStatusVariant = (status: InventorySession["status"]) => {
-    switch (status) {
-      case "Draft":
-        return "secondary";
-      case "Counting":
-        return "default";
-      case "Completed":
-        return "outline";
-      default:
-        return "outline";
+  const fetchInventorySessions = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("physical_inventory_sessions")
+        .select(
+          `
+          id,
+          session_number,
+          status,
+          created_at,
+          responsible_person,
+          stores ( name )
+        `,
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const formattedData =
+        data?.map((session: any) => ({
+          id: session.id,
+          session_number: session.session_number,
+          store_name: Array.isArray(session.stores) ? session.stores[0]?.name || "N/A" : session.stores?.name || "N/A", // ✅ Fix
+          status: session.status,
+          created_at: session.created_at,
+          responsible_person: session.responsible_person,
+        })) || [];
+
+      setSessions(formattedData);
+    } catch (error) {
+      console.error("Error fetching inventory sessions:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (isLoading) {
-    return <div className="p-8">Loading physical inventory sessions...</div>;
-  }
+  useEffect(() => {
+    fetchInventorySessions();
+  }, []);
 
-  if (error) {
-    return <div className="p-8 text-red-500">Error: {error.message}</div>;
-  }
+  const filteredSessions = sessions.filter(
+    (s) =>
+      s.session_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.store_name.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Layers className="w-6 h-6" /> Physical Inventory Sessions
-        </h1>
-        <Button onClick={() => navigate("/inventory/physical/new")}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Count Session
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">Physical Inventory Sessions</h1>
+        <Button onClick={() => navigate("/physical-inventory/new")}>
+          <Plus className="mr-2 h-4 w-4" /> New Session
         </Button>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[120px]">Session #</TableHead>
-              <TableHead>Store</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Responsible Person</TableHead>
-              <TableHead>Created Date</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sessions?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-4 text-gray-500">
-                  No inventory sessions found. Click "New Count Session" to start one.
-                </TableCell>
-              </TableRow>
-            ) : (
-              sessions?.map((session) => (
-                <TableRow
-                  key={session.id}
-                  className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => navigate(`/inventory/physical/${session.id}`)}
-                >
-                  <TableCell className="font-mono text-sm">{session.session_number}</TableCell>
-                  <TableCell>{session.store_name}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(session.status)}>{session.status}</Badge>
-                  </TableCell>
-                  <TableCell>{session.responsible_person}</TableCell>
-                  <TableCell>{session.created_at}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent row click
-                        navigate(`/inventory/physical/${session.id}`);
-                      }}
-                    >
-                      <Clock className="w-4 h-4 mr-1" /> Open
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div className="flex items-center mb-4">
+        <Search className="mr-2 h-4 w-4 text-gray-500" />
+        <Input
+          placeholder="Search by session number or store name..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center py-10">
+          <Loader2 className="animate-spin mr-2 h-5 w-5" />
+          Loading sessions...
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {filteredSessions.length > 0 ? (
+            filteredSessions.map((session) => (
+              <Card
+                key={session.id}
+                className="p-4 cursor-pointer hover:bg-gray-50"
+                onClick={() => navigate(`/physical-inventory/${session.id}`)}
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-lg font-semibold">Session #{session.session_number}</h2>
+                    <p className="text-sm text-gray-500">Store: {session.store_name}</p>
+                    <p className="text-sm text-gray-500">Responsible: {session.responsible_person}</p>
+                  </div>
+                  <div className="text-right">
+                    <p
+                      className={`text-sm font-medium ${
+                        session.status === "Completed"
+                          ? "text-green-600"
+                          : session.status === "Counting"
+                            ? "text-blue-600"
+                            : "text-gray-600"
+                      }`}
+                    >
+                      {session.status}
+                    </p>
+                    <p className="text-xs text-gray-400">{new Date(session.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </Card>
+            ))
+          ) : (
+            <p className="text-gray-500 text-center py-10">No sessions found.</p>
+          )}
+        </div>
+      )}
     </div>
   );
-};
-
-export default PhysicalInventoryList;
+}
