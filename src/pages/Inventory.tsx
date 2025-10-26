@@ -13,7 +13,7 @@ import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
-import { Item } from "@/types/database"; // Use the real imported Item type
+import { Item } from "@/types/database";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
@@ -38,9 +38,7 @@ const useInventoryQuery = () => {
 
   useEffect(() => {
     const fetchItems = async () => {
-      // FIX 2 (TS2740): The database 'Item' type is complex. To satisfy the component
-      // while mocking data, we must use 'any' for the initial array and cast it
-      // to the component's required structure (ItemWithDetails).
+      // FIX: Using 'any' for the dummy array to bypass the complex and unknown Item type definition.
       const dummyItems: any[] = [
         {
           id: "1",
@@ -138,9 +136,9 @@ const InventoryNew: React.FC = () => {
     );
   }, [allInventory, searchTerm]);
 
-  // FIX 1 (TS2558/TS2339): Removed the explicit generic type argument from usePagination.
-  // This allows TypeScript to correctly infer the return type, resolving the error.
-  const { currentItems, ...pagination } = usePagination(filteredInventory, 10); // 10 items per page
+  // FIX 1 (TS2554 & TS2339): Explicitly defining the generic type for the hook
+  // and ensuring correct destructuring to resolve the pagination errors.
+  const { currentItems, ...pagination } = usePagination<ItemWithDetails>(filteredInventory, 10); // 10 items per page
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) {
@@ -298,7 +296,6 @@ const InventoryNew: React.FC = () => {
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          // item is of type ItemWithDetails, which satisfies the ProductDialogNew's 'item' prop
                           setEditingItem(item);
                           setDialogOpen(true);
                         }}
@@ -328,7 +325,6 @@ const InventoryNew: React.FC = () => {
         endIndex={pagination.endIndex}
       />
 
-      {/* NOTE: ProductDialogNew's 'item' prop type should be compatible with ItemWithDetails */}
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
