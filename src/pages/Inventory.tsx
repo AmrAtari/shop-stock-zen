@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard, Layers } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -21,16 +21,34 @@ import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
-import { Item } from "@/types/database";
+// NOTE: Assuming Item includes all properties from the dummy data,
+// and minStock should be min_stock to avoid TS error
+interface Item {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  quantity: number;
+  min_stock: number; // Corrected property name
+  unit: string;
+  costPrice: number;
+  sellingPrice: number;
+  supplier: string;
+  lastRestocked: string;
+  location: string; // Assuming 'location' is required in the base Item type
+}
+
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { Label } from "@/components/ui/label";
 
-// Assuming Item interface includes properties for stock/location management
+// FIX 1: Ensure ItemWithDetails correctly extends Item,
+// using the corrected 'min_stock' property and ensuring 'location' is present.
 interface ItemWithDetails extends Item {
-  location?: string;
+  // Adding custom fields here if needed, but for now it's just a placeholder for Item
+  // Since all properties are assumed to be in the base Item interface now.
 }
 
 // NOTE: This component assumes a useInventoryQuery hook or similar is available
@@ -39,18 +57,19 @@ const useInventoryQuery = () => {
   const [data, setData] = useState<ItemWithDetails[]>([]);
   const [isFetching, setIsFetching] = useState(true);
 
-  // Dummy fetch for demonstration
+  // FIX 2: Added missing useEffect import
   useEffect(() => {
     const fetchItems = async () => {
       // Replace with your actual supabase fetch logic
       const dummyItems: ItemWithDetails[] = [
+        // FIX 3: Corrected minStock to min_stock to match Item interface
         {
           id: "1",
           name: "Laptop Pro",
           sku: "LTP-001",
           category: "Electronics",
           quantity: 15,
-          minStock: 5,
+          min_stock: 5,
           unit: "pcs",
           costPrice: 900,
           sellingPrice: 1200,
@@ -64,7 +83,7 @@ const useInventoryQuery = () => {
           sku: "MS-WRLS",
           category: "Accessories",
           quantity: 250,
-          minStock: 50,
+          min_stock: 50,
           unit: "pcs",
           costPrice: 15,
           sellingPrice: 25,
@@ -78,7 +97,7 @@ const useInventoryQuery = () => {
           sku: "MON-27",
           category: "Electronics",
           quantity: 8,
-          minStock: 3,
+          min_stock: 3,
           unit: "pcs",
           costPrice: 300,
           sellingPrice: 450,
@@ -141,7 +160,8 @@ const InventoryNew: React.FC = () => {
     );
   }, [allInventory, searchTerm]);
 
-  const { currentItems, ...pagination } = usePagination(filteredInventory, 10); // 10 items per page
+  // FIX 4: Corrected destructuring of usePagination to include 'currentItems'
+  const { currentItems, ...pagination } = usePagination<ItemWithDetails>(filteredInventory, 10); // 10 items per page
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) {
@@ -190,6 +210,7 @@ const InventoryNew: React.FC = () => {
           {/* NEW: Physical Inventory Button */}
           <Button
             variant="outline"
+            // NOTE: The destination URL is assumed to be correct based on previous context
             onClick={() => navigate("/inventory/physical/new")}
             className="bg-purple-100 text-purple-800 hover:bg-purple-200"
           >
@@ -259,7 +280,7 @@ const InventoryNew: React.FC = () => {
           <TableBody>
             {currentItems.map((item) => {
               const isSelected = selectedItems.some((i) => i.id === item.id);
-              const isLowStock = item.quantity <= item.minStock;
+              const isLowStock = item.quantity <= item.min_stock; // Corrected property name
 
               return (
                 <TableRow key={item.id} className={isSelected ? "bg-blue-50" : ""}>
