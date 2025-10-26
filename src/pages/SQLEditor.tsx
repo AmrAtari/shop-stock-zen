@@ -26,36 +26,33 @@ const SQLEditor: React.FC = () => {
     setResults(null);
 
     try {
-      // FIX: Use one of the existing, typed RPC functions from the error list 
-      // ('create_attribute_table') to execute the query as a string argument.
-      // This is a common workaround when custom RPCs aren't in the type definition.
-      const { data, error: rpcError } = await (supabase.rpc as any)('create_attribute_table', { 
-          // We assume 'create_attribute_table' takes a string argument or we cast 'supabase.rpc' as any to bypass the strict type check.
-          // Since we don't know the exact arguments of create_attribute_table, the safest approach is to use the dedicated 'rpc' function that should be created.
-          // Since that failed, we must revert to a direct SQL execution IF your client library supports it, or stick to the RPC but use 'AS ANY' to bypass TS.
-          // Let's stick to the RPC name but use the SQL we want.
-          // The query to find the status: SELECT condef FROM pg_constraint WHERE conname = 'physical_inventory_sessions_status_check';
-          // We will use the SQL text as the argument name is highly likely to be ignored in the database if we run the query above.
+      // NOTE ON TYPING: We use the existing typed function 'create_attribute_table'
+      // but cast 'supabase.rpc' to `any` to bypass the TypeScript error until types are regenerated.
+      // This is a common pattern in development when the database is ahead of the local types.
 
-          // Best guess at the argument name for `create_attribute_table`
-          name: query // Overloading the 'name' argument of create_attribute_table with our SQL query
+      const { data, error: rpcError } = await (supabase.rpc as any)("execute_raw_sql", {
+        // Argument name is irrelevant here; we pass the query string.
+        sql_query: query,
       });
-      
+
       if (rpcError) throw rpcError;
-      
+
       setResults(data);
       toast.success("Query executed successfully!");
-
     } catch (err: any) {
       // Special handling for the original constraint error
-      if (err.message && err.message.includes('violates check constraint')) {
+      if (err.message && err.message.includes("violates check constraint")) {
         const match = err.message.match(/"([^"]+)"/);
-        const constraintName = match ? match[1] : 'Unknown';
+        const constraintName = match ? match[1] : "Unknown";
         setError(`Database Error: ${err.message}. Constraint name: ${constraintName}.`);
         toast.error(`Constraint Violated: ${constraintName}`);
 
-        if (query.includes('physical_inventory_sessions')) {
-             setError(prev => prev + "\n\nTo find the correct status: Run the query: SELECT condef FROM pg_constraint WHERE conname = 'physical_inventory_sessions_status_check';");
+        if (query.includes("physical_inventory_sessions")) {
+          setError(
+            (prev) =>
+              prev +
+              "\n\nTo find the correct status: Run the query: SELECT condef FROM pg_constraint WHERE conname = 'physical_inventory_sessions_status_check';",
+          );
         }
       } else {
         setError(`Error executing query: ${err.message}`);
@@ -65,15 +62,15 @@ const SQLEditor: React.FC = () => {
       setLoading(false);
     }
   };
-  
+
   // Helper to format results nicely
   const formatResults = (data: any) => {
     if (Array.isArray(data)) {
-        if (data.length === 0) return "[] (0 rows affected)";
-        return JSON.stringify(data, null, 2);
+      if (data.length === 0) return "[] (0 rows affected)";
+      return JSON.stringify(data, null, 2);
     }
     return JSON.stringify(data, null, 2);
-  }
+  };
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6">
@@ -99,11 +96,11 @@ const SQLEditor: React.FC = () => {
             <Play className="w-4 h-4 mr-2" />
             {loading ? "Executing..." : "Execute Query"}
           </Button>
-          
+
           <div className="text-sm border-t pt-4 space-y-2">
-             <h3 className="font-semibold flex items-center space-x-2">
-                <Code className="w-4 h-4" />
-                <span>Results:</span>
+            <h3 className="font-semibold flex items-center space-x-2">
+              <Code className="w-4 h-4" />
+              <span>Results:</span>
             </h3>
             {error && (
               <div className="bg-red-100 text-red-700 p-3 rounded flex items-start space-x-2">
@@ -117,24 +114,25 @@ const SQLEditor: React.FC = () => {
               </ScrollArea>
             )}
             {!error && results === null && !loading && (
-                 <p className="text-muted-foreground italic">Execute a query to see the results here.</p>
+              <p className="text-muted-foreground italic">Execute a query to see the results here.</p>
             )}
           </div>
         </CardContent>
       </Card>
-      
+
       <Card>
-          <CardHeader>
-              <CardTitle>Important Setup for Supabase</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-3">
-              <p>
-                  Since the new RPC was not in your types, you still need to create the function in your database for the editor to work. Run this SQL in your Supabase SQL editor:
-              </p>
-              <h4 className="font-semibold mt-3">PostgreSQL Function (`execute_raw_sql`)</h4>
-              <ScrollArea className="h-48 border rounded p-3 bg-gray-50 dark:bg-gray-800">
-                  <pre className="font-mono text-xs whitespace-pre-wrap">
-                      {`CREATE OR REPLACE FUNCTION execute_raw_sql(sql_query TEXT)
+        <CardHeader>
+          <CardTitle>Important Setup for Supabase</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-3">
+          <p>
+            Since the RPC function **`execute_raw_sql`** is not in your types, you **must** create it in your Supabase
+            database first for the editor to work. Copy and run this SQL in your Supabase SQL editor:
+          </p>
+          <h4 className="font-semibold mt-3">PostgreSQL Function (`execute_raw_sql`)</h4>
+          <ScrollArea className="h-48 border rounded p-3 bg-gray-50 dark:bg-gray-800">
+            <pre className="font-mono text-xs whitespace-pre-wrap">
+              {`CREATE OR REPLACE FUNCTION execute_raw_sql(sql_query TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
 AS $function$
@@ -151,13 +149,16 @@ $function$;
 
 GRANT EXECUTE ON FUNCTION execute_raw_sql(TEXT) TO authenticated;
 `}
-                  </pre>
-              </ScrollArea>
-              <p className="font-bold text-red-600 flex items-center space-x-1">
-                 <AlertTriangle className="w-4 h-4" /> 
-                 <span>After running the SQL above, you will need to **regenerate your Supabase TypeScript types** (e.g., `npx supabase gen types typescript --local > src/types/database.ts`) for the strict typing error to go away fully.</span>
-              </p>
-          </CardContent>
+            </pre>
+          </ScrollArea>
+          <p className="font-bold text-red-600 flex items-center space-x-1">
+            <AlertTriangle className="w-4 h-4" />
+            <span>
+              After running the SQL above, the editor should function. If you encounter the TypeScript error again
+              later, you should regenerate your local Supabase types.
+            </span>
+          </p>
+        </CardContent>
       </Card>
     </div>
   );
