@@ -20,7 +20,6 @@ import { useStores } from "@/hooks/usePhysicalInventorySessions";
 // --- ZOD Schema ---
 const piSchema = z.object({
   countDate: z.string().min(1, "Count date is required"),
-  // Adjusted storeId to be required for a count session
   storeId: z.string().min(1, "Store is required"),
   countType: z.enum(["full", "partial", "cycle"]),
   responsiblePerson: z.string().min(1, "Responsible person is required"),
@@ -56,7 +55,8 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    const status = startCounting ? "Counting" : "Draft";
+    // FIX: Changed 'Counting' to 'Active' to comply with potential CHECK constraint.
+    const status = startCounting ? "Active" : "Draft";
 
     // Simple way to generate a session number (e.g., PI-YYYYMMDD-ID)
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
@@ -67,6 +67,7 @@ const PhysicalInventoryNew: React.FC = () => {
       count_date: data.countDate,
       count_type: data.countType,
       responsible_person: data.responsiblePerson,
+      // Using the corrected status
       status: status,
       notes: data.notes,
       department: data.department,
@@ -92,7 +93,14 @@ const PhysicalInventoryNew: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Submission error:", err);
-      toast.error(`Failed to create session: ${err.message || "Unknown error"}`);
+      // The error message is very specific, so we can suggest the fix here.
+      if (err.message.includes("violates check constraint")) {
+        toast.error(
+          "Failed to create session. Check the database's allowed values for the 'status' column. Status 'Active' might not be allowed.",
+        );
+      } else {
+        toast.error(`Failed to create session: ${err.message || "Unknown error"}`);
+      }
     }
   };
 
