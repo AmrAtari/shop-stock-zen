@@ -1,295 +1,73 @@
-import React from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+export interface InventoryItem {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  quantity: number;
+  minStock: number;
+  unit: string;
+  costPrice: number;
+  sellingPrice: number;
+  supplier: string;
+  lastRestocked: string;
+  location: string;
+}
 
-// Pages
-import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import Inventory from "./pages/Inventory";
-import Alerts from "./pages/Alerts";
-import Reports from "./pages/Reports";
-import PurchaseOrders from "./pages/PurchaseOrders";
-import PurchaseOrderNew from "./pages/PurchaseOrderNew";
-import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
-import Stores from "./pages/Stores";
-import Configuration from "./pages/Configuration";
-import Duplicates from "./pages/Duplicates";
-import Transfers from "./pages/Transfers";
-import TransferDetail from "./pages/TransferDetail";
-import PhysicalInventory from "./pages/PhysicalInventory";
-import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
-import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
-import Notifications from "./pages/Notifications";
-import NotFound from "./pages/NotFound";
-import AIReports from "./pages/AIReports";
+export interface StockAdjustment {
+  id: string;
+  itemId: string;
+  itemName: string;
+  previousQty: number;
+  newQty: number;
+  adjustment: number;
+  reason: string;
+  date: string;
+  user: string;
+}
 
-// POS
-import POSHome from "./pages/POS/POSHome";
-import POSReceipts from "./pages/POS/POSReceipts";
-import POSRefunds from "./pages/POS/POSRefunds";
-import ClosingCash from "./pages/POS/ClosingCash";
-import { POSProvider } from "./pages/POS/POSContext";
+export interface RealTimeStock {
+  item_id: string;
+  location_id: string | null;
+  current_stock: number;
+  item_name: string;
+  location_name: string;
+  sku: string;
+}
 
-// Layout & ProtectedRoute
-import Layout from "./components/Layout";
-import ProtectedRoute from "./components/ProtectedRoute";
+export interface InventoryMovement {
+  transfer_id: string;
+  transaction_date: string;
+  item_id: string;
+  item_name: string;
+  quantity: number;
+  from_location: string;
+  to_location: string;
+  movement_type: "INBOUND" | "OUTBOUND";
+  status: string;
+  transfer_number: string;
+}
 
-const queryClient = new QueryClient();
+// Physical Inventory Types
+export interface PhysicalInventorySession {
+  id: string;
+  store_id: string;
+  store_name: string;
+  session_number: string;
+  created_at: string;
+}
 
-const App: React.FC = () => {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            {/* Public Auth */}
-            <Route path="/auth" element={<Auth />} />
+export type PhysicalInventoryStatus = "pending" | "approved" | "rejected";
 
-            {/* POS Routes */}
-            <Route
-              path="/pos/*"
-              element={
-                <POSProvider>
-                  <Routes>
-                    <Route
-                      path=""
-                      element={
-                        <ProtectedRoute>
-                          <POSHome />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="receipts"
-                      element={
-                        <ProtectedRoute>
-                          <POSReceipts />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="refunds"
-                      element={
-                        <ProtectedRoute>
-                          <POSRefunds />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="closing"
-                      element={
-                        <ProtectedRoute>
-                          <ClosingCash />
-                        </ProtectedRoute>
-                      }
-                    />
-                  </Routes>
-                </POSProvider>
-              }
-            />
-
-            {/* Main App Routes with Layout */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Dashboard />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/ai-reports"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <AIReports />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inventory"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Inventory />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inventory/physical"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PhysicalInventory />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inventory/physical/new"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PhysicalInventoryNew />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inventory/physical/:id"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PhysicalInventoryDetail />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Purchases */}
-            <Route
-              path="/purchase-orders"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PurchaseOrders />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/purchase-orders/new"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PurchaseOrderNew />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/purchase-orders/:id"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PurchaseOrderDetail />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/purchase-orders/:id/edit"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PurchaseOrderNew />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Transfers */}
-            <Route
-              path="/transfers"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Transfers />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/transfers/:id"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <TransferDetail />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Notifications / Approvals */}
-            <Route
-              path="/approvals"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Notifications />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Misc Pages */}
-            <Route
-              path="/alerts"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Alerts />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Reports />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/stores"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Stores />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/duplicates"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Duplicates />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/configuration"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Configuration />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Fallback */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-};
-
-export default App;
+export interface PhysicalInventoryCount {
+  id?: string;
+  session_id: string;
+  item_id: string;
+  sku: string;
+  item_name: string;
+  system_quantity: number;
+  counted_quantity: number;
+  status: PhysicalInventoryStatus;
+  notes?: string;
+  variance?: number;
+  variance_percentage?: number;
+}
