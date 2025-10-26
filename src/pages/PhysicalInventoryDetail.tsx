@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { FileDown, CheckCircle, Save } from "lucide-react";
-import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
 
-// Local type for inventory count items
+// --- TYPES ---
 interface LocalPhysicalInventoryCount
   extends Omit<PhysicalInventoryCount, "status" | "variance" | "variance_percentage"> {
   system_quantity: number;
@@ -16,20 +16,22 @@ interface LocalPhysicalInventoryCount
   status: "pending" | "counted";
 }
 
-// Session type including joined store name
 interface SessionWithStore extends PhysicalInventorySession {
   store_name: string;
+  status: "draft" | "in_progress" | "completed";
 }
 
+// --- COMPONENT ---
 const PhysicalInventoryDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
   const [session, setSession] = useState<SessionWithStore | null>(null);
   const [counts, setCounts] = useState<LocalPhysicalInventoryCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
-  // Fetch session details including store name
+  // --- FETCH SESSION ---
   const fetchSession = async () => {
     try {
       const { data, error } = await supabase
@@ -42,7 +44,8 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       setSession({
         ...data,
-        store_name: data.stores?.name || "N/A",
+        store_name: data.stores?.[0]?.name || "N/A",
+        status: data.status as "draft" | "in_progress" | "completed",
       } as SessionWithStore);
     } catch (err: any) {
       console.error("Error fetching session:", err.message);
@@ -50,12 +53,12 @@ const PhysicalInventoryDetail: React.FC = () => {
     }
   };
 
-  // Fetch inventory counts for this session
+  // --- FETCH COUNTS ---
   const fetchCounts = async () => {
     if (!session?.id || !session.store_id) return;
     setIsLoading(true);
+
     try {
-      // Check existing counts
       const { data: existingCounts, error: existingError } = await supabase
         .from("physical_inventory_counts")
         .select("*")
@@ -64,17 +67,16 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       if (existingError) throw existingError;
 
-      if (existingCounts && existingCounts.length > 0) {
+      if (existingCounts?.length) {
         setCounts(
           existingCounts.map((c) => ({
             ...c,
             status: c.counted_quantity > 0 ? "counted" : "pending",
-          })),
+          })) as LocalPhysicalInventoryCount[],
         );
         return;
       }
 
-      // If no counts exist, fetch all store inventory
       const { data: inventoryData, error: inventoryError } = await supabase
         .from("store_inventory")
         .select("item_id, quantity, items(name, sku)")
@@ -82,26 +84,26 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       if (inventoryError) throw inventoryError;
 
-      const mappedCounts: LocalPhysicalInventoryCount[] = (inventoryData || []).map((item: any) => ({
+      const countsData: LocalPhysicalInventoryCount[] = inventoryData.map((item: any) => ({
         session_id: session.id,
         item_id: item.item_id,
         sku: item.items?.sku || item.item_id,
         item_name: item.items?.name || "N/A",
         system_quantity: item.quantity || 0,
         counted_quantity: 0,
+        status: "pending",
         variance: 0,
         variance_percentage: 0,
-        status: "pending",
       }));
 
-      setCounts(mappedCounts);
+      setCounts(countsData);
 
-      if (mappedCounts.length === 0) {
+      if (countsData.length === 0) {
         toast.info("No inventory items found for this store.");
       }
     } catch (err: any) {
-      console.error("Error fetching counts:", err.message);
-      toast.error("Failed to load inventory counts.");
+      console.error("Error fetching inventory counts:", err.message);
+      toast.error("Failed to load inventory list.");
     } finally {
       setIsLoading(false);
     }
@@ -115,19 +117,20 @@ const PhysicalInventoryDetail: React.FC = () => {
     if (session) fetchCounts();
   }, [session]);
 
-  // --- Handlers ---
+  // --- HANDLERS ---
   const handleCountChange = (itemId: string, counted: number) => {
     const finalCount = Math.max(0, counted);
+
     setCounts((prev) =>
       prev.map((c) =>
         c.item_id === itemId
-          ? {
+          ? ({
               ...c,
               counted_quantity: finalCount,
               variance: finalCount - c.system_quantity,
               variance_percentage: c.system_quantity ? ((finalCount - c.system_quantity) / c.system_quantity) * 100 : 0,
               status: finalCount > 0 ? "counted" : "pending",
-            }
+            } as LocalPhysicalInventoryCount)
           : c,
       ),
     );
@@ -166,14 +169,20 @@ const PhysicalInventoryDetail: React.FC = () => {
   const submitInventoryChanges = async () => {
     if (!session || isFinalizing || session.status === "completed") return;
 
-    if (!window.confirm("Finalize this count? Stock levels will be permanently updated.")) return;
+    if (!window.confirm("Are you sure you want to FINALIZE this count?")) return;
 
     setIsFinalizing(true);
 
+    const updates = counts.filter((c) => c.status === "counted" || c.id);
+
+    if (updates.length === 0) {
+      toast.warning("No items counted to finalize.");
+      setIsFinalizing(false);
+      return;
+    }
+
     try {
       await saveCounts();
-
-      const updates = counts.filter((c) => c.status === "counted" || c.id);
 
       const inventoryUpdates = updates.map((c) => ({
         item_id: c.item_id,
@@ -195,7 +204,7 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       if (sessionError) throw sessionError;
 
-      toast.success("Inventory finalized successfully!");
+      toast.success("Inventory finalized!");
       await fetchSession();
     } catch (err: any) {
       console.error("Finalization failed:", err.message);
@@ -205,12 +214,17 @@ const PhysicalInventoryDetail: React.FC = () => {
     }
   };
 
+  const exportResults = () => {
+    toast.info("Export not implemented.");
+  };
+
+  // --- SUMMARY ---
   const summary = useMemo(() => {
     const totalSystemQty = counts.reduce((sum, c) => sum + c.system_quantity, 0);
     const totalCountedQty = counts.reduce((sum, c) => sum + c.counted_quantity, 0);
     const totalVariance = totalCountedQty - totalSystemQty;
     const totalVariancePercentage = totalSystemQty ? (totalVariance / totalSystemQty) * 100 : 0;
-    const countedItems = counts.filter((c) => c.counted_quantity !== 0).length;
+    const countedItems = counts.filter((c) => c.counted_quantity > 0).length;
 
     return {
       totalSystemQty,
@@ -222,8 +236,11 @@ const PhysicalInventoryDetail: React.FC = () => {
     };
   }, [counts]);
 
+  const isCompleted = session?.status === "completed";
+
   if (isLoading) return <div className="p-4">Loading inventory counts...</div>;
 
+  // --- RENDER ---
   return (
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-center mb-4">
@@ -232,19 +249,15 @@ const PhysicalInventoryDetail: React.FC = () => {
         </h1>
         <span
           className={`inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full ${
-            session?.status === "completed" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+            isCompleted ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
           }`}
         >
-          {session?.status === "completed" ? (
-            <CheckCircle className="w-4 h-4 mr-1" />
-          ) : (
-            <Save className="w-4 h-4 mr-1" />
-          )}
-          {session?.status === "completed" ? "Completed" : "In Progress"}
+          {isCompleted ? <CheckCircle className="w-4 h-4 mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+          {isCompleted ? "Completed" : "In Progress"}
         </span>
       </div>
 
-      {/* Summary */}
+      {/* Summary Card */}
       <div className="grid grid-cols-4 gap-4 p-4 bg-muted rounded-lg shadow-sm">
         <div className="text-center p-2 border-r">
           <div className="text-xl font-bold">{summary.totalItems}</div>
@@ -256,7 +269,13 @@ const PhysicalInventoryDetail: React.FC = () => {
         </div>
         <div className="text-center p-2 border-r">
           <div
-            className={`text-xl font-bold ${summary.totalVariance > 0 ? "text-green-600" : summary.totalVariance < 0 ? "text-red-600" : "text-gray-700"}`}
+            className={`text-xl font-bold ${
+              summary.totalVariance > 0
+                ? "text-green-600"
+                : summary.totalVariance < 0
+                  ? "text-red-600"
+                  : "text-gray-700"
+            }`}
           >
             {summary.totalVariance > 0 ? "+" : ""}
             {summary.totalVariance}
@@ -273,7 +292,7 @@ const PhysicalInventoryDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Counts Table */}
+      {/* Table */}
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full border-collapse">
           <thead>
@@ -297,9 +316,9 @@ const PhysicalInventoryDetail: React.FC = () => {
                     type="number"
                     min={0}
                     value={item.counted_quantity}
-                    disabled={session?.status === "completed"}
                     onChange={(e) => handleCountChange(item.item_id, Number(e.target.value))}
-                    className={`border p-1 w-24 text-right ${session?.status === "completed" ? "bg-gray-100 cursor-not-allowed" : "border-gray-300"}`}
+                    className={`border p-1 w-24 text-right ${isCompleted ? "bg-gray-100 cursor-not-allowed" : "border-gray-300"}`}
+                    disabled={isCompleted}
                   />
                 </td>
                 <td
@@ -316,34 +335,29 @@ const PhysicalInventoryDetail: React.FC = () => {
             ))}
           </tbody>
         </table>
-        {counts.length === 0 && !isLoading && (
-          <div className="p-4 text-center text-gray-500">No inventory items found for this store.</div>
-        )}
+        {counts.length === 0 && <div className="p-4 text-center text-gray-500">No inventory items found.</div>}
       </div>
 
       {/* Actions */}
       <div className="flex justify-between items-center pt-4">
-        <Button variant="outline" onClick={() => toast.info("Export not implemented")}>
-          <FileDown className="w-4 h-4 mr-2" />
-          Export Results
+        <Button variant="outline" onClick={exportResults} disabled={isFinalizing || counts.length === 0}>
+          <FileDown className="w-4 h-4 mr-2" /> Export Results (CSV)
         </Button>
+
         <div>
-          {session?.status !== "completed" && (
-            <Button variant="secondary" className="mr-3" onClick={saveCounts}>
-              <Save className="w-4 h-4 mr-2" />
-              Save Counts (Draft)
+          {!isCompleted && (
+            <Button onClick={saveCounts} disabled={isFinalizing || isLoading} variant="secondary" className="mr-3">
+              <Save className="w-4 h-4 mr-2" /> Save Counts (Draft)
             </Button>
           )}
           <Button
             onClick={submitInventoryChanges}
-            disabled={isFinalizing || session?.status === "completed"}
-            className={
-              session?.status === "completed" ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"
-            }
+            disabled={isFinalizing || isLoading || isCompleted}
+            className={isCompleted ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}
           >
             {isFinalizing ? (
               "Finalizing..."
-            ) : session?.status === "completed" ? (
+            ) : isCompleted ? (
               <>
                 <CheckCircle className="w-4 h-4 mr-2" /> Finalized
               </>
@@ -353,6 +367,13 @@ const PhysicalInventoryDetail: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {isCompleted && (
+        <div className="flex items-center p-4 text-green-800 bg-green-50 rounded-lg">
+          <CheckCircle className="w-5 h-5 mr-2" />
+          This session is complete. Inventory stock levels have been permanently updated.
+        </div>
+      )}
     </div>
   );
 };
