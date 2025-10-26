@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,13 @@ interface SessionWithStatus extends PhysicalInventorySession {
 
 const PhysicalInventoryDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  // FIX 2: Use the new local type for the state
+  // Use the new local type for the state
   const [counts, setCounts] = useState<LocalPhysicalInventoryCount[]>([]);
   const [session, setSession] = useState<SessionWithStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  // NOTE: useNavigate and all other imports are assumed to be used later in the full component
+  const navigate = useNavigate();
 
   // --- FETCHING LOGIC ---
 
@@ -59,7 +61,7 @@ const PhysicalInventoryDetail: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // 1. Check for existing counts for this session
+      // 1. Check for existing counts for this session (This ensures existing data is displayed)
       const { data: existingCounts, error: existingError } = await supabase
         .from("physical_inventory_counts")
         .select("*")
@@ -75,11 +77,11 @@ const PhysicalInventoryDetail: React.FC = () => {
         return;
       }
 
-      // 2. If no existing counts found, fetch all store inventory
+      // 2. If no existing counts found (e.g., brand new session), fetch all store inventory
       const { data: inventoryData, error: inventoryError } = await supabase
         .from("store_inventory")
         // Assuming we join to items table to get item name
-        .select("item_id, sku, quantity, items(name)")
+        .select("item_id, quantity, items(name, sku)")
         .eq("store_id", session.store_id);
 
       if (inventoryError) throw inventoryError;
@@ -88,8 +90,8 @@ const PhysicalInventoryDetail: React.FC = () => {
       const countsData: LocalPhysicalInventoryCount[] = inventoryData.map((item: any) => ({
         session_id: session.id,
         item_id: item.item_id,
-        sku: item.sku,
-        item_name: item.items?.name || item.sku,
+        sku: item.items?.sku || item.item_id, // Use sku from items join or fallback
+        item_name: item.items?.name || "N/A",
         system_quantity: item.quantity || 0,
         counted_quantity: 0,
         status: "pending",
@@ -135,8 +137,6 @@ const PhysicalInventoryDetail: React.FC = () => {
   const handleCountChange = (itemId: string, counted: number) => {
     const finalCount = Math.max(0, counted);
 
-    // FIX 3: The map function now returns the correct LocalPhysicalInventoryCount type,
-    // resolving the type incompatibility with the state.
     setCounts((prev) =>
       prev.map((c) =>
         c.item_id === itemId
@@ -146,7 +146,7 @@ const PhysicalInventoryDetail: React.FC = () => {
               variance: finalCount - c.system_quantity,
               variance_percentage: c.system_quantity ? ((finalCount - c.system_quantity) / c.system_quantity) * 100 : 0,
               status: finalCount > 0 ? "counted" : "pending",
-            } as LocalPhysicalInventoryCount) // Explicit cast helps the type checker
+            } as LocalPhysicalInventoryCount)
           : c,
       ),
     );
@@ -162,33 +162,38 @@ const PhysicalInventoryDetail: React.FC = () => {
         item_name: c.item_name,
         system_quantity: c.system_quantity,
         counted_quantity: c.counted_quantity,
+        // Status is mapped back to the required 'pending' | 'counted' type before saving
         status: c.counted_quantity > 0 ? "counted" : "pending",
         variance: c.variance,
         variance_percentage: c.variance_percentage,
       }));
 
     if (countsToSave.length === 0) {
-      console.log("No counts to save.");
+      toast.info("No counts to save.");
       return;
     }
 
     try {
+      // NOTE: Using upsert to insert new counts or update existing ones
       const { error } = await supabase.from("physical_inventory_counts").upsert(countsToSave);
       if (error) throw error;
 
-      console.log("Counts saved successfully");
-      fetchCounts(); // Refresh to ensure state is synchronized
+      toast.success("Counts saved successfully to session draft.");
+      await fetchCounts(); // Refresh to ensure state is synchronized
     } catch (err: any) {
       console.error("Error saving counts:", err.message);
+      toast.error("Failed to save counts.");
     }
   };
 
-  // NOTE: Stub functions for completeness
+  // --- SUBMISSION LOGIC (PLACEHOLDER/STUB) ---
+
   const submitInventoryChanges = async () => {
-    toast.info("Submission logic not implemented in this version.");
+    toast.info("Submission logic for final inventory update is currently a placeholder.");
+    // NOTE: You will need to implement the full inventory update logic here later.
   };
   const exportResults = () => {
-    toast.info("Export logic not implemented in this version.");
+    toast.info("Export functionality is not fully implemented.");
   };
 
   // --- RENDER ---
@@ -218,7 +223,7 @@ const PhysicalInventoryDetail: React.FC = () => {
         {statusBadge}
       </div>
 
-      {/* Summary Card - using placeholder summary */}
+      {/* Summary Card */}
       <div className="grid grid-cols-4 gap-4 p-4 bg-muted rounded-lg shadow-sm">
         <div className="text-center p-2 border-r">
           <div className="text-xl font-bold">{summary.totalItems}</div>
