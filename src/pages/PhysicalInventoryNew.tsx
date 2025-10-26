@@ -18,14 +18,12 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useStores } from "@/hooks/usePhysicalInventorySessions";
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
 import { Item } from "@/types/database"; // Assuming this is your full Item type
 import { POItemSelector } from "@/components/POItemSelector";
 import { POItemImport } from "@/components/POItemImport";
 import { POBarcodeScanner } from "@/components/POBarcodeScanner";
 
-// FIX 7: Define a specific type for the fetched inventory items
-// This resolves the useQuery TS2769 and subsequent TS2339 errors
+// Define a specific type for the fetched inventory items
 interface BasicInventoryItem {
   id: string;
   sku: string;
@@ -65,11 +63,9 @@ const PhysicalInventoryNew = () => {
   const [piItems, setPIItems] = useState<PIItem[]>([]);
   const { data: stores = [] } = useStores();
 
-  // FIX 8: Use BasicInventoryItem[] for the query type
   const { data: inventory = [] } = useQuery<BasicInventoryItem[]>({
     queryKey: ["allInventoryItems"],
     queryFn: async () => {
-      // Only selecting the fields required
       const { data, error } = await supabase.from("items").select("id, sku, name, unit, quantity").order("name");
       if (error) throw error;
       return data || [];
@@ -89,16 +85,13 @@ const PhysicalInventoryNew = () => {
     },
   });
 
-  // --- HANDLER FUNCTIONS FOR ITEMS ---
+  // --- HANDLER FUNCTIONS FOR ITEMS (Unchanged) ---
 
-  // Custom lookup function for Barcode Scanner
   const lookupSkuForBarcode = async (sku: string) => {
-    // FIX 9: Accessing inventory.find is now safe with BasicInventoryItem type
     const item = inventory.find((i) => i.sku === sku);
     if (item) {
       return {
         name: item.name,
-        // FIX 10: Added dummy 'price' to satisfy POBarcodeScanner interface (TS2322)
         price: 0,
         system_quantity: item.quantity || 0,
         item_id: item.id,
@@ -108,7 +101,6 @@ const PhysicalInventoryNew = () => {
   };
 
   const handleAddItemsFromSelector = (selected: Array<{ item: Item; quantity: number }>) => {
-    // ... (logic remains the same, Item type is used here because POItemSelector outputs the full Item type)
     const newItems: PIItem[] = selected.map(({ item }) => ({
       item_id: item.id,
       sku: item.sku,
@@ -126,7 +118,6 @@ const PhysicalInventoryNew = () => {
 
   const handleImportItems = (imported: any[]) => {
     const newItems: PIItem[] = imported.map((item) => {
-      // FIX 11: Accessing inventory.find is now safe
       const inventoryItem = inventory.find((i) => i.sku === item.sku);
 
       return {
@@ -138,7 +129,6 @@ const PhysicalInventoryNew = () => {
       };
     });
 
-    // FIX 12: Accessing inventory.some is now safe
     const existingSkus = piItems.map((i) => i.sku);
     const uniqueNewItems = newItems
       .filter((item) => !existingSkus.includes(item.sku))
@@ -155,10 +145,8 @@ const PhysicalInventoryNew = () => {
     let newCount = 0;
 
     scannedItems.forEach((newItem) => {
-      // FIX 13: Accessing inventory.find is now safe
       const inventoryItem = inventory.find((i) => i.sku === newItem.sku);
 
-      // Construct PIItem structure
       const piItem: PIItem = {
         item_id: inventoryItem?.id || newItem.sku,
         sku: newItem.sku,
@@ -187,35 +175,115 @@ const PhysicalInventoryNew = () => {
     toast.info(`${sku} removed from count list.`);
   };
 
-  // --- SUBMIT AND START COUNTING (Remains the same) ---
-  // ...
+  // --- SUBMIT AND START COUNTING (Moved inside the component) ---
+  const createSessionAndCounts = async (values: PIFormValues, startCounting: boolean) => {
+    setIsSubmitting(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      if (piItems.length === 0) {
+        throw new Error("Cannot start session: The count list is empty. Please add items.");
+      }
+
+      // 1. Generate session number
+      const { data: sessionNumber, error: funcError } = await supabase.rpc("generate_pi_session_number");
+      if (funcError) throw funcError;
+
+      // 2. Create session
+      const { data, error } = await supabase
+        .from("physical_inventory_sessions")
+        .insert({
+          session_number: sessionNumber,
+          started_by: user.id,
+          status: startCounting ? "in_progress" : "draft",
+          store_id: values.storeId || null,
+          count_date: values.countDate,
+          count_type: values.countType,
+          responsible_person: values.responsiblePerson,
+          department: values.department || null,
+          purpose: values.purpose || null,
+          location_filter: values.locationFilter || null,
+          expected_items: piItems.length,
+          notes: values.notes || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const sessionId = data.id;
+
+      // 3. Create initial physical_inventory_counts records
+      const initialCounts = piItems.map((item) => ({
+        session_id: sessionId,
+        item_id: item.item_id,
+        sku: item.sku,
+        item_name: item.itemName,
+        system_quantity: item.system_quantity,
+        counted_quantity: item.counted_quantity,
+        status: item.counted_quantity > 0 ? "counted" : "pending",
+        variance: item.counted_quantity - item.system_quantity,
+        variance_percentage: item.system_quantity
+          ? ((item.counted_quantity - item.system_quantity) / item.system_quantity) * 100
+          : 0,
+      }));
+
+      const { error: countError } = await supabase.from("physical_inventory_counts").upsert(initialCounts);
+
+      if (countError) {
+        console.error("Error inserting initial counts:", countError);
+      }
+
+      toast.success(
+        startCounting ? `Session ${data.session_number} started` : `Session ${data.session_number} saved as draft`,
+      );
+
+      if (startCounting) {
+        navigate(`/inventory/physical/${sessionId}`);
+      } else {
+        navigate("/inventory/physical");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create session");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // --- RENDER LOGIC ---
 
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
-      {/* ... (Header JSX remains the same) ... */}
+      {/* ... (Header remains the same) ... */}
 
       <Form {...form}>
         <form className="space-y-6">
           {/* STEP 1: Session Details */}
           {step === 1 && (
-            // ... (Step 1 JSX remains the same) ...
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={async () => {
-                  const isValid = await form.trigger(["countDate", "countType", "responsiblePerson"]);
-                  if (isValid) {
-                    setStep(2);
-                  } else {
-                    toast.error("Please fill in all required fields for Step 1.");
-                  }
-                }}
-                disabled={isSubmitting}
-              >
-                Next: Add Items <ChevronRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
+            <>
+              {/* ... (Step 1 form fields remain the same) ... */}
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    const isValid = await form.trigger(["countDate", "countType", "responsiblePerson"]);
+                    if (isValid) {
+                      setStep(2);
+                    } else {
+                      toast.error("Please fill in all required fields for Step 1.");
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Next: Add Items <ChevronRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </>
           )}
 
           {/* STEP 2: Item Selection/Import/Review */}
@@ -223,10 +291,7 @@ const PhysicalInventoryNew = () => {
             <>
               {/* Section 3: Add Items */}
               <Card>
-                <CardHeader>
-                  <CardTitle>3. Items to Count ({piItems.length})</CardTitle>
-                  <CardDescription>Select the items to include in this physical count session.</CardDescription>
-                </CardHeader>
+                {/* ... (Card Header remains the same) ... */}
                 <CardContent>
                   <Tabs defaultValue="manual" className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
@@ -235,15 +300,10 @@ const PhysicalInventoryNew = () => {
                       <TabsTrigger value="barcode">Barcode Scanner</TabsTrigger>
                     </TabsList>
                     <TabsContent value="manual" className="mt-4">
-                      {/* FIX 14: Cast inventory to Item[] to satisfy POItemSelector prop type */}
                       <POItemSelector items={inventory as Item[]} onSelect={handleAddItemsFromSelector} />
                     </TabsContent>
                     <TabsContent value="import" className="mt-4">
-                      <POItemImport
-                        // FIX 15: Accessing inventory.map is now safe
-                        onImport={handleImportItems}
-                        existingSkus={inventory.map((i) => i.sku)}
-                      />
+                      <POItemImport onImport={handleImportItems} existingSkus={inventory.map((i) => i.sku)} />
                     </TabsContent>
                     <TabsContent value="barcode" className="mt-4">
                       <POBarcodeScanner onScan={handleBarcodeScans} onLookupSku={lookupSkuForBarcode} />
@@ -265,6 +325,7 @@ const PhysicalInventoryNew = () => {
                   <Button
                     type="button"
                     variant="secondary"
+                    // FIX: Correctly referencing the function
                     onClick={form.handleSubmit((data) => createSessionAndCounts(data, false))}
                     disabled={isSubmitting || piItems.length === 0}
                     className="mr-3"
@@ -274,6 +335,7 @@ const PhysicalInventoryNew = () => {
                   </Button>
                   <Button
                     type="button"
+                    // FIX: Correctly referencing the function
                     onClick={form.handleSubmit((data) => createSessionAndCounts(data, true))}
                     disabled={isSubmitting || piItems.length === 0}
                   >
