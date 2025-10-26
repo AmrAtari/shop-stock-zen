@@ -5,11 +5,14 @@ import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/invent
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { FileDown, CheckCircle, Save, CalendarIcon } from "lucide-react";
-import { cn } from "@/lib/utils"; // Assuming this utility exists
+// Assuming a 'cn' utility for Tailwind class manipulation exists
+// import { cn } from "@/lib/utils";
 
-// FIX 1: Use Omit<T, K> to exclude the restrictive 'status' property from the base
-// interface and redefine it with the required 'pending' | 'counted' type to fix TS2430/TS2345.
-interface LocalPhysicalInventoryCount extends Omit<PhysicalInventoryCount, "status"> {
+// --- TYPE FIXES ---
+// FIX: Use Omit<T, K> to exclude the restrictive 'status' property from the base
+// PhysicalInventoryCount type and redefine it locally to include 'counted'.
+interface LocalPhysicalInventoryCount
+  extends Omit<PhysicalInventoryCount, "status" | "variance" | "variance_percentage"> {
   system_quantity: number;
   counted_quantity: number;
   variance: number;
@@ -19,11 +22,14 @@ interface LocalPhysicalInventoryCount extends Omit<PhysicalInventoryCount, "stat
 
 interface SessionWithStatus extends PhysicalInventorySession {
   status: "draft" | "in_progress" | "completed";
+  // Add missing properties for clarity
+  store_id: string;
 }
 
 const PhysicalInventoryDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Use the new local type for the state
   const [counts, setCounts] = useState<LocalPhysicalInventoryCount[]>([]);
   const [session, setSession] = useState<SessionWithStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,6 +41,7 @@ const PhysicalInventoryDetail: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from("physical_inventory_sessions")
+        // NOTE: Ensure 'status' is selected here
         .select("id, store_id, session_number, created_at, status, stores(name)")
         .eq("id", id)
         .single();
@@ -44,7 +51,7 @@ const PhysicalInventoryDetail: React.FC = () => {
       setSession({
         id: data.id,
         store_id: data.store_id,
-        store_name: data.stores?.name || "",
+        store_name: data.stores?.name || "N/A",
         session_number: data.session_number,
         created_at: data.created_at,
         status: data.status,
@@ -60,9 +67,10 @@ const PhysicalInventoryDetail: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // 1. Check for existing counts for this session (FIX: Ensures saved counts are displayed)
+      // 1. Check for existing counts for this session (This ensures existing data is displayed)
       const { data: existingCounts, error: existingError } = await supabase
         .from("physical_inventory_counts")
+        // NOTE: Select all columns, the DB should return variance/percentage if saved
         .select("*")
         .eq("session_id", session.id)
         .order("sku");
@@ -70,20 +78,27 @@ const PhysicalInventoryDetail: React.FC = () => {
       if (existingError) throw existingError;
 
       if (existingCounts && existingCounts.length > 0) {
-        setCounts(existingCounts as LocalPhysicalInventoryCount[]);
+        // If counts exist, use them directly, casting to the new local type
+        setCounts(
+          existingCounts.map((c) => ({
+            ...c,
+            // Ensure status is compatible with LocalPhysicalInventoryCount
+            status: c.counted_quantity > 0 ? "counted" : "pending",
+          })) as LocalPhysicalInventoryCount[],
+        );
         return;
       }
 
-      // 2. If no existing counts found (brand new session), fetch all store inventory
+      // 2. If no existing counts found (e.g., brand new session), fetch all store inventory
       const { data: inventoryData, error: inventoryError } = await supabase
         .from("store_inventory")
-        // FIX: Select the necessary data, including joining the 'items' table for item name/sku
+        // Join 'items' table to get item name and SKU
         .select("item_id, quantity, items(name, sku)")
         .eq("store_id", session.store_id);
 
       if (inventoryError) throw inventoryError;
 
-      // Map data to the local type
+      // Map data to the new local type
       const countsData: LocalPhysicalInventoryCount[] = inventoryData.map((item: any) => ({
         session_id: session.id,
         item_id: item.item_id,
@@ -98,7 +113,7 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       setCounts(countsData);
       if (countsData.length === 0) {
-        toast.info("No items found in inventory for this store.");
+        toast.info("No inventory items found for this store. Please add items to the store inventory first.");
       }
     } catch (err: any) {
       console.error("Error fetching inventory counts:", err.message);
@@ -156,7 +171,9 @@ const PhysicalInventoryDetail: React.FC = () => {
   const saveCounts = async () => {
     const countsToSave = counts
       .filter((c) => c.session_id)
+      // NOTE: We only save the fields defined in the database table
       .map((c) => ({
+        id: c.id, // Include ID for upsert
         session_id: c.session_id,
         item_id: c.item_id,
         sku: c.sku,
@@ -175,7 +192,6 @@ const PhysicalInventoryDetail: React.FC = () => {
     }
 
     try {
-      // 1. Save all current counts to the physical_inventory_counts table (upsert)
       const { error } = await supabase.from("physical_inventory_counts").upsert(countsToSave);
       if (error) throw error;
 
@@ -196,10 +212,18 @@ const PhysicalInventoryDetail: React.FC = () => {
   const submitInventoryChanges = async () => {
     if (!session || isFinalizing || isCompleted) return;
 
+    if (
+      !window.confirm(
+        "Are you sure you want to FINALIZE this count? This action will permanently update your stock levels.",
+      )
+    ) {
+      return;
+    }
+
     setIsFinalizing(true);
 
-    // Filter for items that actually have a count or a variance (i.e., should be updated)
-    const updates = counts.filter((c) => c.counted_quantity > 0 || c.system_quantity !== 0);
+    // Filter for items that should be updated (anything counted or previously existing)
+    const updates = counts.filter((c) => c.status === "counted" || c.id);
 
     if (updates.length === 0) {
       toast.warning("No items counted to finalize. Did you forget to count?");
@@ -213,30 +237,32 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       // 2. Prepare batch updates for the store_inventory table
       const inventoryUpdates = updates.map((c) => ({
-        // Assuming 'store_inventory' uses 'item_id' and 'store_id' as a composite key
-        // for the item's stock in a specific location.
         item_id: c.item_id,
         store_id: session.store_id,
         quantity: c.counted_quantity, // The new system quantity is the counted quantity
         updated_at: new Date().toISOString(),
       }));
 
-      // Use upsert to update store_inventory
+      // Use upsert to update store_inventory based on the composite key
       const { error: inventoryError } = await supabase
         .from("store_inventory")
-        .upsert(inventoryUpdates, { onConflict: "item_id, store_id" }); // Use composite key for conflict
+        .upsert(inventoryUpdates, { onConflict: "item_id, store_id" });
 
       if (inventoryError) throw inventoryError;
 
       // 3. Finalize the session status to 'completed'
       const { error: sessionError } = await supabase
         .from("physical_inventory_sessions")
-        .update({ status: "completed", finalized_at: new Date().toISOString() })
+        .update({
+          status: "completed",
+          finalized_at: new Date().toISOString(),
+        })
         .eq("id", session.id);
 
       if (sessionError) throw sessionError;
 
-      toast.success("Physical inventory complete! Stock levels have been updated.");
+      toast.success("Physical inventory complete! Stock levels have been permanently updated.");
+
       // Refresh session to show 'Completed' badge
       await fetchSession();
     } catch (error: any) {
@@ -368,7 +394,7 @@ const PhysicalInventoryDetail: React.FC = () => {
           {!isCompleted && (
             <Button onClick={saveCounts} disabled={isFinalizing || isLoading} variant="secondary" className="mr-3">
               <Save className="w-4 h-4 mr-2" />
-              Save Counts
+              Save Counts (Draft)
             </Button>
           )}
 
