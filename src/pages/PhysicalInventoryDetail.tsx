@@ -1,67 +1,125 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Scan, Upload, BarChart3, CheckCircle } from "lucide-react";
+import { CheckCircle, ArrowLeft, Scan, Upload, BarChart3 } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PhysicalInventoryScanner from "@/components/PhysicalInventoryScanner";
 import PhysicalInventoryImport from "@/components/PhysicalInventoryImport";
 import PhysicalInventoryReport from "@/components/PhysicalInventoryReport";
-import { usePhysicalInventorySession } from "@/hooks/usePhysicalInventorySessions";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
+import { usePhysicalInventorySession } from "@/hooks/usePhysicalInventorySessions";
+import { format } from "date-fns";
+
+interface PhysicalInventoryCount {
+  id: string;
+  item_id: string | null;
+  sku: string;
+  item_name: string;
+  system_quantity: number;
+  counted_quantity: number;
+  variance: number;
+  variance_percentage: number;
+  status: "pending" | "approved" | "rejected";
+  notes: string | null;
+}
 
 const PhysicalInventoryDetail = () => {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-
+  const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<"entry" | "report">("entry");
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
-  const [updateMode, setUpdateMode] = useState<"all" | "selected" | "none">("all");
   const [selectedForUpdate, setSelectedForUpdate] = useState<Set<string>>(new Set());
+  const [updateMode, setUpdateMode] = useState<"all" | "selected" | "none">("all");
 
   const { data: currentSession, isLoading: sessionLoading } = usePhysicalInventorySession(id);
 
+  // Fetch counts with correct status type
   const { data: counts = [], refetch: refetchCounts } = useQuery({
     queryKey: queryKeys.physicalInventory.counts(id || ""),
     queryFn: async () => {
       if (!id) return [];
+
       const { data, error } = await supabase
         .from("physical_inventory_counts")
         .select("*")
         .eq("session_id", id)
         .order("sku");
+
       if (error) throw error;
-      return data;
+
+      return (data as any[]).map((c) => ({
+        ...c,
+        status: c.status as "pending" | "approved" | "rejected",
+      })) as PhysicalInventoryCount[];
     },
     enabled: !!id,
   });
 
   const lookupSku = async (sku: string) => {
     const { data, error } = await supabase.from("items").select("id, sku, name, quantity").eq("sku", sku).maybeSingle();
+
     if (error) throw error;
     if (!data) return null;
-    return { id: data.id, sku: data.sku, name: data.name, systemQuantity: data.quantity };
+
+    return {
+      id: data.id,
+      sku: data.sku,
+      name: data.name,
+      systemQuantity: data.quantity,
+    };
   };
 
   const handleScanItems = async (items: any[]) => {
     if (!currentSession) return;
+
+    try {
+      const countsToInsert = await Promise.all(
+        items.map(async (item) => {
+          const itemDetails = await lookupSku(item.sku);
+          return {
+            session_id: currentSession.id,
+            item_id: itemDetails?.id || null,
+            sku: item.sku,
+            item_name: item.name,
+            system_quantity: itemDetails?.systemQuantity,
+            counted_quantity: item.countedQuantity,
+            status: "pending",
+          };
+        }),
+      );
+
+      const { error } = await supabase.from("physical_inventory_counts").insert(countsToInsert);
+
+      if (error) throw error;
+
+      refetchCounts();
+      setActiveTab("report");
+      toast.success("Items added to physical count");
+    } catch (error: any) {
+      toast.error(error.message || "Error adding items");
+    }
+  };
+
+  const handleImportItems = async (items: any[]) => {
+    if (!currentSession) return;
+
     try {
       const countsToInsert = await Promise.all(
         items.map(async (item) => {
@@ -77,23 +135,25 @@ const PhysicalInventoryDetail = () => {
           };
         }),
       );
+
       const { error } = await supabase.from("physical_inventory_counts").insert(countsToInsert);
+
       if (error) throw error;
+
       refetchCounts();
       setActiveTab("report");
-      toast.success("Items added to physical count");
+      toast.success("Items imported successfully");
     } catch (error: any) {
-      toast.error(error.message || "Error adding items");
+      toast.error(error.message || "Error importing items");
     }
   };
-
-  const handleImportItems = handleScanItems; // Reuse
 
   const handleUpdateCount = async (id: string, countedQuantity: number, notes: string) => {
     const { error } = await supabase
       .from("physical_inventory_counts")
       .update({ counted_quantity: countedQuantity, notes })
       .eq("id", id);
+
     if (error) throw error;
     refetchCounts();
   };
@@ -105,16 +165,21 @@ const PhysicalInventoryDetail = () => {
 
   const handleFinalizeSession = async () => {
     if (!currentSession) return;
+
     try {
-      const countsToUpdate = updateMode === "all" ? counts : counts.filter((c) => selectedForUpdate.has(c.id));
       if (updateMode !== "none") {
+        const countsToUpdate = updateMode === "all" ? counts : counts.filter((c) => selectedForUpdate.has(c.id));
+
         for (const count of countsToUpdate) {
           if (!count.item_id) continue;
-          const { error } = await supabase
+
+          const { error: updateError } = await supabase
             .from("items")
             .update({ quantity: count.counted_quantity })
             .eq("id", count.item_id);
-          if (error) throw error;
+
+          if (updateError) throw updateError;
+
           await supabase.from("physical_inventory_counts").update({ status: "approved" }).eq("id", count.id);
         }
       }
@@ -126,10 +191,12 @@ const PhysicalInventoryDetail = () => {
           completed_at: new Date().toISOString(),
         })
         .eq("id", currentSession.id);
+
       if (sessionError) throw sessionError;
 
       await invalidateInventoryData(queryClient);
       await queryClient.invalidateQueries({ queryKey: queryKeys.physicalInventory.all });
+
       toast.success("Physical inventory session completed");
       setCompleteDialogOpen(false);
       navigate("/inventory/physical");
@@ -138,24 +205,38 @@ const PhysicalInventoryDetail = () => {
     }
   };
 
-  if (sessionLoading) return <div className="p-8 text-center text-muted-foreground">Loading session...</div>;
-  if (!currentSession)
+  if (sessionLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentSession) {
     return (
       <div className="p-8">
         <Button variant="ghost" onClick={() => navigate("/inventory/physical")} className="mb-6">
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Physical Inventory
         </Button>
+
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>Session Not Found</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground mb-4">The session does not exist or was deleted.</p>
+            <p className="text-muted-foreground mb-4">
+              The physical inventory session you're looking for doesn't exist or has been deleted.
+            </p>
             <Button onClick={() => navigate("/inventory/physical")}>View All Sessions</Button>
           </CardContent>
         </Card>
       </div>
     );
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -163,7 +244,8 @@ const PhysicalInventoryDetail = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => navigate("/inventory/physical")}>
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
           </Button>
           <div>
             <div className="flex items-center gap-3">
@@ -184,59 +266,68 @@ const PhysicalInventoryDetail = () => {
             </div>
           </div>
         </div>
+
         <Button onClick={handleCompleteSession} disabled={counts.length === 0 || currentSession.status === "completed"}>
-          <CheckCircle className="w-4 h-4 mr-2" /> Complete Session
+          <CheckCircle className="w-4 h-4 mr-2" />
+          Complete Session
         </Button>
       </div>
 
-      {/* Progress Summary */}
+      {/* Progress */}
       {counts.length > 0 && (
         <Card>
-          <CardContent className="pt-6 grid grid-cols-4 text-center gap-4">
-            <div>
-              <p className="text-2xl font-bold">{counts.length}</p>
-              <p className="text-sm text-muted-foreground">Items Counted</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-green-600">{counts.filter((c) => c.variance > 0).length}</p>
-              <p className="text-sm text-muted-foreground">Over</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-red-600">{counts.filter((c) => c.variance < 0).length}</p>
-              <p className="text-sm text-muted-foreground">Under</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{counts.filter((c) => c.variance === 0).length}</p>
-              <p className="text-sm text-muted-foreground">Matched</p>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{counts.length}</p>
+                <p className="text-sm text-muted-foreground">Items Counted</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-600">{counts.filter((c) => c.variance > 0).length}</p>
+                <p className="text-sm text-muted-foreground">Over</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-600">{counts.filter((c) => c.variance < 0).length}</p>
+                <p className="text-sm text-muted-foreground">Under</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{counts.filter((c) => c.variance === 0).length}</p>
+                <p className="text-sm text-muted-foreground">Matched</p>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="entry">
-            <Scan className="w-4 h-4 mr-2" /> Physical Count
+            <Scan className="w-4 h-4 mr-2" />
+            Physical Count
           </TabsTrigger>
           <TabsTrigger value="report" disabled={counts.length === 0}>
-            <BarChart3 className="w-4 h-4 mr-2" /> Report
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Report
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="entry">
-          <Tabs defaultValue="scanner">
+        <TabsContent value="entry" className="space-y-6">
+          <Tabs defaultValue="scanner" className="w-full">
             <TabsList>
               <TabsTrigger value="scanner">
-                <Scan className="w-4 h-4 mr-2" /> Barcode Scanner
+                <Scan className="w-4 h-4 mr-2" />
+                Barcode Scanner
               </TabsTrigger>
               <TabsTrigger value="import">
-                <Upload className="w-4 h-4 mr-2" /> Import Data
+                <Upload className="w-4 h-4 mr-2" />
+                Import Data
               </TabsTrigger>
             </TabsList>
+
             <TabsContent value="scanner">
               <PhysicalInventoryScanner onScan={handleScanItems} onLookupSku={lookupSku} />
             </TabsContent>
+
             <TabsContent value="import">
               <PhysicalInventoryImport onImport={handleImportItems} onLookupSku={lookupSku} />
             </TabsContent>
@@ -253,7 +344,6 @@ const PhysicalInventoryDetail = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Complete Session Dialog */}
       <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -275,23 +365,27 @@ const PhysicalInventoryDetail = () => {
 
             {updateMode === "selected" && (
               <div className="border rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
-                {counts.map((c) => (
-                  <div key={c.id} className="flex items-center space-x-2">
+                <p className="text-sm font-medium mb-2">Select items to update:</p>
+                {counts.map((count) => (
+                  <div key={count.id} className="flex items-center space-x-2">
                     <Checkbox
-                      checked={selectedForUpdate.has(c.id)}
+                      checked={selectedForUpdate.has(count.id)}
                       onCheckedChange={(checked) => {
                         const newSet = new Set(selectedForUpdate);
-                        checked ? newSet.add(c.id) : newSet.delete(c.id);
+                        if (checked) newSet.add(count.id);
+                        else newSet.delete(count.id);
                         setSelectedForUpdate(newSet);
                       }}
                     />
-                    <label className="flex-1">
-                      {c.sku} - {c.item_name}{" "}
+                    <label className="text-sm flex-1">
+                      {count.sku} - {count.item_name}
                       <span
-                        className={c.variance > 0 ? "text-green-600 ml-2" : c.variance < 0 ? "text-red-600 ml-2" : ""}
+                        className={
+                          count.variance > 0 ? "text-green-600 ml-2" : count.variance < 0 ? "text-red-600 ml-2" : ""
+                        }
                       >
-                        ({c.variance > 0 ? "+" : ""}
-                        {c.variance})
+                        ({count.variance > 0 ? "+" : ""}
+                        {count.variance})
                       </span>
                     </label>
                   </div>
