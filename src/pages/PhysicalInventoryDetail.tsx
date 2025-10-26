@@ -1,428 +1,140 @@
-import React, { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { FileDown, CheckCircle, Save, CalendarIcon } from "lucide-react";
-// Assuming a 'cn' utility for Tailwind class manipulation exists
-// import { cn } from "@/lib/utils";
+import { useParams } from "react-router-dom";
+import { Card } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
-// --- TYPE FIXES ---
-// FIX: Use Omit<T, K> to exclude the restrictive 'status' property from the base
-// PhysicalInventoryCount type and redefine it locally to include 'counted'.
-interface LocalPhysicalInventoryCount
-  extends Omit<PhysicalInventoryCount, "status" | "variance" | "variance_percentage"> {
-  system_quantity: number;
-  counted_quantity: number;
-  variance: number;
-  variance_percentage: number;
-  status: "pending" | "counted";
+interface InventorySessionDetail {
+  id: string;
+  session_number: string;
+  store_name: string;
+  status: "Draft" | "Counting" | "Completed";
+  created_at: string;
+  responsible_person: string;
+  stores?: { name: string }[];
+  items?: {
+    id: string;
+    name: string;
+    sku?: string;
+    counted_qty?: number;
+    system_qty?: number;
+  }[];
 }
 
-interface SessionWithStatus extends PhysicalInventorySession {
-  status: "draft" | "in_progress" | "completed";
-  // Add missing properties for clarity
-  store_id: string;
-}
-
-const PhysicalInventoryDetail: React.FC = () => {
+export default function PhysicalInventoryDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  // Use the new local type for the state
-  const [counts, setCounts] = useState<LocalPhysicalInventoryCount[]>([]);
-  const [session, setSession] = useState<SessionWithStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isFinalizing, setIsFinalizing] = useState(false);
-
-  // --- FETCHING LOGIC ---
+  const [session, setSession] = useState<InventorySessionDetail | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchSession = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from("physical_inventory_sessions")
-        // NOTE: Ensure 'status' is selected here
-        .select("id, store_id, session_number, created_at, status, stores(name)")
+        .select(
+          `
+          id,
+          session_number,
+          status,
+          created_at,
+          responsible_person,
+          stores ( name ),
+          physical_inventory_items (
+            id,
+            name,
+            sku,
+            counted_qty,
+            system_qty
+          )
+        `,
+        )
         .eq("id", id)
         .single();
 
       if (error) throw error;
 
-      setSession({
+      const formattedSession: InventorySessionDetail = {
         id: data.id,
-        store_id: data.store_id,
-        store_name: data.stores?.name || "N/A",
         session_number: data.session_number,
-        created_at: data.created_at,
+        store_name: Array.isArray(data.stores) ? data.stores[0]?.name || "N/A" : data.stores?.name || "N/A", // ✅ Fix
         status: data.status,
-      } as SessionWithStatus);
-    } catch (err: any) {
-      console.error("Error fetching session:", err.message);
-      toast.error("Failed to load session details.");
-    }
-  };
+        created_at: data.created_at,
+        responsible_person: data.responsible_person,
+        items: data.physical_inventory_items || [],
+      };
 
-  const fetchCounts = async () => {
-    if (!session || !session.id || !session.store_id) return;
-    setIsLoading(true);
-
-    try {
-      // 1. Check for existing counts for this session (This ensures existing data is displayed)
-      const { data: existingCounts, error: existingError } = await supabase
-        .from("physical_inventory_counts")
-        // NOTE: Select all columns, the DB should return variance/percentage if saved
-        .select("*")
-        .eq("session_id", session.id)
-        .order("sku");
-
-      if (existingError) throw existingError;
-
-      if (existingCounts && existingCounts.length > 0) {
-        setCounts(
-          existingCounts.map((c) => ({
-            ...c,
-            // Ensure status is compatible with LocalPhysicalInventoryCount
-            status: c.counted_quantity > 0 ? "counted" : "pending",
-          })) as LocalPhysicalInventoryCount[],
-        );
-        return;
-      }
-
-      // 2. If no existing counts found (e.g., brand new session), fetch all store inventory
-      const { data: inventoryData, error: inventoryError } = await supabase
-        .from("store_inventory")
-        // Join 'items' table to get item name and SKU
-        .select("item_id, quantity, items(name, sku)")
-        .eq("store_id", session.store_id);
-
-      if (inventoryError) throw inventoryError;
-
-      // Map data to the new local type
-      const countsData: LocalPhysicalInventoryCount[] = inventoryData.map((item: any) => ({
-        session_id: session.id,
-        item_id: item.item_id,
-        sku: item.items?.sku || item.item_id,
-        item_name: item.items?.name || "N/A",
-        system_quantity: item.quantity || 0,
-        counted_quantity: 0,
-        status: "pending",
-        variance: 0,
-        variance_percentage: 0,
-      }));
-
-      setCounts(countsData);
-      if (countsData.length === 0) {
-        toast.info("No inventory items found for this store. Please add items to the store inventory first.");
-      }
-    } catch (err: any) {
-      console.error("Error fetching inventory counts:", err.message);
-      toast.error("Failed to load inventory list.");
+      setSession(formattedSession);
+    } catch (error) {
+      console.error("Error fetching session details:", error);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSession();
+    if (id) fetchSession();
   }, [id]);
 
-  useEffect(() => {
-    if (session) fetchCounts();
-  }, [session]);
-
-  // --- HANDLERS & CALCULATIONS ---
-
-  const summary = useMemo(() => {
-    const totalSystemQty = counts.reduce((sum, c) => sum + c.system_quantity, 0);
-    const totalCountedQty = counts.reduce((sum, c) => sum + c.counted_quantity, 0);
-    const totalVariance = totalCountedQty - totalSystemQty;
-    const totalVariancePercentage = totalSystemQty > 0 ? (totalVariance / totalSystemQty) * 100 : 0;
-    const countedItems = counts.filter((c) => c.counted_quantity !== 0).length;
-
-    return {
-      totalSystemQty,
-      totalCountedQty,
-      totalVariance,
-      totalVariancePercentage,
-      countedItems,
-      totalItems: counts.length,
-    };
-  }, [counts]);
-
-  const handleCountChange = (itemId: string, counted: number) => {
-    const finalCount = Math.max(0, counted);
-
-    setCounts((prev) =>
-      prev.map((c) =>
-        c.item_id === itemId
-          ? ({
-              ...c,
-              counted_quantity: finalCount,
-              variance: finalCount - c.system_quantity,
-              variance_percentage: c.system_quantity ? ((finalCount - c.system_quantity) / c.system_quantity) * 100 : 0,
-              status: finalCount > 0 ? "counted" : "pending",
-            } as LocalPhysicalInventoryCount)
-          : c,
-      ),
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-10">
+        <Loader2 className="animate-spin mr-2 h-5 w-5" />
+        Loading session details...
+      </div>
     );
-  };
-
-  const saveCounts = async () => {
-    const countsToSave = counts
-      .filter((c) => c.session_id)
-      // NOTE: We only save the fields defined in the database table
-      .map((c) => ({
-        id: c.id, // Include ID for upsert
-        session_id: c.session_id,
-        item_id: c.item_id,
-        sku: c.sku,
-        item_name: c.item_name,
-        system_quantity: c.system_quantity,
-        counted_quantity: c.counted_quantity,
-        // Status is mapped back to the required 'pending' | 'counted' type before saving
-        status: c.counted_quantity > 0 ? "counted" : "pending",
-        variance: c.variance,
-        variance_percentage: c.variance_percentage,
-      }));
-
-    if (countsToSave.length === 0) {
-      toast.info("No counts to save.");
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from("physical_inventory_counts").upsert(countsToSave);
-      if (error) throw error;
-
-      toast.success("Counts saved successfully to session draft.");
-      await fetchCounts();
-    } catch (err: any) {
-      console.error("Error saving counts:", err.message);
-      toast.error("Failed to save counts.");
-    }
-  };
-
-  /**
-   * IMPORTANT: Implements the final inventory update logic.
-   * - Saves current counts.
-   * - Updates the store_inventory quantities for the respective items/store.
-   * - Sets the session status to 'completed'.
-   */
-  const submitInventoryChanges = async () => {
-    if (!session || isFinalizing || isCompleted) return;
-
-    if (
-      !window.confirm(
-        "Are you sure you want to FINALIZE this count? This action will permanently update your stock levels.",
-      )
-    ) {
-      return;
-    }
-
-    setIsFinalizing(true);
-
-    // Filter for items that should be updated (anything counted or previously existing)
-    const updates = counts.filter((c) => c.status === "counted" || c.id);
-
-    if (updates.length === 0) {
-      toast.warning("No items counted to finalize. Did you forget to count?");
-      setIsFinalizing(false);
-      return;
-    }
-
-    try {
-      // 1. Ensure latest counts are saved first
-      await saveCounts();
-
-      // 2. Prepare batch updates for the store_inventory table
-      const inventoryUpdates = updates.map((c) => ({
-        item_id: c.item_id,
-        store_id: session.store_id,
-        quantity: c.counted_quantity, // The new system quantity is the counted quantity
-        updated_at: new Date().toISOString(),
-      }));
-
-      // Use upsert to update store_inventory based on the composite key
-      const { error: inventoryError } = await supabase
-        .from("store_inventory")
-        .upsert(inventoryUpdates, { onConflict: "item_id, store_id" });
-
-      if (inventoryError) throw inventoryError;
-
-      // 3. Finalize the session status to 'completed'
-      const { error: sessionError } = await supabase
-        .from("physical_inventory_sessions")
-        .update({
-          status: "completed",
-          finalized_at: new Date().toISOString(),
-        })
-        .eq("id", session.id);
-
-      if (sessionError) throw sessionError;
-
-      toast.success("Physical inventory complete! Stock levels have been permanently updated.");
-
-      // Refresh session to show 'Completed' badge
-      await fetchSession();
-    } catch (error: any) {
-      console.error("Finalization failed:", error.message);
-      toast.error("Finalization failed: " + error.message);
-    } finally {
-      setIsFinalizing(false);
-    }
-  };
-
-  const exportResults = () => {
-    toast.info("Export functionality is not fully implemented.");
-  };
-
-  // --- RENDER ---
-
-  const isCompleted = session?.status === "completed";
-
-  if (isLoading) {
-    return <div className="p-4">Loading inventory counts...</div>;
   }
 
-  const statusBadge = isCompleted ? (
-    <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
-      <CheckCircle className="w-4 h-4 mr-1" /> Completed
-    </span>
-  ) : (
-    <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800">
-      <Save className="w-4 h-4 mr-1" /> In Progress
-    </span>
-  );
+  if (!session) {
+    return <div className="text-center text-gray-500 py-10">Session not found.</div>;
+  }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold">
-          Physical Inventory - {session?.store_name} ({session?.session_number})
-        </h1>
-        {statusBadge}
-      </div>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Session #{session.session_number}</h1>
+      <p className="text-gray-600 mb-2">Store: {session.store_name}</p>
+      <p className="text-gray-600 mb-2">Responsible: {session.responsible_person}</p>
+      <p className="text-gray-600 mb-4">
+        Status:{" "}
+        <span
+          className={
+            session.status === "Completed"
+              ? "text-green-600"
+              : session.status === "Counting"
+                ? "text-blue-600"
+                : "text-gray-600"
+          }
+        >
+          {session.status}
+        </span>
+      </p>
 
-      {/* Summary Card */}
-      <div className="grid grid-cols-4 gap-4 p-4 bg-muted rounded-lg shadow-sm">
-        <div className="text-center p-2 border-r">
-          <div className="text-xl font-bold">{summary.totalItems}</div>
-          <div className="text-sm text-muted-foreground">Items in Count List</div>
-        </div>
-        <div className="text-center p-2 border-r">
-          <div className="text-xl font-bold">{summary.countedItems}</div>
-          <div className="text-sm text-muted-foreground">Items Counted</div>
-        </div>
-        <div className="text-center p-2 border-r">
-          <div
-            className={`text-xl font-bold ${summary.totalVariance > 0 ? "text-green-600" : summary.totalVariance < 0 ? "text-red-600" : "text-gray-700"}`}
-          >
-            {summary.totalVariance > 0 ? "+" : ""}
-            {summary.totalVariance}
-          </div>
-          <div className="text-sm text-muted-foreground">Total Variance (Units)</div>
-        </div>
-        <div className="text-center p-2">
-          <div
-            className={`text-xl font-bold ${Math.abs(summary.totalVariancePercentage) > 5 ? "text-red-600" : "text-gray-700"}`}
-          >
-            {summary.totalVariancePercentage.toFixed(2)}%
-          </div>
-          <div className="text-sm text-muted-foreground">Variance %</div>
-        </div>
-      </div>
-
-      {/* Main Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-3 text-left">SKU</th>
-              <th className="p-3 text-left">Item Name</th>
-              <th className="p-3 text-right">System Qty</th>
-              <th className="p-3 text-right">Counted Qty</th>
-              <th className="p-3 text-right">Variance</th>
-              <th className="p-3 text-right">Variance %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {counts.map((item) => (
-              <tr key={item.item_id} className="border-t hover:bg-gray-50">
-                <td className="p-3 font-mono text-sm">{item.sku}</td>
-                <td className="p-3">{item.item_name}</td>
-                <td className="p-3 text-right">{item.system_quantity}</td>
-                <td className="p-3 text-right">
-                  <input
-                    type="number"
-                    min="0"
-                    value={item.counted_quantity}
-                    onChange={(e) => handleCountChange(item.item_id, Number(e.target.value))}
-                    className={`border p-1 w-24 text-right ${isCompleted ? "bg-gray-100 cursor-not-allowed" : "border-gray-300"}`}
-                    disabled={isCompleted}
-                  />
-                </td>
-                <td
-                  className={`p-3 text-right font-medium ${item.variance > 0 ? "text-green-600" : item.variance < 0 ? "text-red-600" : "text-gray-700"}`}
-                >
-                  {item.variance}
-                </td>
-                <td
-                  className={`p-3 text-right ${Math.abs(item.variance_percentage) > 5 ? "font-bold text-red-600" : ""}`}
-                >
-                  {item.variance_percentage.toFixed(2)}%
-                </td>
+      <Card className="p-4">
+        <h2 className="text-lg font-semibold mb-3">Items</h2>
+        {session.items && session.items.length > 0 ? (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="py-2">SKU</th>
+                <th className="py-2">Name</th>
+                <th className="py-2">System Qty</th>
+                <th className="py-2">Counted Qty</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {counts.length === 0 && !isLoading && (
-          <div className="p-4 text-center text-gray-500">No inventory items found for this store.</div>
+            </thead>
+            <tbody>
+              {session.items.map((item) => (
+                <tr key={item.id} className="border-b hover:bg-gray-50">
+                  <td className="py-2">{item.sku || "—"}</td>
+                  <td className="py-2">{item.name}</td>
+                  <td className="py-2">{item.system_qty ?? "—"}</td>
+                  <td className="py-2">{item.counted_qty ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-gray-500">No items in this session.</p>
         )}
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex justify-between items-center pt-4">
-        {/* Left: Export */}
-        <Button variant="outline" onClick={exportResults} disabled={isFinalizing || counts.length === 0}>
-          <FileDown className="w-4 h-4 mr-2" />
-          Export Results (CSV)
-        </Button>
-
-        {/* Right: Save and Submit */}
-        <div>
-          {!isCompleted && (
-            <Button onClick={saveCounts} disabled={isFinalizing || isLoading} variant="secondary" className="mr-3">
-              <Save className="w-4 h-4 mr-2" />
-              Save Counts (Draft)
-            </Button>
-          )}
-
-          <Button
-            onClick={submitInventoryChanges}
-            disabled={isFinalizing || isLoading || isCompleted}
-            className={isCompleted ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}
-          >
-            {isFinalizing ? (
-              "Finalizing..."
-            ) : isCompleted ? (
-              <>
-                <CheckCircle className="w-4 h-4 mr-2" /> Finalized
-              </>
-            ) : (
-              "Submit & Finish Physical Inventory"
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {isCompleted && (
-        <div className="flex items-center p-4 text-green-800 bg-green-50 rounded-lg">
-          <CheckCircle className="w-5 h-5 mr-2" />
-          This session is complete. Inventory stock levels have been permanently updated.
-        </div>
-      )}
+      </Card>
     </div>
   );
-};
-
-export default PhysicalInventoryDetail;
+}
