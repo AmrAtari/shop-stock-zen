@@ -19,20 +19,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 
 // Define a local interface that extends the imported Item type,
-// ensuring all fields necessary for the Inventory view are present.
-// NOTE: These fields must exist on the Supabase Item table or be aliased/joined.
+// making sellingPrice potentially optional or allowing null/undefined
+// to account for missing data from the database.
 interface ItemWithDetails extends Item {
   location: string;
   min_stock: number;
   quantity: number;
   unit: string;
-  sellingPrice: number; // Assuming costPrice/sellingPrice are also included
+  sellingPrice?: number | null; // <-- Adjusted to allow null/undefined
 }
 
 // 1. Supabase Data Fetching Function
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Fetch from the 'items' table. We use a full select (*) and rely on the database
-  // schema or a joined view to provide all necessary fields (quantity, min_stock, location, etc.).
+  // Fetch from the 'items' table.
   const { data, error } = await supabase.from("items").select("*");
 
   if (error) {
@@ -40,7 +39,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     throw new Error("Failed to fetch inventory data.");
   }
 
-  // Cast the data to ItemWithDetails. In a real app, you would validate this structure.
+  // Cast the data to ItemWithDetails.
   return data as ItemWithDetails[];
 };
 
@@ -233,6 +232,9 @@ const InventoryNew: React.FC = () => {
               const isSelected = selectedItems.some((i) => i.id === item.id);
               const isLowStock = item.quantity <= item.min_stock;
 
+              // Safely access sellingPrice, defaulting to 0 if null/undefined
+              const price = item.sellingPrice ?? 0;
+
               return (
                 <TableRow key={item.id} className={isSelected ? "bg-blue-50" : ""}>
                   <TableCell className="text-center">
@@ -254,7 +256,9 @@ const InventoryNew: React.FC = () => {
                   </TableCell>
                   <TableCell>{item.location || "N/A"}</TableCell>
                   <TableCell>{item.category}</TableCell>
-                  <TableCell className="text-right">${item.sellingPrice.toFixed(2)}</TableCell>
+                  <TableCell className="text-right">
+                    {/* FIX: Use the 'price' variable which is guaranteed to be a number */}${price.toFixed(2)}
+                  </TableCell>
                   <TableCell className="text-center">
                     <div className="flex justify-center space-x-1">
                       <Button
