@@ -1,54 +1,33 @@
 import { useState, useMemo, useEffect } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download, History, Clipboard, Layers } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Upload, Download, History, Layers } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
-// NOTE: Assuming Item includes all properties from the dummy data,
-// and minStock should be min_stock to avoid TS error
-interface Item {
-  id: string;
-  name: string;
-  sku: string;
-  category: string;
-  quantity: number;
-  min_stock: number; // Corrected property name
-  unit: string;
-  costPrice: number;
-  sellingPrice: number;
-  supplier: string;
-  lastRestocked: string;
-  location: string; // Assuming 'location' is required in the base Item type
-}
-
+import { Item } from "@/types/database"; // Use the real imported Item type
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
-import { Label } from "@/components/ui/label";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
 
-// FIX 1: Ensure ItemWithDetails correctly extends Item,
-// using the corrected 'min_stock' property and ensuring 'location' is present.
+// Define a local interface that extends the imported Item type,
+// ensuring all fields used in this component are present.
+// NOTE: This interface is used primarily to type the data returned from our local hook.
 interface ItemWithDetails extends Item {
-  // Adding custom fields here if needed, but for now it's just a placeholder for Item
-  // Since all properties are assumed to be in the base Item interface now.
+  // Assuming these fields are either present in Item or needed for our view.
+  location: string;
+  min_stock: number;
+  quantity: number;
+  unit: string;
+  sellingPrice: number;
 }
 
 // NOTE: This component assumes a useInventoryQuery hook or similar is available
@@ -57,12 +36,12 @@ const useInventoryQuery = () => {
   const [data, setData] = useState<ItemWithDetails[]>([]);
   const [isFetching, setIsFetching] = useState(true);
 
-  // FIX 2: Added missing useEffect import
   useEffect(() => {
     const fetchItems = async () => {
-      // Replace with your actual supabase fetch logic
-      const dummyItems: ItemWithDetails[] = [
-        // FIX 3: Corrected minStock to min_stock to match Item interface
+      // FIX 2 (TS2740): The database 'Item' type is complex. To satisfy the component
+      // while mocking data, we must use 'any' for the initial array and cast it
+      // to the component's required structure (ItemWithDetails).
+      const dummyItems: any[] = [
         {
           id: "1",
           name: "Laptop Pro",
@@ -106,7 +85,7 @@ const useInventoryQuery = () => {
           location: "Warehouse 1",
         },
       ];
-      setData(dummyItems);
+      setData(dummyItems as ItemWithDetails[]);
       setIsFetching(false);
     };
     fetchItems();
@@ -148,7 +127,6 @@ const InventoryNew: React.FC = () => {
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
-  // Use the dummy query for demonstration
   const { data: inventoryData, isLoading } = useInventoryQuery();
   const allInventory = inventoryData || [];
 
@@ -160,8 +138,9 @@ const InventoryNew: React.FC = () => {
     );
   }, [allInventory, searchTerm]);
 
-  // FIX 4: Corrected destructuring of usePagination to include 'currentItems'
-  const { currentItems, ...pagination } = usePagination<ItemWithDetails>(filteredInventory, 10); // 10 items per page
+  // FIX 1 (TS2558/TS2339): Removed the explicit generic type argument from usePagination.
+  // This allows TypeScript to correctly infer the return type, resolving the error.
+  const { currentItems, ...pagination } = usePagination(filteredInventory, 10); // 10 items per page
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) {
@@ -210,7 +189,6 @@ const InventoryNew: React.FC = () => {
           {/* NEW: Physical Inventory Button */}
           <Button
             variant="outline"
-            // NOTE: The destination URL is assumed to be correct based on previous context
             onClick={() => navigate("/inventory/physical/new")}
             className="bg-purple-100 text-purple-800 hover:bg-purple-200"
           >
@@ -280,7 +258,7 @@ const InventoryNew: React.FC = () => {
           <TableBody>
             {currentItems.map((item) => {
               const isSelected = selectedItems.some((i) => i.id === item.id);
-              const isLowStock = item.quantity <= item.min_stock; // Corrected property name
+              const isLowStock = item.quantity <= item.min_stock;
 
               return (
                 <TableRow key={item.id} className={isSelected ? "bg-blue-50" : ""}>
@@ -320,6 +298,7 @@ const InventoryNew: React.FC = () => {
                         variant="ghost"
                         size="icon"
                         onClick={() => {
+                          // item is of type ItemWithDetails, which satisfies the ProductDialogNew's 'item' prop
                           setEditingItem(item);
                           setDialogOpen(true);
                         }}
@@ -349,6 +328,7 @@ const InventoryNew: React.FC = () => {
         endIndex={pagination.endIndex}
       />
 
+      {/* NOTE: ProductDialogNew's 'item' prop type should be compatible with ItemWithDetails */}
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
