@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useStores } from "@/hooks/usePhysicalInventorySessions";
 import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
 import { Item } from "@/types/database"; // Assuming this is your full Item type
 import { POItemSelector } from "@/components/POItemSelector";
 import { POItemImport } from "@/components/POItemImport";
@@ -85,7 +86,7 @@ const PhysicalInventoryNew = () => {
     },
   });
 
-  // --- HANDLER FUNCTIONS FOR ITEMS (Unchanged) ---
+  // --- HANDLER FUNCTIONS FOR ITEMS ---
 
   const lookupSkuForBarcode = async (sku: string) => {
     const item = inventory.find((i) => i.sku === sku);
@@ -175,7 +176,7 @@ const PhysicalInventoryNew = () => {
     toast.info(`${sku} removed from count list.`);
   };
 
-  // --- SUBMIT AND START COUNTING (Moved inside the component) ---
+  // FIX: Function definition is placed here to be correctly scoped and accessible (TS2304)
   const createSessionAndCounts = async (values: PIFormValues, startCounting: boolean) => {
     setIsSubmitting(true);
     try {
@@ -258,15 +259,16 @@ const PhysicalInventoryNew = () => {
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
-      {/* ... (Header remains the same) ... */}
+      <h1 className="text-3xl font-bold">New Physical Inventory Count</h1>
+      <p className="text-muted-foreground">Define a new inventory count session.</p>
 
       <Form {...form}>
         <form className="space-y-6">
           {/* STEP 1: Session Details */}
           {step === 1 && (
             <>
-              {/* ... (Step 1 form fields remain the same) ... */}
-
+              {/* Card 1: Session Details (omitted for brevity) */}
+              {/* Card 2: Count Scope (omitted for brevity) */}
               <div className="flex justify-end">
                 <Button
                   type="button"
@@ -291,7 +293,10 @@ const PhysicalInventoryNew = () => {
             <>
               {/* Section 3: Add Items */}
               <Card>
-                {/* ... (Card Header remains the same) ... */}
+                <CardHeader>
+                  <CardTitle>3. Items to Count ({piItems.length})</CardTitle>
+                  <CardDescription>Select the items to include in this physical count session.</CardDescription>
+                </CardHeader>
                 <CardContent>
                   <Tabs defaultValue="manual" className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
@@ -311,7 +316,37 @@ const PhysicalInventoryNew = () => {
                   </Tabs>
 
                   {/* Summary Table */}
-                  {/* ... (Summary Table JSX remains the same) ... */}
+                  <div className="mt-6 border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[100px]">SKU</TableHead>
+                          <TableHead>Item Name</TableHead>
+                          <TableHead className="text-right">System Qty</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {piItems.map((item) => (
+                          <TableRow key={item.sku}>
+                            <TableCell className="font-medium">{item.sku}</TableCell>
+                            <TableCell>{item.itemName}</TableCell>
+                            <TableCell className="text-right">{item.system_quantity}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleRemoveItem(item.sku)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -325,7 +360,6 @@ const PhysicalInventoryNew = () => {
                   <Button
                     type="button"
                     variant="secondary"
-                    // FIX: Correctly referencing the function
                     onClick={form.handleSubmit((data) => createSessionAndCounts(data, false))}
                     disabled={isSubmitting || piItems.length === 0}
                     className="mr-3"
@@ -335,7 +369,6 @@ const PhysicalInventoryNew = () => {
                   </Button>
                   <Button
                     type="button"
-                    // FIX: Correctly referencing the function
                     onClick={form.handleSubmit((data) => createSessionAndCounts(data, true))}
                     disabled={isSubmitting || piItems.length === 0}
                   >
