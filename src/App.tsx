@@ -33,25 +33,67 @@ import POSRefunds from "./pages/POS/POSRefunds";
 import ClosingCash from "./pages/POS/ClosingCash";
 import { POSProvider } from "./pages/POS/POSContext";
 
-// Components
+// Layout & ProtectedRoute
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
-
-// NEW ADMIN PAGE IMPORT
-import DatabaseAdmin from "./pages/DatabaseAdmin";
 
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Toaster />
-      <Sonner richColors />
       <TooltipProvider>
+        <Toaster />
+        <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public Auth */}
             <Route path="/auth" element={<Auth />} />
 
+            {/* POS Routes */}
+            <Route
+              path="/pos/*"
+              element={
+                <POSProvider>
+                  <Routes>
+                    <Route
+                      path=""
+                      element={
+                        <ProtectedRoute>
+                          <POSHome />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="receipts"
+                      element={
+                        <ProtectedRoute>
+                          <POSReceipts />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="refunds"
+                      element={
+                        <ProtectedRoute>
+                          <POSRefunds />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="closing"
+                      element={
+                        <ProtectedRoute>
+                          <ClosingCash />
+                        </ProtectedRoute>
+                      }
+                    />
+                  </Routes>
+                </POSProvider>
+              }
+            />
+
+            {/* Main App Routes with Layout */}
             <Route
               path="/"
               element={
@@ -63,61 +105,21 @@ const App: React.FC = () => {
               }
             />
             <Route
+              path="/ai-reports"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AIReports />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/inventory"
               element={
                 <ProtectedRoute>
                   <Layout>
                     <Inventory />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/purchase-orders"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PurchaseOrders />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/purchase-orders/new"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PurchaseOrderNew />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/purchase-orders/:id"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PurchaseOrderDetail />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/transfers"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Transfers />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/transfers/:id"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <TransferDetail />
                   </Layout>
                 </ProtectedRoute>
               }
@@ -152,6 +154,84 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+
+            {/* Purchases */}
+            <Route
+              path="/purchase-orders"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <PurchaseOrders />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/purchase-orders/new"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <PurchaseOrderNew />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/purchase-orders/:id"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <PurchaseOrderDetail />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/purchase-orders/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <PurchaseOrderNew />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Transfers */}
+            <Route
+              path="/transfers"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Transfers />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/transfers/:id"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <TransferDetail />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Notifications / Approvals */}
+            <Route
+              path="/approvals"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Notifications />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Misc Pages */}
             <Route
               path="/alerts"
               element={
@@ -168,16 +248,6 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <Layout>
                     <Reports />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/ai-reports"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <AIReports />
                   </Layout>
                 </ProtectedRoute>
               }
@@ -209,70 +279,6 @@ const App: React.FC = () => {
                   <Layout>
                     <Configuration />
                   </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/notifications"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Notifications />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* NEW DATABASE ADMIN ROUTE */}
-            <Route
-              path="/admin/database"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <DatabaseAdmin />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* POS ROUTES */}
-            <Route
-              path="/pos"
-              element={
-                <ProtectedRoute>
-                  <POSProvider>
-                    <POSHome />
-                  </POSProvider>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pos/receipts"
-              element={
-                <ProtectedRoute>
-                  <POSHome>
-                    <POSReceipts />
-                  </POSHome>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pos/refunds"
-              element={
-                <ProtectedRoute>
-                  <POSHome>
-                    <POSRefunds />
-                  </POSHome>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pos/closing-cash"
-              element={
-                <ProtectedRoute>
-                  <POSHome>
-                    <ClosingCash />
-                  </POSHome>
                 </ProtectedRoute>
               }
             />
