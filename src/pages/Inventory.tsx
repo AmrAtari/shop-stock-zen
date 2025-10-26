@@ -11,7 +11,7 @@ import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
-import { usePagination } from "@/hooks/usePagination";
+import { usePagination } from "@/hooks/usePagination"; // Assuming this imports the logic you provided
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { toast } from "sonner";
@@ -20,9 +20,7 @@ import { queryKeys } from "@/hooks/queryKeys";
 
 // Define a local interface that extends the imported Item type,
 // ensuring all fields used in this component are present.
-// NOTE: This interface is used primarily to type the data returned from our local hook.
 interface ItemWithDetails extends Item {
-  // Assuming these fields are either present in Item or needed for our view.
   location: string;
   min_stock: number;
   quantity: number;
@@ -31,14 +29,13 @@ interface ItemWithDetails extends Item {
 }
 
 // NOTE: This component assumes a useInventoryQuery hook or similar is available
-// to fetch the item data. For simplicity, we define a dummy hook structure.
 const useInventoryQuery = () => {
   const [data, setData] = useState<ItemWithDetails[]>([]);
   const [isFetching, setIsFetching] = useState(true);
 
   useEffect(() => {
     const fetchItems = async () => {
-      // FIX: Using 'any' for the dummy array to bypass the complex and unknown Item type definition.
+      // Using 'any' for the dummy array to bypass the complex and unknown Item type definition.
       const dummyItems: any[] = [
         {
           id: "1",
@@ -136,9 +133,18 @@ const InventoryNew: React.FC = () => {
     );
   }, [allInventory, searchTerm]);
 
-  // FIX 1 (TS2554 & TS2339): Explicitly defining the generic type for the hook
-  // and ensuring correct destructuring to resolve the pagination errors.
-  const { currentItems, ...pagination } = usePagination<ItemWithDetails>(filteredInventory, 10); // 10 items per page
+  // FIX: Corrected the usePagination call and destructuring.
+  // The hook provided only returns pagination data, not currentItems.
+  const pagination = usePagination({
+    totalItems: filteredInventory.length,
+    itemsPerPage: 10,
+    initialPage: 1, // Optional: defaults to 1
+  });
+
+  // Calculate currentItems based on the hook's returned indices
+  const currentItems = useMemo(() => {
+    return filteredInventory.slice(pagination.startIndex, pagination.endIndex);
+  }, [filteredInventory, pagination.startIndex, pagination.endIndex]);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) {
@@ -171,6 +177,7 @@ const InventoryNew: React.FC = () => {
     if (selectedItems.length === currentItems.length) {
       setSelectedItems([]);
     } else {
+      // Select all items on the current page
       setSelectedItems(currentItems);
     }
   };
