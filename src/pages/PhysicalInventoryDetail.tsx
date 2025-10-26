@@ -1,26 +1,29 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
+import { PhysicalInventoryCount } from "@/types/inventory";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { FileDown, CheckCircle, Save } from "lucide-react";
 
-// --- TYPE FIXES ---
+// --- TYPES ---
 interface Store {
   name: string;
 }
 
-interface SessionData {
+interface SessionFromDB {
   id: string;
   session_number: string;
   status: "draft" | "in_progress" | "completed";
   created_at: string;
   responsible_person: string;
   store_id: string;
-  stores: Store[] | null;
+  stores: Store[] | null; // Supabase returns nested array for joins
 }
 
+type SessionWithStore = Omit<SessionFromDB, "stores"> & { store_name: string };
+
+// Local type for counts
 interface LocalPhysicalInventoryCount
   extends Omit<PhysicalInventoryCount, "status" | "variance" | "variance_percentage"> {
   system_quantity: number;
@@ -30,12 +33,13 @@ interface LocalPhysicalInventoryCount
   status: "pending" | "counted";
 }
 
+// --- COMPONENT ---
 const PhysicalInventoryDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [counts, setCounts] = useState<LocalPhysicalInventoryCount[]>([]);
-  const [session, setSession] = useState<(PhysicalInventorySession & { store_name: string }) | null>(null);
+  const [session, setSession] = useState<SessionWithStore | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
@@ -43,29 +47,27 @@ const PhysicalInventoryDetail: React.FC = () => {
   const fetchSession = async () => {
     try {
       const { data, error } = await supabase
-        .from("physical_inventory_sessions")
-        .select(
-          `
+        .from<SessionFromDB>("physical_inventory_sessions")
+        .select(`
           id,
           session_number,
           status,
           created_at,
           responsible_person,
           store_id,
-          stores ( name )
-        `,
-        )
+          stores(name)
+        `)
         .eq("id", id)
-        .single<SessionData>();
+        .single();
 
       if (error) throw error;
 
-      const storeName = Array.isArray(data.stores) ? data.stores[0]?.name || "N/A" : data.stores?.name || "N/A";
+      const storeName = Array.isArray(data.stores) && data.stores.length > 0 ? data.stores[0].name : "N/A";
 
       setSession({
         ...data,
         store_name: storeName,
-      });
+      } as SessionWithStore);
     } catch (err: any) {
       console.error("Error fetching session:", err.message);
       toast.error("Failed to load session details.");
@@ -91,12 +93,12 @@ const PhysicalInventoryDetail: React.FC = () => {
           existingCounts.map((c) => ({
             ...c,
             status: c.counted_quantity > 0 ? "counted" : "pending",
-          })) as LocalPhysicalInventoryCount[],
+          })) as LocalPhysicalInventoryCount[]
         );
         return;
       }
 
-      // If no existing counts, fetch store inventory
+      // No existing counts: fetch store inventory
       const { data: inventoryData, error: inventoryError } = await supabase
         .from("store_inventory")
         .select("item_id, quantity, items(name, sku)")
@@ -117,8 +119,9 @@ const PhysicalInventoryDetail: React.FC = () => {
       }));
 
       setCounts(countsData);
+
       if (countsData.length === 0) {
-        toast.info("No inventory items found for this store. Please add items to the store inventory first.");
+        toast.info("No inventory items found for this store.");
       }
     } catch (err: any) {
       console.error("Error fetching inventory counts:", err.message);
@@ -128,6 +131,7 @@ const PhysicalInventoryDetail: React.FC = () => {
     }
   };
 
+  // --- EFFECTS ---
   useEffect(() => {
     fetchSession();
   }, [id]);
@@ -136,38 +140,24 @@ const PhysicalInventoryDetail: React.FC = () => {
     if (session) fetchCounts();
   }, [session]);
 
-  // --- HANDLERS & CALCULATIONS ---
-  const summary = useMemo(() => {
-    const totalSystemQty = counts.reduce((sum, c) => sum + c.system_quantity, 0);
-    const totalCountedQty = counts.reduce((sum, c) => sum + c.counted_quantity, 0);
-    const totalVariance = totalCountedQty - totalSystemQty;
-    const totalVariancePercentage = totalSystemQty > 0 ? (totalVariance / totalSystemQty) * 100 : 0;
-    const countedItems = counts.filter((c) => c.counted_quantity !== 0).length;
-
-    return {
-      totalSystemQty,
-      totalCountedQty,
-      totalVariance,
-      totalVariancePercentage,
-      countedItems,
-      totalItems: counts.length,
-    };
-  }, [counts]);
-
+  // --- HANDLERS ---
   const handleCountChange = (itemId: string, counted: number) => {
     const finalCount = Math.max(0, counted);
+
     setCounts((prev) =>
       prev.map((c) =>
         c.item_id === itemId
-          ? {
+          ? ({
               ...c,
               counted_quantity: finalCount,
               variance: finalCount - c.system_quantity,
-              variance_percentage: c.system_quantity ? ((finalCount - c.system_quantity) / c.system_quantity) * 100 : 0,
+              variance_percentage: c.system_quantity
+                ? ((finalCount - c.system_quantity) / c.system_quantity) * 100
+                : 0,
               status: finalCount > 0 ? "counted" : "pending",
-            }
-          : c,
-      ),
+            } as LocalPhysicalInventoryCount)
+          : c
+      )
     );
   };
 
@@ -195,7 +185,6 @@ const PhysicalInventoryDetail: React.FC = () => {
     try {
       const { error } = await supabase.from("physical_inventory_counts").upsert(countsToSave);
       if (error) throw error;
-
       toast.success("Counts saved successfully to session draft.");
       await fetchCounts();
     } catch (err: any) {
@@ -205,11 +194,9 @@ const PhysicalInventoryDetail: React.FC = () => {
   };
 
   const submitInventoryChanges = async () => {
-    if (!session || isFinalizing || session.status === "completed") return;
+    if (!session || isFinalizing || isCompleted) return;
 
-    if (!window.confirm("Are you sure you want to FINALIZE this count? This will permanently update stock levels.")) {
-      return;
-    }
+    if (!window.confirm("Are you sure you want to FINALIZE this count?")) return;
 
     setIsFinalizing(true);
 
@@ -244,40 +231,61 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       if (sessionError) throw sessionError;
 
-      toast.success("Physical inventory complete! Stock levels updated.");
+      toast.success("Physical inventory complete!");
       await fetchSession();
-    } catch (err: any) {
-      console.error("Finalization failed:", err.message);
-      toast.error("Finalization failed: " + err.message);
+    } catch (error: any) {
+      console.error("Finalization failed:", error.message);
+      toast.error("Finalization failed: " + error.message);
     } finally {
       setIsFinalizing(false);
     }
   };
 
   const exportResults = () => {
-    toast.info("Export functionality not yet implemented.");
+    toast.info("Export functionality not implemented yet.");
   };
+
+  // --- SUMMARY ---
+  const summary = useMemo(() => {
+    const totalSystemQty = counts.reduce((sum, c) => sum + c.system_quantity, 0);
+    const totalCountedQty = counts.reduce((sum, c) => sum + c.counted_quantity, 0);
+    const totalVariance = totalCountedQty - totalSystemQty;
+    const totalVariancePercentage = totalSystemQty > 0 ? (totalVariance / totalSystemQty) * 100 : 0;
+    const countedItems = counts.filter((c) => c.counted_quantity !== 0).length;
+
+    return {
+      totalSystemQty,
+      totalCountedQty,
+      totalVariance,
+      totalVariancePercentage,
+      countedItems,
+      totalItems: counts.length,
+    };
+  }, [counts]);
 
   const isCompleted = session?.status === "completed";
 
+  // --- RENDER ---
   if (isLoading) return <div className="p-4">Loading inventory counts...</div>;
 
-  // --- RENDER ---
   return (
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-3xl font-bold">
           Physical Inventory - {session?.store_name} ({session?.session_number})
         </h1>
-        <span
-          className={`inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full ${isCompleted ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}
-        >
-          {isCompleted ? <CheckCircle className="w-4 h-4 mr-1" /> : <Save className="w-4 h-4 mr-1" />}
-          {isCompleted ? "Completed" : "In Progress"}
-        </span>
+        {isCompleted ? (
+          <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+            <CheckCircle className="w-4 h-4 mr-1" /> Completed
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800">
+            <Save className="w-4 h-4 mr-1" /> In Progress
+          </span>
+        )}
       </div>
 
-      {/* Summary Card */}
+      {/* Summary */}
       <div className="grid grid-cols-4 gap-4 p-4 bg-muted rounded-lg shadow-sm">
         <div className="text-center p-2 border-r">
           <div className="text-xl font-bold">{summary.totalItems}</div>
@@ -289,7 +297,9 @@ const PhysicalInventoryDetail: React.FC = () => {
         </div>
         <div className="text-center p-2 border-r">
           <div
-            className={`text-xl font-bold ${summary.totalVariance > 0 ? "text-green-600" : summary.totalVariance < 0 ? "text-red-600" : "text-gray-700"}`}
+            className={`text-xl font-bold ${
+              summary.totalVariance > 0 ? "text-green-600" : summary.totalVariance < 0 ? "text-red-600" : "text-gray-700"
+            }`}
           >
             {summary.totalVariance > 0 ? "+" : ""}
             {summary.totalVariance}
@@ -297,16 +307,14 @@ const PhysicalInventoryDetail: React.FC = () => {
           <div className="text-sm text-muted-foreground">Total Variance (Units)</div>
         </div>
         <div className="text-center p-2">
-          <div
-            className={`text-xl font-bold ${Math.abs(summary.totalVariancePercentage) > 5 ? "text-red-600" : "text-gray-700"}`}
-          >
+          <div className={`text-xl font-bold ${Math.abs(summary.totalVariancePercentage) > 5 ? "text-red-600" : "text-gray-700"}`}>
             {summary.totalVariancePercentage.toFixed(2)}%
           </div>
           <div className="text-sm text-muted-foreground">Variance %</div>
         </div>
       </div>
 
-      {/* Inventory Table */}
+      {/* Main Table */}
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full border-collapse">
           <thead>
@@ -328,21 +336,17 @@ const PhysicalInventoryDetail: React.FC = () => {
                 <td className="p-3 text-right">
                   <input
                     type="number"
-                    min={0}
+                    min="0"
                     value={item.counted_quantity}
                     onChange={(e) => handleCountChange(item.item_id, Number(e.target.value))}
                     className={`border p-1 w-24 text-right ${isCompleted ? "bg-gray-100 cursor-not-allowed" : "border-gray-300"}`}
                     disabled={isCompleted}
                   />
                 </td>
-                <td
-                  className={`p-3 text-right font-medium ${item.variance > 0 ? "text-green-600" : item.variance < 0 ? "text-red-600" : "text-gray-700"}`}
-                >
+                <td className={`p-3 text-right font-medium ${item.variance > 0 ? "text-green-600" : item.variance < 0 ? "text-red-600" : "text-gray-700"}`}>
                   {item.variance}
                 </td>
-                <td
-                  className={`p-3 text-right ${Math.abs(item.variance_percentage) > 5 ? "font-bold text-red-600" : ""}`}
-                >
+                <td className={`p-3 text-right ${Math.abs(item.variance_percentage) > 5 ? "font-bold text-red-600" : ""}`}>
                   {item.variance_percentage.toFixed(2)}%
                 </td>
               </tr>
@@ -350,7 +354,7 @@ const PhysicalInventoryDetail: React.FC = () => {
           </tbody>
         </table>
         {counts.length === 0 && !isLoading && (
-          <div className="p-4 text-center text-gray-500">No inventory items found.</div>
+          <div className="p-4 text-center text-gray-500">No inventory items found for this store.</div>
         )}
       </div>
 
@@ -360,6 +364,7 @@ const PhysicalInventoryDetail: React.FC = () => {
           <FileDown className="w-4 h-4 mr-2" />
           Export Results (CSV)
         </Button>
+
         <div>
           {!isCompleted && (
             <Button onClick={saveCounts} disabled={isFinalizing || isLoading} variant="secondary" className="mr-3">
@@ -367,20 +372,21 @@ const PhysicalInventoryDetail: React.FC = () => {
               Save Counts (Draft)
             </Button>
           )}
+
           <Button
             onClick={submitInventoryChanges}
             disabled={isFinalizing || isLoading || isCompleted}
-            className={isCompleted ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"}
+            "bg-blue-600 hover:bg-blue-700"}
           >
-            {isFinalizing ? (
-              "Finalizing..."
-            ) : isCompleted ? (
-              <>
-                <CheckCircle className="w-4 h-4 mr-2" /> Finalized
-              </>
-            ) : (
-              "Submit & Finish Physical Inventory"
-            )}
+            {isFinalizing
+              ? "Finalizing..."
+              : isCompleted
+              ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" /> Finalized
+                  </>
+                )
+              : "Submit & Finish Physical Inventory"}
           </Button>
         </div>
       </div>
