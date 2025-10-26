@@ -1,3 +1,5 @@
+// src/types/inventory.ts
+
 export interface InventoryItem {
   id: string;
   name: string;
@@ -12,21 +14,7 @@ export interface InventoryItem {
   lastRestocked: string;
   location: string;
 }
-export interface PhysicalInventoryCount {
-  id?: string;
-  session_id: string;
-  item_id: string;
-  sku: string;
-  item_name: string;
-  system_quantity: number;
-  counted_quantity: number;
-  status?: "pending" | "approved" | "rejected";
-  notes?: string;
-  variance?: number;
-  variance_percentage?: number;
-  created_at?: string;
-  updated_at?: string;
-}
+
 export interface StockAdjustment {
   id: string;
   itemId: string;
@@ -39,7 +27,7 @@ export interface StockAdjustment {
   user: string;
 }
 
-// ADD these new types for real-time stock calculations
+// Real-time stock
 export interface RealTimeStock {
   item_id: string;
   location_id: string | null;
@@ -60,4 +48,35 @@ export interface InventoryMovement {
   movement_type: "INBOUND" | "OUTBOUND";
   status: string;
   transfer_number: string;
+}
+
+// ======= Physical Inventory Types =======
+
+// Each counted item in a physical inventory session
+export interface PhysicalInventoryCount {
+  id?: string;
+  session_id: string;
+  item_id: string;
+  sku: string;
+  item_name: string;
+  system_quantity: number;
+  counted_quantity: number;
+  status?: "pending" | "approved" | "rejected";
+  notes?: string;
+  variance?: number;
+  variance_percentage?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Physical inventory session
+export interface PhysicalInventorySession {
+  id: string;
+  store_id: string;
+  store_name?: string;
+  session_number: string;
+  created_at: string;
+  updated_at: string;
+  status: "pending" | "completed";
+  counts?: PhysicalInventoryCount[];
 }
