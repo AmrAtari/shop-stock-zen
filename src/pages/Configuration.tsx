@@ -27,6 +27,8 @@ import {
   BadgeCheck,
   Ban,
   Eye,
+  // ADDED: Database icon for the new tab
+  Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +53,9 @@ import * as XLSX from "xlsx";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useNavigate } from "react-router-dom";
 import { UserPermissionsDialog } from "@/components/UserPermissionsDialog";
+
+// ADDED: Import the DatabaseAdmin page
+import DatabaseAdmin from "./DatabaseAdmin";
 
 type AttributeTable =
   | "categories"
@@ -147,10 +152,7 @@ const Configuration = () => {
   // Load attribute types from database
   const loadAttributeTypes = async () => {
     try {
-      const { data, error } = await supabase
-        .from("attribute_types")
-        .select("*")
-        .order("label");
+      const { data, error } = await supabase.from("attribute_types").select("*").order("label");
 
       if (error) throw error;
 
@@ -513,7 +515,8 @@ const Configuration = () => {
       </div>
 
       <Tabs defaultValue="stock" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        {/* MODIFIED: Changed grid-cols-3 to grid-cols-4 */}
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="stock" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
             Stock Attributes
@@ -525,6 +528,11 @@ const Configuration = () => {
           <TabsTrigger value="stores" className="flex items-center gap-2">
             <Store className="w-4 h-4" />
             Stores & Branches
+          </TabsTrigger>
+          {/* ADDED: New Tab Trigger */}
+          <TabsTrigger value="database" className="flex items-center gap-2">
+            <Database className="w-4 h-4" />
+            Database Admin
           </TabsTrigger>
         </TabsList>
 
@@ -824,6 +832,24 @@ const Configuration = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ADDED: Database Admin Section */}
+        <TabsContent value="database" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Direct Database Access
+              </CardTitle>
+              <CardDescription>
+                View table data and execute raw SQL queries. **Use with extreme caution as changes are immediate.**
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DatabaseAdmin />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Add Attribute Type Modal */}
@@ -872,10 +898,10 @@ const Configuration = () => {
             <Button
               onClick={async () => {
                 if (!newAttrName.trim()) return toast.error("Enter a name");
-                
+
                 // Convert name to table name format (lowercase with underscores)
                 const tableName = newAttrName.toLowerCase().replace(/\s+/g, "_");
-                
+
                 try {
                   const { data, error } = await supabase.rpc("create_attribute_table", {
                     p_table_name: tableName,
