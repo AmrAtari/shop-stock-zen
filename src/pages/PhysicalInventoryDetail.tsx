@@ -4,13 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { FileDown, CheckCircle, Save } from "lucide-react";
+import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
 
-// --- TYPES ---
-interface LocalPhysicalInventoryCount {
-  session_id: string;
-  item_id: string;
-  sku: string;
-  item_name: string;
+// Local type for inventory count items
+interface LocalPhysicalInventoryCount
+  extends Omit<PhysicalInventoryCount, "status" | "variance" | "variance_percentage"> {
   system_quantity: number;
   counted_quantity: number;
   variance: number;
@@ -18,25 +16,20 @@ interface LocalPhysicalInventoryCount {
   status: "pending" | "counted";
 }
 
-interface PhysicalInventorySessionWithStore {
-  id: string;
-  session_number: string;
-  store_id: string;
+// Session type including joined store name
+interface SessionWithStore extends PhysicalInventorySession {
   store_name: string;
-  created_at: string;
-  status: "draft" | "in_progress" | "completed";
 }
 
 const PhysicalInventoryDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-
-  const [session, setSession] = useState<PhysicalInventorySessionWithStore | null>(null);
+  const [session, setSession] = useState<SessionWithStore | null>(null);
   const [counts, setCounts] = useState<LocalPhysicalInventoryCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
-  // --- FETCH SESSION ---
+  // Fetch session details including store name
   const fetchSession = async () => {
     try {
       const { data, error } = await supabase
@@ -48,36 +41,32 @@ const PhysicalInventoryDetail: React.FC = () => {
       if (error) throw error;
 
       setSession({
-        id: data.id,
-        store_id: data.store_id,
-        store_name: data.stores?.[0]?.name || "N/A", // FIX: Access first store
-        session_number: data.session_number,
-        created_at: data.created_at,
-        status: data.status,
-      });
+        ...data,
+        store_name: data.stores?.name || "N/A",
+      } as SessionWithStore);
     } catch (err: any) {
       console.error("Error fetching session:", err.message);
       toast.error("Failed to load session details.");
     }
   };
 
-  // --- FETCH COUNTS ---
+  // Fetch inventory counts for this session
   const fetchCounts = async () => {
-    if (!session) return;
+    if (!session?.id || !session.store_id) return;
     setIsLoading(true);
-
     try {
-      const { data: existingCounts, error } = await supabase
+      // Check existing counts
+      const { data: existingCounts, error: existingError } = await supabase
         .from("physical_inventory_counts")
         .select("*")
         .eq("session_id", session.id)
         .order("sku");
 
-      if (error) throw error;
+      if (existingError) throw existingError;
 
       if (existingCounts && existingCounts.length > 0) {
         setCounts(
-          existingCounts.map((c: any) => ({
+          existingCounts.map((c) => ({
             ...c,
             status: c.counted_quantity > 0 ? "counted" : "pending",
           })),
@@ -85,7 +74,7 @@ const PhysicalInventoryDetail: React.FC = () => {
         return;
       }
 
-      // Fetch all inventory if no counts exist
+      // If no counts exist, fetch all store inventory
       const { data: inventoryData, error: inventoryError } = await supabase
         .from("store_inventory")
         .select("item_id, quantity, items(name, sku)")
@@ -93,21 +82,21 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       if (inventoryError) throw inventoryError;
 
-      setCounts(
-        inventoryData.map((item: any) => ({
-          session_id: session.id,
-          item_id: item.item_id,
-          sku: item.items?.sku || item.item_id,
-          item_name: item.items?.name || "N/A",
-          system_quantity: item.quantity || 0,
-          counted_quantity: 0,
-          variance: 0,
-          variance_percentage: 0,
-          status: "pending",
-        })),
-      );
+      const mappedCounts: LocalPhysicalInventoryCount[] = (inventoryData || []).map((item: any) => ({
+        session_id: session.id,
+        item_id: item.item_id,
+        sku: item.items?.sku || item.item_id,
+        item_name: item.items?.name || "N/A",
+        system_quantity: item.quantity || 0,
+        counted_quantity: 0,
+        variance: 0,
+        variance_percentage: 0,
+        status: "pending",
+      }));
 
-      if (!inventoryData || inventoryData.length === 0) {
+      setCounts(mappedCounts);
+
+      if (mappedCounts.length === 0) {
         toast.info("No inventory items found for this store.");
       }
     } catch (err: any) {
@@ -126,17 +115,18 @@ const PhysicalInventoryDetail: React.FC = () => {
     if (session) fetchCounts();
   }, [session]);
 
-  // --- HANDLERS ---
+  // --- Handlers ---
   const handleCountChange = (itemId: string, counted: number) => {
+    const finalCount = Math.max(0, counted);
     setCounts((prev) =>
       prev.map((c) =>
         c.item_id === itemId
           ? {
               ...c,
-              counted_quantity: counted,
-              variance: counted - c.system_quantity,
-              variance_percentage: c.system_quantity ? ((counted - c.system_quantity) / c.system_quantity) * 100 : 0,
-              status: counted > 0 ? "counted" : "pending",
+              counted_quantity: finalCount,
+              variance: finalCount - c.system_quantity,
+              variance_percentage: c.system_quantity ? ((finalCount - c.system_quantity) / c.system_quantity) * 100 : 0,
+              status: finalCount > 0 ? "counted" : "pending",
             }
           : c,
       ),
@@ -144,10 +134,29 @@ const PhysicalInventoryDetail: React.FC = () => {
   };
 
   const saveCounts = async () => {
+    const countsToSave = counts.map((c) => ({
+      id: c.id,
+      session_id: c.session_id,
+      item_id: c.item_id,
+      sku: c.sku,
+      item_name: c.item_name,
+      system_quantity: c.system_quantity,
+      counted_quantity: c.counted_quantity,
+      status: c.counted_quantity > 0 ? "counted" : "pending",
+      variance: c.variance,
+      variance_percentage: c.variance_percentage,
+    }));
+
+    if (countsToSave.length === 0) {
+      toast.info("No counts to save.");
+      return;
+    }
+
     try {
-      const { error } = await supabase.from("physical_inventory_counts").upsert(counts);
+      const { error } = await supabase.from("physical_inventory_counts").upsert(countsToSave);
       if (error) throw error;
       toast.success("Counts saved successfully.");
+      await fetchCounts();
     } catch (err: any) {
       console.error("Error saving counts:", err.message);
       toast.error("Failed to save counts.");
@@ -157,41 +166,45 @@ const PhysicalInventoryDetail: React.FC = () => {
   const submitInventoryChanges = async () => {
     if (!session || isFinalizing || session.status === "completed") return;
 
-    if (!window.confirm("Finalize this count? This will update stock levels permanently.")) return;
+    if (!window.confirm("Finalize this count? Stock levels will be permanently updated.")) return;
 
     setIsFinalizing(true);
 
     try {
       await saveCounts();
 
-      const updates = counts.filter((c) => c.status === "counted");
+      const updates = counts.filter((c) => c.status === "counted" || c.id);
 
-      await supabase.from("store_inventory").upsert(
-        updates.map((c) => ({
-          item_id: c.item_id,
-          store_id: session.store_id,
-          quantity: c.counted_quantity,
-          updated_at: new Date().toISOString(),
-        })),
-        { onConflict: ["item_id", "store_id"] },
-      );
+      const inventoryUpdates = updates.map((c) => ({
+        item_id: c.item_id,
+        store_id: session.store_id,
+        quantity: c.counted_quantity,
+        updated_at: new Date().toISOString(),
+      }));
 
-      await supabase
+      const { error: inventoryError } = await supabase
+        .from("store_inventory")
+        .upsert(inventoryUpdates, { onConflict: "item_id, store_id" });
+
+      if (inventoryError) throw inventoryError;
+
+      const { error: sessionError } = await supabase
         .from("physical_inventory_sessions")
         .update({ status: "completed", finalized_at: new Date().toISOString() })
         .eq("id", session.id);
 
-      toast.success("Inventory finalized!");
+      if (sessionError) throw sessionError;
+
+      toast.success("Inventory finalized successfully!");
       await fetchSession();
     } catch (err: any) {
-      console.error("Finalization error:", err.message);
-      toast.error("Failed to finalize inventory.");
+      console.error("Finalization failed:", err.message);
+      toast.error("Finalization failed: " + err.message);
     } finally {
       setIsFinalizing(false);
     }
   };
 
-  // --- SUMMARY ---
   const summary = useMemo(() => {
     const totalSystemQty = counts.reduce((sum, c) => sum + c.system_quantity, 0);
     const totalCountedQty = counts.reduce((sum, c) => sum + c.counted_quantity, 0);
@@ -209,15 +222,27 @@ const PhysicalInventoryDetail: React.FC = () => {
     };
   }, [counts]);
 
-  const isCompleted = session?.status === "completed";
-
   if (isLoading) return <div className="p-4">Loading inventory counts...</div>;
 
   return (
     <div className="p-8 space-y-6">
-      <h1 className="text-3xl font-bold">
-        Physical Inventory - {session?.store_name} ({session?.session_number})
-      </h1>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-3xl font-bold">
+          Physical Inventory - {session?.store_name} ({session?.session_number})
+        </h1>
+        <span
+          className={`inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full ${
+            session?.status === "completed" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+          }`}
+        >
+          {session?.status === "completed" ? (
+            <CheckCircle className="w-4 h-4 mr-1" />
+          ) : (
+            <Save className="w-4 h-4 mr-1" />
+          )}
+          {session?.status === "completed" ? "Completed" : "In Progress"}
+        </span>
+      </div>
 
       {/* Summary */}
       <div className="grid grid-cols-4 gap-4 p-4 bg-muted rounded-lg shadow-sm">
@@ -272,9 +297,9 @@ const PhysicalInventoryDetail: React.FC = () => {
                     type="number"
                     min={0}
                     value={item.counted_quantity}
+                    disabled={session?.status === "completed"}
                     onChange={(e) => handleCountChange(item.item_id, Number(e.target.value))}
-                    className={`border p-1 w-24 text-right ${isCompleted ? "bg-gray-100 cursor-not-allowed" : "border-gray-300"}`}
-                    disabled={isCompleted}
+                    className={`border p-1 w-24 text-right ${session?.status === "completed" ? "bg-gray-100 cursor-not-allowed" : "border-gray-300"}`}
                   />
                 </td>
                 <td
@@ -291,36 +316,39 @@ const PhysicalInventoryDetail: React.FC = () => {
             ))}
           </tbody>
         </table>
-        {counts.length === 0 && <div className="p-4 text-center text-gray-500">No inventory items found.</div>}
+        {counts.length === 0 && !isLoading && (
+          <div className="p-4 text-center text-gray-500">No inventory items found for this store.</div>
+        )}
       </div>
 
       {/* Actions */}
       <div className="flex justify-between items-center pt-4">
-        <Button
-          variant="outline"
-          onClick={() => toast.info("Export not implemented")}
-          disabled={isFinalizing || counts.length === 0}
-        >
+        <Button variant="outline" onClick={() => toast.info("Export not implemented")}>
           <FileDown className="w-4 h-4 mr-2" />
-          Export Results (CSV)
+          Export Results
         </Button>
-
         <div>
-          {!isCompleted && (
-            <Button onClick={saveCounts} variant="secondary" className="mr-3" disabled={isFinalizing || isLoading}>
-              <Save className="w-4 h-4 mr-2" /> Save Counts
+          {session?.status !== "completed" && (
+            <Button variant="secondary" className="mr-3" onClick={saveCounts}>
+              <Save className="w-4 h-4 mr-2" />
+              Save Counts (Draft)
             </Button>
           )}
-
-          <Button onClick={submitInventoryChanges} disabled={isFinalizing || isLoading || isCompleted}>
+          <Button
+            onClick={submitInventoryChanges}
+            disabled={isFinalizing || session?.status === "completed"}
+            className={
+              session?.status === "completed" ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"
+            }
+          >
             {isFinalizing ? (
               "Finalizing..."
-            ) : isCompleted ? (
+            ) : session?.status === "completed" ? (
               <>
                 <CheckCircle className="w-4 h-4 mr-2" /> Finalized
               </>
             ) : (
-              "Submit & Finish Inventory"
+              "Submit & Finish Physical Inventory"
             )}
           </Button>
         </div>
