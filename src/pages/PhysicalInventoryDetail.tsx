@@ -33,11 +33,10 @@ interface Session {
   started_at: string;
   completed_at: string | null;
   notes: string | null;
+  store_id: string;
   count_date: string;
-  responsible_person: string | null;
   count_type: string;
-  store_id?: string | null;
-  stores?: { id: string; name: string } | null;
+  responsible_person?: string;
 }
 
 interface PhysicalInventoryCount {
@@ -51,7 +50,7 @@ interface PhysicalInventoryCount {
   variance_percentage: number;
   status: "pending" | "approved" | "rejected";
   notes: string | null;
-  store_id?: string;
+  session_id: string;
 }
 
 const PhysicalInventoryDetail = () => {
@@ -71,6 +70,7 @@ const PhysicalInventoryDetail = () => {
     queryKey: queryKeys.physicalInventory.counts(id || ""),
     queryFn: async () => {
       if (!id) return [];
+
       const { data, error } = await supabase
         .from("physical_inventory_counts")
         .select("*")
@@ -78,28 +78,18 @@ const PhysicalInventoryDetail = () => {
         .order("sku");
 
       if (error) throw error;
-
-      // Ensure type matches PhysicalInventoryCount
-      return (data || []).map((c: any) => ({
-        ...c,
-        status: c.status as "pending" | "approved" | "rejected",
-        variance: c.counted_quantity - c.system_quantity,
-        variance_percentage:
-          c.system_quantity > 0
-            ? ((c.counted_quantity - c.system_quantity) / c.system_quantity) * 100
-            : 0,
-      })) as PhysicalInventoryCount[];
+      return data as PhysicalInventoryCount[];
     },
     enabled: !!id,
   });
 
-  // Lookup SKU in items table (per store)
+  // Lookup SKU in store_inventory
   const lookupSku = async (sku: string) => {
     if (!currentSession?.store_id) return null;
 
     const { data, error } = await supabase
       .from("store_inventory")
-      .select("id, item_id, sku, item_name, quantity as systemQuantity")
+      .select("item_id, sku, item_name, quantity")
       .eq("store_id", currentSession.store_id)
       .eq("sku", sku)
       .maybeSingle();
@@ -111,12 +101,13 @@ const PhysicalInventoryDetail = () => {
       id: data.item_id,
       sku: data.sku,
       name: data.item_name,
-      systemQuantity: data.systemQuantity || 0,
+      systemQuantity: data.quantity || 0,
     };
   };
 
   const handleScanItems = async (items: any[]) => {
     if (!currentSession) return;
+
     try {
       const countsToInsert = await Promise.all(
         items.map(async (item) => {
@@ -129,9 +120,8 @@ const PhysicalInventoryDetail = () => {
             system_quantity: itemDetails?.systemQuantity || 0,
             counted_quantity: item.countedQuantity,
             status: "pending" as const,
-            store_id: currentSession.store_id || null,
           };
-        })
+        }),
       );
 
       const { error } = await supabase.from("physical_inventory_counts").insert(countsToInsert);
@@ -147,6 +137,7 @@ const PhysicalInventoryDetail = () => {
 
   const handleImportItems = async (items: any[]) => {
     if (!currentSession) return;
+
     try {
       const countsToInsert = await Promise.all(
         items.map(async (item) => {
@@ -159,9 +150,8 @@ const PhysicalInventoryDetail = () => {
             system_quantity: itemDetails?.systemQuantity || 0,
             counted_quantity: item.countedQuantity,
             status: "pending" as const,
-            store_id: currentSession.store_id || null,
           };
-        })
+        }),
       );
 
       const { error } = await supabase.from("physical_inventory_counts").insert(countsToInsert);
@@ -180,6 +170,7 @@ const PhysicalInventoryDetail = () => {
       .from("physical_inventory_counts")
       .update({ counted_quantity: countedQuantity, notes })
       .eq("id", id);
+
     if (error) throw error;
     refetchCounts();
   };
@@ -198,18 +189,18 @@ const PhysicalInventoryDetail = () => {
           updateMode === "all" ? counts : counts.filter((c) => selectedForUpdate.has(c.id));
 
         for (const count of countsToUpdate) {
-          if (!count.item_id || !count.store_id) continue;
+          if (!count.item_id) continue;
 
-          // Update store_inventory quantity
+          // Update store inventory quantity
           const { error: updateError } = await supabase
             .from("store_inventory")
             .update({ quantity: count.counted_quantity })
             .eq("item_id", count.item_id)
-            .eq("store_id", count.store_id);
+            .eq("store_id", currentSession.store_id);
 
           if (updateError) throw updateError;
 
-          // Mark count as approved
+          // Mark as approved
           await supabase
             .from("physical_inventory_counts")
             .update({ status: "approved" })
@@ -236,25 +227,38 @@ const PhysicalInventoryDetail = () => {
     }
   };
 
-  if (sessionLoading) return <div className="p-8 text-center text-muted-foreground">Loading session...</div>;
-  if (!currentSession)
+  if (sessionLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentSession) {
     return (
       <div className="p-8">
         <Button variant="ghost" onClick={() => navigate("/inventory/physical")} className="mb-6">
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Physical Inventory
         </Button>
+
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>Session Not Found</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground mb-4">The session does not exist or has been deleted.</p>
+            <p className="text-muted-foreground mb-4">
+              The physical inventory session you're looking for doesn't exist or has been deleted.
+            </p>
             <Button onClick={() => navigate("/inventory/physical")}>View All Sessions</Button>
           </CardContent>
         </Card>
       </div>
     );
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -272,11 +276,13 @@ const PhysicalInventoryDetail = () => {
             </div>
             <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
               <span>
-                {currentSession.stores?.name || "No Store"} | {format(new Date(currentSession.count_date), "MMM dd, yyyy")}
+                Store: {currentSession.store_id || "N/A"} | {format(new Date(currentSession.count_date), "MMM dd, yyyy")}
               </span>
               {currentSession.responsible_person && <span>By: {currentSession.responsible_person}</span>}
               {currentSession.count_type && (
-                <Badge variant="outline" className="capitalize">{currentSession.count_type} Count</Badge>
+                <Badge variant="outline" className="capitalize">
+                  {currentSession.count_type} Count
+                </Badge>
               )}
             </div>
           </div>
@@ -291,7 +297,7 @@ const PhysicalInventoryDetail = () => {
         </Button>
       </div>
 
-      {/* Progress Summary */}
+      {/* Progress */}
       {counts.length > 0 && (
         <Card>
           <CardContent className="pt-6">
@@ -301,15 +307,15 @@ const PhysicalInventoryDetail = () => {
                 <p className="text-sm text-muted-foreground">Items Counted</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-green-600">{counts.filter(c => c.variance > 0).length}</p>
+                <p className="text-2xl font-bold text-green-600">{counts.filter((c) => c.variance > 0).length}</p>
                 <p className="text-sm text-muted-foreground">Over</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-red-600">{counts.filter(c => c.variance < 0).length}</p>
+                <p className="text-2xl font-bold text-red-600">{counts.filter((c) => c.variance < 0).length}</p>
                 <p className="text-sm text-muted-foreground">Under</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">{counts.filter(c => c.variance === 0).length}</p>
+                <p className="text-2xl font-bold">{counts.filter((c) => c.variance === 0).length}</p>
                 <p className="text-sm text-muted-foreground">Matched</p>
               </div>
             </div>
@@ -317,14 +323,15 @@ const PhysicalInventoryDetail = () => {
         </Card>
       )}
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "entry" | "report")}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="entry">
-            <Scan className="w-4 h-4 mr-2" /> Physical Count
+            <Scan className="w-4 h-4 mr-2" />
+            Physical Count
           </TabsTrigger>
           <TabsTrigger value="report" disabled={counts.length === 0}>
-            <BarChart3 className="w-4 h-4 mr-2" /> Report
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Report
           </TabsTrigger>
         </TabsList>
 
@@ -332,10 +339,12 @@ const PhysicalInventoryDetail = () => {
           <Tabs defaultValue="scanner" className="w-full">
             <TabsList>
               <TabsTrigger value="scanner">
-                <Scan className="w-4 h-4 mr-2" /> Barcode Scanner
+                <Scan className="w-4 h-4 mr-2" />
+                Barcode Scanner
               </TabsTrigger>
               <TabsTrigger value="import">
-                <Upload className="w-4 h-4 mr-2" /> Import Data
+                <Upload className="w-4 h-4 mr-2" />
+                Import Data
               </TabsTrigger>
             </TabsList>
 
@@ -350,7 +359,12 @@ const PhysicalInventoryDetail = () => {
         </TabsContent>
 
         <TabsContent value="report">
-          <PhysicalInventoryReport counts={counts} sessionNumber={currentSession.session_number} onUpdateCount={handleUpdateCount} onExport={() => {}} />
+          <PhysicalInventoryReport
+            counts={counts}
+            sessionNumber={currentSession.session_number}
+            onUpdateCount={handleUpdateCount}
+            onExport={() => {}}
+          />
         </TabsContent>
       </Tabs>
 
@@ -359,12 +373,16 @@ const PhysicalInventoryDetail = () => {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Complete Physical Inventory Session</DialogTitle>
-            <DialogDescription>Choose how to update system quantities based on counted values</DialogDescription>
+            <DialogDescription>
+              Choose how to update system quantities based on counted values
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <Select value={updateMode} onValueChange={(v: string) => setUpdateMode(v as "all" | "selected" | "none")}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Select value={updateMode} onValueChange={(v: any) => setUpdateMode(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Update All Items</SelectItem>
                 <SelectItem value="selected">Update Selected Items</SelectItem>
@@ -381,15 +399,27 @@ const PhysicalInventoryDetail = () => {
                       checked={selectedForUpdate.has(count.id)}
                       onCheckedChange={(checked) => {
                         const newSet = new Set(selectedForUpdate);
-                        if (checked) newSet.add(count.id);
-                        else newSet.delete(count.id);
+                        if (checked) {
+                          newSet.add(count.id);
+                        } else {
+                          newSet.delete(count.id);
+                        }
                         setSelectedForUpdate(newSet);
                       }}
                     />
                     <label className="text-sm flex-1">
-                      {count.sku} - {count.item_name}{" "}
-                      <span className={count.variance > 0 ? "text-green-600 ml-2" : count.variance < 0 ? "text-red-600 ml-2" : ""}>
-                        ({count.variance > 0 ? "+" : ""}{count.variance})
+                      {count.sku} - {count.item_name}
+                      <span
+                        className={
+                          count.variance > 0
+                            ? "text-green-600 ml-2"
+                            : count.variance < 0
+                            ? "text-red-600 ml-2"
+                            : ""
+                        }
+                      >
+                        ({count.variance > 0 ? "+" : ""}
+                        {count.variance})
                       </span>
                     </label>
                   </div>
@@ -411,7 +441,9 @@ const PhysicalInventoryDetail = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={handleFinalizeSession}>Complete Session</Button>
           </DialogFooter>
         </DialogContent>
