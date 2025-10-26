@@ -78,7 +78,6 @@ const PhysicalInventoryDetail: React.FC = () => {
       if (existingError) throw existingError;
 
       if (existingCounts && existingCounts.length > 0) {
-        // If counts exist, use them directly, casting to the new local type
         setCounts(
           existingCounts.map((c) => ({
             ...c,
