@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Form, FormControl, FormMessage, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ArrowLeft, Save, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -57,9 +57,11 @@ const PhysicalInventoryNew = () => {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Generate session number via RPC
-      const { data: sessionNumber, error: funcError } = await supabase.rpc("generate_pi_session_number");
+      // Generate session number from your types.ts function
+      const { data: sessionNumberData, error: funcError } = await supabase.rpc("generate_pi_session_number");
       if (funcError) throw funcError;
+
+      const sessionNumber = sessionNumberData as string;
 
       const { data, error } = await supabase
         .from("physical_inventory_sessions")
@@ -86,7 +88,11 @@ const PhysicalInventoryNew = () => {
         startCounting ? `Session ${data.session_number} started` : `Session ${data.session_number} saved as draft`,
       );
 
-      navigate(startCounting ? `/inventory/physical/${data.id}` : "/inventory/physical");
+      if (startCounting) {
+        navigate(`/inventory/physical/${data.id}`);
+      } else {
+        navigate("/inventory/physical");
+      }
     } catch (error: any) {
       toast.error(error.message || "Failed to create session");
     } finally {
@@ -110,7 +116,6 @@ const PhysicalInventoryNew = () => {
 
       <Form {...form}>
         <form className="space-y-6">
-          {/* Session Info */}
           <Card>
             <CardHeader>
               <CardTitle>1. Session Identification & Details</CardTitle>
@@ -118,160 +123,192 @@ const PhysicalInventoryNew = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <FormItem>
-                  <FormLabel>Count Date *</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...form.register("countDate")} />
-                  </FormControl>
-                  <FormMessage>{form.formState.errors.countDate?.message}</FormMessage>
-                </FormItem>
-
-                <FormItem>
-                  <FormLabel>Store/Location</FormLabel>
-                  <FormControl>
-                    <Select
-                      value={form.getValues("storeId") || ""}
-                      onValueChange={(val) => form.setValue("storeId", val)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select store" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stores.map((store) => (
-                          <SelectItem key={store.id} value={store.id}>
-                            {store.name}
-                            {store.location ? ` - ${store.location}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <FormField
+                  control={form.control}
+                  name="countDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Count Date *</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="storeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store/Location</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select store" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {stores.map((store) => (
+                            <SelectItem key={store.id} value={store.id}>
+                              {store.name} {store.location && `- ${store.location}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              <FormItem>
-                <FormLabel>Count Type *</FormLabel>
-                <FormControl>
-                  <RadioGroup
-                    value={form.getValues("countType")}
-                    onValueChange={(val) => form.setValue("countType", val as any)}
-                    className="flex gap-4"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="full" id="full" />
-                      <Label htmlFor="full" className="cursor-pointer">
-                        Full Count
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="partial" id="partial" />
-                      <Label htmlFor="partial" className="cursor-pointer">
-                        Partial Count
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="cycle" id="cycle" />
-                      <Label htmlFor="cycle" className="cursor-pointer">
-                        Cycle Count
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+              <FormField
+                control={form.control}
+                name="countType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Count Type *</FormLabel>
+                    <FormControl>
+                      <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4">
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="full" id="full" />
+                          <Label htmlFor="full" className="cursor-pointer">
+                            Full Count
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="partial" id="partial" />
+                          <Label htmlFor="partial" className="cursor-pointer">
+                            Partial Count
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="cycle" id="cycle" />
+                          <Label htmlFor="cycle" className="cursor-pointer">
+                            Cycle Count
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormDescription>Choose the type of inventory count you want to perform</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <div className="grid grid-cols-2 gap-4">
-                <FormItem>
-                  <FormLabel>Department</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Warehouse, Retail" {...form.register("department")} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-
-                <FormItem>
-                  <FormLabel>Specific Location/Zone</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Warehouse A - Zone 3" {...form.register("locationFilter")} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <FormField
+                  control={form.control}
+                  name="department"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Department</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Warehouse, Retail" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="locationFilter"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Specific Location/Zone</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Warehouse A - Zone 3" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              <FormItem>
-                <FormLabel>Expected Item Count</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="Approximate number of items" {...form.register("expectedItems")} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+              <FormField
+                control={form.control}
+                name="expectedItems"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Expected Item Count</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="Approximate number of items" {...field} />
+                    </FormControl>
+                    <FormDescription>Optional - helps track progress during counting</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </CardContent>
           </Card>
 
-          {/* Purpose & Responsible */}
+          {/* Purpose & Responsible Person */}
           <Card>
             <CardHeader>
               <CardTitle>2. Count Purpose & Personnel</CardTitle>
               <CardDescription>Who is conducting the count and why</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <FormItem>
-                <FormLabel>Purpose</FormLabel>
-                <FormControl>
-                  <Select
-                    value={form.getValues("purpose") || ""}
-                    onValueChange={(val) => form.setValue("purpose", val)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select purpose" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Annual Count">Annual Count</SelectItem>
-                      <SelectItem value="Monthly Reconciliation">Monthly Reconciliation</SelectItem>
-                      <SelectItem value="Variance Investigation">Variance Investigation</SelectItem>
-                      <SelectItem value="Pre-Audit">Pre-Audit</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-
-              <FormItem>
-                <FormLabel>Responsible Person *</FormLabel>
-                <FormControl>
-                  <Input placeholder="Name of person conducting the count" {...form.register("responsiblePerson")} />
-                </FormControl>
-                <FormMessage>{form.formState.errors.responsiblePerson?.message}</FormMessage>
-              </FormItem>
-
-              <FormItem>
-                <FormLabel>Notes/Instructions</FormLabel>
-                <FormControl>
-                  <Textarea placeholder="Special instructions..." rows={4} {...form.register("notes")} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+              <FormField
+                control={form.control}
+                name="purpose"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Purpose</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select purpose" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="routine">Routine Count</SelectItem>
+                        <SelectItem value="audit">Audit</SelectItem>
+                        <SelectItem value="investigation">Investigation</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="responsiblePerson"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Responsible Person *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes / Remarks</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Any additional notes..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </CardContent>
           </Card>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="outline" onClick={() => navigate("/inventory/physical")} disabled={isSubmitting}>
+          <div className="flex gap-4 justify-end">
+            <Button variant="outline" onClick={() => navigate("/inventory/physical")}>
               Cancel
             </Button>
-            <Button
-              variant="secondary"
-              onClick={form.handleSubmit((data) => handleSubmit(data, false))}
-              disabled={isSubmitting}
-            >
-              <Save className="w-4 h-4 mr-2" />
-              Save as Draft
+            <Button disabled={isSubmitting} onClick={form.handleSubmit((values) => handleSubmit(values, false))}>
+              <Save className="w-4 h-4 mr-2" /> Save Draft
             </Button>
-            <Button onClick={form.handleSubmit((data) => handleSubmit(data, true))} disabled={isSubmitting}>
-              <PlayCircle className="w-4 h-4 mr-2" />
-              Start Counting
+            <Button disabled={isSubmitting} onClick={form.handleSubmit((values) => handleSubmit(values, true))}>
+              <PlayCircle className="w-4 h-4 mr-2" /> Start Counting
             </Button>
           </div>
         </form>
