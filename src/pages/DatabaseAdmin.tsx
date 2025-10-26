@@ -44,15 +44,12 @@ const DatabaseAdminPanel: React.FC = () => {
   const [rows, setRows] = useState<TableRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
 
-  // --- Load all tables ---
+  // --- Load all tables via RPC ---
   const fetchTables = async () => {
     try {
-      const { data, error } = await supabase
-        .from("information_schema.tables")
-        .select("table_name")
-        .eq("table_schema", "public");
+      const { data, error } = await supabase.rpc("list_public_tables");
       if (error) throw error;
-      setTables(data.map((t: any) => t.table_name));
+      if (data) setTables(data.map((t: any) => t.table_name));
     } catch (err: any) {
       console.error(err.message);
       toast.error("Failed to fetch tables.");
@@ -81,6 +78,7 @@ const DatabaseAdminPanel: React.FC = () => {
 
   useEffect(() => {
     if (selectedTable) fetchRows(selectedTable);
+    else setRows([]);
   }, [selectedTable]);
 
   // --- Create new table ---
@@ -89,6 +87,7 @@ const DatabaseAdminPanel: React.FC = () => {
       toast.warning("Table name and at least one column required.");
       return;
     }
+
     const columnDefs = columns.map((c) => `${c.name} ${c.type}${c.isPrimary ? " PRIMARY KEY" : ""}`).join(", ");
     const sql = `CREATE TABLE ${newTableName} (${columnDefs});`;
 
@@ -105,7 +104,7 @@ const DatabaseAdminPanel: React.FC = () => {
     }
   };
 
-  // --- Add column to table ---
+  // --- Add column to selected table ---
   const addColumn = async () => {
     if (!selectedTable || !addColumnName || !addColumnType) return;
     const sql = `ALTER TABLE ${selectedTable} ADD COLUMN ${addColumnName} ${addColumnType};`;
@@ -152,7 +151,7 @@ const DatabaseAdminPanel: React.FC = () => {
         {/* Add columns */}
         <div className="flex gap-2 mt-2">
           <Input placeholder="Column Name" value={addColumnName} onChange={(e) => setAddColumnName(e.target.value)} />
-          <Select onValueChange={setAddColumnType} defaultValue={addColumnType}>
+          <Select onValueChange={setAddColumnType} defaultValue={addColumnType} value={addColumnType}>
             <SelectTrigger>
               <SelectValue placeholder="Type" />
             </SelectTrigger>
@@ -200,7 +199,12 @@ const DatabaseAdminPanel: React.FC = () => {
       {/* Existing Tables */}
       <div className="border p-4 rounded-lg space-y-2">
         <h2 className="text-xl font-semibold">Existing Tables</h2>
-        <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)} className="border p-2 rounded">
+        <select
+          value={selectedTable}
+          onChange={(e) => setSelectedTable(e.target.value)}
+          className="border p-2 rounded"
+          disabled={tables.length === 0}
+        >
           <option value="">Select Table</option>
           {tables.map((t) => (
             <option key={t} value={t}>
@@ -208,6 +212,7 @@ const DatabaseAdminPanel: React.FC = () => {
             </option>
           ))}
         </select>
+        {tables.length === 0 && <p>No tables found in database.</p>}
 
         {selectedTable && (
           <div className="flex gap-2 mt-2">
