@@ -12,6 +12,8 @@ export const queryKeys = {
     stockLevels: () => [...queryKeys.inventory.all, "stock-levels"] as const,
     movements: () => [...queryKeys.inventory.all, "movements"] as const,
     details: (id: string) => [...queryKeys.inventory.all, "detail", id] as const,
+    // ADD THIS NEW KEY
+    priceHistory: (itemId: string) => [...queryKeys.inventory.all, "price-history", itemId] as const,
   },
 
   reports: {
@@ -65,15 +67,15 @@ export const invalidateInventoryData = async (queryClient: QueryClient) => {
   await Promise.all([
     // Invalidate inventory queries
     queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all }),
-    
+
     // Invalidate all report queries
     queryClient.invalidateQueries({ queryKey: queryKeys.reports.all }),
-    
+
     // Invalidate all dashboard queries
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics }),
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.categoryDistribution }),
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.lowStock }),
-    
+
     // Invalidate store inventory
     queryClient.invalidateQueries({ queryKey: ["store-inventory"] }),
   ]);
