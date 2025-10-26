@@ -11,82 +11,45 @@ import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
-import { usePagination } from "@/hooks/usePagination"; // Assuming this imports the logic you provided
+import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 
 // Define a local interface that extends the imported Item type,
-// ensuring all fields used in this component are present.
+// ensuring all fields necessary for the Inventory view are present.
+// NOTE: These fields must exist on the Supabase Item table or be aliased/joined.
 interface ItemWithDetails extends Item {
   location: string;
   min_stock: number;
   quantity: number;
   unit: string;
-  sellingPrice: number;
+  sellingPrice: number; // Assuming costPrice/sellingPrice are also included
 }
 
-// NOTE: This component assumes a useInventoryQuery hook or similar is available
+// 1. Supabase Data Fetching Function
+const fetchInventory = async (): Promise<ItemWithDetails[]> => {
+  // Fetch from the 'items' table. We use a full select (*) and rely on the database
+  // schema or a joined view to provide all necessary fields (quantity, min_stock, location, etc.).
+  const { data, error } = await supabase.from("items").select("*");
+
+  if (error) {
+    console.error("Supabase Inventory Fetch Error:", error);
+    throw new Error("Failed to fetch inventory data.");
+  }
+
+  // Cast the data to ItemWithDetails. In a real app, you would validate this structure.
+  return data as ItemWithDetails[];
+};
+
+// 2. Data Hook connected to React Query
 const useInventoryQuery = () => {
-  const [data, setData] = useState<ItemWithDetails[]>([]);
-  const [isFetching, setIsFetching] = useState(true);
-
-  useEffect(() => {
-    const fetchItems = async () => {
-      // Using 'any' for the dummy array to bypass the complex and unknown Item type definition.
-      const dummyItems: any[] = [
-        {
-          id: "1",
-          name: "Laptop Pro",
-          sku: "LTP-001",
-          category: "Electronics",
-          quantity: 15,
-          min_stock: 5,
-          unit: "pcs",
-          costPrice: 900,
-          sellingPrice: 1200,
-          supplier: "Supplier A",
-          lastRestocked: "2023-10-01",
-          location: "Warehouse 1",
-        },
-        {
-          id: "2",
-          name: "Mouse Wireless",
-          sku: "MS-WRLS",
-          category: "Accessories",
-          quantity: 250,
-          min_stock: 50,
-          unit: "pcs",
-          costPrice: 15,
-          sellingPrice: 25,
-          supplier: "Supplier B",
-          lastRestocked: "2023-10-15",
-          location: "Retail Floor",
-        },
-        {
-          id: "3",
-          name: 'Monitor 27"',
-          sku: "MON-27",
-          category: "Electronics",
-          quantity: 8,
-          min_stock: 3,
-          unit: "pcs",
-          costPrice: 300,
-          sellingPrice: 450,
-          supplier: "Supplier A",
-          lastRestocked: "2023-11-01",
-          location: "Warehouse 1",
-        },
-      ];
-      setData(dummyItems as ItemWithDetails[]);
-      setIsFetching(false);
-    };
-    fetchItems();
-  }, []);
-
-  return { data, isLoading: isFetching, error: null };
+  return useQuery<ItemWithDetails[]>({
+    queryKey: queryKeys.inventory.all,
+    queryFn: fetchInventory,
+  });
 };
 
 interface BulkActionsProps {
@@ -122,7 +85,8 @@ const InventoryNew: React.FC = () => {
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
-  const { data: inventoryData, isLoading } = useInventoryQuery();
+  // 3. Use the real database hook
+  const { data: inventoryData, isLoading, error } = useInventoryQuery();
   const allInventory = inventoryData || [];
 
   const filteredInventory = useMemo(() => {
@@ -133,12 +97,10 @@ const InventoryNew: React.FC = () => {
     );
   }, [allInventory, searchTerm]);
 
-  // FIX: Corrected the usePagination call and destructuring.
-  // The hook provided only returns pagination data, not currentItems.
+  // Use the usePagination hook with the required props object
   const pagination = usePagination({
     totalItems: filteredInventory.length,
     itemsPerPage: 10,
-    initialPage: 1, // Optional: defaults to 1
   });
 
   // Calculate currentItems based on the hook's returned indices
@@ -155,6 +117,7 @@ const InventoryNew: React.FC = () => {
       if (error) throw error;
 
       toast.success("Product deleted successfully.");
+      // Invalidate the query to refetch data from the database
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     } catch (error) {
       console.error("Deletion error:", error);
@@ -186,12 +149,17 @@ const InventoryNew: React.FC = () => {
     return <div className="p-8">Loading inventory...</div>;
   }
 
+  if (error) {
+    // Display error if fetching failed
+    return <div className="p-8 text-red-500">Error loading inventory: {error.message}</div>;
+  }
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Inventory</h1>
         <div className="flex space-x-3">
-          {/* NEW: Physical Inventory Button */}
+          {/* Physical Inventory Button */}
           <Button
             variant="outline"
             onClick={() => navigate("/inventory/physical/new")}
