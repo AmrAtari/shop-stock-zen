@@ -57,12 +57,11 @@ const PhysicalInventoryNew = () => {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Generate session number from your types.ts function
-      const { data: sessionNumberData, error: funcError } = await supabase.rpc("generate_pi_session_number");
+      // Generate session number
+      const { data: sessionNumber, error: funcError } = await supabase.rpc("generate_pi_session_number");
       if (funcError) throw funcError;
 
-      const sessionNumber = sessionNumberData as string;
-
+      // Create session
       const { data, error } = await supabase
         .from("physical_inventory_sessions")
         .insert({
@@ -116,6 +115,7 @@ const PhysicalInventoryNew = () => {
 
       <Form {...form}>
         <form className="space-y-6">
+          {/* Section 1: Session Information */}
           <Card>
             <CardHeader>
               <CardTitle>1. Session Identification & Details</CardTitle>
@@ -136,6 +136,7 @@ const PhysicalInventoryNew = () => {
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={form.control}
                   name="storeId"
@@ -151,7 +152,8 @@ const PhysicalInventoryNew = () => {
                         <SelectContent>
                           {stores.map((store) => (
                             <SelectItem key={store.id} value={store.id}>
-                              {store.name} {store.location && `- ${store.location}`}
+                              {store.name}
+                              {store.location && ` - ${store.location}`}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -210,6 +212,7 @@ const PhysicalInventoryNew = () => {
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={form.control}
                   name="locationFilter"
@@ -242,7 +245,7 @@ const PhysicalInventoryNew = () => {
             </CardContent>
           </Card>
 
-          {/* Purpose & Responsible Person */}
+          {/* Section 2: Purpose & Responsibility */}
           <Card>
             <CardHeader>
               <CardTitle>2. Count Purpose & Personnel</CardTitle>
@@ -255,22 +258,25 @@ const PhysicalInventoryNew = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Purpose</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select purpose" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="routine">Routine Count</SelectItem>
-                        <SelectItem value="audit">Audit</SelectItem>
-                        <SelectItem value="investigation">Investigation</SelectItem>
+                        <SelectItem value="Annual Count">Annual Count</SelectItem>
+                        <SelectItem value="Monthly Reconciliation">Monthly Reconciliation</SelectItem>
+                        <SelectItem value="Variance Investigation">Variance Investigation</SelectItem>
+                        <SelectItem value="Pre-Audit">Pre-Audit</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="responsiblePerson"
@@ -278,20 +284,25 @@ const PhysicalInventoryNew = () => {
                   <FormItem>
                     <FormLabel>Responsible Person *</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter name" {...field} />
+                      <Input placeholder="Name of person conducting the count" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Notes / Remarks</FormLabel>
+                    <FormLabel>Notes/Instructions</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Any additional notes..." {...field} />
+                      <Textarea
+                        placeholder="Special instructions or notes for this count session..."
+                        {...field}
+                        rows={4}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -300,15 +311,32 @@ const PhysicalInventoryNew = () => {
             </CardContent>
           </Card>
 
-          <div className="flex gap-4 justify-end">
-            <Button variant="outline" onClick={() => navigate("/inventory/physical")}>
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate("/inventory/physical")}
+              disabled={isSubmitting}
+            >
               Cancel
             </Button>
-            <Button disabled={isSubmitting} onClick={form.handleSubmit((values) => handleSubmit(values, false))}>
-              <Save className="w-4 h-4 mr-2" /> Save Draft
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={form.handleSubmit((data) => handleSubmit(data, false))}
+              disabled={isSubmitting}
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save as Draft
             </Button>
-            <Button disabled={isSubmitting} onClick={form.handleSubmit((values) => handleSubmit(values, true))}>
-              <PlayCircle className="w-4 h-4 mr-2" /> Start Counting
+            <Button
+              type="button"
+              onClick={form.handleSubmit((data) => handleSubmit(data, true))}
+              disabled={isSubmitting}
+            >
+              <PlayCircle className="w-4 h-4 mr-2" />
+              Start Counting
             </Button>
           </div>
         </form>
