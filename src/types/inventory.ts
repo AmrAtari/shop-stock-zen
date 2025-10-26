@@ -12,7 +12,21 @@ export interface InventoryItem {
   lastRestocked: string;
   location: string;
 }
-
+export interface PhysicalInventoryCount {
+  id?: string;
+  session_id: string;
+  item_id: string;
+  sku: string;
+  item_name: string;
+  system_quantity: number;
+  counted_quantity: number;
+  status?: "pending" | "approved" | "rejected";
+  notes?: string;
+  variance?: number;
+  variance_percentage?: number;
+  created_at?: string;
+  updated_at?: string;
+}
 export interface StockAdjustment {
   id: string;
   itemId: string;
