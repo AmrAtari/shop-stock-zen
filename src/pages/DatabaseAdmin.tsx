@@ -50,7 +50,7 @@ const DatabaseAdminPanel: React.FC = () => {
   const [editValue, setEditValue] = useState("");
 
   // --- SQL Query Execution ---
-  const [sqlQuery, setSqlQuery] = useState("");
+  const [sqlQuery, setSqlQuery] = useState("SELECT * FROM items WHERE category = 'Electronics';"); // Pre-fill example query
   const [queryResult, setQueryResult] = useState<any>(null);
   const [executingQuery, setExecutingQuery] = useState(false);
 
@@ -210,7 +210,7 @@ const DatabaseAdminPanel: React.FC = () => {
     setCurrentTab("queryResults");
 
     try {
-      // Execute the SQL query via RPC
+      // Execute the SQL query via RPC. This is the only call needed.
       const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
       if (error) throw error;
 
@@ -222,13 +222,13 @@ const DatabaseAdminPanel: React.FC = () => {
       let message = "Query executed successfully";
       let actualData = data;
 
-      // Special handling for the RPC returning a success object instead of raw data array
+      // Check if the RPC returned the verbose success object instead of the array data.
       if (actualData && typeof actualData === "object" && !Array.isArray(actualData) && "success" in actualData) {
-        // If it's the verbose success object, use its message and set actualData to null or empty array
+        // If it's the verbose success object, we assume no table data was returned (0 rows, or a command).
         message = actualData.message || message;
-        actualData = resultType === "select" ? [] : null; // Clear data if it's just the status object
+        actualData = null; // Clear data to avoid rendering the success object as JSON.
       } else if (Array.isArray(data)) {
-        // If it's an array, it's the table data or row count.
+        // If it's an array, it's the actual table data or row count.
         if (data.length > 0) {
           message = `${data.length} row(s) returned.`;
         } else {
@@ -239,7 +239,7 @@ const DatabaseAdminPanel: React.FC = () => {
       setQueryResult({
         success: true,
         message: message,
-        data: actualData, // This will be the array of rows or null/empty array
+        data: actualData,
         type: resultType,
       });
 
@@ -257,6 +257,7 @@ const DatabaseAdminPanel: React.FC = () => {
     }
   };
 
+  // Component for reusable tab button styling
   const TabButton: React.FC<{ tab: AdminTab; children: React.ReactNode }> = ({ tab, children }) => (
     <button
       onClick={() => setCurrentTab(tab)}
