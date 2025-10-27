@@ -21,66 +21,59 @@ import { queryKeys } from "@/hooks/queryKeys";
 // Define a local interface that extends the imported Item type.
 interface ItemWithDetails extends Item {
   location: string;
-  min_stock: number; // NOTE: This field is now hardcoded to 0 in the mapping since the column doesn't exist.
+  min_stock: number;
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
 }
 
-// Supabase Data Fetching Function - CORRECTED: Removed non-existent min_stock column
+// Supabase Data Fetching Function - FINAL CORRECTED VERSION (Using Dot Notation)
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Query starts from 'variants' (the new SKU table) and joins linked tables.
+  // Use standard dot notation for selecting joined columns.
   const { data, error } = await supabase.from("variants").select(
     `
-        id:variant_id,         // Map the new PK 'variant_id' to the required 'id'
+        variant_id, // This is the actual PK, we'll map it to 'id' later
         sku,
-        sellingPrice:selling_price, // Map 'selling_price' to the required 'sellingPrice'
-        
-        // --- JOIN 1: Product Details (Model-level) ---
+        selling_price, 
+
         products!inner (
-          name, // The Product Name
-          
-          // --- Nested JOIN 1.1: Category Name ---
-          categories!left ( name ) // Use LEFT join for resilience
+          name, 
+          categories!left ( name ) // products -> categories
         ),
         
-        // --- JOIN 2: Stock Quantity and Location ---
         stock_on_hand!left (
           quantity,
-          
-          // --- Nested JOIN 2.1: Store/Location Name ---
-          stores!left ( name ) // Use LEFT join for resilience
+          stores!left ( name ) // stock_on_hand -> stores
         )
       `,
   );
 
   if (error) {
     console.error("Supabase Inventory Fetch Error:", error);
-    // If we get an error here, it means the query itself is invalid in the database.
-    // The previous attempt failed here, so we throw the generic error message.
+    // Log the error detail for debugging purposes
+    console.error("Supabase Query Failed:", error.message, error.details);
     throw new Error("Failed to fetch inventory data.");
   }
 
-  // --- CRITICAL: TRANSFORM THE NESTED DATA ---
-  // The join returns nested JSON, which must be flattened to fit the ItemWithDetails interface.
+  // CRITICAL: TRANSFORM AND FLATTEN THE NESTED DATA
+  // We handle all aliasing and un-nesting in the map function.
   return data.map((row: any) => ({
-    id: row.id,
+    // 1. Core Variant Data (Mapping PKs and Prices)
+    id: row.variant_id, // Map the database PK to the required 'id'
     sku: row.sku,
-    sellingPrice: row.sellingPrice,
+    sellingPrice: row.selling_price,
 
-    // Flatten Product and Category Names
+    // 2. Product/Category Data (Flattening Joins)
     name: row.products?.name || "N/A",
     category: row.products?.categories?.name || "N/A",
 
-    // Stock is ONE-TO-MANY (variant can be in multiple store inventories).
-    // We assume the first entry is the main inventory.
+    // 3. Stock/Location Data (Handling Arrays and Flattening)
+    // Assumes stock_on_hand is an array, we take the first entry (or 0 if empty)
     quantity: row.stock_on_hand?.[0]?.quantity || 0,
-
-    // NOTE: min_stock was removed from the query, so we hardcode it for the interface
-    min_stock: 0,
     location: row.stock_on_hand?.[0]?.stores?.name || "N/A",
 
-    // Placeholder fields required by the ItemWithDetails interface
+    // 4. Default/Placeholder Fields (Required by ItemWithDetails)
+    min_stock: 0, // Hardcoded since it doesn't exist in stock_on_hand
     unit: "pcs",
   })) as ItemWithDetails[];
 };
@@ -151,7 +144,8 @@ const InventoryNew: React.FC = () => {
       return;
     }
     try {
-      const { error } = await supabase.from("items").delete().eq("id", id);
+      // NOTE: This should target the 'variants' table now!
+      const { error } = await supabase.from("variants").delete().eq("variant_id", id);
       if (error) throw error;
 
       toast.success("Product deleted successfully.");
@@ -266,7 +260,6 @@ const InventoryNew: React.FC = () => {
           <TableBody>
             {currentItems.map((item) => {
               const isSelected = selectedItems.some((i) => i.id === item.id);
-              // NOTE: isLowStock check now relies on min_stock being 0 or managed elsewhere.
               const isLowStock = item.quantity <= item.min_stock;
               const price = item.sellingPrice ?? 0;
 
