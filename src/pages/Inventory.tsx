@@ -27,31 +27,24 @@ interface ItemWithDetails extends Item {
   sellingPrice?: number | null;
 }
 
-// Supabase Data Fetching Function - FINAL CORRECTED VERSION (Using Dot Notation)
+// Supabase Data Fetching Function - FINAL CORRECTED VERSION (Using Array Notation)
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Use standard dot notation for selecting joined columns.
-  const { data, error } = await supabase.from("variants").select(
-    `
-        variant_id, // This is the actual PK, we'll map it to 'id' later
-        sku,
-        selling_price, 
+  // Switched to array notation for maximum reliability, bypassing template literal issues.
+  const selectColumns = [
+    "variant_id", // The actual PK
+    "sku",
+    "selling_price",
+    // Standard Supabase dot-notation joins
+    "products!inner(name, categories!left(name))", // Product Name + Category Name
+    "stock_on_hand!left(quantity, stores!left(name))", // Stock Quantity + Store Name
+  ];
 
-        products!inner (
-          name, 
-          categories!left ( name ) // products -> categories
-        ),
-        
-        stock_on_hand!left (
-          quantity,
-          stores!left ( name ) // stock_on_hand -> stores
-        )
-      `,
-  );
+  const { data, error } = await supabase.from("variants").select(selectColumns.join(",")); // Join the array into a single comma-separated string
 
   if (error) {
     console.error("Supabase Inventory Fetch Error:", error);
-    // Log the error detail for debugging purposes
-    console.error("Supabase Query Failed:", error.message, error.details);
+    // Log the full error object for complete diagnosis if it still fails
+    console.error("Supabase Query Failed:", error);
     throw new Error("Failed to fetch inventory data.");
   }
 
@@ -144,7 +137,7 @@ const InventoryNew: React.FC = () => {
       return;
     }
     try {
-      // NOTE: This should target the 'variants' table now!
+      // NOTE: Deletion must target the 'variants' table by the actual PK
       const { error } = await supabase.from("variants").delete().eq("variant_id", id);
       if (error) throw error;
 
