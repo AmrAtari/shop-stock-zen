@@ -14,7 +14,7 @@ interface ScannedItem {
 }
 
 interface PhysicalInventoryScannerProps {
-  onScan: (items: ScannedItem[]) => void;
+  onScan: (items: { sku: string; countedQuantity: number }[]) => void;
   onLookupSku: (sku: string) => Promise<{ id: string; sku: string; name: string; systemQuantity: number } | null>;
 }
 
@@ -87,7 +87,7 @@ const PhysicalInventoryScanner = ({ onScan, onLookupSku }: PhysicalInventoryScan
       toast.error("No items to add");
       return;
     }
-    onScan(scannedItems);
+    onScan(scannedItems.map(item => ({ sku: item.sku, countedQuantity: item.countedQuantity })));
     setScannedItems([]);
     toast.success(`Added ${scannedItems.length} items to physical count`);
   };

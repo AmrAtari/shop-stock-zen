@@ -3,8 +3,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PhysicalInventoryCount, PhysicalInventorySession } from "@/types/inventory";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { FileDown, CheckCircle, Save } from "lucide-react";
+import { FileDown, CheckCircle, Save, Upload, Scan } from "lucide-react";
+import PhysicalInventoryImport from "@/components/PhysicalInventoryImport";
+import PhysicalInventoryScanner from "@/components/PhysicalInventoryScanner";
 
 // --- TYPES ---
 interface LocalPhysicalInventoryCount
@@ -30,6 +33,7 @@ const PhysicalInventoryDetail: React.FC = () => {
   const [counts, setCounts] = useState<LocalPhysicalInventoryCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [activeTab, setActiveTab] = useState("manual");
 
   // --- FETCH SESSION ---
   const fetchSession = async () => {
@@ -215,7 +219,56 @@ const PhysicalInventoryDetail: React.FC = () => {
   };
 
   const exportResults = () => {
-    toast.info("Export not implemented.");
+    const csvHeaders = "SKU,Item Name,System Qty,Counted Qty,Variance,Variance %\n";
+    const csvRows = counts
+      .map(
+        (c) =>
+          `${c.sku},"${c.item_name}",${c.system_quantity},${c.counted_quantity},${c.variance},${c.variance_percentage.toFixed(2)}`,
+      )
+      .join("\n");
+    
+    const csvContent = csvHeaders + csvRows;
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `physical-inventory-${session?.session_number || id}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Exported successfully");
+  };
+
+  const handleImport = async (items: { sku: string; countedQuantity: number }[]) => {
+    items.forEach((item) => {
+      const existing = counts.find((c) => c.sku === item.sku);
+      if (existing) {
+        handleCountChange(existing.item_id, item.countedQuantity);
+      }
+    });
+    await saveCounts();
+    setActiveTab("manual");
+  };
+
+  const handleLookupSku = async (sku: string) => {
+    const item = counts.find((c) => c.sku === sku);
+    if (!item) return null;
+    return {
+      id: item.item_id,
+      sku: item.sku,
+      name: item.item_name,
+      systemQuantity: item.system_quantity,
+    };
+  };
+
+  const handleScan = async (scannedItems: { sku: string; countedQuantity: number }[]) => {
+    scannedItems.forEach((item) => {
+      const existing = counts.find((c) => c.sku === item.sku);
+      if (existing) {
+        handleCountChange(existing.item_id, item.countedQuantity);
+      }
+    });
+    await saveCounts();
+    setActiveTab("manual");
   };
 
   // --- SUMMARY ---
@@ -292,8 +345,23 @@ const PhysicalInventoryDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
+      {/* Tabs for different input methods */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+          <TabsTrigger value="scan" disabled={isCompleted}>
+            <Scan className="w-4 h-4 mr-2" />
+            Scan
+          </TabsTrigger>
+          <TabsTrigger value="import" disabled={isCompleted}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="manual" className="space-y-4">
+          {/* Table */}
+          <div className="border rounded-lg overflow-hidden">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-gray-100">
@@ -337,6 +405,16 @@ const PhysicalInventoryDetail: React.FC = () => {
         </table>
         {counts.length === 0 && <div className="p-4 text-center text-gray-500">No inventory items found.</div>}
       </div>
+        </TabsContent>
+
+        <TabsContent value="scan" className="space-y-4">
+          <PhysicalInventoryScanner onScan={handleScan} onLookupSku={handleLookupSku} />
+        </TabsContent>
+
+        <TabsContent value="import" className="space-y-4">
+          <PhysicalInventoryImport onImport={handleImport} onLookupSku={handleLookupSku} />
+        </TabsContent>
+      </Tabs>
 
       {/* Actions */}
       <div className="flex justify-between items-center pt-4">
