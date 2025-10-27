@@ -47,6 +47,11 @@ const DatabaseAdminPanel: React.FC = () => {
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colKey: string } | null>(null);
   const [editValue, setEditValue] = useState("");
 
+  // --- SQL Query Execution ---
+  const [sqlQuery, setSqlQuery] = useState("");
+  const [queryResult, setQueryResult] = useState<any>(null);
+  const [executingQuery, setExecutingQuery] = useState(false);
+
   // --- Load all tables via RPC ---
   const fetchTables = async () => {
     try {
@@ -186,9 +191,139 @@ const DatabaseAdminPanel: React.FC = () => {
     }
   };
 
+  // --- Execute SQL Query ---
+  const executeQuery = async () => {
+    if (!sqlQuery.trim()) {
+      toast.warning("Please enter a SQL query.");
+      return;
+    }
+
+    setExecutingQuery(true);
+    setQueryResult(null);
+
+    try {
+      // For SELECT queries, use direct query
+      if (sqlQuery.trim().toUpperCase().startsWith("SELECT")) {
+        const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
+        if (error) throw error;
+        
+        // Try to parse as table data
+        try {
+          const tableData = await supabase.from(sqlQuery.match(/FROM\s+(\w+)/i)?.[1] || "").select(sqlQuery.match(/SELECT\s+(.+?)\s+FROM/i)?.[1] || "*");
+          if (tableData.data) {
+            setQueryResult({ success: true, data: tableData.data, type: "select" });
+          } else {
+            setQueryResult({ success: true, message: "Query executed successfully", data });
+          }
+        } catch {
+          setQueryResult({ success: true, message: "Query executed successfully", data });
+        }
+      } else {
+        // For other queries (INSERT, UPDATE, DELETE, CREATE, etc.)
+        const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
+        if (error) throw error;
+        setQueryResult({ success: true, message: "Query executed successfully", data });
+      }
+      
+      toast.success("Query executed!");
+      // Refresh tables list if it was a CREATE/DROP TABLE
+      if (sqlQuery.toUpperCase().includes("CREATE TABLE") || sqlQuery.toUpperCase().includes("DROP TABLE")) {
+        fetchTables();
+      }
+    } catch (err: any) {
+      console.error(err.message);
+      setQueryResult({ success: false, error: err.message });
+      toast.error("Query failed: " + err.message);
+    } finally {
+      setExecutingQuery(false);
+    }
+  };
+
   return (
     <div className="p-8 space-y-6">
-      <h1 className="text-2xl font-bold">Database Admin Panel</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Database Admin Panel</h1>
+        <div className="text-sm text-muted-foreground">Admin Only</div>
+      </div>
+
+      {/* SQL Query Executor */}
+      <div className="border p-4 rounded-lg space-y-2 bg-card">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Execute SQL Query</h2>
+          <span className="text-xs text-destructive">⚠️ Use with caution</span>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Execute custom SQL queries. SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE are supported.
+        </p>
+        
+        <textarea
+          value={sqlQuery}
+          onChange={(e) => setSqlQuery(e.target.value)}
+          placeholder="SELECT * FROM items WHERE category = 'Electronics';"
+          className="w-full h-32 p-3 border rounded font-mono text-sm resize-y bg-background"
+        />
+        
+        <Button onClick={executeQuery} disabled={executingQuery} className="w-full">
+          {executingQuery ? "Executing..." : "Execute Query"}
+        </Button>
+
+        {/* Query Results */}
+        {queryResult && (
+          <div className="mt-4 p-4 border rounded bg-muted/50">
+            {queryResult.success ? (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-green-600 font-semibold">✓ Success</span>
+                  {queryResult.message && <span className="text-sm">{queryResult.message}</span>}
+                </div>
+                
+                {queryResult.type === "select" && queryResult.data && Array.isArray(queryResult.data) && queryResult.data.length > 0 ? (
+                  <div className="overflow-x-auto mt-2">
+                    <table className="table-auto border-collapse border w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted">
+                          {Object.keys(queryResult.data[0]).map((col) => (
+                            <th key={col} className="border px-2 py-1 text-left font-medium">
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {queryResult.data.map((row: any, idx: number) => (
+                          <tr key={idx} className="border-t hover:bg-muted/50">
+                            {Object.values(row).map((val: any, i: number) => (
+                              <td key={i} className="border px-2 py-1">
+                                {val?.toString() || "(null)"}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {queryResult.data.length} row(s) returned
+                    </p>
+                  </div>
+                ) : queryResult.data ? (
+                  <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
+                    {JSON.stringify(queryResult.data, null, 2)}
+                  </pre>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-destructive font-semibold">✗ Error</span>
+                </div>
+                <pre className="text-xs bg-destructive/10 text-destructive p-2 rounded overflow-x-auto">
+                  {queryResult.error}
+                </pre>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Create Table */}
       <div className="border p-4 rounded-lg space-y-2">
