@@ -29,6 +29,8 @@ const dataTypes = [
   "json",
 ];
 
+type AdminTab = "queryInput" | "queryResults"; // Define the two tabs
+
 const DatabaseAdminPanel: React.FC = () => {
   // --- Tables ---
   const [tables, setTables] = useState<string[]>([]);
@@ -51,6 +53,9 @@ const DatabaseAdminPanel: React.FC = () => {
   const [sqlQuery, setSqlQuery] = useState("");
   const [queryResult, setQueryResult] = useState<any>(null);
   const [executingQuery, setExecutingQuery] = useState(false);
+
+  // --- Tab State for Query Executor ---
+  const [currentTab, setCurrentTab] = useState<AdminTab>("queryInput"); // State to manage the active tab
 
   // --- Load all tables via RPC ---
   const fetchTables = async () => {
@@ -152,11 +157,9 @@ const DatabaseAdminPanel: React.FC = () => {
     if (!selectedTable || rows.length === 0) return;
 
     const row = rows[rowIdx];
-    // Find a primary key (assuming 'id' first, then the first column)
     const primaryKey = Object.keys(row).find((key) => key === "id") || Object.keys(row)[0];
     const primaryValue = row[primaryKey];
 
-    // Note: This simple SQL update assumes the primary key value is a string/numeric that doesn't need complex escaping.
     const sql = `UPDATE ${selectedTable} SET ${colKey} = '${newValue}' WHERE ${primaryKey} = '${primaryValue}';`;
 
     try {
@@ -203,33 +206,21 @@ const DatabaseAdminPanel: React.FC = () => {
     setExecutingQuery(true);
     setQueryResult(null);
 
+    // Switch to the results tab after execution
+    setCurrentTab("queryResults");
+
     try {
       // For SELECT queries, use direct query
       if (sqlQuery.trim().toUpperCase().startsWith("SELECT")) {
         const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
         if (error) throw error;
 
-        // Try to parse as table data
-        try {
-          // Attempt to extract the table name from the query
-          const tableNameMatch = sqlQuery.match(/FROM\s+(\w+)/i);
-          const tableName = tableNameMatch ? tableNameMatch[1] : "";
+        // Determine if the result is table data (array of objects)
+        const isTableData = Array.isArray(data) && data.length > 0 && typeof data[0] === "object";
 
-          // Attempt to extract the columns from the query
-          const columnsMatch = sqlQuery.match(/SELECT\s+(.+?)\s+FROM/i);
-          const columns = columnsMatch ? columnsMatch[1].trim() : "*";
-
-          // If a table name is found, fetch the data again to get the structure needed for the table display
-          if (tableName) {
-            // WARNING: Direct supabase.from().select() doesn't support full SQL syntax like WHERE, JOIN, etc.
-            // We'll rely on the RPC 'execute_sql' data for better compatibility with complex SELECTs.
-            setQueryResult({ success: true, data: data, type: "select" });
-          } else {
-            // Fallback for SELECTs without a clear 'FROM' (e.g., SELECT current_timestamp)
-            setQueryResult({ success: true, message: "Query executed successfully", data });
-          }
-        } catch (e) {
-          // Fallback if parsing or special handling fails
+        if (isTableData) {
+          setQueryResult({ success: true, data: data, type: "select" });
+        } else {
           setQueryResult({ success: true, message: "Query executed successfully", data });
         }
       } else {
@@ -253,6 +244,102 @@ const DatabaseAdminPanel: React.FC = () => {
     }
   };
 
+  const TabButton: React.FC<{ tab: AdminTab; children: React.ReactNode }> = ({ tab, children }) => (
+    <button
+      onClick={() => setCurrentTab(tab)}
+      className={`px-4 py-2 text-sm font-medium transition-colors ${
+        currentTab === tab
+          ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+          : "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+
+  const renderQueryInput = () => (
+    <div className="space-y-4 pt-4">
+      <textarea
+        value={sqlQuery}
+        onChange={(e) => setSqlQuery(e.target.value)}
+        placeholder="SELECT * FROM items WHERE category = 'Electronics';"
+        className="w-full h-32 p-3 border rounded font-mono text-sm resize-y bg-background"
+      />
+      <Button onClick={executeQuery} disabled={executingQuery} className="w-full">
+        {executingQuery ? "Executing..." : "Execute Query"}
+      </Button>
+    </div>
+  );
+
+  const renderQueryResults = () => {
+    if (!queryResult) {
+      return (
+        <div className="mt-4 p-4 border rounded bg-muted/50 text-center text-muted-foreground">
+          No query has been executed yet, or the last query returned no output.
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-4 p-4 border rounded bg-muted/50">
+        <h3 className="text-lg font-semibold mb-2">Query Results:</h3>
+        {queryResult.success ? (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-green-600 font-semibold">✓ Success</span>
+              {queryResult.message && <span className="text-sm">{queryResult.message}</span>}
+            </div>
+
+            {/* Display results in a table if it looks like SELECT data */}
+            {queryResult.type === "select" &&
+            queryResult.data &&
+            Array.isArray(queryResult.data) &&
+            queryResult.data.length > 0 ? (
+              <div className="overflow-x-auto mt-2">
+                <table className="table-auto border-collapse border w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted">
+                      {Object.keys(queryResult.data[0]).map((col) => (
+                        <th key={col} className="border px-2 py-1 text-left font-medium">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {queryResult.data.map((row: any, idx: number) => (
+                      <tr key={idx} className="border-t hover:bg-muted/50">
+                        {Object.values(row).map((val: any, i: number) => (
+                          <td key={i} className="border px-2 py-1">
+                            {val?.toString() || "(null)"}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-xs text-muted-foreground mt-2">{queryResult.data.length} row(s) returned</p>
+              </div>
+            ) : queryResult.data ? (
+              <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
+                {JSON.stringify(queryResult.data, null, 2)}
+              </pre>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-destructive font-semibold">✗ Error</span>
+            </div>
+            <pre className="text-xs bg-destructive/10 text-destructive p-2 rounded overflow-x-auto">
+              {queryResult.error}
+            </pre>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -260,86 +347,25 @@ const DatabaseAdminPanel: React.FC = () => {
         <div className="text-sm text-muted-foreground">Admin Only</div>
       </div>
 
-      {/* SQL Query Executor */}
+      {/* SQL Query Executor with Tabs */}
       <div className="border p-4 rounded-lg space-y-2 bg-card">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Execute SQL Query</h2>
+          <h2 className="text-xl font-semibold">Direct Database Access</h2>
           <span className="text-xs text-destructive">⚠️ Use with caution</span>
         </div>
         <p className="text-sm text-muted-foreground">
           Execute custom SQL queries. SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE are supported.
         </p>
 
-        <textarea
-          value={sqlQuery}
-          onChange={(e) => setSqlQuery(e.target.value)}
-          placeholder="SELECT * FROM items WHERE category = 'Electronics';"
-          className="w-full h-32 p-3 border rounded font-mono text-sm resize-y bg-background"
-        />
+        {/* Tab Navigation */}
+        <div className="flex border-b">
+          <TabButton tab="queryInput">Execute SQL Query</TabButton>
+          <TabButton tab="queryResults">Query Results</TabButton>
+        </div>
 
-        <Button onClick={executeQuery} disabled={executingQuery} className="w-full">
-          {executingQuery ? "Executing..." : "Execute Query"}
-        </Button>
-
-        {/* Query Results - This is the section that displays the output */}
-        {queryResult && (
-          <div className="mt-4 p-4 border rounded bg-muted/50">
-            <h3 className="text-lg font-semibold mb-2">Query Results:</h3> {/* ADDED HEADER FOR CLARITY */}
-            {queryResult.success ? (
-              <>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-green-600 font-semibold">✓ Success</span>
-                  {queryResult.message && <span className="text-sm">{queryResult.message}</span>}
-                </div>
-
-                {/* Display results in a table if it looks like SELECT data */}
-                {queryResult.type === "select" &&
-                queryResult.data &&
-                Array.isArray(queryResult.data) &&
-                queryResult.data.length > 0 ? (
-                  <div className="overflow-x-auto mt-2">
-                    <table className="table-auto border-collapse border w-full text-sm">
-                      <thead>
-                        <tr className="bg-muted">
-                          {Object.keys(queryResult.data[0]).map((col) => (
-                            <th key={col} className="border px-2 py-1 text-left font-medium">
-                              {col}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {queryResult.data.map((row: any, idx: number) => (
-                          <tr key={idx} className="border-t hover:bg-muted/50">
-                            {Object.values(row).map((val: any, i: number) => (
-                              <td key={i} className="border px-2 py-1">
-                                {val?.toString() || "(null)"}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="text-xs text-muted-foreground mt-2">{queryResult.data.length} row(s) returned</p>
-                  </div>
-                ) : queryResult.data ? (
-                  <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
-                    {JSON.stringify(queryResult.data, null, 2)}
-                  </pre>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-destructive font-semibold">✗ Error</span>
-                </div>
-                <pre className="text-xs bg-destructive/10 text-destructive p-2 rounded overflow-x-auto">
-                  {queryResult.error}
-                </pre>
-              </>
-            )}
-          </div>
-        )}
+        {/* Tab Content */}
+        {currentTab === "queryInput" && renderQueryInput()}
+        {currentTab === "queryResults" && renderQueryResults()}
       </div>
 
       {/* Create Table */}
