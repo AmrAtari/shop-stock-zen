@@ -210,25 +210,21 @@ const DatabaseAdminPanel: React.FC = () => {
     setCurrentTab("queryResults");
 
     try {
-      // For SELECT queries, use direct query
+      // For all queries, use the execute_sql RPC
+      const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
+      if (error) throw error;
+
+      let resultType = "command";
       if (sqlQuery.trim().toUpperCase().startsWith("SELECT")) {
-        const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
-        if (error) throw error;
-
-        // Determine if the result is table data (array of objects)
-        const isTableData = Array.isArray(data) && data.length > 0 && typeof data[0] === "object";
-
-        if (isTableData) {
-          setQueryResult({ success: true, data: data, type: "select" });
-        } else {
-          setQueryResult({ success: true, message: "Query executed successfully", data });
-        }
-      } else {
-        // For other queries (INSERT, UPDATE, DELETE, CREATE, etc.)
-        const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
-        if (error) throw error;
-        setQueryResult({ success: true, message: "Query executed successfully", data });
+        resultType = "select";
       }
+
+      setQueryResult({
+        success: true,
+        message: "Query executed successfully",
+        data: data,
+        type: resultType,
+      });
 
       toast.success("Query executed!");
       // Refresh tables list if it was a CREATE/DROP TABLE
@@ -280,6 +276,14 @@ const DatabaseAdminPanel: React.FC = () => {
       );
     }
 
+    // Check if the result is a successful SELECT query that returned an array of objects (table data)
+    const isSelectResultWithData =
+      queryResult.success &&
+      queryResult.type === "select" &&
+      Array.isArray(queryResult.data) &&
+      queryResult.data.length > 0 &&
+      typeof queryResult.data[0] === "object";
+
     return (
       <div className="mt-4 p-4 border rounded bg-muted/50">
         <h3 className="text-lg font-semibold mb-2">Query Results:</h3>
@@ -287,14 +291,16 @@ const DatabaseAdminPanel: React.FC = () => {
           <>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-green-600 font-semibold">✓ Success</span>
-              {queryResult.message && <span className="text-sm">{queryResult.message}</span>}
+              {/* If it's a SELECT with data, show row count. Otherwise, show the generic message for commands (INSERT/UPDATE/DELETE) */}
+              {isSelectResultWithData ? (
+                <span className="text-sm">{queryResult.data.length} row(s) returned.</span>
+              ) : (
+                <span className="text-sm">{queryResult.message}</span>
+              )}
             </div>
 
-            {/* Display results in a table if it looks like SELECT data */}
-            {queryResult.type === "select" &&
-            queryResult.data &&
-            Array.isArray(queryResult.data) &&
-            queryResult.data.length > 0 ? (
+            {/* Render the Table of values */}
+            {isSelectResultWithData ? (
               <div className="overflow-x-auto mt-2">
                 <table className="table-auto border-collapse border w-full text-sm">
                   <thead>
@@ -318,13 +324,16 @@ const DatabaseAdminPanel: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
-                <p className="text-xs text-muted-foreground mt-2">{queryResult.data.length} row(s) returned</p>
               </div>
-            ) : queryResult.data ? (
-              <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
-                {JSON.stringify(queryResult.data, null, 2)}
-              </pre>
-            ) : null}
+            ) : (
+              // Fallback for non-table data (e.g., SELECT count(*), or a simple command result)
+              queryResult.data && (
+                <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
+                  {/* Do not show the raw success message object, just show the data if it exists */}
+                  {JSON.stringify(queryResult.data, null, 2)}
+                </pre>
+              )
+            )}
           </>
         ) : (
           <>
