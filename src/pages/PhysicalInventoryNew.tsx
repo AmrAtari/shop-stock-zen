@@ -55,8 +55,7 @@ const PhysicalInventoryNew: React.FC = () => {
   const { isSubmitting } = form.formState;
 
   const handleSubmit = async (data: PhysicalInventoryFormData, startCounting: boolean) => {
-    // Using the exact, case-sensitive strings confirmed by the database schema image
-    const status = startCounting ? "Active" : "Draft";
+    const status = "in_progress";
 
     const session_number = `PI-${new Date().toISOString().split("T")[0].replace(/-/g, "")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -82,8 +81,7 @@ const PhysicalInventoryNew: React.FC = () => {
 
       if (error) throw error;
 
-      const successStatus = startCounting ? "Active" : "Draft";
-      toast.success(`Inventory session ${session_number} created as ${successStatus}.`);
+      toast.success(`Inventory session ${session_number} created successfully.`);
 
       if (startCounting) {
         navigate(`/inventory/physical/${insertedData.id}`);
@@ -92,11 +90,7 @@ const PhysicalInventoryNew: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Submission error:", err);
-
-      const errorMessage = `Failed to create session: ${err.message || "Unknown error"}. 
-        The status '${status}' is rejected even though the schema shows it's valid. 
-        This is likely a **Supabase ENUM issue**. Please manually try inserting a test row in your Supabase table with the value 'Draft' and then 'Active' to confirm the exact casing the DB accepts.`;
-      toast.error(errorMessage);
+      toast.error(`Failed to create session: ${err.message || "Unknown error"}`);
     }
   };
 
