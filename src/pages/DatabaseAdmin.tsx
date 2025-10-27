@@ -1,4 +1,5 @@
 // src/pages/DatabaseAdminPanel.tsx
+
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ const dataTypes = [
   "json",
 ];
 
-type AdminTab = "queryInput" | "queryResults";
+type AdminTab = "queryInput" | "queryResults"; // Define the two tabs
 
 const DatabaseAdminPanel: React.FC = () => {
   // --- Tables ---
@@ -50,12 +51,13 @@ const DatabaseAdminPanel: React.FC = () => {
   const [editValue, setEditValue] = useState("");
 
   // --- SQL Query Execution ---
-  const [sqlQuery, setSqlQuery] = useState("SELECT * FROM items WHERE category = 'Electronics';"); // Pre-fill example query
+  // Pre-fill with a valid query for easy testing
+  const [sqlQuery, setSqlQuery] = useState("SELECT * FROM items;");
   const [queryResult, setQueryResult] = useState<any>(null);
   const [executingQuery, setExecutingQuery] = useState(false);
 
   // --- Tab State for Query Executor ---
-  const [currentTab, setCurrentTab] = useState<AdminTab>("queryInput"); // State to manage the active tab
+  const [currentTab, setCurrentTab] = useState<AdminTab>("queryInput");
 
   // --- Load all tables via RPC ---
   const fetchTables = async () => {
@@ -210,30 +212,32 @@ const DatabaseAdminPanel: React.FC = () => {
     setCurrentTab("queryResults");
 
     try {
-      // Execute the SQL query via RPC. This is the only call needed.
+      // Execute the SQL query via RPC.
       const { data, error } = await supabase.rpc("execute_sql", { sql: sqlQuery });
       if (error) throw error;
 
       let resultType = "command";
-      if (sqlQuery.trim().toUpperCase().startsWith("SELECT")) {
+      const sqlUpper = sqlQuery.trim().toUpperCase();
+      if (sqlUpper.startsWith("SELECT")) {
         resultType = "select";
       }
 
       let message = "Query executed successfully";
       let actualData = data;
 
-      // Check if the RPC returned the verbose success object instead of the array data.
-      if (actualData && typeof actualData === "object" && !Array.isArray(actualData) && "success" in actualData) {
-        // If it's the verbose success object, we assume no table data was returned (0 rows, or a command).
-        message = actualData.message || message;
-        actualData = null; // Clear data to avoid rendering the success object as JSON.
-      } else if (Array.isArray(data)) {
-        // If it's an array, it's the actual table data or row count.
+      // FIX: Correctly check the data type returned by the RPC
+      if (Array.isArray(data)) {
+        // This is the array of rows from a SELECT query.
         if (data.length > 0) {
           message = `${data.length} row(s) returned.`;
         } else {
           message = "Query executed successfully (0 rows returned).";
         }
+        actualData = data; // Keep the array for table rendering
+      } else if (data && typeof data === "object" && "success" in data) {
+        // This is the verbose success object from a command (INSERT, UPDATE, etc.) or an empty SELECT.
+        message = data.message || message;
+        actualData = data; // Keep the object to display its message
       }
 
       setQueryResult({
@@ -245,7 +249,7 @@ const DatabaseAdminPanel: React.FC = () => {
 
       toast.success("Query executed!");
       // Refresh tables list if it was a CREATE/DROP TABLE
-      if (sqlQuery.toUpperCase().includes("CREATE TABLE") || sqlQuery.toUpperCase().includes("DROP TABLE")) {
+      if (sqlUpper.includes("CREATE TABLE") || sqlUpper.includes("DROP TABLE")) {
         fetchTables();
       }
     } catch (err: any) {
@@ -294,7 +298,7 @@ const DatabaseAdminPanel: React.FC = () => {
       );
     }
 
-    // Check if the result is successful and contains an array of objects (table data)
+    // FIX: This check is the most important part for displaying the table.
     const isTableData =
       queryResult.success &&
       Array.isArray(queryResult.data) &&
@@ -314,7 +318,7 @@ const DatabaseAdminPanel: React.FC = () => {
               <span className="text-sm">{queryResult.message}</span>
             </div>
 
-            {/* Render the Table of values for SELECT statements that returned rows */}
+            {/* Render the HTML Table if isTableData is TRUE */}
             {isTableData ? (
               <div className="overflow-x-auto mt-2">
                 <table className="table-auto border-collapse border w-full text-sm">
@@ -341,7 +345,7 @@ const DatabaseAdminPanel: React.FC = () => {
                 </table>
               </div>
             ) : isNonTableData && queryResult.data && !Array.isArray(queryResult.data) ? (
-              // Render JSON for non-table data (e.g., SELECT COUNT(*) or INSERT/UPDATE results)
+              // Render JSON for non-table data (like the success object or a count result)
               <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
                 {JSON.stringify(queryResult.data, null, 2)}
               </pre>
