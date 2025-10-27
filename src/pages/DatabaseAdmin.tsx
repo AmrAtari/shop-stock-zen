@@ -219,10 +219,31 @@ const DatabaseAdminPanel: React.FC = () => {
         resultType = "select";
       }
 
+      // Check if the RPC returned a generic success message instead of the data itself
+      let actualData = data;
+      let message = "Query executed successfully";
+
+      if (data && typeof data === "object" && !Array.isArray(data) && "success" in data && "message" in data) {
+        // This block runs if the RPC returned the verbose success object.
+        // Since the RPC *is* supposed to return the SELECT data, if it returns
+        // this object for a SELECT, it means no rows were returned or it's a command.
+        // We keep the actualData as is (the object) and show the message.
+        message = data.message;
+        actualData = data;
+      } else if (Array.isArray(data)) {
+        // If it's an array, it's the actual table data or row count.
+        actualData = data;
+        if (data.length > 0) {
+          message = `${data.length} row(s) returned.`;
+        } else {
+          message = "Query executed successfully (0 rows returned).";
+        }
+      }
+
       setQueryResult({
         success: true,
-        message: "Query executed successfully",
-        data: data,
+        message: message,
+        data: actualData, // Store the data or the success object
         type: resultType,
       });
 
@@ -271,18 +292,20 @@ const DatabaseAdminPanel: React.FC = () => {
     if (!queryResult) {
       return (
         <div className="mt-4 p-4 border rounded bg-muted/50 text-center text-muted-foreground">
-          No query has been executed yet, or the last query returned no output.
+          No query has been executed yet.
         </div>
       );
     }
 
-    // Check if the result is a successful SELECT query that returned an array of objects (table data)
-    const isSelectResultWithData =
+    // Check if the result is successful and contains an array of objects (table data)
+    const isTableData =
       queryResult.success &&
-      queryResult.type === "select" &&
       Array.isArray(queryResult.data) &&
       queryResult.data.length > 0 &&
       typeof queryResult.data[0] === "object";
+
+    // Check if the result is successful but NOT table data (e.g., SELECT COUNT(*) or an UPDATE command)
+    const isNonTableData = queryResult.success && !isTableData;
 
     return (
       <div className="mt-4 p-4 border rounded bg-muted/50">
@@ -291,16 +314,11 @@ const DatabaseAdminPanel: React.FC = () => {
           <>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-green-600 font-semibold">✓ Success</span>
-              {/* If it's a SELECT with data, show row count. Otherwise, show the generic message for commands (INSERT/UPDATE/DELETE) */}
-              {isSelectResultWithData ? (
-                <span className="text-sm">{queryResult.data.length} row(s) returned.</span>
-              ) : (
-                <span className="text-sm">{queryResult.message}</span>
-              )}
+              <span className="text-sm">{queryResult.message}</span>
             </div>
 
-            {/* Render the Table of values */}
-            {isSelectResultWithData ? (
+            {/* Render the Table of values for SELECT statements that returned rows */}
+            {isTableData ? (
               <div className="overflow-x-auto mt-2">
                 <table className="table-auto border-collapse border w-full text-sm">
                   <thead>
@@ -325,15 +343,12 @@ const DatabaseAdminPanel: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-            ) : (
-              // Fallback for non-table data (e.g., SELECT count(*), or a simple command result)
-              queryResult.data && (
-                <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
-                  {/* Do not show the raw success message object, just show the data if it exists */}
-                  {JSON.stringify(queryResult.data, null, 2)}
-                </pre>
-              )
-            )}
+            ) : isNonTableData && queryResult.data ? (
+              // Render JSON for non-table data (e.g., SELECT COUNT(*) or INSERT/UPDATE results)
+              <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
+                {JSON.stringify(queryResult.data, null, 2)}
+              </pre>
+            ) : null}
           </>
         ) : (
           <>
