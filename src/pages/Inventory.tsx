@@ -27,15 +27,60 @@ interface ItemWithDetails extends Item {
   sellingPrice?: number | null;
 }
 
-// Supabase Data Fetching Function
+// Supabase Data Fetching Function - REWRITTEN FOR NEW NORMALIZED STRUCTURE
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  const { data, error } = await supabase.from("items").select("*");
+  // Query starts from 'variants' (the new SKU table) and joins linked tables.
+  const { data, error } = await supabase.from("variants").select(
+    `
+        id:variant_id,         // Map the new PK 'variant_id' to the required 'id'
+        sku,
+        sellingPrice:selling_price, // Map 'selling_price' to the required 'sellingPrice'
+        
+        // --- JOIN 1: Product Details (Model-level) ---
+        products!inner (
+          name, // The Product Name
+          
+          // --- Nested JOIN 1.1: Category Name ---
+          categories!inner ( name ) 
+        ),
+        
+        // --- JOIN 2: Stock Quantity and Location ---
+        stock_on_hand!left (
+          quantity,
+          min_stock,
+          
+          // --- Nested JOIN 2.1: Store/Location Name ---
+          stores!inner ( name )
+        )
+      `,
+  );
 
   if (error) {
     console.error("Supabase Inventory Fetch Error:", error);
     throw new Error("Failed to fetch inventory data.");
   }
-  return data as ItemWithDetails[];
+
+  // --- CRITICAL: TRANSFORM THE NESTED DATA ---
+  // The join returns nested JSON, which must be flattened to fit the ItemWithDetails interface.
+  return data.map((row: any) => ({
+    id: row.id,
+    sku: row.sku,
+    sellingPrice: row.sellingPrice,
+
+    // Flatten Product and Category Names
+    name: row.products?.name || "N/A",
+    category: row.products?.categories?.name || "N/A",
+
+    // Stock is ONE-TO-MANY (variant can be in multiple store inventories).
+    // We assume you want the first/primary stock entry or total stock for this view.
+    quantity: row.stock_on_hand?.[0]?.quantity || 0,
+    min_stock: row.stock_on_hand?.[0]?.min_stock || 0,
+    location: row.stock_on_hand?.[0]?.stores?.name || "N/A",
+
+    // Placeholder fields required by the ItemWithDetails interface
+    unit: "pcs",
+    // ... add any other required fields here if they exist in your interface
+  })) as ItemWithDetails[];
 };
 
 // Data Hook connected to React Query
