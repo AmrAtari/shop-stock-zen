@@ -152,9 +152,11 @@ const DatabaseAdminPanel: React.FC = () => {
     if (!selectedTable || rows.length === 0) return;
 
     const row = rows[rowIdx];
+    // Find a primary key (assuming 'id' first, then the first column)
     const primaryKey = Object.keys(row).find((key) => key === "id") || Object.keys(row)[0];
     const primaryValue = row[primaryKey];
 
+    // Note: This simple SQL update assumes the primary key value is a string/numeric that doesn't need complex escaping.
     const sql = `UPDATE ${selectedTable} SET ${colKey} = '${newValue}' WHERE ${primaryKey} = '${primaryValue}';`;
 
     try {
@@ -209,15 +211,25 @@ const DatabaseAdminPanel: React.FC = () => {
 
         // Try to parse as table data
         try {
-          const tableData = await supabase
-            .from(sqlQuery.match(/FROM\s+(\w+)/i)?.[1] || "")
-            .select(sqlQuery.match(/SELECT\s+(.+?)\s+FROM/i)?.[1] || "*");
-          if (tableData.data) {
-            setQueryResult({ success: true, data: tableData.data, type: "select" });
+          // Attempt to extract the table name from the query
+          const tableNameMatch = sqlQuery.match(/FROM\s+(\w+)/i);
+          const tableName = tableNameMatch ? tableNameMatch[1] : "";
+
+          // Attempt to extract the columns from the query
+          const columnsMatch = sqlQuery.match(/SELECT\s+(.+?)\s+FROM/i);
+          const columns = columnsMatch ? columnsMatch[1].trim() : "*";
+
+          // If a table name is found, fetch the data again to get the structure needed for the table display
+          if (tableName) {
+            // WARNING: Direct supabase.from().select() doesn't support full SQL syntax like WHERE, JOIN, etc.
+            // We'll rely on the RPC 'execute_sql' data for better compatibility with complex SELECTs.
+            setQueryResult({ success: true, data: data, type: "select" });
           } else {
+            // Fallback for SELECTs without a clear 'FROM' (e.g., SELECT current_timestamp)
             setQueryResult({ success: true, message: "Query executed successfully", data });
           }
-        } catch {
+        } catch (e) {
+          // Fallback if parsing or special handling fails
           setQueryResult({ success: true, message: "Query executed successfully", data });
         }
       } else {
@@ -269,9 +281,10 @@ const DatabaseAdminPanel: React.FC = () => {
           {executingQuery ? "Executing..." : "Execute Query"}
         </Button>
 
-        {/* Query Results */}
+        {/* Query Results - This is the section that displays the output */}
         {queryResult && (
           <div className="mt-4 p-4 border rounded bg-muted/50">
+            <h3 className="text-lg font-semibold mb-2">Query Results:</h3> {/* ADDED HEADER FOR CLARITY */}
             {queryResult.success ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
@@ -279,6 +292,7 @@ const DatabaseAdminPanel: React.FC = () => {
                   {queryResult.message && <span className="text-sm">{queryResult.message}</span>}
                 </div>
 
+                {/* Display results in a table if it looks like SELECT data */}
                 {queryResult.type === "select" &&
                 queryResult.data &&
                 Array.isArray(queryResult.data) &&
