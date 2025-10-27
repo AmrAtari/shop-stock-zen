@@ -10,12 +10,12 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
   Legend,
+  BarChart,
+  Bar,
 } from "recharts";
 
 const COLORS = ["#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
@@ -34,23 +34,33 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ Fetch main KPIs
+  // ✅ Fetch main metrics
   const fetchMetrics = async () => {
     try {
       setError(null);
 
+      // --- Items ---
       const { data: items, error: itemsError } = await supabase.from("items").select("quantity, price");
       if (itemsError) throw itemsError;
 
       const totalItems = items?.length || 0;
       const totalValue = items?.reduce((sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0);
 
+      // --- Sales ---
+      const { data: sales, error: salesError } = await supabase.from("sales").select("quantity, price");
+      if (salesError) throw salesError;
+
+      const totalSales = sales?.reduce((sum, s) => sum + (s.quantity || 0) * (s.price || 0), 0);
+      const totalSoldItems = sales?.reduce((sum, s) => sum + (s.quantity || 0), 0);
+
+      // --- Purchase Orders ---
       const { count: purchaseCount, error: poError } = await supabase
         .from("purchase_orders")
         .select("*", { count: "exact", head: true });
       if (poError) throw poError;
 
-      const { count: stockAdjustments, error: adjError } = await supabase
+      // --- Stock Adjustments ---
+      const { count: adjustments, error: adjError } = await supabase
         .from("stock_adjustments")
         .select("*", { count: "exact", head: true });
       if (adjError) throw adjError;
@@ -58,8 +68,10 @@ const Dashboard: React.FC = () => {
       setMetrics([
         { title: "Total Items", value: totalItems },
         { title: "Inventory Value", value: `$${totalValue.toLocaleString()}` },
+        { title: "Total Sales Value", value: `$${totalSales.toLocaleString()}` },
+        { title: "Items Sold", value: totalSoldItems },
         { title: "Purchase Orders", value: purchaseCount || 0 },
-        { title: "Stock Adjustments", value: stockAdjustments || 0 },
+        { title: "Stock Adjustments", value: adjustments || 0 },
       ]);
     } catch (err: any) {
       console.error("Error fetching metrics:", err);
@@ -67,22 +79,24 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // ✅ Fetch sales chart safely
+  // ✅ Fetch sales chart data
   const fetchSalesData = async () => {
     try {
-      const { data, error } = await supabase.from("sales").select("*").order("created_at", { ascending: true });
-
+      const { data, error } = await supabase
+        .from("sales")
+        .select("created_at, quantity, price")
+        .order("created_at", { ascending: true });
       if (error) throw error;
 
-      // Try to detect the total field automatically
-      const totalField =
-        data && data.length > 0
-          ? Object.keys(data[0]).find((k) => ["total", "grand_total", "amount", "total_amount"].includes(k))
-          : null;
+      const grouped: Record<string, number> = {};
+      data?.forEach((s) => {
+        const date = new Date(s.created_at).toLocaleDateString();
+        grouped[date] = (grouped[date] || 0) + (s.quantity || 0) * (s.price || 0);
+      });
 
-      const formatted = (data || []).map((row) => ({
-        date: new Date(row.created_at).toLocaleDateString(),
-        total: totalField ? row[totalField] || 0 : 0,
+      const formatted = Object.entries(grouped).map(([date, total]) => ({
+        date,
+        total,
       }));
 
       setSalesData(formatted);
@@ -104,11 +118,7 @@ const Dashboard: React.FC = () => {
         grouped[key] = (grouped[key] || 0) + (i.quantity || 0);
       });
 
-      const formatted = Object.entries(grouped).map(([name, value]) => ({
-        name,
-        value,
-      }));
-      setCategoryData(formatted);
+      setCategoryData(Object.entries(grouped).map(([name, value]) => ({ name, value })));
     } catch (err: any) {
       console.error("Error fetching category data:", err);
     }
@@ -122,8 +132,8 @@ const Dashboard: React.FC = () => {
 
       const grouped: Record<string, number> = {};
       data?.forEach((r) => {
-        const key = r.stores?.name || `Store ${r.store_id}`;
-        grouped[key] = (grouped[key] || 0) + (r.quantity || 0);
+        const name = r.stores?.name || `Store ${r.store_id}`;
+        grouped[name] = (grouped[name] || 0) + (r.quantity || 0);
       });
 
       setStoreData(Object.entries(grouped).map(([name, value]) => ({ name, value })));
@@ -132,16 +142,24 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // ✅ Top items by quantity
+  // ✅ Top items by quantity sold
   const fetchTopItems = async () => {
     try {
-      const { data, error } = await supabase
-        .from("items")
-        .select("name, quantity")
-        .order("quantity", { ascending: false })
-        .limit(5);
+      const { data, error } = await supabase.from("sales").select("item_id, quantity, price, items(name)").limit(5);
       if (error) throw error;
-      setTopItems(data || []);
+
+      const grouped: Record<string, number> = {};
+      data?.forEach((s) => {
+        const name = s.items?.name || `Item ${s.item_id}`;
+        grouped[name] = (grouped[name] || 0) + (s.quantity || 0);
+      });
+
+      const sorted = Object.entries(grouped)
+        .map(([name, qty]) => ({ name, quantity: qty }))
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 5);
+
+      setTopItems(sorted);
     } catch (err: any) {
       console.error("Error fetching top items:", err);
     }
@@ -156,30 +174,27 @@ const Dashboard: React.FC = () => {
     loadAll();
   }, []);
 
-  if (loading) {
+  if (loading)
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
       </div>
     );
-  }
 
-  if (error) {
-    return <div className="p-4 text-red-500 bg-red-50 border border-red-200 rounded-xl">⚠️ {error}</div>;
-  }
+  if (error) return <div className="p-4 text-red-500 bg-red-50 border border-red-200 rounded-xl">⚠️ {error}</div>;
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Dashboard Overview</h1>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {metrics.map((metric, i) => (
+      {/* KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {metrics.map((m, i) => (
           <Card key={i}>
             <CardHeader>
-              <CardTitle>{metric.title}</CardTitle>
+              <CardTitle className="text-sm font-medium">{m.title}</CardTitle>
             </CardHeader>
-            <CardContent className="text-2xl font-semibold">{metric.value}</CardContent>
+            <CardContent className="text-xl font-semibold">{m.value}</CardContent>
           </Card>
         ))}
       </div>
@@ -187,10 +202,10 @@ const Dashboard: React.FC = () => {
       {/* Sales Trend */}
       <Card>
         <CardHeader>
-          <CardTitle>Sales Trend</CardTitle>
+          <CardTitle>Sales Trend (Value Over Time)</CardTitle>
         </CardHeader>
         <CardContent>
-          {salesData.length > 0 ? (
+          {salesData.length ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={salesData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -206,14 +221,14 @@ const Dashboard: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Categories + Stores */}
+      {/* Categories & Stores */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Items by Category</CardTitle>
           </CardHeader>
           <CardContent>
-            {categoryData.length > 0 ? (
+            {categoryData.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie data={categoryData} dataKey="value" nameKey="name" label>
@@ -225,7 +240,7 @@ const Dashboard: React.FC = () => {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-gray-500 text-sm">No category data available.</p>
+              <p className="text-gray-500 text-sm">No category data.</p>
             )}
           </CardContent>
         </Card>
@@ -235,7 +250,7 @@ const Dashboard: React.FC = () => {
             <CardTitle>Items per Store</CardTitle>
           </CardHeader>
           <CardContent>
-            {storeData.length > 0 ? (
+            {storeData.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={storeData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -246,7 +261,7 @@ const Dashboard: React.FC = () => {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-gray-500 text-sm">No store data available.</p>
+              <p className="text-gray-500 text-sm">No store data.</p>
             )}
           </CardContent>
         </Card>
@@ -255,20 +270,20 @@ const Dashboard: React.FC = () => {
       {/* Top Items */}
       <Card>
         <CardHeader>
-          <CardTitle>Top 5 Items by Quantity</CardTitle>
+          <CardTitle>Top 5 Items Sold</CardTitle>
         </CardHeader>
         <CardContent>
-          {topItems.length > 0 ? (
+          {topItems.length ? (
             <ul className="space-y-2">
-              {topItems.map((item, i) => (
-                <li key={i} className="flex justify-between">
-                  <span>{item.name}</span>
-                  <span className="font-semibold">{item.quantity}</span>
+              {topItems.map((i, idx) => (
+                <li key={idx} className="flex justify-between">
+                  <span>{i.name}</span>
+                  <span className="font-semibold">{i.quantity}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-gray-500 text-sm">No item data available.</p>
+            <p className="text-gray-500 text-sm">No items sold yet.</p>
           )}
         </CardContent>
       </Card>
