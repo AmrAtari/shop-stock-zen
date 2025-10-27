@@ -1321,6 +1321,7 @@ export type Database = {
         Args: { p_icon?: string; p_label: string; p_table_name: string }
         Returns: Json
       }
+      execute_sql: { Args: { sql: string }; Returns: Json }
       generate_pi_session_number: { Args: never; Returns: string }
       generate_po_number: { Args: { supplier_name: string }; Returns: string }
       has_role: {
@@ -1329,6 +1330,12 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      list_public_tables: {
+        Args: never
+        Returns: {
+          table_name: string
+        }[]
       }
       pos_session_expected_cash: {
         Args: { session_id_param: string }
