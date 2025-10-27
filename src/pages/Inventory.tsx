@@ -21,13 +21,13 @@ import { queryKeys } from "@/hooks/queryKeys";
 // Define a local interface that extends the imported Item type.
 interface ItemWithDetails extends Item {
   location: string;
-  min_stock: number;
+  min_stock: number; // NOTE: This field is now hardcoded to 0 in the mapping since the column doesn't exist.
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
 }
 
-// Supabase Data Fetching Function - REWRITTEN FOR NEW NORMALIZED STRUCTURE
+// Supabase Data Fetching Function - CORRECTED: Removed non-existent min_stock column
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   // Query starts from 'variants' (the new SKU table) and joins linked tables.
   const { data, error } = await supabase.from("variants").select(
@@ -41,22 +41,23 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
           name, // The Product Name
           
           // --- Nested JOIN 1.1: Category Name ---
-          categories!inner ( name ) 
+          categories!left ( name ) // Use LEFT join for resilience
         ),
         
         // --- JOIN 2: Stock Quantity and Location ---
         stock_on_hand!left (
           quantity,
-          min_stock,
           
           // --- Nested JOIN 2.1: Store/Location Name ---
-          stores!inner ( name )
+          stores!left ( name ) // Use LEFT join for resilience
         )
       `,
   );
 
   if (error) {
     console.error("Supabase Inventory Fetch Error:", error);
+    // If we get an error here, it means the query itself is invalid in the database.
+    // The previous attempt failed here, so we throw the generic error message.
     throw new Error("Failed to fetch inventory data.");
   }
 
@@ -72,14 +73,15 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     category: row.products?.categories?.name || "N/A",
 
     // Stock is ONE-TO-MANY (variant can be in multiple store inventories).
-    // We assume you want the first/primary stock entry or total stock for this view.
+    // We assume the first entry is the main inventory.
     quantity: row.stock_on_hand?.[0]?.quantity || 0,
-    min_stock: row.stock_on_hand?.[0]?.min_stock || 0,
+
+    // NOTE: min_stock was removed from the query, so we hardcode it for the interface
+    min_stock: 0,
     location: row.stock_on_hand?.[0]?.stores?.name || "N/A",
 
     // Placeholder fields required by the ItemWithDetails interface
     unit: "pcs",
-    // ... add any other required fields here if they exist in your interface
   })) as ItemWithDetails[];
 };
 
@@ -264,6 +266,7 @@ const InventoryNew: React.FC = () => {
           <TableBody>
             {currentItems.map((item) => {
               const isSelected = selectedItems.some((i) => i.id === item.id);
+              // NOTE: isLowStock check now relies on min_stock being 0 or managed elsewhere.
               const isLowStock = item.quantity <= item.min_stock;
               const price = item.sellingPrice ?? 0;
 
