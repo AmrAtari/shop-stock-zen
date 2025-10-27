@@ -295,8 +295,11 @@ const Dashboard = () => {
 
       const firstItem = allInventory[0];
 
+      // --- FIX: Added 'store_fk_id' to the hasStoreId check ---
       const hasStoreId =
-        "store_id" in firstItem || "storeId" in firstItem || "location_id" in firstItem || "warehouse_id" in firstItem;
+        "store_fk_id" in firstItem || "store_id" in firstItem || "storeId" in firstItem || "location_id" in firstItem || "warehouse_id" in firstItem;
+      // --------------------------------------------------------
+
       const hasLocation = "location" in firstItem || "store_location" in firstItem;
       const hasQuantity =
         "quantity" in firstItem ||
@@ -360,16 +363,20 @@ const Dashboard = () => {
 
           // Match by store_id
           if (hasStoreId) {
+            // --- FIX: Added 'store_fk_id' to be checked first ---
             const storeIdField =
-              "store_id" in item
-                ? "store_id"
-                : "storeId" in item
-                  ? "storeId"
-                  : "location_id" in item
-                    ? "location_id"
-                    : "warehouse_id" in item
-                      ? "warehouse_id"
-                      : null;
+                "store_fk_id" in item
+                    ? "store_fk_id" // Use our confirmed foreign key
+                    : "store_id" in item
+                        ? "store_id"
+                        : "storeId" in item
+                            ? "storeId"
+                            : "location_id" in item
+                                ? "location_id"
+                                : "warehouse_id" in item
+                                    ? "warehouse_id"
+                                    : null;
+            // -----------------------------------------------------
 
             if (storeIdField && item[storeIdField]?.toString() === store.id.toString()) {
               matches = true;
