@@ -13,6 +13,17 @@ interface ColumnDef {
   isPrimary?: boolean;
 }
 
+interface ColumnMetadata {
+  column_name: string;
+  data_type: string;
+  is_nullable: string;
+  column_default: string | null;
+  is_primary_key: boolean;
+  is_foreign_key: boolean;
+  foreign_table: string | null;
+  foreign_column: string | null;
+}
+
 interface TableRow {
   [key: string]: any;
 }
@@ -49,6 +60,19 @@ const DatabaseAdminPanel: React.FC = () => {
   const [loadingRows, setLoadingRows] = useState(false);
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colKey: string } | null>(null);
   const [editValue, setEditValue] = useState("");
+
+  // --- Column metadata ---
+  const [columnMetadata, setColumnMetadata] = useState<ColumnMetadata[]>([]);
+  const [loadingColumns, setLoadingColumns] = useState(false);
+  
+  // --- Column rename state ---
+  const [renamingColumn, setRenamingColumn] = useState<string | null>(null);
+  const [newColumnName, setNewColumnName] = useState("");
+  
+  // --- Foreign key state ---
+  const [addingFKColumn, setAddingFKColumn] = useState<string | null>(null);
+  const [fkTargetTable, setFkTargetTable] = useState("");
+  const [fkTargetColumn, setFkTargetColumn] = useState("");
 
   // --- SQL Query Execution ---
   // Pre-fill with a valid query for easy testing
@@ -91,9 +115,30 @@ const DatabaseAdminPanel: React.FC = () => {
     }
   };
 
+  // --- Load column metadata for selected table ---
+  const fetchColumnMetadata = async (table: string) => {
+    if (!table) return;
+    setLoadingColumns(true);
+    try {
+      const { data, error } = await supabase.rpc("get_table_columns", { table_name_param: table });
+      if (error) throw error;
+      setColumnMetadata(data || []);
+    } catch (err: any) {
+      console.error(err.message);
+      toast.error("Failed to fetch column metadata.");
+    } finally {
+      setLoadingColumns(false);
+    }
+  };
+
   useEffect(() => {
-    if (selectedTable) fetchRows(selectedTable);
-    else setRows([]);
+    if (selectedTable) {
+      fetchRows(selectedTable);
+      fetchColumnMetadata(selectedTable);
+    } else {
+      setRows([]);
+      setColumnMetadata([]);
+    }
   }, [selectedTable]);
 
   // --- Create new table ---
@@ -195,6 +240,49 @@ const DatabaseAdminPanel: React.FC = () => {
     } catch (err: any) {
       console.error(err.message);
       toast.error("Delete row failed.");
+    }
+  };
+
+  // --- Rename column ---
+  const renameColumn = async (oldName: string, newName: string) => {
+    if (!selectedTable || !newName.trim()) return;
+    try {
+      const { data, error } = await supabase.rpc("rename_column", {
+        table_name_param: selectedTable,
+        old_column_name: oldName,
+        new_column_name: newName,
+      });
+      if (error) throw error;
+      toast.success("Column renamed successfully!");
+      setRenamingColumn(null);
+      setNewColumnName("");
+      fetchColumnMetadata(selectedTable);
+      fetchRows(selectedTable);
+    } catch (err: any) {
+      console.error(err.message);
+      toast.error("Rename column failed: " + err.message);
+    }
+  };
+
+  // --- Add foreign key ---
+  const addForeignKey = async (columnName: string, targetTable: string, targetColumn: string) => {
+    if (!selectedTable || !targetTable || !targetColumn) return;
+    try {
+      const { data, error } = await supabase.rpc("add_foreign_key", {
+        table_name_param: selectedTable,
+        column_name_param: columnName,
+        foreign_table_param: targetTable,
+        foreign_column_param: targetColumn,
+      });
+      if (error) throw error;
+      toast.success("Foreign key added successfully!");
+      setAddingFKColumn(null);
+      setFkTargetTable("");
+      setFkTargetColumn("");
+      fetchColumnMetadata(selectedTable);
+    } catch (err: any) {
+      console.error(err.message);
+      toast.error("Add foreign key failed: " + err.message);
     }
   };
 
@@ -481,6 +569,164 @@ const DatabaseAdminPanel: React.FC = () => {
             <Button variant="destructive" onClick={deleteTable}>
               Delete Table
             </Button>
+          </div>
+        )}
+
+        {/* Column Structure */}
+        {selectedTable && (
+          <div className="mt-4 border p-2 rounded">
+            <h3 className="font-semibold mb-2">Column Structure: {selectedTable}</h3>
+            {loadingColumns ? (
+              <p>Loading columns...</p>
+            ) : columnMetadata.length === 0 ? (
+              <p>No columns found.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="table-auto border-collapse border w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted">
+                      <th className="border px-2 py-1 text-left">Column Name</th>
+                      <th className="border px-2 py-1 text-left">Type</th>
+                      <th className="border px-2 py-1 text-left">Nullable</th>
+                      <th className="border px-2 py-1 text-left">Default</th>
+                      <th className="border px-2 py-1 text-left">Keys</th>
+                      <th className="border px-2 py-1 text-left">Foreign Key</th>
+                      <th className="border px-2 py-1 text-left">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {columnMetadata.map((col, idx) => (
+                      <tr key={idx} className="border-t hover:bg-muted/50">
+                        <td className="border px-2 py-1">
+                          {renamingColumn === col.column_name ? (
+                            <div className="flex gap-1">
+                              <Input
+                                value={newColumnName}
+                                onChange={(e) => setNewColumnName(e.target.value)}
+                                className="h-8 text-xs"
+                                placeholder="new_column_name"
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => renameColumn(col.column_name, newColumnName)}
+                                className="h-8 text-xs"
+                              >
+                                ✓
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setRenamingColumn(null);
+                                  setNewColumnName("");
+                                }}
+                                className="h-8 text-xs"
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="font-medium">{col.column_name}</span>
+                          )}
+                        </td>
+                        <td className="border px-2 py-1">{col.data_type}</td>
+                        <td className="border px-2 py-1">{col.is_nullable}</td>
+                        <td className="border px-2 py-1 text-xs max-w-[150px] truncate">
+                          {col.column_default || "-"}
+                        </td>
+                        <td className="border px-2 py-1">
+                          <div className="flex gap-1">
+                            {col.is_primary_key && (
+                              <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">PK</span>
+                            )}
+                            {col.is_foreign_key && (
+                              <span className="text-xs bg-purple-100 text-purple-800 px-1 rounded">FK</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="border px-2 py-1 text-xs">
+                          {col.is_foreign_key && col.foreign_table && col.foreign_column ? (
+                            <span className="text-purple-600">
+                              → {col.foreign_table}.{col.foreign_column}
+                            </span>
+                          ) : addingFKColumn === col.column_name ? (
+                            <div className="flex gap-1 items-center">
+                              <Select value={fkTargetTable} onValueChange={setFkTargetTable}>
+                                <SelectTrigger className="h-7 w-24 text-xs">
+                                  <SelectValue placeholder="Table" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {tables.map((t) => (
+                                    <SelectItem key={t} value={t}>
+                                      {t}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                placeholder="column"
+                                value={fkTargetColumn}
+                                onChange={(e) => setFkTargetColumn(e.target.value)}
+                                className="h-7 w-20 text-xs"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => addForeignKey(col.column_name, fkTargetTable, fkTargetColumn)}
+                                className="h-7 text-xs"
+                              >
+                                ✓
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setAddingFKColumn(null);
+                                  setFkTargetTable("");
+                                  setFkTargetColumn("");
+                                }}
+                                className="h-7 text-xs"
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td className="border px-2 py-1">
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setRenamingColumn(col.column_name);
+                                setNewColumnName(col.column_name);
+                              }}
+                              disabled={renamingColumn !== null}
+                              className="h-7 text-xs"
+                            >
+                              Rename
+                            </Button>
+                            {!col.is_foreign_key && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setAddingFKColumn(col.column_name)}
+                                disabled={addingFKColumn !== null}
+                                className="h-7 text-xs"
+                              >
+                                Add FK
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
