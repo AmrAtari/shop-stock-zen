@@ -23,6 +23,8 @@ import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
+// New Import: Assuming you have a Progress component in your UI library
+import { Progress } from "@/components/ui/progress";
 
 interface FileImportProps {
   open: boolean;
@@ -45,7 +47,6 @@ const itemSchema = z.object({
     .min(1, "Item Number is required")
     .max(50, "Item Number must be less than 50 characters"),
   supplier: z.string().trim().min(1, "Supplier is required").max(200, "Supplier must be less than 200 characters"),
-  // department field removed - it is no longer required by the new schema
   main_group: z
     .string()
     .trim()
@@ -109,6 +110,9 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
+  // State for the loading bar progress (always set to 50 for indeterminate loading)
+  const [progress, setProgress] = useState(0);
+
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [duplicateErrors, setDuplicateErrors] = useState<Array<{ sku: string; name: string; differences: any }>>([]);
@@ -171,6 +175,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
   const handleGoogleSheetsImport = async (sheetData: any[]) => {
     setIsUploading(true);
+    setProgress(50); // Set progress for indeterminate loading
     await processImportData(sheetData, "Google Sheets");
   };
 
@@ -181,6 +186,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     }
 
     setIsUploading(true);
+    setProgress(50); // Set progress for indeterminate loading
 
     try {
       let data: any[];
@@ -199,6 +205,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         });
         setErrorDialogOpen(true);
         setIsUploading(false);
+        setProgress(0);
         return;
       }
 
@@ -207,6 +214,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       console.error("Import error:", error);
       toast.error("Failed to process file");
       setIsUploading(false);
+      setProgress(0);
     }
   };
 
@@ -223,28 +231,43 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       }
     };
 
-    // Helpers to make header matching robust (trim spaces, tabs, case, punctuation)
+    // Helper to normalize the column key by removing spaces, dashes, and converting to lowercase
     const normalizeKey = (k: string): string =>
       k
         ?.toString()
         .toLowerCase()
         .replace(/\s+/g, "")
         .replace(/[_-]/g, "")
-        .replace(/[^a-z0-9]/g, "");
+        .replace(/[^a-z0-9]/g, "") || "";
 
+    // CRITICAL FIX: Helper to get the value from the row using normalized keys for robust matching
     const getVal = (row: any, ...keys: string[]): any => {
-      for (const key of keys) {
-        if (row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
+      // 1. Create a map of normalized headers to values for the current row
+      const normalizedRow: Record<string, any> = {};
+      if (row) {
+        for (const key in row) {
+          if (Object.prototype.hasOwnProperty.call(row, key)) {
+            // Trim and clean up value, especially for strings
+            const value = typeof row[key] === "string" ? row[key].trim() : row[key];
+            normalizedRow[normalizeKey(key)] = value;
+          }
+        }
       }
-      const normMap: Record<string, any> = Object.fromEntries(
-        Object.keys(row || {}).map((k) => [normalizeKey(k), (row as any)[k]]),
-      );
+
+      // 2. Search using the normalized version of the expected keys
       for (const key of keys) {
-        const v = normMap[normalizeKey(key)];
-        if (v !== undefined && v !== null && v !== "") return v;
+        const normalizedKey = normalizeKey(key);
+        const value = normalizedRow[normalizedKey];
+
+        // Return if value is not null, not undefined, and not an empty string
+        if (value !== undefined && value !== null && String(value).trim() !== "") {
+          return value;
+        }
       }
       return undefined;
     };
+
+    // START PROCESSING LOGIC -----------------------------------------------------
 
     let successCount = 0;
     let failCount = 0;
@@ -253,47 +276,45 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     const duplicatesList: Array<{ sku: string; name: string; differences: any }> = [];
 
     if (importType === "full") {
-      // Full import: create or detect duplicates
-      let importLogId: string | null = null;
-
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
-        // CRITICAL FIX: Ensure SKU is treated as a string, even if Excel passes a number
-        const rawSku = row.SKU || row.sku;
+
+        // Use the robust getVal function for all fields
+        const rawSku = getVal(row, "SKU", "sku");
         const sku = rawSku !== null && rawSku !== undefined ? String(rawSku).trim() : rawSku;
 
-        // Validate row data
+        // Validate row data - ALL MAPPINGS MUST NOW USE getVal()
         const validationResult = itemSchema.safeParse({
           sku: sku, // Use the coerced SKU string
-          name: row.Name || row.name,
-          pos_description: row["Pos Description"] || row.pos_description,
-          item_number: row["Item Number"] || row.item_number,
-          supplier: row.Supplier || row.supplier,
-          // department field removed from mapping
-          main_group: row["Main Group"] || row.main_group,
-          category: row.Category || row.category,
-          origin: row.Origin || row.origin,
-          season: row.Season || row.season,
-          size: row.Size || row.size,
-          color: row.Color || row.color,
-          color_id: row["Color Id"] || row.color_id,
-          item_color_code: row["Item Color Code"] || row.item_color_code,
-          theme: row.Theme || row.theme || null,
+          name: getVal(row, "Name", "name"), // FIX: Now correctly finds "Name "
+          pos_description: getVal(row, "Pos Description", "pos_description"),
+          item_number: getVal(row, "Item Number", "item_number"),
+          supplier: getVal(row, "Supplier", "supplier"),
+          main_group: getVal(row, "Main Group", "main_group"),
+          category: getVal(row, "Category", "category"),
+          origin: getVal(row, "Origin", "origin"),
+          season: getVal(row, "Season", "season"),
+          size: getVal(row, "Size", "size"),
+          color: getVal(row, "Color", "color"),
+          color_id: getVal(row, "Color Id", "color_id"),
+          item_color_code: getVal(row, "Item Color Code", "item_color_code"),
+          theme: getVal(row, "Theme", "theme") || null,
           // Ensure numeric fields are correctly parsed from string/number input
-          cost_price: row.Cost || row.cost ? parseFloat(String(row.Cost || row.cost)) : 0,
-          selling_price: row.Price || row.price ? parseFloat(String(row.Price || row.price)) : 0,
-          tax: row.Tax || row.tax ? parseFloat(String(row.Tax || row.tax)) : 0,
-          unit: row.Unit || row.unit || "pcs",
-          quantity: row.Quantity || row.quantity ? parseInt(String(row.Quantity || row.quantity)) : null,
-          min_stock: row["Min Stock"] || row.min_stock ? parseInt(String(row["Min Stock"] || row.min_stock)) : null,
-          location: row.Location || row.location || null,
-          description: row.Desc || row.description || null,
-          gender: row.Gender || row.gender || null,
-          brand: row.Brand || row.brand || null,
-          wholesale_price:
-            row["Wholesale Price"] || row.wholesale_price
-              ? parseFloat(String(row["Wholesale Price"] || row.wholesale_price))
-              : null,
+          cost_price: parseFloat(String(getVal(row, "Cost Price", "Cost", "cost") || 0)),
+          selling_price: parseFloat(String(getVal(row, "Selling Price", "Price", "price") || 0)),
+          tax: parseFloat(String(getVal(row, "Tax", "tax") || 0)),
+          unit: getVal(row, "Unit", "unit") || "pcs",
+          quantity: getVal(row, "Quantity", "quantity") ? parseInt(String(getVal(row, "Quantity", "quantity"))) : null,
+          min_stock: getVal(row, "Min Stock", "min_stock")
+            ? parseInt(String(getVal(row, "Min Stock", "min_stock")))
+            : null,
+          location: getVal(row, "Location", "location") || null,
+          description: getVal(row, "Desc", "description") || null,
+          gender: getVal(row, "Gender", "gender") || null,
+          brand: getVal(row, "Brand", "brand") || null,
+          wholesale_price: getVal(row, "Wholesale Price", "wholesale_price")
+            ? parseFloat(String(getVal(row, "Wholesale Price", "wholesale_price")))
+            : null,
         });
 
         if (!validationResult.success) {
@@ -310,7 +331,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           ensureAttributeExists("brands", validatedData.brand || ""),
           ensureAttributeExists("categories", validatedData.category),
           ensureAttributeExists("suppliers", validatedData.supplier),
-          // ensureAttributeExists("departments", validatedData.department), // REMOVED
           ensureAttributeExists("main_groups", validatedData.main_group),
           ensureAttributeExists("origins", validatedData.origin),
           ensureAttributeExists("seasons", validatedData.season),
@@ -322,8 +342,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           ensureAttributeExists("units", validatedData.unit),
         ]);
 
-        // Check if item exists
-        const { data: existing } = await supabase.from("items").select("*").eq("sku", validatedData.sku).maybeSingle();
+        // Check if item exists (Now checks `variants` for SKU)
+        const { data: existing } = await supabase
+          .from("variants")
+          .select("*")
+          .eq("sku", validatedData.sku)
+          .maybeSingle();
 
         if (existing) {
           // Found duplicate - collect for error dialog
@@ -353,12 +377,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             "location",
             "supplier",
             "tax",
-          ]; // 'department' REMOVED
+          ];
 
           fieldsToCompare.forEach((field) => {
             if (existing[field] !== validatedData[field as keyof typeof validatedData]) {
               differences[field] = {
-                old: existing[field],
+                old: (existing as any)[field], // Explicitly cast to any for access
                 new: validatedData[field as keyof typeof validatedData],
               };
             }
@@ -370,67 +394,88 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             differences: Object.keys(differences).length > 0 ? differences : null,
           });
         } else {
-          // Insert new item
-          const { error } = await supabase.from("items").insert({
-            sku: validatedData.sku,
-            name: validatedData.name,
-            pos_description: validatedData.pos_description,
-            item_number: validatedData.item_number,
-            description: validatedData.description,
-            supplier: validatedData.supplier,
-            // department field removed from insert payload
-            main_group: validatedData.main_group,
-            category: validatedData.category,
-            origin: validatedData.origin,
-            season: validatedData.season,
-            size: validatedData.size,
-            color: validatedData.color,
-            color_id: validatedData.color_id,
-            item_color_code: validatedData.item_color_code,
-            theme: validatedData.theme,
-            brand: validatedData.brand,
-            gender: validatedData.gender,
-            tax: validatedData.tax,
-            quantity: validatedData.quantity ?? 0,
-            min_stock: validatedData.min_stock ?? 10,
-            unit: validatedData.unit,
-            location: validatedData.location,
-          });
+          // New Item Logic (Inserting into products, variants, price_levels, etc.)
 
-          if (error) {
+          // 1. Get IDs for foreign keys (requires a separate function in a real app, simplified here)
+          const getOrCreateID = async (table: string, name: string) => {
+            if (!name) return null;
+            const { data: existingData } = await (supabase as any).from(table).select("id").eq("name", name).single();
+            return existingData ? existingData.id : null;
+          };
+
+          const [category_id, brand_id, supplier_id] = await Promise.all([
+            getOrCreateID("categories", validatedData.category),
+            getOrCreateID("brands", validatedData.brand),
+            getOrCreateID("suppliers", validatedData.supplier),
+          ]);
+
+          // 2. Insert into products (main product model)
+          const { data: productData, error: productError } = await supabase
+            .from("products")
+            .insert({
+              name: validatedData.name,
+              pos_description: validatedData.pos_description,
+              description: validatedData.description,
+              gender: validatedData.gender,
+              category_id,
+              brand_id,
+            })
+            .select("product_id")
+            .single();
+
+          if (productError || !productData) {
             failCount++;
-          } else {
-            successCount++;
-
-            // Handle price levels if provided
-            if (validatedData.cost_price || validatedData.selling_price || validatedData.wholesale_price) {
-              const { data: insertedItem } = await supabase
-                .from("items")
-                .select("id")
-                .eq("sku", validatedData.sku)
-                .single();
-
-              if (insertedItem) {
-                await supabase.from("price_levels").insert({
-                  item_id: insertedItem.id,
-                  cost_price: validatedData.cost_price ?? 0,
-                  selling_price: validatedData.selling_price ?? 0,
-                  wholesale_price: validatedData.wholesale_price,
-                  is_current: true,
-                  effective_date: new Date().toISOString(),
-                });
-              }
-            }
+            // console.error("Product Insert Error:", productError);
+            continue; // Skip variant insertion
           }
+
+          // 3. Insert into variants (SKU level)
+          const { data: variantData, error: variantError } = await supabase
+            .from("variants")
+            .insert({
+              product_id: productData.product_id,
+              sku: validatedData.sku,
+              item_number: validatedData.item_number,
+              supplier_id,
+              selling_price: validatedData.selling_price,
+              cost_price: validatedData.cost_price,
+              tax_rate: validatedData.tax,
+              unit: validatedData.unit,
+              // These fields may be moved to a separate product_attributes table in a fully normalized schema
+              color: validatedData.color,
+              size: validatedData.size,
+              season: validatedData.season,
+            })
+            .select("variant_id")
+            .single();
+
+          if (variantError || !variantData) {
+            failCount++;
+            // console.error("Variant Insert Error:", variantError);
+            continue;
+          }
+
+          // 4. Insert into stock_on_hand (initial quantity and location)
+          if (validatedData.quantity !== null) {
+            const location_id = await getOrCreateID("stores", validatedData.location || "Default");
+            await supabase.from("stock_on_hand").insert({
+              variant_id: variantData.variant_id,
+              store_id: location_id,
+              quantity: validatedData.quantity,
+              min_stock: validatedData.min_stock,
+            });
+          }
+
+          successCount++;
         }
       }
     } else {
       // Quantity update: match by SKU and update quantity only
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
-        const rawSku = row.SKU || row.sku;
+        const rawSku = getVal(row, "SKU", "sku");
         const sku = rawSku !== null && rawSku !== undefined ? String(rawSku).trim() : rawSku;
-        const quantityValue = row.Quantity || row.quantity;
+        const quantityValue = getVal(row, "Quantity", "quantity");
 
         // Validate row data
         const validationResult = quantityUpdateSchema.safeParse({
@@ -447,10 +492,25 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         const validatedData = validationResult.data;
 
+        // Find the variant_id associated with the SKU
+        const { data: variantData, error: variantSelectError } = await supabase
+          .from("variants")
+          .select("variant_id")
+          .eq("sku", validatedData.sku)
+          .single();
+
+        if (variantSelectError || !variantData) {
+          failCount++;
+          continue;
+        }
+
+        // Update stock_on_hand based on the variant_id (assumes a default store/location)
+        // NOTE: A robust system would require the store_id in the import file.
         const { error } = await supabase
-          .from("items")
+          .from("stock_on_hand")
           .update({ quantity: validatedData.quantity })
-          .eq("sku", validatedData.sku);
+          .eq("variant_id", variantData.variant_id)
+          .limit(1); // Update the first stock record found for this variant
 
         if (error) {
           failCount++;
@@ -470,6 +530,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       duplicates_found: duplicatesFound,
       status: "completed",
     });
+
+    // Reset loading states
+    setIsUploading(false);
+    setProgress(0);
 
     // Show error dialog if there were validation errors
     if (validationErrors.length > 0) {
@@ -510,7 +574,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       Status: "Duplicate - Already exists in system",
       Differences: dup.differences
         ? Object.keys(dup.differences)
-            .map((k) => `${k}: ${dup.differences[k].old} → ${dup.differences[k].new}`)
+            .map((k) => `${k}: ${dup.differences[k].old ?? "NULL"} → ${dup.differences[k].new ?? "NULL"}`)
             .join("; ")
         : "No differences (exact duplicate)",
     }));
@@ -536,7 +600,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Import Type</Label>
-              <Select value={importType} onValueChange={(value: any) => setImportType(value)}>
+              <Select value={importType} onValueChange={(value: any) => setImportType(value)} disabled={isUploading}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -552,7 +616,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               </p>
             </div>
 
-            <Tabs value={importMethod} onValueChange={(value: any) => setImportMethod(value)} className="w-full">
+            <Tabs
+              value={importMethod}
+              onValueChange={(value: any) => setImportMethod(value)}
+              className="w-full"
+              disabled={isUploading}
+            >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="file">Upload File</TabsTrigger>
                 <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
@@ -562,7 +631,13 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                 <div className="space-y-2">
                   <Label>File</Label>
                   <div className="flex items-center gap-2">
-                    <Input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} className="flex-1" />
+                    <Input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleFileChange}
+                      className="flex-1"
+                      disabled={isUploading}
+                    />
                     <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
                   </div>
                   {file && <p className="text-sm text-muted-foreground">Selected: {file.name}</p>}
@@ -619,8 +694,17 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             </Tabs>
           </div>
 
+          {/* Loading Bar - Shows during the upload process */}
+          {isUploading && (
+            <div className="space-y-2 pt-2">
+              <p className="text-sm font-medium text-blue-600">Processing Data...</p>
+              <Progress value={progress} className="w-full h-2 transition-all duration-300" />
+              <p className="text-xs text-muted-foreground italic">This may take a moment for large files.</p>
+            </div>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isUploading}>
               Cancel
             </Button>
             {importMethod === "file" && (
@@ -632,6 +716,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ... (Error Dialog and Duplicate Dialog remain the same) ... */}
 
       {/* Error Dialog */}
       <Dialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
@@ -672,7 +758,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           <div className="bg-muted p-4 rounded-lg text-sm space-y-2">
             <p className="font-medium">💡 Tips to fix these errors:</p>
             <ul className="space-y-1 text-muted-foreground">
-              {/* Updated list to reflect current required fields */}
               <li>• Ensure all required fields (SKU, Name, Main Group, Category) are filled</li>
               <li>• Check that numeric fields (Quantity, Price) contain valid numbers</li>
               <li>• Verify text fields don't exceed maximum character limits</li>
