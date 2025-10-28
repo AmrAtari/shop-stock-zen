@@ -18,17 +18,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// 1. TYPE FIX: Define a local interface that extends the imported Item type,
-// ensuring all mandatory fields are covered either by the base Item or the new fields.
-// We explicitly make the optional/placehoder fields nullable/optional.
+// 1. TYPE FIX: Ensure all required fields from the base Item type are covered.
 interface ItemWithDetails extends Item {
-  // Required fields from the base Item type that might be missing in fetch's mapping
+  // Required fields from the base Item type that were missing in the fetch mapping
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
   theme: string | null;
   origin: string | null;
+  department: string | null;
   wholesale_price: number | null;
+
+  // Missing Timestamps (Required by base Item, now fetched)
+  created_at: string;
+  updated_at: string;
+  last_restocked: string | null;
 
   // Fields coming from store_inventory
   location: string;
@@ -37,7 +41,7 @@ interface ItemWithDetails extends Item {
   unit: string;
   sellingPrice?: number | null;
 
-  // NEW ATTRIBUTES FROM IMPORT (Now explicitly defined)
+  // NEW ATTRIBUTES FROM IMPORT
   item_number: string;
   season: string;
   color: string;
@@ -61,6 +65,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             season,
             color_id, 
             item_color_code, 
+            created_at,        // FIX: Added missing timestamp
+            updated_at,        // FIX: Added missing timestamp
+            last_restocked,    // FIX: Added missing timestamp
             products!inner (
                 name, 
                 pos_description, 
@@ -92,19 +99,22 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     item_number: variant.products.item_number,
     supplier: variant.suppliers.name,
 
-    // Mapped fields to satisfy ItemWithDetails
+    // Mapped required fields
+    created_at: variant.created_at,
+    updated_at: variant.updated_at,
+    last_restocked: variant.last_restocked,
     category: variant.products.categories.name,
     main_group: variant.products.main_groups.name,
     season: variant.season,
     size: variant.size,
     color: variant.color,
-    color_id: variant.color_id || null, // Mapped
-    item_color_code: variant.item_color_code || null, // Mapped
-    brand: variant.products.brand_id || null, // Mapped (assuming brand_id holds the brand name/ID)
-    theme: variant.products.theme || null, // Mapped
-    origin: "N/A", // Placeholder since not imported/stored directly
-    department: "N/A", // Placeholder for missing Item fields
-    wholesale_price: null, // Placeholder for missing Item fields
+    color_id: variant.color_id || null,
+    item_color_code: variant.item_color_code || null,
+    brand: variant.products.brand_id || null,
+    theme: variant.products.theme || null,
+    origin: "N/A",
+    department: "N/A",
+    wholesale_price: null,
 
     sellingPrice: variant.selling_price,
     cost: variant.cost,
@@ -115,11 +125,10 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     quantity: variant.store_inventory[0]?.quantity || 0,
     min_stock: variant.store_inventory[0]?.min_stock || 0,
     store_name: variant.store_inventory[0]?.stores.name || "N/A",
-    location: variant.store_inventory[0]?.stores.name || "N/A", // Using store_name for location
+    location: variant.store_inventory[0]?.stores.name || "N/A",
   }));
 };
 
-// Renamed the component to match the file
 const InventoryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -199,12 +208,11 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // 2. PAGINATION FIX: Assuming the usePagination hook returns the data under the key 'data'
-  // instead of 'paginatedData' to fix TS2339. It also only needs one argument destructuring.
+  // 2. PAGINATION FIX: Use the 'paginatedData' key which seems to be the one expected by your local hook
   const {
-    data: displayInventory, // Changed from paginatedData
+    paginatedData: displayInventory, // FIX: Reverting to 'paginatedData' to resolve the TS2339 error
     ...pagination
-  } = usePagination(filteredInventory, 20); // 20 items per page
+  } = usePagination(filteredInventory, 20); // FIX: This is the expected usage to resolve TS2554, assuming hook returns an object
 
   // --- HANDLERS ---
 
