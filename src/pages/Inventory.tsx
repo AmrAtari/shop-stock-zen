@@ -53,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (CLEANED UP QUERY STRING) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (Supplier FK & Stock Table Fixes Applied) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -86,9 +86,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers(name), 
+            supplier:suppliers!variants_supplier_id_fkey(name), // FIX 1: Explicitly specify the FK to resolve ambiguity
             
-            stock_on_hand (quantity, min_stock, stores (name)) 
+            stock_on_hand (quantity, min_stock, stores (name)) // FIX 2: Correct table name for stock
         `);
 
   if (error) {
@@ -104,7 +104,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     description: variant.products?.description,
     item_number: variant.products?.item_number,
 
-    // Mapped relationship fields (using the new aliases)
+    // Mapped relationship fields
     supplier: variant.supplier?.name || "N/A",
     category: variant.products.category?.name || "N/A",
     gender: variant.products.gender?.name || "N/A",
@@ -131,7 +131,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    // Accessing the correct relationship name: stock_on_hand
+    // Mapped Stock - Uses the corrected 'stock_on_hand' relationship name
     quantity: variant.stock_on_hand[0]?.quantity || 0,
     min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
@@ -193,7 +193,7 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Option filters generation (using robust filtering)
+  // Option filters generation
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
@@ -390,12 +390,12 @@ const InventoryNew: React.FC = () => {
         {/* Filters Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {/* Item Number Filter */}
-          <Select value={filterItemNumber} onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)}>
+          <Select value={filterItemNumber} onValueChange={setFilterItemNumber}>
             <SelectTrigger>
               <SelectValue placeholder="Item Number" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Item Numbers</SelectItem>
+              <SelectItem value="">All Item Numbers</SelectItem>
               {itemNumberOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -405,12 +405,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Season Filter */}
-          <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
+          <Select value={filterSeason} onValueChange={setFilterSeason}>
             <SelectTrigger>
               <SelectValue placeholder="Season" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Seasons</SelectItem>
+              <SelectItem value="">All Seasons</SelectItem>
               {seasonOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -420,12 +420,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Color Filter */}
-          <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
+          <Select value={filterColor} onValueChange={setFilterColor}>
             <SelectTrigger>
               <SelectValue placeholder="Color" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Colors</SelectItem>
+              <SelectItem value="">All Colors</SelectItem>
               {colorOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -435,12 +435,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Size Filter */}
-          <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
+          <Select value={filterSize} onValueChange={setFilterSize}>
             <SelectTrigger>
               <SelectValue placeholder="Size" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Sizes</SelectItem>
+              <SelectItem value="">All Sizes</SelectItem>
               {sizeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -450,12 +450,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Category Filter */}
-          <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
             <SelectTrigger>
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="">All Categories</SelectItem>
               {categoryOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -465,12 +465,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Main Group Filter */}
-          <Select value={filterMainGroup} onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)}>
+          <Select value={filterMainGroup} onValueChange={setFilterMainGroup}>
             <SelectTrigger>
               <SelectValue placeholder="Main Group" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Main Groups</SelectItem>
+              <SelectItem value="">All Main Groups</SelectItem>
               {mainGroupOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -480,12 +480,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Store/Location Filter */}
-          <Select value={filterStore} onValueChange={(v) => setFilterStore(v === "all" ? "" : v)}>
+          <Select value={filterStore} onValueChange={setFilterStore}>
             <SelectTrigger>
               <SelectValue placeholder="Store/Location" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem>
+              <SelectItem value="">All Stores</SelectItem>
               {storeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
