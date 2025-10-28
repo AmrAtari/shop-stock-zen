@@ -591,7 +591,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               // FIX: Insert into 'store_inventory' instead of 'stock_on_hand'
               await supabase.from("store_inventory").insert({
                 variant_id: variantData.variant_id,
-                store_id: location_id, // Location ID from the 'locations' table
+                location_id: location_id, // <--- CHANGED to location_id
                 quantity: validatedData.quantity,
                 min_stock: validatedData.min_stock,
               });
