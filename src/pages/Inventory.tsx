@@ -18,14 +18,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// --- 1. FULLY DEFINED INTERFACE (CLEAN) ---
+// --- 1. FULLY DEFINED INTERFACE (FIXED: Removed 'wholesale_price') ---
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
   origin: string | null;
   department: string | null; // Placeholder
-  wholesale_price: number | null;
+  // wholesale_price: number | null; <-- REMOVED
 
   created_at: string;
   updated_at: string;
@@ -52,10 +52,8 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (CLEANED OF ALL COMMENTS/SYNTAX) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (FIXED: Removed 'wholesale_price') ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // NOTE: This select string is now completely free of any JavaScript comments (//)
-  // or extra non-SQL syntax, which was the root cause of all parsing errors.
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
             sku, 
@@ -80,7 +78,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 pos_description, 
                 description, 
                 item_number,
-                wholesale_price,
+                // wholesale_price, <-- REMOVED
                 brand:brand_id(name),
                 category:category_id(name), 
                 gender:gender_id(name),
@@ -124,7 +122,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     department: "N/A",
     main_group: "N/A",
 
-    wholesale_price: variant.products?.wholesale_price || null,
+    // wholesale_price: variant.products?.wholesale_price || null, <-- REMOVED
 
     sellingPrice: variant.selling_price,
     cost: variant.cost || variant.cost_price,
