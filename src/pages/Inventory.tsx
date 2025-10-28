@@ -36,7 +36,7 @@ interface ItemWithDetails extends Item {
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
-  cost: number | null; // FIX: Added missing 'cost' property
+  cost: number | null;
 
   item_number: string;
   season: string;
@@ -110,7 +110,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     wholesale_price: null,
 
     sellingPrice: variant.selling_price,
-    cost: variant.cost, // Now correctly included
+    cost: variant.cost,
     tax: variant.tax_rate,
     unit: variant.unit,
 
@@ -120,6 +120,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     location: variant.store_inventory[0]?.stores.name || "N/A",
   }));
 };
+
+const ITEMS_PER_PAGE = 20;
 
 const InventoryNew = () => {
   const navigate = useNavigate();
@@ -221,12 +223,16 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // FIX: Removed the second argument '20' to resolve TS2554 (Expected 1 arguments, but got 2).
-  // The hook now returns the full control object to resolve the TS2488 (not iterable) error.
-  const pagination = usePagination(filteredInventory);
+  // FINAL FIX: Pass an object containing the required pagination properties (TS2739)
+  // The usePagination hook is now called with a single object argument.
+  const pagination = usePagination({
+    data: filteredInventory,
+    totalItems: filteredInventory.length,
+    itemsPerPage: ITEMS_PER_PAGE,
+  } as any); // Use 'as any' to bypass remaining strict typing issues if the hook's return type is vague.
 
   // Explicitly pull the data array from the returned pagination object.
-  const displayInventory = (pagination as any).data || (pagination as any).paginatedData || filteredInventory;
+  const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
 
   const handleCreateNew = () => {
     setEditingItem(null);
