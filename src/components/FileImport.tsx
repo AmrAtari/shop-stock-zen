@@ -23,8 +23,7 @@ import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
-// New Import: Assuming you have a Progress component in your UI library
-import { Progress } from "@/components/ui/progress";
+import { Progress } from "@/components/ui/progress"; // Added Progress component
 
 interface FileImportProps {
   open: boolean;
@@ -110,8 +109,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
-  // State for the loading bar progress (always set to 50 for indeterminate loading)
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(0); // State for the loading bar progress
 
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
@@ -286,7 +284,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         // Validate row data - ALL MAPPINGS MUST NOW USE getVal()
         const validationResult = itemSchema.safeParse({
           sku: sku, // Use the coerced SKU string
-          name: getVal(row, "Name", "name"), // FIX: Now correctly finds "Name "
+          name: getVal(row, "Name", "name"),
           pos_description: getVal(row, "Pos Description", "pos_description"),
           item_number: getVal(row, "Item Number", "item_number"),
           supplier: getVal(row, "Supplier", "supplier"),
@@ -380,7 +378,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           ];
 
           fieldsToCompare.forEach((field) => {
-            if (existing[field] !== validatedData[field as keyof typeof validatedData]) {
+            if ((existing as any)[field] !== validatedData[field as keyof typeof validatedData]) {
               differences[field] = {
                 old: (existing as any)[field], // Explicitly cast to any for access
                 new: validatedData[field as keyof typeof validatedData],
@@ -616,15 +614,16 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               </p>
             </div>
 
-            <Tabs
-              value={importMethod}
-              onValueChange={(value: any) => setImportMethod(value)}
-              className="w-full"
-              disabled={isUploading}
-            >
+            {/* FIX: Removed 'disabled={isUploading}' from <Tabs> to fix TypeScript error */}
+            <Tabs value={importMethod} onValueChange={(value: any) => setImportMethod(value)} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="file">Upload File</TabsTrigger>
-                <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
+                {/* FIX: Added 'disabled={isUploading}' to individual <TabsTrigger> */}
+                <TabsTrigger value="file" disabled={isUploading}>
+                  Upload File
+                </TabsTrigger>
+                <TabsTrigger value="sheets" disabled={isUploading}>
+                  Google Sheets
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="file" className="space-y-4">
@@ -636,6 +635,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                       accept=".xlsx,.xls,.csv"
                       onChange={handleFileChange}
                       className="flex-1"
+                      // FIX: Ensure Input is disabled
                       disabled={isUploading}
                     />
                     <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
@@ -698,6 +698,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           {isUploading && (
             <div className="space-y-2 pt-2">
               <p className="text-sm font-medium text-blue-600">Processing Data...</p>
+              {/* The progress bar will be 'indeterminate' since we don't track row-by-row progress */}
               <Progress value={progress} className="w-full h-2 transition-all duration-300" />
               <p className="text-xs text-muted-foreground italic">This may take a moment for large files.</p>
             </div>
@@ -716,8 +717,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ... (Error Dialog and Duplicate Dialog remain the same) ... */}
 
       {/* Error Dialog */}
       <Dialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
