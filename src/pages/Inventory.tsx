@@ -86,7 +86,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers(name), // FIXED: Simplified relationship name
+            supplier:suppliers(name), // Fixed/Simplified relationship name
             
             stock_on_hand (quantity, min_stock, stores (name)) // CRITICAL FIX: Changed 'store_inventory' to 'stock_on_hand'
         `);
