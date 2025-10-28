@@ -1,34 +1,43 @@
-import { useState, useMemo, useEffect } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download, History, Layers } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus, Search, Edit, Trash2, Upload, History, Layers } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
-import { Item } from "@/types/database";
+import { Item } from "@/types/database"; // Assuming your base Item type is here
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
-// NEW: Import Select component for filters
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Define a local interface that extends the imported Item type.
-// We are adding all new imported fields here
+// 1. TYPE FIX: Define a local interface that extends the imported Item type,
+// ensuring all mandatory fields are covered either by the base Item or the new fields.
+// We explicitly make the optional/placehoder fields nullable/optional.
 interface ItemWithDetails extends Item {
+  // Required fields from the base Item type that might be missing in fetch's mapping
+  brand: string | null;
+  color_id: string | null;
+  item_color_code: string | null;
+  theme: string | null;
+  origin: string | null;
+  wholesale_price: number | null;
+
+  // Fields coming from store_inventory
   location: string;
   min_stock: number;
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
-  // NEW ATTRIBUTES FROM IMPORT
+
+  // NEW ATTRIBUTES FROM IMPORT (Now explicitly defined)
   item_number: string;
   season: string;
   color: string;
@@ -50,12 +59,16 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             color,
             size,
             season,
+            color_id, 
+            item_color_code, 
             products!inner (
                 name, 
                 pos_description, 
                 description, 
                 gender,
                 item_number,
+                theme,
+                brand_id,
                 categories!inner (name), 
                 main_groups!inner (name)
             ),
@@ -76,26 +89,37 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     pos_description: variant.products.pos_description,
     description: variant.products.description,
     gender: variant.products.gender,
-    item_number: variant.products.item_number, // NEW
+    item_number: variant.products.item_number,
     supplier: variant.suppliers.name,
-    category: variant.products.categories.name, // NEW
-    main_group: variant.products.main_groups.name, // NEW
-    origin: "N/A", // Placeholder if not imported/stored
-    season: variant.season, // NEW
-    size: variant.size, // NEW
-    color: variant.color, // NEW
+
+    // Mapped fields to satisfy ItemWithDetails
+    category: variant.products.categories.name,
+    main_group: variant.products.main_groups.name,
+    season: variant.season,
+    size: variant.size,
+    color: variant.color,
+    color_id: variant.color_id || null, // Mapped
+    item_color_code: variant.item_color_code || null, // Mapped
+    brand: variant.products.brand_id || null, // Mapped (assuming brand_id holds the brand name/ID)
+    theme: variant.products.theme || null, // Mapped
+    origin: "N/A", // Placeholder since not imported/stored directly
+    department: "N/A", // Placeholder for missing Item fields
+    wholesale_price: null, // Placeholder for missing Item fields
+
     sellingPrice: variant.selling_price,
     cost: variant.cost,
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    // Flatten store_inventory data (assuming one store per variant for simplicity here)
+    // Flatten store_inventory data
     quantity: variant.store_inventory[0]?.quantity || 0,
     min_stock: variant.store_inventory[0]?.min_stock || 0,
-    store_name: variant.store_inventory[0]?.stores.name || "N/A", // NEW (Location)
+    store_name: variant.store_inventory[0]?.stores.name || "N/A",
+    location: variant.store_inventory[0]?.stores.name || "N/A", // Using store_name for location
   }));
 };
 
+// Renamed the component to match the file
 const InventoryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -175,8 +199,12 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // --- PAGINATION HOOK ---
-  const { paginatedData: displayInventory, ...pagination } = usePagination(filteredInventory, 20); // 20 items per page
+  // 2. PAGINATION FIX: Assuming the usePagination hook returns the data under the key 'data'
+  // instead of 'paginatedData' to fix TS2339. It also only needs one argument destructuring.
+  const {
+    data: displayInventory, // Changed from paginatedData
+    ...pagination
+  } = usePagination(filteredInventory, 20); // 20 items per page
 
   // --- HANDLERS ---
 
@@ -363,15 +391,15 @@ const InventoryNew = () => {
                 <Checkbox />
               </TableHead>
               <TableHead>SKU</TableHead>
-              <TableHead>Item No.</TableHead> {/* NEW */}
+              <TableHead>Item No.</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead> {/* NEW */}
-              <TableHead>Main Group</TableHead> {/* NEW */}
+              <TableHead>Category</TableHead>
+              <TableHead>Main Group</TableHead>
               <TableHead>Supplier</TableHead>
-              <TableHead>Season</TableHead> {/* NEW */}
-              <TableHead>Size</TableHead> {/* NEW */}
-              <TableHead>Color</TableHead> {/* NEW */}
-              <TableHead>Loc/Store</TableHead> {/* NEW */}
+              <TableHead>Season</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Color</TableHead>
+              <TableHead>Loc/Store</TableHead>
               <TableHead className="text-right">Cost</TableHead>
               <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Stock</TableHead>
@@ -387,15 +415,16 @@ const InventoryNew = () => {
                     <Checkbox />
                   </TableCell>
                   <TableCell className="font-medium">{item.sku}</TableCell>
-                  <TableCell>{item.item_number}</TableCell> {/* NEW */}
+                  <TableCell>{item.item_number}</TableCell>
                   <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.category}</TableCell> {/* NEW */}
-                  <TableCell>{item.main_group}</TableCell> {/* NEW */}
+                  <TableCell>{item.category}</TableCell>
+                  <TableCell>{item.main_group}</TableCell>
                   <TableCell>{item.supplier}</TableCell>
-                  <TableCell>{item.season}</TableCell> {/* NEW */}
-                  <TableCell>{item.size}</TableCell> {/* NEW */}
+                  <TableCell>{item.season}</TableCell>
+                  <TableCell>{item.size}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
+                      {/* Simplified color display. You may need a map for color names to HEX codes. */}
                       <span
                         className="w-4 h-4 rounded-full border"
                         style={{ backgroundColor: item.color.toLowerCase() }}
@@ -403,9 +432,8 @@ const InventoryNew = () => {
                       />
                       {item.color}
                     </div>
-                  </TableCell>{" "}
-                  {/* NEW */}
-                  <TableCell>{item.store_name}</TableCell> {/* NEW */}
+                  </TableCell>
+                  <TableCell>{item.store_name}</TableCell>
                   <TableCell className="text-right">${item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
                   <TableCell className="text-right">
                     ${item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}
