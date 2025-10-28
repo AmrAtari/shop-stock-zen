@@ -150,40 +150,63 @@ const InventoryNew = () => {
     queryFn: fetchInventory,
   });
 
+  // FIX: Filter out empty strings before creating options array to prevent the Select.Item error.
   const itemNumberOptions = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item["item_number"] as string).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(inventory.map((item) => item["item_number"] as string).filter((val) => val && val.trim() !== "")),
+      ).sort(),
     [inventory],
   );
 
   const seasonOptions = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item["season"] as string).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(inventory.map((item) => item["season"] as string).filter((val) => val && val.trim() !== "")),
+      ).sort(),
     [inventory],
   );
 
   const colorOptions = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item["color"] as string).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(inventory.map((item) => item["color"] as string).filter((val) => val && val.trim() !== "")),
+      ).sort(),
     [inventory],
   );
 
   const sizeOptions = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item["size"] as string).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(inventory.map((item) => item["size"] as string).filter((val) => val && val.trim() !== "")),
+      ).sort(),
     [inventory],
   );
 
   const categoryOptions = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item["category"] as string).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(inventory.map((item) => item["category"] as string).filter((val) => val && val.trim() !== "")),
+      ).sort(),
     [inventory],
   );
 
   const mainGroupOptions = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item["main_group"] as string).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(inventory.map((item) => item["main_group"] as string).filter((val) => val && val.trim() !== "")),
+      ).sort(),
     [inventory],
   );
 
   const storeOptions = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item["store_name"] as string).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(inventory.map((item) => item["store_name"] as string).filter((val) => val && val.trim() !== "")),
+      ).sort(),
     [inventory],
   );
+  // END FIX
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
@@ -223,14 +246,12 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // Correct call to usePagination hook using a single object argument (TS Fix)
   const pagination = usePagination({
     data: filteredInventory,
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   } as any);
 
-  // Extract the paginated data array
   const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
 
   const handleCreateNew = () => {
