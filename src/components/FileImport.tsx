@@ -148,8 +148,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         try {
           const data = e.target?.result;
           const workbook = XLSX.read(data, { type: "binary" });
-          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          // Use header: 1 to preserve header names exactly as they are in the file
+          const firstSheet = workbook.Sheets[workbook.SheetsNames[0]];
           const jsonData = XLSX.utils.sheet_to_json(firstSheet);
           resolve(jsonData);
         } catch (error) {
@@ -227,9 +226,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         .replace(/[_-]/g, "")
         .replace(/[^a-z0-9]/g, "") || "";
 
-    // CRITICAL FIX: Helper to get the value from the row using normalized keys for robust matching
+    // Helper to get the value from the row using normalized keys for robust matching
     const getVal = (row: any, ...keys: string[]): any => {
-      // 1. Create a map of normalized headers to values for the current row
       const normalizedRow: Record<string, any> = {};
       if (row) {
         for (const key in row) {
@@ -240,7 +238,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         }
       }
 
-      // 2. Search using the normalized version of the expected keys
       for (const key of keys) {
         const normalizedKey = normalizeKey(key);
         const value = normalizedRow[normalizedKey];
@@ -267,12 +264,11 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         colors: new Set<string>(),
         genders: new Set<string>(),
         themes: new Set<string>(),
-        locations: new Set<string>(),
+        locations: new Set<string>(), // Used for mapping to the 'locations' table
         units: new Set<string>(),
       };
 
       data.forEach((row) => {
-        // Use the robust getVal for all lookups
         const category = getVal(row, "Category", "category");
         if (category) unique.categories.add(category.trim());
 
@@ -304,8 +300,9 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         if (theme) unique.themes.add(theme.trim());
 
         const unit = getVal(row, "Unit", "unit");
-        if (unit) unique.units.add(unit.trim() || "pcs"); // Default unit
+        if (unit) unique.units.add(unit.trim() || "pcs");
 
+        // Use 'Location' from spreadsheet to populate 'locations' table
         const location = getVal(row, "Location", "location");
         if (location) unique.locations.add(location.trim());
       });
@@ -336,14 +333,16 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       const missingAttributes = namesArray.filter((name) => !existingNames.has(name)).map((name) => ({ name }));
 
       if (missingAttributes.length > 0) {
-        // Note: Supabase's insert supports batching when passing an array
         const { data: newAttributes, error: insertError } = await (supabase as any)
           .from(table)
           .insert(missingAttributes)
           .select("id, name");
 
         if (insertError) {
-          console.warn(`Failed to batch insert missing attributes for ${table}. Some items may fail:`, insertError);
+          console.warn(
+            `Failed to batch insert missing attributes for ${table}. This is often due to RLS or unique constraints:`,
+            insertError,
+          );
         } else if (newAttributes) {
           newAttributes.forEach((attr: any) => {
             nameToIdMap.set(attr.name, attr.id);
@@ -369,7 +368,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       colorMap,
       themeMap,
       unitMap,
-      locationMap, // Stores table usually handles locations
+      locationMap, // << FIX: Changed from 'stores' to 'locations'
     ] = await Promise.all([
       ensureAndMapAttributes("categories", uniqueAttributes.categories),
       ensureAndMapAttributes("suppliers", uniqueAttributes.suppliers),
@@ -382,7 +381,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       ensureAndMapAttributes("colors", uniqueAttributes.colors),
       ensureAndMapAttributes("themes", uniqueAttributes.themes),
       ensureAndMapAttributes("units", uniqueAttributes.units),
-      ensureAndMapAttributes("stores", uniqueAttributes.locations),
+      ensureAndMapAttributes("locations", uniqueAttributes.locations), // << FIX: Using 'locations' table
     ]);
 
     // --- END OF BATCHING FIX ---
@@ -399,7 +398,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
 
-        // Use the robust getVal function for all fields
         const rawSku = getVal(row, "SKU", "sku");
         const sku = rawSku !== null && rawSku !== undefined ? String(rawSku).trim() : rawSku;
 
@@ -448,9 +446,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const category_id = categoryMap.get(validatedData.category);
         const supplier_id = supplierMap.get(validatedData.supplier);
         const brand_id = validatedData.brand ? brandMap.get(validatedData.brand) : null;
+        // Use 'locations' map for location_id
         const location_id = validatedData.location
           ? locationMap.get(validatedData.location)
-          : locationMap.get("Default"); // Default location lookup
+          : locationMap.get("Default");
 
         // CRITICAL CHECK for foreign keys (Fixes the database error)
         if (!category_id || !supplier_id) {
@@ -461,14 +460,14 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             errors: [
               {
                 path: ["database", "foreign_key_precheck"],
-                message: `Critical attribute missing: Category(${validatedData.category}) or Supplier(${validatedData.supplier}) could not be found/created in the database. Check if you have valid permissions or if the attribute failed bulk creation.`,
+                message: `Critical attribute missing: Category(${validatedData.category}) or Supplier(${validatedData.supplier}) could not be found/created. Please check RLS or unique constraints on attribute tables.`,
               },
             ],
           });
           continue;
         }
 
-        // Check if item exists (Now checks `variants` for SKU)
+        // Check if item exists
         const { data: existing } = await supabase
           .from("variants")
           .select("*")
@@ -476,10 +475,11 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           .maybeSingle();
 
         if (existing) {
-          // Found duplicate - collected for error dialog
+          // Found duplicate - skip insertion, log for review
           duplicatesFound++;
 
-          // ... (rest of the duplicate logic remains the same) ...
+          // ... (rest of the duplicate logic) ...
+
           const differences: Record<string, { old: any; new: any }> = {};
           const fieldsToCompare = [
             "name",
@@ -538,18 +538,17 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
           if (productError || !productData) {
             failCount++;
-            // Capture and log the specific database error
             validationErrors.push({
               row: i + 1,
               sku,
               errors: [
                 {
                   path: ["database", "products"],
-                  message: `Product insert failed: ${productError?.message || "Unknown error."}. (Possibly another FK error)`,
+                  message: `Product insert failed: ${productError?.message || "Unknown error."}.`,
                 },
               ],
             });
-            continue; // Skip variant insertion
+            continue;
           }
 
           // 3. Insert into variants (SKU level)
@@ -573,7 +572,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
           if (variantError || !variantData) {
             failCount++;
-            // Capture and log the specific database error
             validationErrors.push({
               row: i + 1,
               sku,
@@ -590,10 +588,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           // 4. Insert into stock_on_hand (initial quantity and location)
           try {
             if (validatedData.quantity !== null) {
-              // location_id is now safely resolved/null
-              await supabase.from("stock_on_hand").insert({
+              // FIX: Insert into 'store_inventory' instead of 'stock_on_hand'
+              await supabase.from("store_inventory").insert({
                 variant_id: variantData.variant_id,
-                store_id: location_id,
+                store_id: location_id, // Location ID from the 'locations' table
                 quantity: validatedData.quantity,
                 min_stock: validatedData.min_stock,
               });
@@ -651,16 +649,15 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           continue;
         }
 
-        // Update stock_on_hand based on the variant_id
+        // FIX: Update 'store_inventory' instead of 'stock_on_hand'
         const { error } = await supabase
-          .from("stock_on_hand")
+          .from("store_inventory")
           .update({ quantity: validatedData.quantity })
           .eq("variant_id", variantData.variant_id)
           .limit(1);
 
         if (error) {
           failCount++;
-          // Capture and log the specific database error
           validationErrors.push({
             row: i + 1,
             sku,
@@ -813,7 +810,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                         Category, Origin, Season, Size, Color, Color Id, Item Color Code, Price, Cost, Tax
                       </p>
                       <p className="text-muted-foreground text-xs">
-                        <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, Location
+                        <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, **Location**
                       </p>
                       <p className="text-xs text-muted-foreground italic">
                         Note: Quantity defaults to 0 if not provided
@@ -841,7 +838,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                         Category, Origin, Season, Size, Color, Color Id, Item Color Code, Price, Cost, Tax
                       </p>
                       <p className="text-muted-foreground text-xs">
-                        <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, Location
+                        <strong>Optional:</strong> Theme, Desc, Brand, Gender, Quantity, Min Stock, Unit, **Location**
                       </p>
                       <p className="text-xs text-muted-foreground italic">
                         Note: Quantity defaults to 0 if not provided
@@ -925,9 +922,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                 • If the error path is `database.*` (e.g., `database.products`), check your database schema for unique
                 constraints (e.g., duplicate SKU) or other foreign key constraints.
               </li>
-              <li>• Ensure all required fields (SKU, Name, Main Group, Category) are filled.</li>
-              <li>• Check that numeric fields (Quantity, Price) contain valid numbers.</li>
-              <li>• Save your file as Excel (.xlsx) or CSV before importing.</li>
+              <li>
+                • **If the category foreign key error persists:** Temporarily check your Supabase RLS policies on the
+                `categories` table. Ensure your authenticated user has `INSERT` permission.
+              </li>
             </ul>
           </div>
 
