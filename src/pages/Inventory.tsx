@@ -18,14 +18,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// --- 1. FULLY DEFINED INTERFACE (FIXED: Removed 'wholesale_price') ---
+// --- 1. FULLY DEFINED INTERFACE ---
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
   origin: string | null;
   department: string | null; // Placeholder
-  // wholesale_price: number | null; <-- REMOVED
 
   created_at: string;
   updated_at: string;
@@ -52,7 +51,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (FIXED: Removed 'wholesale_price') ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (UNCHANGED) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -78,7 +77,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 pos_description, 
                 description, 
                 item_number,
-                // wholesale_price, <-- REMOVED
                 brand:brand_id(name),
                 category:category_id(name), 
                 gender:gender_id(name),
@@ -121,8 +119,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     item_color_code: variant.item_color_code || null,
     department: "N/A",
     main_group: "N/A",
-
-    // wholesale_price: variant.products?.wholesale_price || null, <-- REMOVED
 
     sellingPrice: variant.selling_price,
     cost: variant.cost || variant.cost_price,
@@ -191,11 +187,13 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
+  // --- FIX APPLIED: Robust filter generation for all options ---
+
   // Option filters generation
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => item["item_number"] as string).filter((val) => val && val.trim() !== "")),
+        new Set(inventory.map((item) => String(item.item_number || "")).filter((val) => val.trim().length > 0)),
       ).sort(),
     [inventory],
   );
@@ -203,7 +201,7 @@ const InventoryNew: React.FC = () => {
   const seasonOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => item["season"] as string).filter((val) => val && val.trim() !== "")),
+        new Set(inventory.map((item) => String(item.season || "")).filter((val) => val.trim().length > 0)),
       ).sort(),
     [inventory],
   );
@@ -211,7 +209,7 @@ const InventoryNew: React.FC = () => {
   const colorOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => item["color"] as string).filter((val) => val && val.trim() !== "")),
+        new Set(inventory.map((item) => String(item.color || "")).filter((val) => val.trim().length > 0)),
       ).sort(),
     [inventory],
   );
@@ -219,7 +217,7 @@ const InventoryNew: React.FC = () => {
   const sizeOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => item["size"] as string).filter((val) => val && val.trim() !== "")),
+        new Set(inventory.map((item) => String(item.size || "")).filter((val) => val.trim().length > 0)),
       ).sort(),
     [inventory],
   );
@@ -227,7 +225,7 @@ const InventoryNew: React.FC = () => {
   const categoryOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => item["category"] as string).filter((val) => val && val.trim() !== "")),
+        new Set(inventory.map((item) => String(item.category || "")).filter((val) => val.trim().length > 0)),
       ).sort(),
     [inventory],
   );
@@ -235,7 +233,7 @@ const InventoryNew: React.FC = () => {
   const mainGroupOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => item["main_group"] as string).filter((val) => val && val.trim() !== "")),
+        new Set(inventory.map((item) => String(item.main_group || "")).filter((val) => val.trim().length > 0)),
       ).sort(),
     [inventory],
   );
@@ -243,10 +241,11 @@ const InventoryNew: React.FC = () => {
   const storeOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => item["store_name"] as string).filter((val) => val && val.trim() !== "")),
+        new Set(inventory.map((item) => String(item.store_name || "")).filter((val) => val.trim().length > 0)),
       ).sort(),
     [inventory],
   );
+  // --- END OF FIX ---
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
