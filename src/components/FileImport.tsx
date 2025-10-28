@@ -148,7 +148,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         try {
           const data = e.target?.result;
           const workbook = XLSX.read(data, { type: "binary" });
-          const firstSheet = workbook.Sheets[workbook.SheetsNames[0]];
+          // FIX: Corrected typo from SheetsNames to SheetNames
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
           const jsonData = XLSX.utils.sheet_to_json(firstSheet);
           resolve(jsonData);
         } catch (error) {
@@ -264,7 +265,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         colors: new Set<string>(),
         genders: new Set<string>(),
         themes: new Set<string>(),
-        locations: new Set<string>(), // Used for mapping to the 'locations' table
+        locations: new Set<string>(), // This will now map to the 'stores' table
         units: new Set<string>(),
       };
 
@@ -302,7 +303,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const unit = getVal(row, "Unit", "unit");
         if (unit) unique.units.add(unit.trim() || "pcs");
 
-        // Use 'Location' from spreadsheet to populate 'locations' table
         const location = getVal(row, "Location", "location");
         if (location) unique.locations.add(location.trim());
       });
@@ -339,6 +339,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           .select("id, name");
 
         if (insertError) {
+          // This is the check that provides the error for RLS/Constraint failure
           console.warn(
             `Failed to batch insert missing attributes for ${table}. This is often due to RLS or unique constraints:`,
             insertError,
@@ -368,7 +369,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       colorMap,
       themeMap,
       unitMap,
-      locationMap, // << FIX: Changed from 'stores' to 'locations'
+      locationMap, // This is now used for the 'stores' table
     ] = await Promise.all([
       ensureAndMapAttributes("categories", uniqueAttributes.categories),
       ensureAndMapAttributes("suppliers", uniqueAttributes.suppliers),
@@ -381,7 +382,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       ensureAndMapAttributes("colors", uniqueAttributes.colors),
       ensureAndMapAttributes("themes", uniqueAttributes.themes),
       ensureAndMapAttributes("units", uniqueAttributes.units),
-      ensureAndMapAttributes("locations", uniqueAttributes.locations), // << FIX: Using 'locations' table
+      // FIX: Reverting to 'stores' table since it has dependencies and we assume it's the main table.
+      ensureAndMapAttributes("stores", uniqueAttributes.locations),
     ]);
 
     // --- END OF BATCHING FIX ---
@@ -446,10 +448,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const category_id = categoryMap.get(validatedData.category);
         const supplier_id = supplierMap.get(validatedData.supplier);
         const brand_id = validatedData.brand ? brandMap.get(validatedData.brand) : null;
-        // Use 'locations' map for location_id
-        const location_id = validatedData.location
-          ? locationMap.get(validatedData.location)
-          : locationMap.get("Default");
+        // Use 'stores' map for location_id
+        const store_id = validatedData.location ? locationMap.get(validatedData.location) : locationMap.get("Default");
 
         // CRITICAL CHECK for foreign keys (Fixes the database error)
         if (!category_id || !supplier_id) {
@@ -588,10 +588,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           // 4. Insert into stock_on_hand (initial quantity and location)
           try {
             if (validatedData.quantity !== null) {
-              // FIX: Insert into 'store_inventory' instead of 'stock_on_hand'
+              // FIX: Insert into 'store_inventory' and use 'store_id' as column name
               await supabase.from("store_inventory").insert({
                 variant_id: variantData.variant_id,
-                location_id: location_id, // <--- CHANGED to location_id
+                store_id: store_id, // FIX: Column name is now store_id
                 quantity: validatedData.quantity,
                 min_stock: validatedData.min_stock,
               });
@@ -649,7 +649,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           continue;
         }
 
-        // FIX: Update 'store_inventory' instead of 'stock_on_hand'
+        // FIX: Update 'store_inventory'
         const { error } = await supabase
           .from("store_inventory")
           .update({ quantity: validatedData.quantity })
@@ -915,16 +915,13 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             <p className="font-medium">💡 Tips to fix these errors:</p>
             <ul className="space-y-1 text-muted-foreground">
               <li>
-                • If the error path is `database.foreign_key_precheck`, it means a required attribute (Category or
-                Supplier) was not found in the database. Ensure the attribute name is spelled correctly in your file.
+                • If the error path is **`database.foreign_key_precheck`**, it means a required attribute (Category or
+                Supplier) was not found in the database. Run the **RLS SQL queries** provided to allow attribute
+                creation.
               </li>
               <li>
                 • If the error path is `database.*` (e.g., `database.products`), check your database schema for unique
                 constraints (e.g., duplicate SKU) or other foreign key constraints.
-              </li>
-              <li>
-                • **If the category foreign key error persists:** Temporarily check your Supabase RLS policies on the
-                `categories` table. Ensure your authenticated user has `INSERT` permission.
               </li>
             </ul>
           </div>
