@@ -28,7 +28,7 @@ interface ItemWithDetails extends Item {
   department: string | null;
   wholesale_price: number | null;
 
-  created_at: string;
+  created_at: string; // This column now exists in the database after the SQL fix
   updated_at: string;
   last_restocked: string | null;
 
