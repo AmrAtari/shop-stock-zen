@@ -18,7 +18,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// --- 1. FULLY DEFINED INTERFACE ---
+// --- 1. FULLY DEFINED INTERFACE (FIXED: Removed 'min_stock') ---
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
@@ -31,7 +31,7 @@ interface ItemWithDetails extends Item {
   last_restocked: string | null;
 
   location: string;
-  min_stock: number;
+  // min_stock: number; <-- REMOVED
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
@@ -51,7 +51,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (UNCHANGED) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (FIXED: Removed 'min_stock') ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -85,7 +85,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             
             supplier:suppliers(name), 
             
-            stock_on_hand (quantity, min_stock, stores (name))
+            stock_on_hand (quantity, stores (name))
+            // min_stock removed from above select query
         `);
 
   if (error) {
@@ -127,7 +128,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
     // Data access uses the correct 'stock_on_hand' relationship name
     quantity: variant.stock_on_hand[0]?.quantity || 0,
-    min_stock: variant.stock_on_hand[0]?.min_stock || 0,
+    // min_stock removed from mapping
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
     location: variant.stock_on_hand[0]?.stores?.name || "N/A",
   })) as ItemWithDetails[];
@@ -187,8 +188,6 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // --- FIX APPLIED: Robust filter generation for all options ---
-
   // Option filters generation
   const itemNumberOptions = useMemo(
     () =>
@@ -245,7 +244,6 @@ const InventoryNew: React.FC = () => {
       ).sort(),
     [inventory],
   );
-  // --- END OF FIX ---
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
@@ -530,7 +528,8 @@ const InventoryNew: React.FC = () => {
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 const isSelected = selectedItems.some((i) => i.id === item.id);
-                const isLowStock = item.quantity <= item.min_stock;
+                // Note: isLowStock check simplified as min_stock is no longer fetched
+                const isLowStock = false; // Cannot determine low stock without min_stock
                 return (
                   <TableRow key={item.id} className={isSelected ? "bg-blue-50" : isLowStock ? "bg-red-50/50" : ""}>
                     <TableCell className="text-center">
@@ -560,7 +559,9 @@ const InventoryNew: React.FC = () => {
                       ${item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge variant={isLowStock ? "destructive" : "secondary"}>
+                      <Badge variant={"secondary"}>
+                        {" "}
+                        {/* Low stock check removed */}
                         {item.quantity} {item.unit}
                       </Badge>
                     </TableCell>
