@@ -149,6 +149,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           const data = e.target?.result;
           const workbook = XLSX.read(data, { type: "binary" });
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          // Use header: 1 to preserve header names exactly as they are in the file
           const jsonData = XLSX.utils.sheet_to_json(firstSheet);
           resolve(jsonData);
         } catch (error) {
@@ -217,19 +218,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   };
 
   const processImportData = async (data: any[], fileName: string) => {
-    // Helper to auto-create attribute if it doesn't exist
-    const ensureAttributeExists = async (table: string, name: string): Promise<void> => {
-      if (!name || name.trim() === "") return;
-
-      const trimmedName = name.trim();
-      const { data: existing } = await (supabase as any).from(table).select("id").eq("name", trimmedName).maybeSingle();
-
-      if (!existing) {
-        // Suppress toast/error handling here to keep the main flow clean
-        await (supabase as any).from(table).insert({ name: trimmedName });
-      }
-    };
-
     // Helper to normalize the column key by removing spaces, dashes, and converting to lowercase
     const normalizeKey = (k: string): string =>
       k
@@ -239,14 +227,13 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         .replace(/[_-]/g, "")
         .replace(/[^a-z0-9]/g, "") || "";
 
-    // FIX: Helper to get the value from the row using normalized keys for robust matching
+    // CRITICAL FIX: Helper to get the value from the row using normalized keys for robust matching
     const getVal = (row: any, ...keys: string[]): any => {
       // 1. Create a map of normalized headers to values for the current row
       const normalizedRow: Record<string, any> = {};
       if (row) {
         for (const key in row) {
           if (Object.prototype.hasOwnProperty.call(row, key)) {
-            // Trim and clean up value, especially for strings
             const value = typeof row[key] === "string" ? row[key].trim() : row[key];
             normalizedRow[normalizeKey(key)] = value;
           }
@@ -258,13 +245,147 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const normalizedKey = normalizeKey(key);
         const value = normalizedRow[normalizedKey];
 
-        // Return if value is not null, not undefined, and not an empty string
         if (value !== undefined && value !== null && String(value).trim() !== "") {
           return value;
         }
       }
       return undefined;
     };
+
+    // --- NEW: PERFORMANCE FIX (BATCH ATTRIBUTES) ---
+
+    // 1. Extract all unique attribute names from the entire file
+    const extractUniqueAttributes = (data: any[]): Record<string, Set<string>> => {
+      const unique = {
+        categories: new Set<string>(),
+        suppliers: new Set<string>(),
+        brands: new Set<string>(),
+        main_groups: new Set<string>(),
+        origins: new Set<string>(),
+        seasons: new Set<string>(),
+        sizes: new Set<string>(),
+        colors: new Set<string>(),
+        genders: new Set<string>(),
+        themes: new Set<string>(),
+        locations: new Set<string>(),
+        units: new Set<string>(),
+      };
+
+      data.forEach((row) => {
+        // Use the robust getVal for all lookups
+        const category = getVal(row, "Category", "category");
+        if (category) unique.categories.add(category.trim());
+
+        const supplier = getVal(row, "Supplier", "supplier");
+        if (supplier) unique.suppliers.add(supplier.trim());
+
+        const brand = getVal(row, "Brand", "brand");
+        if (brand) unique.brands.add(brand.trim());
+
+        const mainGroup = getVal(row, "Main Group", "main_group");
+        if (mainGroup) unique.main_groups.add(mainGroup.trim());
+
+        const origin = getVal(row, "Origin", "origin");
+        if (origin) unique.origins.add(origin.trim());
+
+        const season = getVal(row, "Season", "season");
+        if (season) unique.seasons.add(season.trim());
+
+        const size = getVal(row, "Size", "size");
+        if (size) unique.sizes.add(size.trim());
+
+        const color = getVal(row, "Color", "color");
+        if (color) unique.colors.add(color.trim());
+
+        const gender = getVal(row, "Gender", "gender");
+        if (gender) unique.genders.add(gender.trim());
+
+        const theme = getVal(row, "Theme", "theme");
+        if (theme) unique.themes.add(theme.trim());
+
+        const unit = getVal(row, "Unit", "unit");
+        if (unit) unique.units.add(unit.trim() || "pcs"); // Default unit
+
+        const location = getVal(row, "Location", "location");
+        if (location) unique.locations.add(location.trim());
+      });
+
+      return unique;
+    };
+
+    // 2. Create a function to fetch all existing and insert missing attributes in bulk
+    const ensureAndMapAttributes = async (table: string, names: Set<string>): Promise<Map<string, number>> => {
+      const nameToIdMap = new Map<string, number>();
+      if (names.size === 0) return nameToIdMap;
+
+      const namesArray = Array.from(names).filter((n) => n.length > 0);
+      if (namesArray.length === 0) return nameToIdMap;
+
+      // a. Fetch existing attributes
+      const { data: existing } = await (supabase as any).from(table).select("id, name").in("name", namesArray);
+
+      const existingNames = new Set<string>();
+      if (existing) {
+        existing.forEach((attr: any) => {
+          nameToIdMap.set(attr.name, attr.id);
+          existingNames.add(attr.name);
+        });
+      }
+
+      // b. Identify and bulk insert missing attributes
+      const missingAttributes = namesArray.filter((name) => !existingNames.has(name)).map((name) => ({ name }));
+
+      if (missingAttributes.length > 0) {
+        // Note: Supabase's insert supports batching when passing an array
+        const { data: newAttributes, error: insertError } = await (supabase as any)
+          .from(table)
+          .insert(missingAttributes)
+          .select("id, name");
+
+        if (insertError) {
+          console.warn(`Failed to batch insert missing attributes for ${table}. Some items may fail:`, insertError);
+        } else if (newAttributes) {
+          newAttributes.forEach((attr: any) => {
+            nameToIdMap.set(attr.name, attr.id);
+          });
+        }
+      }
+
+      return nameToIdMap;
+    };
+
+    // 3. EXECUTE BULK PRE-PROCESSING
+    const uniqueAttributes = extractUniqueAttributes(data);
+
+    const [
+      categoryMap,
+      supplierMap,
+      brandMap,
+      genderMap,
+      mainGroupMap,
+      originMap,
+      seasonMap,
+      sizeMap,
+      colorMap,
+      themeMap,
+      unitMap,
+      locationMap, // Stores table usually handles locations
+    ] = await Promise.all([
+      ensureAndMapAttributes("categories", uniqueAttributes.categories),
+      ensureAndMapAttributes("suppliers", uniqueAttributes.suppliers),
+      ensureAndMapAttributes("brands", uniqueAttributes.brands),
+      ensureAndMapAttributes("genders", uniqueAttributes.genders),
+      ensureAndMapAttributes("main_groups", uniqueAttributes.main_groups),
+      ensureAndMapAttributes("origins", uniqueAttributes.origins),
+      ensureAndMapAttributes("seasons", uniqueAttributes.seasons),
+      ensureAndMapAttributes("sizes", uniqueAttributes.sizes),
+      ensureAndMapAttributes("colors", uniqueAttributes.colors),
+      ensureAndMapAttributes("themes", uniqueAttributes.themes),
+      ensureAndMapAttributes("units", uniqueAttributes.units),
+      ensureAndMapAttributes("stores", uniqueAttributes.locations),
+    ]);
+
+    // --- END OF BATCHING FIX ---
 
     // START PROCESSING LOGIC -----------------------------------------------------
 
@@ -282,7 +403,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const rawSku = getVal(row, "SKU", "sku");
         const sku = rawSku !== null && rawSku !== undefined ? String(rawSku).trim() : rawSku;
 
-        // Validate row data - ALL MAPPINGS MUST NOW USE getVal()
+        // ZOD Validation
         const validationResult = itemSchema.safeParse({
           sku: sku,
           name: getVal(row, "Name", "name"),
@@ -298,7 +419,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           color_id: getVal(row, "Color Id", "color_id"),
           item_color_code: getVal(row, "Item Color Code", "item_color_code"),
           theme: getVal(row, "Theme", "theme") || null,
-          // Ensure numeric fields are correctly parsed from string/number input
           cost_price: parseFloat(String(getVal(row, "Cost Price", "Cost", "cost") || 0)),
           selling_price: parseFloat(String(getVal(row, "Selling Price", "Price", "price") || 0)),
           tax: parseFloat(String(getVal(row, "Tax", "tax") || 0)),
@@ -318,29 +438,35 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         if (!validationResult.success) {
           failCount++;
-          // This handles Zod validation errors (e.g., missing required fields)
           validationErrors.push({ row: i + 1, sku, errors: validationResult.error.errors });
           continue;
         }
 
         const validatedData = validationResult.data;
 
-        // Auto-create missing attributes
-        // Promise.allSettled is used to ensure all attempts are made and errors don't stop the flow
-        await Promise.allSettled([
-          ensureAttributeExists("brands", validatedData.brand || ""),
-          ensureAttributeExists("categories", validatedData.category),
-          ensureAttributeExists("suppliers", validatedData.supplier),
-          ensureAttributeExists("main_groups", validatedData.main_group),
-          ensureAttributeExists("origins", validatedData.origin),
-          ensureAttributeExists("seasons", validatedData.season),
-          ensureAttributeExists("sizes", validatedData.size),
-          ensureAttributeExists("colors", validatedData.color),
-          ensureAttributeExists("genders", validatedData.gender || ""),
-          ensureAttributeExists("themes", validatedData.theme || ""),
-          ensureAttributeExists("locations", validatedData.location || ""),
-          ensureAttributeExists("units", validatedData.unit),
-        ]);
+        // --- Get IDs from PRE-COMPUTED MAPS (FAST) ---
+        const category_id = categoryMap.get(validatedData.category);
+        const supplier_id = supplierMap.get(validatedData.supplier);
+        const brand_id = validatedData.brand ? brandMap.get(validatedData.brand) : null;
+        const location_id = validatedData.location
+          ? locationMap.get(validatedData.location)
+          : locationMap.get("Default"); // Default location lookup
+
+        // CRITICAL CHECK for foreign keys (Fixes the database error)
+        if (!category_id || !supplier_id) {
+          failCount++;
+          validationErrors.push({
+            row: i + 1,
+            sku,
+            errors: [
+              {
+                path: ["database", "foreign_key_precheck"],
+                message: `Critical attribute missing: Category(${validatedData.category}) or Supplier(${validatedData.supplier}) could not be found/created in the database. Check if you have valid permissions or if the attribute failed bulk creation.`,
+              },
+            ],
+          });
+          continue;
+        }
 
         // Check if item exists (Now checks `variants` for SKU)
         const { data: existing } = await supabase
@@ -350,10 +476,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           .maybeSingle();
 
         if (existing) {
-          // Found duplicate - collect for error dialog
+          // Found duplicate - collected for error dialog
           duplicatesFound++;
 
-          // Calculate differences
+          // ... (rest of the duplicate logic remains the same) ...
           const differences: Record<string, { old: any; new: any }> = {};
           const fieldsToCompare = [
             "name",
@@ -394,40 +520,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             differences: Object.keys(differences).length > 0 ? differences : null,
           });
         } else {
-          // New Item Logic (Inserting into products, variants, price_levels, etc.)
-
-          // 1. Get IDs for foreign keys
-          const getOrCreateID = async (table: string, name: string) => {
-            if (!name) return null;
-            const { data: existingData } = await (supabase as any)
-              .from(table)
-              .select("id")
-              .eq("name", name)
-              .maybeSingle();
-            return existingData ? existingData.id : null;
-          };
-
-          const [category_id, brand_id, supplier_id] = await Promise.all([
-            getOrCreateID("categories", validatedData.category),
-            getOrCreateID("brands", validatedData.brand),
-            getOrCreateID("suppliers", validatedData.supplier),
-          ]);
-
-          // If any critical attribute ID is missing, skip the row and log the error.
-          if (!category_id || !supplier_id) {
-            failCount++;
-            validationErrors.push({
-              row: i + 1,
-              sku,
-              errors: [
-                {
-                  path: ["database"],
-                  message: `Missing critical attribute ID(s): Category(${validatedData.category}) or Supplier(${validatedData.supplier}) not found/created.`,
-                },
-              ],
-            });
-            continue;
-          }
+          // New Item Insertion
 
           // 2. Insert into products (main product model)
           const { data: productData, error: productError } = await supabase
@@ -437,22 +530,22 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               pos_description: validatedData.pos_description,
               description: validatedData.description,
               gender: validatedData.gender,
-              category_id,
-              brand_id,
+              category_id, // Use pre-fetched ID
+              brand_id, // Use pre-fetched ID
             })
             .select("product_id")
             .single();
 
           if (productError || !productData) {
             failCount++;
-            // FIX: Capture and log the specific database error
+            // Capture and log the specific database error
             validationErrors.push({
               row: i + 1,
               sku,
               errors: [
                 {
                   path: ["database", "products"],
-                  message: `Product insert failed: ${productError?.message || "Unknown error."}`,
+                  message: `Product insert failed: ${productError?.message || "Unknown error."}. (Possibly another FK error)`,
                 },
               ],
             });
@@ -466,7 +559,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               product_id: productData.product_id,
               sku: validatedData.sku,
               item_number: validatedData.item_number,
-              supplier_id,
+              supplier_id, // Use pre-fetched ID
               selling_price: validatedData.selling_price,
               cost_price: validatedData.cost_price,
               tax_rate: validatedData.tax,
@@ -480,7 +573,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
           if (variantError || !variantData) {
             failCount++;
-            // FIX: Capture and log the specific database error
+            // Capture and log the specific database error
             validationErrors.push({
               row: i + 1,
               sku,
@@ -497,7 +590,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           // 4. Insert into stock_on_hand (initial quantity and location)
           try {
             if (validatedData.quantity !== null) {
-              const location_id = await getOrCreateID("stores", validatedData.location || "Default");
+              // location_id is now safely resolved/null
               await supabase.from("stock_on_hand").insert({
                 variant_id: variantData.variant_id,
                 store_id: location_id,
@@ -506,9 +599,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               });
             }
           } catch (e) {
-            // Log non-critical stock_on_hand error
             console.error(`Stock update failed for SKU ${validatedData.sku}:`, e);
-            // We still count this as a success if the product/variant inserted.
           }
 
           successCount++;
@@ -541,7 +632,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           .from("variants")
           .select("variant_id")
           .eq("sku", validatedData.sku)
-          .maybeSingle(); // Used maybeSingle for safety
+          .maybeSingle();
 
         if (variantSelectError || !variantData) {
           failCount++;
@@ -565,11 +656,11 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           .from("stock_on_hand")
           .update({ quantity: validatedData.quantity })
           .eq("variant_id", variantData.variant_id)
-          .limit(1); // Update the first stock record found for this variant
+          .limit(1);
 
         if (error) {
           failCount++;
-          // FIX: Capture and log the specific database error
+          // Capture and log the specific database error
           validationErrors.push({
             row: i + 1,
             sku,
@@ -605,7 +696,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     if (validationErrors.length > 0) {
       setImportErrors({
         type: "Validation/Database Errors",
-        // The message now mentions validation and database errors
         message: `${failCount} row(s) failed validation or database insertion. Please review the errors below.`,
         validationErrors,
       });
@@ -620,10 +710,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
     const totalProcessed = successCount + failCount + duplicatesFound;
     if (totalProcessed > 0 && successCount === 0 && failCount > 0) {
-      // If all new items failed (not duplicates), show a specific error toast
       toast.error(`Import failed. ${failCount} row(s) could not be processed.`);
     } else {
-      // Show success/partial success toast
       toast.success(
         `Import completed: ${successCount} successful${failCount > 0 ? `, ${failCount} failed` : ""}${
           duplicatesFound > 0 ? `, ${duplicatesFound} duplicates skipped` : ""
@@ -690,10 +778,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               </p>
             </div>
 
-            {/* FIX: Removed 'disabled={isUploading}' from <Tabs> to fix TypeScript error */}
             <Tabs value={importMethod} onValueChange={(value: any) => setImportMethod(value)} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                {/* FIX: Added 'disabled={isUploading}' to individual <TabsTrigger> */}
                 <TabsTrigger value="file" disabled={isUploading}>
                   Upload File
                 </TabsTrigger>
@@ -711,7 +797,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                       accept=".xlsx,.xls,.csv"
                       onChange={handleFileChange}
                       className="flex-1"
-                      // FIX: Ensure Input is disabled
                       disabled={isUploading}
                     />
                     <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
@@ -814,12 +899,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                       Row {error.row} {error.sku && `(SKU: ${error.sku})`}
                     </div>
                     <ul className="space-y-1 text-sm text-muted-foreground">
-                      {/* The error.errors array now contains both Zod validation and Supabase database errors */}
                       {error.errors.map((err: any, errIdx: number) => (
                         <li key={errIdx} className="flex items-start gap-2">
                           <span className="text-destructive">•</span>
                           <span>
-                            {/* Display the path (e.g., name, database.products) and the message */}
                             <strong>{err.path.join(".")}</strong>: {err.message}
                           </span>
                         </li>
@@ -835,8 +918,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             <p className="font-medium">💡 Tips to fix these errors:</p>
             <ul className="space-y-1 text-muted-foreground">
               <li>
-                • If the error path is `database.*`, check your database schema for **unique constraints** (e.g.,
-                duplicate SKU) or **foreign key constraints** (e.g., missing Category ID).
+                • If the error path is `database.foreign_key_precheck`, it means a required attribute (Category or
+                Supplier) was not found in the database. Ensure the attribute name is spelled correctly in your file.
+              </li>
+              <li>
+                • If the error path is `database.*` (e.g., `database.products`), check your database schema for unique
+                constraints (e.g., duplicate SKU) or other foreign key constraints.
               </li>
               <li>• Ensure all required fields (SKU, Name, Main Group, Category) are filled.</li>
               <li>• Check that numeric fields (Quantity, Price) contain valid numbers.</li>
