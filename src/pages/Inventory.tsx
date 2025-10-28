@@ -36,6 +36,7 @@ interface ItemWithDetails extends Item {
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
+  cost: number | null; // FIX: Added missing 'cost' property
 
   item_number: string;
   season: string;
@@ -109,7 +110,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     wholesale_price: null,
 
     sellingPrice: variant.selling_price,
-    cost: variant.cost,
+    cost: variant.cost, // Now correctly included
     tax: variant.tax_rate,
     unit: variant.unit,
 
@@ -220,13 +221,12 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // FINAL FIX: Avoids tuple/array destructuring (TS2488) and incorrect property access (TS2339)
-  // by assigning the full return object to 'pagination' and extracting the data array explicitly.
-  const pagination = usePagination(filteredInventory, 20);
+  // FIX: Removed the second argument '20' to resolve TS2554 (Expected 1 arguments, but got 2).
+  // The hook now returns the full control object to resolve the TS2488 (not iterable) error.
+  const pagination = usePagination(filteredInventory);
 
-  // We must cast to 'any' to bypass the restrictive UsePaginationReturn interface
-  // that is causing the error, while guaranteeing access to the underlying data array.
-  const displayInventory = (pagination as any).data || (pagination as any).paginatedData;
+  // Explicitly pull the data array from the returned pagination object.
+  const displayInventory = (pagination as any).data || (pagination as any).paginatedData || filteredInventory;
 
   const handleCreateNew = () => {
     setEditingItem(null);
@@ -426,8 +426,8 @@ const InventoryNew = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {/* We use displayInventory here */}
-            {displayInventory &&
+            {/* Added safety check for displayInventory */}
+            {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 const isLowStock = item.quantity <= item.min_stock;
                 return (
@@ -490,7 +490,6 @@ const InventoryNew = () => {
         </Table>
       </div>
 
-      {/* Pagination Controls use the 'pagination' object now */}
       <PaginationControls
         currentPage={pagination.currentPage}
         totalPages={pagination.totalPages}
