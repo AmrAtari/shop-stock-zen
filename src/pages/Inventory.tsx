@@ -10,7 +10,7 @@ import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
-import { usePagination } from "@/hooks/usePagination";
+import { usePagination } from "@/hooks/usePagination"; // Assuming this returns an object with { data, ... }
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database"; // Assuming your base Item type is here
 import { toast } from "sonner";
@@ -18,9 +18,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// 1. TYPE FIX: Ensure all required fields from the base Item type are covered.
 interface ItemWithDetails extends Item {
-  // Required fields from the base Item type that were missing in the fetch mapping
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
@@ -29,29 +27,25 @@ interface ItemWithDetails extends Item {
   department: string | null;
   wholesale_price: number | null;
 
-  // Missing Timestamps (Required by base Item, now fetched)
   created_at: string;
   updated_at: string;
   last_restocked: string | null;
 
-  // Fields coming from store_inventory
   location: string;
   min_stock: number;
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
 
-  // NEW ATTRIBUTES FROM IMPORT
   item_number: string;
   season: string;
   color: string;
   size: string;
   category: string;
   main_group: string;
-  store_name: string; // The location/store name
+  store_name: string;
 }
 
-// Supabase Data Fetching Function - MODIFIED TO PULL ALL REQUIRED FIELDS
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             id, 
@@ -65,9 +59,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             season,
             color_id, 
             item_color_code, 
-            created_at,        // FIX: Added missing timestamp
-            updated_at,        // FIX: Added missing timestamp
-            last_restocked,    // FIX: Added missing timestamp
+            created_at,        
+            updated_at,        
+            last_restocked,    
             products!inner (
                 name, 
                 pos_description, 
@@ -88,7 +82,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     throw new Error("Failed to fetch inventory data.");
   }
 
-  // Map and flatten the data structure to ItemWithDetails array
   return data.map((variant: any) => ({
     id: variant.id,
     sku: variant.sku,
@@ -99,7 +92,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     item_number: variant.products.item_number,
     supplier: variant.suppliers.name,
 
-    // Mapped required fields
     created_at: variant.created_at,
     updated_at: variant.updated_at,
     last_restocked: variant.last_restocked,
@@ -121,7 +113,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    // Flatten store_inventory data
     quantity: variant.store_inventory[0]?.quantity || 0,
     min_stock: variant.store_inventory[0]?.min_stock || 0,
     store_name: variant.store_inventory[0]?.stores.name || "N/A",
@@ -138,7 +129,6 @@ const InventoryNew = () => {
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
 
-  // NEW FILTER STATES
   const [searchTerm, setSearchTerm] = useState("");
   const [filterItemNumber, setFilterItemNumber] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
@@ -157,7 +147,6 @@ const InventoryNew = () => {
     queryFn: fetchInventory,
   });
 
-  // --- UTILITY MEMOS FOR FILTER OPTIONS ---
   const getUniqueOptions = (key: keyof ItemWithDetails) =>
     Array.from(new Set(inventory.map((item) => item[key] as string).filter(Boolean))).sort();
 
@@ -169,7 +158,6 @@ const InventoryNew = () => {
   const mainGroupOptions = useMemo(() => getUniqueOptions("main_group"), [inventory]);
   const storeOptions = useMemo(() => getUniqueOptions("store_name"), [inventory]);
 
-  // --- FILTERED INVENTORY LOGIC ---
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const matchesSearch =
@@ -208,13 +196,11 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // 2. PAGINATION FIX: Use the 'paginatedData' key which seems to be the one expected by your local hook
+  // FINAL PAGINATION FIX: Assuming your usePagination hook returns an object with a 'data' property
   const {
-    paginatedData: displayInventory, // FIX: Reverting to 'paginatedData' to resolve the TS2339 error
-    ...pagination
-  } = usePagination(filteredInventory, 20); // FIX: This is the expected usage to resolve TS2554, assuming hook returns an object
-
-  // --- HANDLERS ---
+    data: displayInventory, // FIX: Using 'data' as the property name for the paginated items
+    ...pagination // The remaining properties, including controls, are bundled into the 'pagination' object
+  } = usePagination(filteredInventory, 20);
 
   const handleCreateNew = () => {
     setEditingItem(null);
@@ -229,7 +215,6 @@ const InventoryNew = () => {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item and all its stock?")) return;
 
-    // Perform cascade delete (stock and variant)
     const { error: variantError } = await supabase.from("variants").delete().eq("id", id);
 
     if (variantError) {
@@ -432,7 +417,6 @@ const InventoryNew = () => {
                   <TableCell>{item.size}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      {/* Simplified color display. You may need a map for color names to HEX codes. */}
                       <span
                         className="w-4 h-4 rounded-full border"
                         style={{ backgroundColor: item.color.toLowerCase() }}
