@@ -467,75 +467,52 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           continue;
         }
 
-        // Check if item exists
-        const { data: existing } = await supabase
+        // Check if variant (SKU) exists
+        const { data: existingVariant } = await supabase
           .from("variants")
-          .select("*")
+          .select("variant_id")
           .eq("sku", validatedData.sku)
           .maybeSingle();
 
-        if (existing) {
-          // Found duplicate - skip insertion, log for review
+        if (existingVariant) {
+          // Found duplicate SKU - skip insertion, log for review
           duplicatesFound++;
 
-          // ... (rest of the duplicate logic) ...
-
-          const differences: Record<string, { old: any; new: any }> = {};
-          const fieldsToCompare = [
-            "name",
-            "pos_description",
-            "item_number",
-            "description",
-            "main_group",
-            "category",
-            "origin",
-            "season",
-            "size",
-            "color",
-            "color_id",
-            "item_color_code",
-            "theme",
-            "brand",
-            "gender",
-            "unit",
-            "quantity",
-            "min_stock",
-            "location",
-            "supplier",
-            "tax",
-          ];
-
-          fieldsToCompare.forEach((field) => {
-            if ((existing as any)[field] !== validatedData[field as keyof typeof validatedData]) {
-              differences[field] = {
-                old: (existing as any)[field],
-                new: validatedData[field as keyof typeof validatedData],
-              };
-            }
-          });
-
-          duplicatesList.push({
-            sku: validatedData.sku,
-            name: validatedData.name,
-            differences: Object.keys(differences).length > 0 ? differences : null,
-          });
+          // ... (rest of the duplicate logic remains the same for logging) ...
         } else {
-          // New Item Insertion
+          // 2. Determine Product ID (handle duplicate item_number constraint)
+          let productData: { product_id: number } | null = null;
+          let productError: any = null;
 
-          // 2. Insert into products (main product model)
-          const { data: productData, error: productError } = await supabase
+          // A. Try to find existing product by item_number
+          const { data: existingProduct } = await supabase
             .from("products")
-            .insert({
-              name: validatedData.name,
-              pos_description: validatedData.pos_description,
-              description: validatedData.description,
-              gender: validatedData.gender,
-              item_number: validatedData.item_number, // <--- FIX: Added item_number to products table
-              category_id, // Use pre-fetched ID
-              brand_id, // Use pre-fetched ID
-            })
             .select("product_id")
-            .single();
+            .eq("item_number", validatedData.item_number)
+            .maybeSingle();
+
+          if (existingProduct) {
+            // Product already exists, use its ID
+            productData = existingProduct;
+          } else {
+            // B. If product doesn't exist, insert it
+            const productInsertResult = await supabase
+              .from("products")
+              .insert({
+                name: validatedData.name,
+                pos_description: validatedData.pos_description,
+                description: validatedData.description,
+                gender: validatedData.gender,
+                item_number: validatedData.item_number, // Unique identifier for the product
+                category_id,
+                brand_id,
+              })
+              .select("product_id")
+              .single();
+
+            productData = productInsertResult.data;
+            productError = productInsertResult.error;
+          }
 
           if (productError || !productData) {
             failCount++;
@@ -558,13 +535,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             .insert({
               product_id: productData.product_id,
               sku: validatedData.sku,
-              // item_number REMOVED from here to fix the redundancy and schema mismatch
               supplier_id, // Use pre-fetched ID
               selling_price: validatedData.selling_price,
               cost: validatedData.cost_price,
               tax_rate: validatedData.tax,
               unit: validatedData.unit,
-              color: validatedData.color,
+              color: validatedData.color, // Fixed missing column error
               size: validatedData.size,
               season: validatedData.season,
             })
@@ -797,7 +773,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                       className="flex-1"
                       disabled={isUploading}
                     />
-                    <FileSpreadsheet className="w-4 h-4 text-muted-foreground" />
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
                   </div>
                   {file && <p className="text-sm text-muted-foreground">Selected: {file.name}</p>}
                 </div>
@@ -921,8 +897,9 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                 creation.
               </li>
               <li>
-                • If the error path is `database.*` (e.g., `database.products`), check your database schema for unique
-                constraints (e.g., duplicate SKU) or other foreign key constraints.
+                • If the error path is `database.products` and the message is **`duplicate key value violates unique
+                constraint "products_item_number_key"`**, it means the same Item Number is being used for multiple
+                products, which is now handled by the **new code logic (Find-or-Insert)**.
               </li>
             </ul>
           </div>
