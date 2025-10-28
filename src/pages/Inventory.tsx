@@ -53,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (TABLE NAME & RELATIONSHIP FIX APPLIED) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (CLEANED UP QUERY STRING) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -86,9 +86,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers(name), // Fixed/Simplified relationship name
+            supplier:suppliers(name), 
             
-            stock_on_hand (quantity, min_stock, stores (name)) // CRITICAL FIX: Changed 'store_inventory' to 'stock_on_hand'
+            stock_on_hand (quantity, min_stock, stores (name)) 
         `);
 
   if (error) {
@@ -131,7 +131,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    // CRITICAL FIX: Accessing the corrected relationship name: stock_on_hand
+    // Accessing the correct relationship name: stock_on_hand
     quantity: variant.stock_on_hand[0]?.quantity || 0,
     min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
