@@ -109,7 +109,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(0); // Progress state added
 
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
@@ -265,7 +265,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         colors: new Set<string>(),
         genders: new Set<string>(),
         themes: new Set<string>(),
-        locations: new Set<string>(), // This will now map to the 'stores' table
+        stores: new Set<string>(), // This will now map to the 'stores' table
         units: new Set<string>(),
       };
 
@@ -303,8 +303,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const unit = getVal(row, "Unit", "unit");
         if (unit) unique.units.add(unit.trim() || "pcs");
 
-        const location = getVal(row, "Location", "location");
-        if (location) unique.locations.add(location.trim());
+        const store = getVal(row, "Location", "location");
+        if (store) unique.stores.add(store.trim());
       });
 
       return unique;
@@ -369,7 +369,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       colorMap,
       themeMap,
       unitMap,
-      locationMap, // This is now used for the 'stores' table
+      storeMap, // This is now the corrected map for the 'stores' table
     ] = await Promise.all([
       ensureAndMapAttributes("categories", uniqueAttributes.categories),
       ensureAndMapAttributes("suppliers", uniqueAttributes.suppliers),
@@ -382,8 +382,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       ensureAndMapAttributes("colors", uniqueAttributes.colors),
       ensureAndMapAttributes("themes", uniqueAttributes.themes),
       ensureAndMapAttributes("units", uniqueAttributes.units),
-      // FIX: Reverting to 'stores' table since it has dependencies and we assume it's the main table.
-      ensureAndMapAttributes("stores", uniqueAttributes.locations),
+      // FIX: Using the 'stores' table
+      ensureAndMapAttributes("stores", uniqueAttributes.stores),
     ]);
 
     // --- END OF BATCHING FIX ---
@@ -448,8 +448,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const category_id = categoryMap.get(validatedData.category);
         const supplier_id = supplierMap.get(validatedData.supplier);
         const brand_id = validatedData.brand ? brandMap.get(validatedData.brand) : null;
-        // Use 'stores' map for location_id
-        const store_id = validatedData.location ? locationMap.get(validatedData.location) : locationMap.get("Default");
+        // Use 'stores' map for store_id
+        const store_id = validatedData.location ? storeMap.get(validatedData.location) : storeMap.get("Default");
 
         // CRITICAL CHECK for foreign keys (Fixes the database error)
         if (!category_id || !supplier_id) {
