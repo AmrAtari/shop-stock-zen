@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+// import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"; // Removed if not used
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
@@ -18,14 +19,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Define a local interface that extends the imported Item type.
+// --- 1. FULLY DEFINED INTERFACE ---
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
   theme: string | null;
   origin: string | null;
-  department: string | null;
+  department: string | null; // Placeholder
   wholesale_price: number | null;
 
   created_at: string;
@@ -41,17 +42,19 @@ interface ItemWithDetails extends Item {
   tax_rate: number | null;
 
   item_number: string;
+  pos_description: string; // Added from products
+  description: string; // Added from products
   season: string;
   color: string;
   size: string;
   category: string;
-  main_group: string; // Placeholder, as no FK was found
+  main_group: string; // Placeholder
   store_name: string;
   supplier: string;
   gender: string;
 }
 
-// Supabase Data Fetching Function (FIXED: Cleaned up comments and ensured correct FK joins)
+// --- 2. FINAL CORRECTED Supabase Fetch Function ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -78,10 +81,12 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 item_number,
                 theme,
                 wholesale_price,
-                brand:brands!products_brand_id_fkey(name),
-                category:categories!products_category_id_fkey(name), 
-                gender:genders!products_gender_id_fkey(name),
-                origin:origins!products_origin_id_fkey(name)
+                
+                -- FIX: Use FK column name (brand_id) to explicitly join 'brands'.
+                brand:brand_id(name),
+                category:category_id(name), 
+                gender:gender_id(name),
+                origin:origin_id(name)
             ),
             
             supplier:suppliers!variants_supplier_id_fkey(name),
@@ -95,14 +100,14 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   }
 
   return data.map((variant: any) => ({
-    id: variant.variant_id, // Use the actual PK
+    id: variant.variant_id,
     sku: variant.sku,
     name: variant.products?.name || "N/A",
     pos_description: variant.products?.pos_description,
     description: variant.products?.description,
     item_number: variant.products?.item_number,
 
-    // Mapped relationship fields
+    // Mapped relationship fields (using the new aliases)
     supplier: variant.supplier?.name || "N/A",
     category: variant.products.category?.name || "N/A",
     gender: variant.products.gender?.name || "N/A",
@@ -120,7 +125,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     item_color_code: variant.item_color_code || null,
     theme: variant.products?.theme || null,
     department: "N/A",
-    main_group: "N/A", // Placeholder
+    main_group: "N/A",
+
     wholesale_price: variant.products?.wholesale_price || null,
 
     sellingPrice: variant.selling_price,
@@ -143,17 +149,41 @@ const useInventoryQuery = () => {
   });
 };
 
-const ITEMS_PER_PAGE = 20;
+interface BulkActionsProps {
+  selectedItems: ItemWithDetails[];
+  onBulkUpdate: () => void;
+  onClearSelection: () => void;
+}
 
-const InventoryNew = () => {
+const BulkActions: React.FC<BulkActionsProps> = ({ selectedItems, onBulkUpdate, onClearSelection }) => {
+  if (selectedItems.length === 0) return null;
+
+  return (
+    <div className="flex items-center space-x-2 py-2 px-4 bg-blue-50 border-b border-blue-200">
+      <span className="text-sm font-medium text-blue-800">{selectedItems.length} items selected.</span>
+      <Button variant="secondary" size="sm" onClick={onBulkUpdate}>
+        Bulk Update
+      </Button>
+      <Button variant="outline" size="sm" onClick={onClearSelection}>
+        Clear Selection
+      </Button>
+    </div>
+  );
+};
+
+const ITEMS_PER_PAGE = 20; // Changed to 20 for better table view
+
+const InventoryNew: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
+  const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
+  // Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [filterItemNumber, setFilterItemNumber] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
@@ -163,16 +193,9 @@ const InventoryNew = () => {
   const [filterMainGroup, setFilterMainGroup] = useState("");
   const [filterStore, setFilterStore] = useState("");
 
-  const {
-    data: inventory = [],
-    isLoading,
-    error,
-  } = useQuery<ItemWithDetails[]>({
-    queryKey: queryKeys.inventory.all,
-    queryFn: fetchInventory,
-  });
+  const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Option filters (FIXED to filter out empty strings)
+  // Option filters generation
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
@@ -232,17 +255,17 @@ const InventoryNew = () => {
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const matchesSearch =
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.item_number.toLowerCase().includes(searchTerm.toLowerCase());
+        (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
+        (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
+        (item.item_number?.toLowerCase() ?? "").includes(searchTerm.toLowerCase());
 
-      const matchesItemNumber = !filterItemNumber || filterItemNumber === "all" || item.item_number === filterItemNumber;
-      const matchesSeason = !filterSeason || filterSeason === "all" || item.season === filterSeason;
-      const matchesColor = !filterColor || filterColor === "all" || item.color === filterColor;
-      const matchesSize = !filterSize || filterSize === "all" || item.size === filterSize;
-      const matchesCategory = !filterCategory || filterCategory === "all" || item.category === filterCategory;
-      const matchesMainGroup = !filterMainGroup || filterMainGroup === "all" || item.main_group === filterMainGroup;
-      const matchesStore = !filterStore || filterStore === "all" || item.store_name === filterStore;
+      const matchesItemNumber = !filterItemNumber || item.item_number === filterItemNumber;
+      const matchesSeason = !filterSeason || item.season === filterSeason;
+      const matchesColor = !filterColor || item.color === filterColor;
+      const matchesSize = !filterSize || item.size === filterSize;
+      const matchesCategory = !filterCategory || item.category === filterCategory;
+      const matchesMainGroup = !filterMainGroup || item.main_group === filterMainGroup;
+      const matchesStore = !filterStore || item.store_name === filterStore;
 
       return (
         matchesSearch &&
@@ -275,11 +298,6 @@ const InventoryNew = () => {
 
   const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
 
-  const handleCreateNew = () => {
-    setEditingItem(null);
-    setDialogOpen(true);
-  };
-
   const handleEdit = (item: ItemWithDetails) => {
     setEditingItem(item);
     setDialogOpen(true);
@@ -288,7 +306,7 @@ const InventoryNew = () => {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item and all its stock?")) return;
 
-    const { error: variantError } = await supabase.from("variants").delete().eq("variant_id", id); // Use 'variant_id' as the actual PK for deletion
+    const { error: variantError } = await supabase.from("variants").delete().eq("variant_id", id);
 
     if (variantError) {
       toast.error(`Failed to delete item: ${variantError.message}`);
@@ -298,12 +316,31 @@ const InventoryNew = () => {
     }
   };
 
+  const handleBulkUpdate = () => {
+    toast.info(`Attempting bulk update for ${selectedItems.length} items.`);
+    // Logic for opening a bulk update dialog goes here
+  };
+
+  const toggleSelectItem = (item: ItemWithDetails) => {
+    setSelectedItems((prev) =>
+      prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item],
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItems.length === displayInventory.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(displayInventory);
+    }
+  };
+
   if (isLoading) {
-    return <div>Loading inventory...</div>;
+    return <div className="p-8">Loading inventory...</div>;
   }
 
   if (error) {
-    return <div className="text-red-500">Error loading inventory: {error.message}</div>;
+    return <div className="p-8 text-red-500">Error loading inventory: {error.message}</div>;
   }
 
   return (
@@ -314,11 +351,24 @@ const InventoryNew = () => {
           Inventory Management
         </h1>
         <div className="flex space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => navigate("/inventory/physical")}
+            className="bg-purple-100 text-purple-800 hover:bg-purple-200"
+          >
+            <Layers className="w-4 h-4 mr-2" />
+            View/Manage Counts
+          </Button>
           <Button onClick={() => setImportOpen(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Import Data
           </Button>
-          <Button onClick={handleCreateNew}>
+          <Button
+            onClick={() => {
+              setEditingItem(null);
+              setDialogOpen(true);
+            }}
+          >
             <Plus className="w-4 h-4 mr-2" />
             New Item
           </Button>
@@ -347,7 +397,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Item Number" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Item Numbers</SelectItem>
+              <SelectItem value="">All Item Numbers</SelectItem>
               {itemNumberOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -362,7 +412,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Season" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Seasons</SelectItem>
+              <SelectItem value="">All Seasons</SelectItem>
               {seasonOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -377,7 +427,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Color" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Colors</SelectItem>
+              <SelectItem value="">All Colors</SelectItem>
               {colorOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -392,7 +442,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Size" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Sizes</SelectItem>
+              <SelectItem value="">All Sizes</SelectItem>
               {sizeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -407,7 +457,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="">All Categories</SelectItem>
               {categoryOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -422,7 +472,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Main Group" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Main Groups</SelectItem>
+              <SelectItem value="">All Main Groups</SelectItem>
               {mainGroupOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -437,7 +487,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Store/Location" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem>
+              <SelectItem value="">All Stores</SelectItem>
               {storeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -449,12 +499,21 @@ const InventoryNew = () => {
       </div>
       {/* --- END OF FILTER AND SEARCH BAR --- */}
 
+      <BulkActions
+        selectedItems={selectedItems}
+        onBulkUpdate={handleBulkUpdate}
+        onClearSelection={() => setSelectedItems([])}
+      />
+
       <div className="border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[10px]">
-                <Checkbox />
+              <TableHead className="w-[50px] text-center">
+                <Checkbox
+                  checked={selectedItems.length > 0 && selectedItems.length === displayInventory.length}
+                  onCheckedChange={toggleSelectAll}
+                />
               </TableHead>
               <TableHead>SKU</TableHead>
               <TableHead>Item No.</TableHead>
@@ -475,11 +534,12 @@ const InventoryNew = () => {
           <TableBody>
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
+                const isSelected = selectedItems.some((i) => i.id === item.id);
                 const isLowStock = item.quantity <= item.min_stock;
                 return (
-                  <TableRow key={item.id} className={isLowStock ? "bg-red-50/50" : ""}>
-                    <TableCell>
-                      <Checkbox />
+                  <TableRow key={item.id} className={isSelected ? "bg-blue-50" : isLowStock ? "bg-red-50/50" : ""}>
+                    <TableCell className="text-center">
+                      <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectItem(item)} />
                     </TableCell>
                     <TableCell className="font-medium">{item.sku}</TableCell>
                     <TableCell>{item.item_number}</TableCell>
