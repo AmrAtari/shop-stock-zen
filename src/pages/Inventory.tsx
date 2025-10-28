@@ -23,17 +23,17 @@ interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
-  theme: string | null; // <-- RESTORED
+  theme: string | null;
   origin: string | null;
   department: string | null;
-  wholesale_price: number | null; // <-- RESTORED
+  wholesale_price: number | null;
 
   created_at: string;
   updated_at: string;
   last_restocked: string | null;
 
   location: string;
-  min_stock: number; // <-- RESTORED
+  min_stock: number;
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
@@ -53,8 +53,9 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FULLY RESTORED Supabase Fetch Function ---
+// --- 2. FULLY RESTORED Supabase Fetch Function (Comments Removed) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
+  // NOTE: The inline comments were removed from the select string to fix the "failed to parse" error.
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
             sku, 
@@ -79,8 +80,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 pos_description, 
                 description, 
                 item_number,
-                wholesale_price,  // <-- RESTORED
-                theme,            // <-- RESTORED
+                wholesale_price,  
+                theme,            
                 brand:brand_id(name),
                 category:category_id(name), 
                 gender:gender_id(name),
@@ -89,7 +90,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             
             supplier:suppliers(name), 
             
-            stock_on_hand (quantity, min_stock, stores (name)) // <-- RESTORED
+            stock_on_hand (quantity, min_stock, stores (name)) 
         `);
 
   if (error) {
@@ -124,8 +125,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     department: "N/A",
     main_group: "N/A",
 
-    wholesale_price: variant.products?.wholesale_price || null, // <-- RESTORED
-    theme: variant.products?.theme || null, // <-- RESTORED
+    wholesale_price: variant.products?.wholesale_price || null,
+    theme: variant.products?.theme || null,
 
     sellingPrice: variant.selling_price,
     cost: variant.cost || variant.cost_price,
@@ -134,7 +135,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
     // Data access uses the correct 'stock_on_hand' relationship name
     quantity: variant.stock_on_hand[0]?.quantity || 0,
-    min_stock: variant.stock_on_hand[0]?.min_stock || 0, // <-- RESTORED
+    min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
     location: variant.stock_on_hand[0]?.stores?.name || "N/A",
   })) as ItemWithDetails[];
@@ -534,7 +535,7 @@ const InventoryNew: React.FC = () => {
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 const isSelected = selectedItems.some((i) => i.id === item.id);
-                // The Low Stock Check is now functional again
+                // Low Stock Check is now functional
                 const isLowStock = item.quantity <= item.min_stock;
                 return (
                   <TableRow key={item.id} className={isSelected ? "bg-blue-50" : isLowStock ? "bg-red-50/50" : ""}>
