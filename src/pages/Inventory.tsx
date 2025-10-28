@@ -17,287 +17,417 @@ import { Item } from "@/types/database";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
+// NEW: Import Select component for filters
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Define a local interface that extends the imported Item type.
+// We are adding all new imported fields here
 interface ItemWithDetails extends Item {
   location: string;
   min_stock: number;
   quantity: number;
   unit: string;
   sellingPrice?: number | null;
+  // NEW ATTRIBUTES FROM IMPORT
+  item_number: string;
+  season: string;
+  color: string;
+  size: string;
+  category: string;
+  main_group: string;
+  store_name: string; // The location/store name
 }
 
-// Supabase Data Fetching Function - FINAL CORRECTED VERSION (Using Array Notation)
+// Supabase Data Fetching Function - MODIFIED TO PULL ALL REQUIRED FIELDS
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Switched to array notation for maximum reliability, bypassing template literal issues.
-  const selectColumns = [
-    "variant_id", // The actual PK
-    "sku",
-    "selling_price",
-    // Standard Supabase dot-notation joins
-    "products!inner(name, categories!left(name))", // Product Name + Category Name
-    "stock_on_hand!left(quantity, stores!left(name))", // Stock Quantity + Store Name
-  ];
-
-  const { data, error } = await supabase.from("variants").select(selectColumns.join(",")); // Join the array into a single comma-separated string
+  const { data, error } = await supabase.from("variants").select(`
+            id, 
+            sku, 
+            selling_price, 
+            cost, 
+            tax_rate, 
+            unit, 
+            color,
+            size,
+            season,
+            products!inner (
+                name, 
+                pos_description, 
+                description, 
+                gender,
+                item_number,
+                categories!inner (name), 
+                main_groups!inner (name)
+            ),
+            suppliers!inner (name),
+            store_inventory!inner (quantity, min_stock, stores!inner (name))
+        `);
 
   if (error) {
-    console.error("Supabase Inventory Fetch Error:", error);
-    // Log the full error object for complete diagnosis if it still fails
-    console.error("Supabase Query Failed:", error);
+    console.error("Error fetching inventory:", error);
     throw new Error("Failed to fetch inventory data.");
   }
 
-  // CRITICAL: TRANSFORM AND FLATTEN THE NESTED DATA
-  // We handle all aliasing and un-nesting in the map function.
-  return data.map((row: any) => ({
-    // 1. Core Variant Data (Mapping PKs and Prices)
-    id: row.variant_id, // Map the database PK to the required 'id'
-    sku: row.sku,
-    sellingPrice: row.selling_price,
+  // Map and flatten the data structure to ItemWithDetails array
+  return data.map((variant: any) => ({
+    id: variant.id,
+    sku: variant.sku,
+    name: variant.products.name,
+    pos_description: variant.products.pos_description,
+    description: variant.products.description,
+    gender: variant.products.gender,
+    item_number: variant.products.item_number, // NEW
+    supplier: variant.suppliers.name,
+    category: variant.products.categories.name, // NEW
+    main_group: variant.products.main_groups.name, // NEW
+    origin: "N/A", // Placeholder if not imported/stored
+    season: variant.season, // NEW
+    size: variant.size, // NEW
+    color: variant.color, // NEW
+    sellingPrice: variant.selling_price,
+    cost: variant.cost,
+    tax: variant.tax_rate,
+    unit: variant.unit,
 
-    // 2. Product/Category Data (Flattening Joins)
-    name: row.products?.name || "N/A",
-    category: row.products?.categories?.name || "N/A",
-
-    // 3. Stock/Location Data (Handling Arrays and Flattening)
-    // Assumes stock_on_hand is an array, we take the first entry (or 0 if empty)
-    quantity: row.stock_on_hand?.[0]?.quantity || 0,
-    location: row.stock_on_hand?.[0]?.stores?.name || "N/A",
-
-    // 4. Default/Placeholder Fields (Required by ItemWithDetails)
-    min_stock: 0, // Hardcoded since it doesn't exist in stock_on_hand
-    unit: "pcs",
-  })) as ItemWithDetails[];
+    // Flatten store_inventory data (assuming one store per variant for simplicity here)
+    quantity: variant.store_inventory[0]?.quantity || 0,
+    min_stock: variant.store_inventory[0]?.min_stock || 0,
+    store_name: variant.store_inventory[0]?.stores.name || "N/A", // NEW (Location)
+  }));
 };
 
-// Data Hook connected to React Query
-const useInventoryQuery = () => {
-  return useQuery<ItemWithDetails[]>({
+const InventoryNew = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
+  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
+  const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
+
+  // NEW FILTER STATES
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterItemNumber, setFilterItemNumber] = useState("");
+  const [filterSeason, setFilterSeason] = useState("");
+  const [filterColor, setFilterColor] = useState("");
+  const [filterSize, setFilterSize] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterMainGroup, setFilterMainGroup] = useState("");
+  const [filterStore, setFilterStore] = useState("");
+
+  const {
+    data: inventory = [],
+    isLoading,
+    error,
+  } = useQuery<ItemWithDetails[]>({
     queryKey: queryKeys.inventory.all,
     queryFn: fetchInventory,
   });
-};
 
-interface BulkActionsProps {
-  selectedItems: ItemWithDetails[];
-  onBulkUpdate: () => void;
-  onClearSelection: () => void;
-}
+  // --- UTILITY MEMOS FOR FILTER OPTIONS ---
+  const getUniqueOptions = (key: keyof ItemWithDetails) =>
+    Array.from(new Set(inventory.map((item) => item[key] as string).filter(Boolean))).sort();
 
-const BulkActions: React.FC<BulkActionsProps> = ({ selectedItems, onBulkUpdate, onClearSelection }) => {
-  if (selectedItems.length === 0) return null;
+  const itemNumberOptions = useMemo(() => getUniqueOptions("item_number"), [inventory]);
+  const seasonOptions = useMemo(() => getUniqueOptions("season"), [inventory]);
+  const colorOptions = useMemo(() => getUniqueOptions("color"), [inventory]);
+  const sizeOptions = useMemo(() => getUniqueOptions("size"), [inventory]);
+  const categoryOptions = useMemo(() => getUniqueOptions("category"), [inventory]);
+  const mainGroupOptions = useMemo(() => getUniqueOptions("main_group"), [inventory]);
+  const storeOptions = useMemo(() => getUniqueOptions("store_name"), [inventory]);
 
-  return (
-    <div className="flex items-center space-x-2 py-2 px-4 bg-blue-50 border-b border-blue-200">
-      <span className="text-sm font-medium text-blue-800">{selectedItems.length} items selected.</span>
-      <Button variant="secondary" size="sm" onClick={onBulkUpdate}>
-        Bulk Update
-      </Button>
-      <Button variant="outline" size="sm" onClick={onClearSelection}>
-        Clear Selection
-      </Button>
-    </div>
-  );
-};
-
-const InventoryNew: React.FC = () => {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
-  const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
-  const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
-
-  const { data: inventoryData, isLoading, error } = useInventoryQuery();
-  const allInventory = inventoryData || [];
-
+  // --- FILTERED INVENTORY LOGIC ---
   const filteredInventory = useMemo(() => {
-    return allInventory.filter(
-      (item) =>
+    return inventory.filter((item) => {
+      const matchesSearch =
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()),
-    );
-  }, [allInventory, searchTerm]);
+        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.item_number.toLowerCase().includes(searchTerm.toLowerCase());
 
-  const pagination = usePagination({
-    totalItems: filteredInventory.length,
-    itemsPerPage: 10,
-  });
+      const matchesItemNumber = !filterItemNumber || item.item_number === filterItemNumber;
+      const matchesSeason = !filterSeason || item.season === filterSeason;
+      const matchesColor = !filterColor || item.color === filterColor;
+      const matchesSize = !filterSize || item.size === filterSize;
+      const matchesCategory = !filterCategory || item.category === filterCategory;
+      const matchesMainGroup = !filterMainGroup || item.main_group === filterMainGroup;
+      const matchesStore = !filterStore || item.store_name === filterStore;
 
-  const currentItems = useMemo(() => {
-    return filteredInventory.slice(pagination.startIndex, pagination.endIndex);
-  }, [filteredInventory, pagination.startIndex, pagination.endIndex]);
+      return (
+        matchesSearch &&
+        matchesItemNumber &&
+        matchesSeason &&
+        matchesColor &&
+        matchesSize &&
+        matchesCategory &&
+        matchesMainGroup &&
+        matchesStore
+      );
+    });
+  }, [
+    inventory,
+    searchTerm,
+    filterItemNumber,
+    filterSeason,
+    filterColor,
+    filterSize,
+    filterCategory,
+    filterMainGroup,
+    filterStore,
+  ]);
+
+  // --- PAGINATION HOOK ---
+  const { paginatedData: displayInventory, ...pagination } = usePagination(filteredInventory, 20); // 20 items per page
+
+  // --- HANDLERS ---
+
+  const handleCreateNew = () => {
+    setEditingItem(null);
+    setDialogOpen(true);
+  };
+
+  const handleEdit = (item: ItemWithDetails) => {
+    setEditingItem(item);
+    setDialogOpen(true);
+  };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this item? This action cannot be undone.")) {
-      return;
-    }
-    try {
-      // NOTE: Deletion must target the 'variants' table by the actual PK
-      const { error } = await supabase.from("variants").delete().eq("variant_id", id);
-      if (error) throw error;
+    if (!window.confirm("Are you sure you want to delete this item and all its stock?")) return;
 
-      toast.success("Product deleted successfully.");
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-    } catch (error) {
-      console.error("Deletion error:", error);
-      toast.error("Failed to delete product.");
-    }
-  };
+    // Perform cascade delete (stock and variant)
+    const { error: variantError } = await supabase.from("variants").delete().eq("id", id);
 
-  const handleBulkUpdate = () => {
-    toast.info(`Attempting bulk update for ${selectedItems.length} items.`);
-    // Logic for opening a bulk update dialog goes here
-  };
-
-  const toggleSelectItem = (item: ItemWithDetails) => {
-    setSelectedItems((prev) =>
-      prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item],
-    );
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedItems.length === currentItems.length) {
-      setSelectedItems([]);
+    if (variantError) {
+      toast.error(`Failed to delete item: ${variantError.message}`);
     } else {
-      setSelectedItems(currentItems);
+      toast.success("Item deleted successfully.");
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     }
   };
 
   if (isLoading) {
-    return <div className="p-8">Loading inventory...</div>;
+    return <div>Loading inventory...</div>;
   }
 
   if (error) {
-    return <div className="p-8 text-red-500">Error loading inventory: {error.message}</div>;
+    return <div className="text-red-500">Error loading inventory: {error.message}</div>;
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Inventory</h1>
-        <div className="flex space-x-3">
-          {/* FIX: Changed navigation to the Physical Inventory List page */}
-          <Button
-            variant="outline"
-            onClick={() => navigate("/inventory/physical")} // <-- Navigates to the List page
-            className="bg-purple-100 text-purple-800 hover:bg-purple-200"
-          >
-            <Layers className="w-4 h-4 mr-2" />
-            View/Manage Counts
+    <div className="space-y-6 p-6">
+      <header className="flex justify-between items-center border-b pb-4">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <Layers className="w-6 h-6" />
+          Inventory Management
+        </h1>
+        <div className="flex space-x-2">
+          <Button onClick={() => setImportOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import Data
           </Button>
-
-          <Button
-            onClick={() => {
-              setEditingItem(null);
-              setDialogOpen(true);
-            }}
-          >
+          <Button onClick={handleCreateNew}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Product
+            New Item
           </Button>
         </div>
-      </div>
+      </header>
 
-      <div className="flex space-x-3">
-        <div className="relative flex-grow">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+      {/* --- FILTER AND SEARCH BAR --- */}
+      <div className="flex flex-col gap-4">
+        {/* Search Bar */}
+        <div className="flex items-center space-x-2">
+          <Search className="w-5 h-5 text-muted-foreground" />
           <Input
-            placeholder="Search by name or SKU..."
+            placeholder="Search by name, SKU, or item number..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
+            className="flex-1 max-w-sm"
           />
+          <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
         </div>
 
-        {/* Bulk Action Buttons (Download/Upload) */}
-        <Button variant="outline" onClick={() => toast.info("Download Inventory TBD")}>
-          <Download className="w-4 h-4 mr-2" />
-          Export
-        </Button>
-        <Button variant="outline" onClick={() => setImportOpen(true)}>
-          <Upload className="w-4 h-4 mr-2" />
-          Import
-        </Button>
+        {/* Filters Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          {/* Item Number Filter */}
+          <Select value={filterItemNumber} onValueChange={setFilterItemNumber}>
+            <SelectTrigger>
+              <SelectValue placeholder="Item Number" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Item Numbers</SelectItem>
+              {itemNumberOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Season Filter */}
+          <Select value={filterSeason} onValueChange={setFilterSeason}>
+            <SelectTrigger>
+              <SelectValue placeholder="Season" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Seasons</SelectItem>
+              {seasonOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Color Filter */}
+          <Select value={filterColor} onValueChange={setFilterColor}>
+            <SelectTrigger>
+              <SelectValue placeholder="Color" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Colors</SelectItem>
+              {colorOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Size Filter */}
+          <Select value={filterSize} onValueChange={setFilterSize}>
+            <SelectTrigger>
+              <SelectValue placeholder="Size" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Sizes</SelectItem>
+              {sizeOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Category Filter */}
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger>
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Categories</SelectItem>
+              {categoryOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Main Group Filter */}
+          <Select value={filterMainGroup} onValueChange={setFilterMainGroup}>
+            <SelectTrigger>
+              <SelectValue placeholder="Main Group" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Main Groups</SelectItem>
+              {mainGroupOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Store/Location Filter */}
+          <Select value={filterStore} onValueChange={setFilterStore}>
+            <SelectTrigger>
+              <SelectValue placeholder="Store/Location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Stores</SelectItem>
+              {storeOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+      {/* --- END OF FILTER AND SEARCH BAR --- */}
 
-      <BulkActions
-        selectedItems={selectedItems}
-        onBulkUpdate={handleBulkUpdate}
-        onClearSelection={() => setSelectedItems([])}
-      />
-
-      <div className="border rounded-lg overflow-x-auto">
+      <div className="border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[50px] text-center">
-                <Checkbox
-                  checked={selectedItems.length > 0 && selectedItems.length === currentItems.length}
-                  onCheckedChange={toggleSelectAll}
-                />
+              <TableHead className="w-[10px]">
+                <Checkbox />
               </TableHead>
-              <TableHead className="w-[100px]">SKU</TableHead>
-              <TableHead>Product Name</TableHead>
-              <TableHead className="text-right">Stock Qty</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Selling Price</TableHead>
-              <TableHead className="text-center w-[150px]">Actions</TableHead>
+              <TableHead>SKU</TableHead>
+              <TableHead>Item No.</TableHead> {/* NEW */}
+              <TableHead>Name</TableHead>
+              <TableHead>Category</TableHead> {/* NEW */}
+              <TableHead>Main Group</TableHead> {/* NEW */}
+              <TableHead>Supplier</TableHead>
+              <TableHead>Season</TableHead> {/* NEW */}
+              <TableHead>Size</TableHead> {/* NEW */}
+              <TableHead>Color</TableHead> {/* NEW */}
+              <TableHead>Loc/Store</TableHead> {/* NEW */}
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Stock</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {currentItems.map((item) => {
-              const isSelected = selectedItems.some((i) => i.id === item.id);
+            {displayInventory.map((item) => {
               const isLowStock = item.quantity <= item.min_stock;
-              const price = item.sellingPrice ?? 0;
-
               return (
-                <TableRow key={item.id} className={isSelected ? "bg-blue-50" : ""}>
-                  <TableCell className="text-center">
-                    <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectItem(item)} />
+                <TableRow key={item.id} className={isLowStock ? "bg-red-50/50" : ""}>
+                  <TableCell>
+                    <Checkbox />
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{item.sku}</TableCell>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end space-x-2">
-                      <span>
-                        {item.quantity} {item.unit}
-                      </span>
-                      {isLowStock && (
-                        <Badge variant="destructive" className="ml-2">
-                          Low Stock
-                        </Badge>
-                      )}
+                  <TableCell className="font-medium">{item.sku}</TableCell>
+                  <TableCell>{item.item_number}</TableCell> {/* NEW */}
+                  <TableCell>{item.name}</TableCell>
+                  <TableCell>{item.category}</TableCell> {/* NEW */}
+                  <TableCell>{item.main_group}</TableCell> {/* NEW */}
+                  <TableCell>{item.supplier}</TableCell>
+                  <TableCell>{item.season}</TableCell> {/* NEW */}
+                  <TableCell>{item.size}</TableCell> {/* NEW */}
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-4 h-4 rounded-full border"
+                        style={{ backgroundColor: item.color.toLowerCase() }}
+                        title={item.color}
+                      />
+                      {item.color}
                     </div>
+                  </TableCell>{" "}
+                  {/* NEW */}
+                  <TableCell>{item.store_name}</TableCell> {/* NEW */}
+                  <TableCell className="text-right">${item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
+                  <TableCell className="text-right">
+                    ${item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}
                   </TableCell>
-                  <TableCell>{item.location || "N/A"}</TableCell>
-                  <TableCell>{item.category}</TableCell>
-                  <TableCell className="text-right">${price.toFixed(2)}</TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex justify-center space-x-1">
+                  <TableCell className="text-right">
+                    <Badge variant={isLowStock ? "destructive" : "secondary"}>
+                      {item.quantity} {item.unit}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end space-x-2">
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          setSelectedItemForHistory(item);
                           setPriceHistoryOpen(true);
+                          setSelectedItemForHistory(item);
                         }}
                       >
                         <History className="w-4 h-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setEditingItem(item);
-                          setDialogOpen(true);
-                        }}
-                      >
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
                         <Edit className="w-4 h-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
