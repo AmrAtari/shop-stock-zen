@@ -53,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (TABLE NAME FIX APPLIED) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (TABLE NAME & RELATIONSHIP FIX APPLIED) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -86,9 +86,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers!variants_supplier_id_fkey(name),
+            supplier:suppliers(name), // FIXED: Simplified relationship name
             
-            stock_on_hand (quantity, min_stock, stores (name)) // FIXED: Changed 'store_inventory' to 'stock_on_hand'
+            stock_on_hand (quantity, min_stock, stores (name)) // CRITICAL FIX: Changed 'store_inventory' to 'stock_on_hand'
         `);
 
   if (error) {
@@ -131,7 +131,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    // FIXED: Accessing the corrected relationship name: stock_on_hand
+    // CRITICAL FIX: Accessing the corrected relationship name: stock_on_hand
     quantity: variant.stock_on_hand[0]?.quantity || 0,
     min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
@@ -390,15 +390,12 @@ const InventoryNew: React.FC = () => {
         {/* Filters Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {/* Item Number Filter */}
-          <Select
-            value={filterItemNumber}
-            onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)} // FIX APPLIED
-          >
+          <Select value={filterItemNumber} onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Item Number" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Item Numbers</SelectItem> {/* FIX APPLIED */}
+              <SelectItem value="all">All Item Numbers</SelectItem>
               {itemNumberOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -408,15 +405,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Season Filter */}
-          <Select
-            value={filterSeason}
-            onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)} // FIX APPLIED
-          >
+          <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Season" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Seasons</SelectItem> {/* FIX APPLIED */}
+              <SelectItem value="all">All Seasons</SelectItem>
               {seasonOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -426,15 +420,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Color Filter */}
-          <Select
-            value={filterColor}
-            onValueChange={(v) => setFilterColor(v === "all" ? "" : v)} // FIX APPLIED
-          >
+          <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Color" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Colors</SelectItem> {/* FIX APPLIED */}
+              <SelectItem value="all">All Colors</SelectItem>
               {colorOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -444,15 +435,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Size Filter */}
-          <Select
-            value={filterSize}
-            onValueChange={(v) => setFilterSize(v === "all" ? "" : v)} // FIX APPLIED
-          >
+          <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Size" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Sizes</SelectItem> {/* FIX APPLIED */}
+              <SelectItem value="all">All Sizes</SelectItem>
               {sizeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -462,15 +450,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Category Filter */}
-          <Select
-            value={filterCategory}
-            onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)} // FIX APPLIED
-          >
+          <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem> {/* FIX APPLIED */}
+              <SelectItem value="all">All Categories</SelectItem>
               {categoryOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -480,15 +465,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Main Group Filter */}
-          <Select
-            value={filterMainGroup}
-            onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)} // FIX APPLIED
-          >
+          <Select value={filterMainGroup} onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Main Group" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Main Groups</SelectItem> {/* FIX APPLIED */}
+              <SelectItem value="all">All Main Groups</SelectItem>
               {mainGroupOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -498,15 +480,12 @@ const InventoryNew: React.FC = () => {
           </Select>
 
           {/* Store/Location Filter */}
-          <Select
-            value={filterStore}
-            onValueChange={(v) => setFilterStore(v === "all" ? "" : v)} // FIX APPLIED
-          >
+          <Select value={filterStore} onValueChange={(v) => setFilterStore(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Store/Location" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem> {/* FIX APPLIED */}
+              <SelectItem value="all">All Stores</SelectItem>
               {storeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
