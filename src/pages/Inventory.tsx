@@ -236,13 +236,13 @@ const InventoryNew = () => {
         item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.item_number.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesItemNumber = !filterItemNumber || item.item_number === filterItemNumber;
-      const matchesSeason = !filterSeason || item.season === filterSeason;
-      const matchesColor = !filterColor || item.color === filterColor;
-      const matchesSize = !filterSize || item.size === filterSize;
-      const matchesCategory = !filterCategory || item.category === filterCategory;
-      const matchesMainGroup = !filterMainGroup || item.main_group === filterMainGroup;
-      const matchesStore = !filterStore || item.store_name === filterStore;
+      const matchesItemNumber = !filterItemNumber || filterItemNumber === "all" || item.item_number === filterItemNumber;
+      const matchesSeason = !filterSeason || filterSeason === "all" || item.season === filterSeason;
+      const matchesColor = !filterColor || filterColor === "all" || item.color === filterColor;
+      const matchesSize = !filterSize || filterSize === "all" || item.size === filterSize;
+      const matchesCategory = !filterCategory || filterCategory === "all" || item.category === filterCategory;
+      const matchesMainGroup = !filterMainGroup || filterMainGroup === "all" || item.main_group === filterMainGroup;
+      const matchesStore = !filterStore || filterStore === "all" || item.store_name === filterStore;
 
       return (
         matchesSearch &&
@@ -347,7 +347,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Item Number" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Item Numbers</SelectItem>
+              <SelectItem value="all">All Item Numbers</SelectItem>
               {itemNumberOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -362,7 +362,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Season" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Seasons</SelectItem>
+              <SelectItem value="all">All Seasons</SelectItem>
               {seasonOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -377,7 +377,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Color" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Colors</SelectItem>
+              <SelectItem value="all">All Colors</SelectItem>
               {colorOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -392,7 +392,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Size" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Sizes</SelectItem>
+              <SelectItem value="all">All Sizes</SelectItem>
               {sizeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -407,7 +407,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Categories</SelectItem>
+              <SelectItem value="all">All Categories</SelectItem>
               {categoryOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -422,7 +422,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Main Group" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Main Groups</SelectItem>
+              <SelectItem value="all">All Main Groups</SelectItem>
               {mainGroupOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
@@ -437,7 +437,7 @@ const InventoryNew = () => {
               <SelectValue placeholder="Store/Location" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Stores</SelectItem>
+              <SelectItem value="all">All Stores</SelectItem>
               {storeOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
