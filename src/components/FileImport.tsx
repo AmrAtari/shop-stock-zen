@@ -530,6 +530,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               pos_description: validatedData.pos_description,
               description: validatedData.description,
               gender: validatedData.gender,
+              item_number: validatedData.item_number, // <--- FIX: Added item_number to products table
               category_id, // Use pre-fetched ID
               brand_id, // Use pre-fetched ID
             })
@@ -557,10 +558,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             .insert({
               product_id: productData.product_id,
               sku: validatedData.sku,
-              item_number: validatedData.item_number,
+              // item_number REMOVED from here to fix the redundancy and schema mismatch
               supplier_id, // Use pre-fetched ID
               selling_price: validatedData.selling_price,
-              cost: validatedData.cost_price, // <--- FINAL FIX APPLIED HERE: changed from cost_price to cost
+              cost: validatedData.cost_price,
               tax_rate: validatedData.tax,
               unit: validatedData.unit,
               color: validatedData.color,
