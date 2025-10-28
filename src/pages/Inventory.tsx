@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-// import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"; // Removed if not used
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
@@ -54,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (COMMENTS REMOVED) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -81,8 +80,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 item_number,
                 theme,
                 wholesale_price,
-                
-                -- FIX: Use FK column name (brand_id) to explicitly join 'brands'.
                 brand:brand_id(name),
                 category:category_id(name), 
                 gender:gender_id(name),
@@ -361,7 +358,7 @@ const InventoryNew: React.FC = () => {
           </Button>
           <Button onClick={() => setImportOpen(true)}>
             <Upload className="w-4 h-4 mr-2" />
-            Import Data
+            Export/Import Data
           </Button>
           <Button
             onClick={() => {
