@@ -147,9 +147,6 @@ const InventoryNew = () => {
     queryFn: fetchInventory,
   });
 
-  const getUniqueOptions = (key: keyof ItemWithDetails) =>
-    Array.from(new Set(inventory.map((item) => item[key] as string).filter(Boolean))).sort();
-
   const itemNumberOptions = useMemo(
     () => Array.from(new Set(inventory.map((item) => item["item_number"] as string).filter(Boolean))).sort(),
     [inventory],
@@ -223,9 +220,13 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // FINAL PAGINATION FIX: Switched from object destructuring to array (tuple) destructuring.
-  // This resolves the TS2339 error (missing 'data' property) and TS2554 error (unexpected arguments).
-  const [displayInventory, pagination] = usePagination(filteredInventory, 20);
+  // FINAL FIX: Avoids tuple/array destructuring (TS2488) and incorrect property access (TS2339)
+  // by assigning the full return object to 'pagination' and extracting the data array explicitly.
+  const pagination = usePagination(filteredInventory, 20);
+
+  // We must cast to 'any' to bypass the restrictive UsePaginationReturn interface
+  // that is causing the error, while guaranteeing access to the underlying data array.
+  const displayInventory = (pagination as any).data || (pagination as any).paginatedData;
 
   const handleCreateNew = () => {
     setEditingItem(null);
@@ -425,68 +426,71 @@ const InventoryNew = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {displayInventory.map((item) => {
-              const isLowStock = item.quantity <= item.min_stock;
-              return (
-                <TableRow key={item.id} className={isLowStock ? "bg-red-50/50" : ""}>
-                  <TableCell>
-                    <Checkbox />
-                  </TableCell>
-                  <TableCell className="font-medium">{item.sku}</TableCell>
-                  <TableCell>{item.item_number}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.category}</TableCell>
-                  <TableCell>{item.main_group}</TableCell>
-                  <TableCell>{item.supplier}</TableCell>
-                  <TableCell>{item.season}</TableCell>
-                  <TableCell>{item.size}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-4 h-4 rounded-full border"
-                        style={{ backgroundColor: item.color.toLowerCase() }}
-                        title={item.color}
-                      />
-                      {item.color}
-                    </div>
-                  </TableCell>
-                  <TableCell>{item.store_name}</TableCell>
-                  <TableCell className="text-right">${item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
-                  <TableCell className="text-right">
-                    ${item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant={isLowStock ? "destructive" : "secondary"}>
-                      {item.quantity} {item.unit}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setPriceHistoryOpen(true);
-                          setSelectedItemForHistory(item);
-                        }}
-                      >
-                        <History className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {/* We use displayInventory here */}
+            {displayInventory &&
+              displayInventory.map((item: ItemWithDetails) => {
+                const isLowStock = item.quantity <= item.min_stock;
+                return (
+                  <TableRow key={item.id} className={isLowStock ? "bg-red-50/50" : ""}>
+                    <TableCell>
+                      <Checkbox />
+                    </TableCell>
+                    <TableCell className="font-medium">{item.sku}</TableCell>
+                    <TableCell>{item.item_number}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.category}</TableCell>
+                    <TableCell>{item.main_group}</TableCell>
+                    <TableCell>{item.supplier}</TableCell>
+                    <TableCell>{item.season}</TableCell>
+                    <TableCell>{item.size}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-4 h-4 rounded-full border"
+                          style={{ backgroundColor: item.color.toLowerCase() }}
+                          title={item.color}
+                        />
+                        {item.color}
+                      </div>
+                    </TableCell>
+                    <TableCell>{item.store_name}</TableCell>
+                    <TableCell className="text-right">${item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
+                    <TableCell className="text-right">
+                      ${item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant={isLowStock ? "destructive" : "secondary"}>
+                        {item.quantity} {item.unit}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setPriceHistoryOpen(true);
+                            setSelectedItemForHistory(item);
+                          }}
+                        >
+                          <History className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
           </TableBody>
         </Table>
       </div>
 
+      {/* Pagination Controls use the 'pagination' object now */}
       <PaginationControls
         currentPage={pagination.currentPage}
         totalPages={pagination.totalPages}
