@@ -28,7 +28,7 @@ interface ItemWithDetails extends Item {
   department: string | null;
   wholesale_price: number | null;
 
-  created_at: string; // This column now exists in the database after the SQL fix
+  created_at: string;
   updated_at: string;
   last_restocked: string | null;
 
@@ -53,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FULLY RESTORED Supabase Fetch Function (Final Version) ---
+// --- 2. FULLY RESTORED Supabase Fetch Function (Final Query) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
