@@ -53,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (COMMENTS REMOVED) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (REPAIRED) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -88,11 +88,13 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             
             supplier:suppliers!variants_supplier_id_fkey(name),
             
-            store_inventory (quantity, min_stock, stores (name))
+            // 🔥 FIX 1: Use the correct table name 'stock_on_hand' instead of 'store_inventory'
+            stock_on_hand (quantity, min_stock, stores (name))
         `);
 
   if (error) {
     console.error("Error fetching inventory:", error.message);
+    // This error should now resolve the original "Could not find a relationship" issue
     throw new Error(`Failed to fetch inventory data. Supabase Error: ${error.message}`);
   }
 
@@ -131,10 +133,11 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    quantity: variant.store_inventory[0]?.quantity || 0,
-    min_stock: variant.store_inventory[0]?.min_stock || 0,
-    store_name: variant.store_inventory[0]?.stores?.name || "N/A",
-    location: variant.store_inventory[0]?.stores?.name || "N/A",
+    // 🔥 FIX 2: Use the correct table name 'stock_on_hand' for data access
+    quantity: variant.stock_on_hand[0]?.quantity || 0,
+    min_stock: variant.stock_on_hand[0]?.min_stock || 0,
+    store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
+    location: variant.stock_on_hand[0]?.stores?.name || "N/A",
   })) as ItemWithDetails[];
 };
 
