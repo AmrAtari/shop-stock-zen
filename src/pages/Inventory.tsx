@@ -71,16 +71,16 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 item_number,
                 theme,
                 brand_id,
-                categories!inner (name), 
-                main_groups!inner (name)
+                categories (name), 
+                main_groups (name)
             ),
-            suppliers!inner (name),
-            store_inventory!inner (quantity, min_stock, stores!inner (name))
+            suppliers (name),
+            store_inventory (quantity, min_stock, stores (name))
         `);
 
   if (error) {
-    console.error("Error fetching inventory:", error);
-    throw new Error("Failed to fetch inventory data.");
+    console.error("Error fetching inventory:", error.message);
+    throw new Error(`Failed to fetch inventory data. Supabase Error: ${error.message}`);
   }
 
   return data.map((variant: any) => ({
@@ -91,13 +91,13 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     description: variant.products.description,
     gender: variant.products.gender,
     item_number: variant.products.item_number,
-    supplier: variant.suppliers.name,
+    supplier: variant.suppliers?.name || "N/A",
 
     created_at: variant.created_at,
     updated_at: variant.updated_at,
     last_restocked: variant.last_restocked,
-    category: variant.products.categories.name,
-    main_group: variant.products.main_groups.name,
+    category: variant.products.categories?.name || "N/A",
+    main_group: variant.products.main_groups?.name || "N/A",
     season: variant.season,
     size: variant.size,
     color: variant.color,
@@ -116,8 +116,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
     quantity: variant.store_inventory[0]?.quantity || 0,
     min_stock: variant.store_inventory[0]?.min_stock || 0,
-    store_name: variant.store_inventory[0]?.stores.name || "N/A",
-    location: variant.store_inventory[0]?.stores.name || "N/A",
+    store_name: variant.store_inventory[0]?.stores?.name || "N/A",
+    location: variant.store_inventory[0]?.stores?.name || "N/A",
   }));
 };
 
@@ -223,15 +223,14 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // FINAL FIX: Pass an object containing the required pagination properties (TS2739)
-  // The usePagination hook is now called with a single object argument.
+  // Correct call to usePagination hook using a single object argument (TS Fix)
   const pagination = usePagination({
     data: filteredInventory,
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
-  } as any); // Use 'as any' to bypass remaining strict typing issues if the hook's return type is vague.
+  } as any);
 
-  // Explicitly pull the data array from the returned pagination object.
+  // Extract the paginated data array
   const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
 
   const handleCreateNew = () => {
@@ -432,7 +431,6 @@ const InventoryNew = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {/* Added safety check for displayInventory */}
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 const isLowStock = item.quantity <= item.min_stock;
