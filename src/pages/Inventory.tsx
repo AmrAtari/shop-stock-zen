@@ -53,9 +53,8 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FULLY RESTORED Supabase Fetch Function (Comments Removed) ---
+// --- 2. FULLY RESTORED Supabase Fetch Function (Final Version) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // NOTE: The inline comments were removed from the select string to fix the "failed to parse" error.
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
             sku, 
@@ -67,7 +66,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             size,
             season,
             color_id, 
-            item_color_code, 
+            item_color_code,  
             cost_price,
             created_at,        
             updated_at,        
