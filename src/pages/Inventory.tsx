@@ -10,9 +10,9 @@ import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
 import PriceHistoryDialog from "@/components/PriceHistoryDialog";
 import { PaginationControls } from "@/components/PaginationControls";
-import { usePagination } from "@/hooks/usePagination"; // Assuming this returns an object with { data, ... }
+import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
-import { Item } from "@/types/database"; // Assuming your base Item type is here
+import { Item } from "@/types/database";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
@@ -147,16 +147,46 @@ const InventoryNew = () => {
     queryFn: fetchInventory,
   });
 
-  const getUniqueOptions = (key: keyof ItemWithDetails) =>
-    Array.from(new Set(inventory.map((item) => item[key] as string).filter(Boolean))).sort();
+  // --- UTILITY MEMOS FOR FILTER OPTIONS (FIXED: Logic Inlined) ---
+  // The previous error was likely here, calling .map on an undefined inventory.
+  // By relying on the `= []` default and inlining the logic, we maximize stability.
 
-  const itemNumberOptions = useMemo(() => getUniqueOptions("item_number"), [inventory]);
-  const seasonOptions = useMemo(() => getUniqueOptions("season"), [inventory]);
-  const colorOptions = useMemo(() => getUniqueOptions("color"), [inventory]);
-  const sizeOptions = useMemo(() => getUniqueOptions("size"), [inventory]);
-  const categoryOptions = useMemo(() => getUniqueOptions("category"), [inventory]);
-  const mainGroupOptions = useMemo(() => getUniqueOptions("main_group"), [inventory]);
-  const storeOptions = useMemo(() => getUniqueOptions("store_name"), [inventory]);
+  const itemNumberOptions = useMemo(
+    () => Array.from(new Set(inventory.map((item) => item["item_number"] as string).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  const seasonOptions = useMemo(
+    () => Array.from(new Set(inventory.map((item) => item["season"] as string).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  const colorOptions = useMemo(
+    () => Array.from(new Set(inventory.map((item) => item["color"] as string).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  const sizeOptions = useMemo(
+    () => Array.from(new Set(inventory.map((item) => item["size"] as string).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(inventory.map((item) => item["category"] as string).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  const mainGroupOptions = useMemo(
+    () => Array.from(new Set(inventory.map((item) => item["main_group"] as string).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  const storeOptions = useMemo(
+    () => Array.from(new Set(inventory.map((item) => item["store_name"] as string).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  // --- END OF FILTER OPTIONS FIX ---
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
@@ -196,11 +226,7 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // FINAL PAGINATION FIX: Assuming your usePagination hook returns an object with a 'data' property
-  const {
-    data: displayInventory, // FIX: Using 'data' as the property name for the paginated items
-    ...pagination // The remaining properties, including controls, are bundled into the 'pagination' object
-  } = usePagination(filteredInventory, 20);
+  const { data: displayInventory, ...pagination } = usePagination(filteredInventory, 20);
 
   const handleCreateNew = () => {
     setEditingItem(null);
