@@ -53,8 +53,9 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (ALL LOGIC FIXED) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (CLEANED) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
+  // NOTE: All comments have been removed from this multi-line string.
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
             sku, 
@@ -71,7 +72,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             created_at,        
             updated_at,        
             last_restocked,    
-            supplier_id, // FIX: Included the FK column itself
+            supplier_id, 
             
             products!inner (
                 product_id,
@@ -87,9 +88,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers(name), // FIX: Simplified the supplier join syntax
+            supplier:suppliers(name), 
             
-            // FIX: Corrected table name from 'store_inventory' to 'stock_on_hand'
             stock_on_hand (quantity, min_stock, stores (name))
         `);
 
@@ -133,7 +133,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    // FIX: Corrected data access from 'store_inventory' to 'stock_on_hand'
+    // Data access uses the correct 'stock_on_hand' relationship name
     quantity: variant.stock_on_hand[0]?.quantity || 0,
     min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
