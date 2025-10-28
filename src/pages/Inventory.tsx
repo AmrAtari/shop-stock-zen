@@ -194,11 +194,13 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Option filters generation (unchanged, as this logic was already fixed)
+  // --- FIX APPLIED: Robust filtering to exclude empty strings ---
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.item_number || "")).filter((val) => val.trim().length > 0)),
+        new Set(
+          inventory.map((item) => String(item.item_number || "").trim()).filter((val) => val.length > 0), // Check for length greater than 0
+        ),
       ).sort(),
     [inventory],
   );
@@ -206,7 +208,7 @@ const InventoryNew: React.FC = () => {
   const seasonOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.season || "")).filter((val) => val.trim().length > 0)),
+        new Set(inventory.map((item) => String(item.season || "").trim()).filter((val) => val.length > 0)),
       ).sort(),
     [inventory],
   );
@@ -214,7 +216,7 @@ const InventoryNew: React.FC = () => {
   const colorOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.color || "")).filter((val) => val.trim().length > 0)),
+        new Set(inventory.map((item) => String(item.color || "").trim()).filter((val) => val.length > 0)),
       ).sort(),
     [inventory],
   );
@@ -222,7 +224,7 @@ const InventoryNew: React.FC = () => {
   const sizeOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.size || "")).filter((val) => val.trim().length > 0)),
+        new Set(inventory.map((item) => String(item.size || "").trim()).filter((val) => val.length > 0)),
       ).sort(),
     [inventory],
   );
@@ -230,7 +232,7 @@ const InventoryNew: React.FC = () => {
   const categoryOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.category || "")).filter((val) => val.trim().length > 0)),
+        new Set(inventory.map((item) => String(item.category || "").trim()).filter((val) => val.length > 0)),
       ).sort(),
     [inventory],
   );
@@ -238,7 +240,7 @@ const InventoryNew: React.FC = () => {
   const mainGroupOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.main_group || "")).filter((val) => val.trim().length > 0)),
+        new Set(inventory.map((item) => String(item.main_group || "").trim()).filter((val) => val.length > 0)),
       ).sort(),
     [inventory],
   );
@@ -246,10 +248,11 @@ const InventoryNew: React.FC = () => {
   const storeOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.store_name || "")).filter((val) => val.trim().length > 0)),
+        new Set(inventory.map((item) => String(item.store_name || "").trim()).filter((val) => val.length > 0)),
       ).sort(),
     [inventory],
   );
+  // --- END OF FIX ---
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
