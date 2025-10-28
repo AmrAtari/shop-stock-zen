@@ -560,7 +560,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               item_number: validatedData.item_number,
               supplier_id, // Use pre-fetched ID
               selling_price: validatedData.selling_price,
-              cost_price: validatedData.cost_price,
+              cost: validatedData.cost_price, // <--- FINAL FIX APPLIED HERE: changed from cost_price to cost
               tax_rate: validatedData.tax,
               unit: validatedData.unit,
               color: validatedData.color,
@@ -796,7 +796,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                       className="flex-1"
                       disabled={isUploading}
                     />
-                    <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
+                    <FileSpreadsheet className="w-4 h-4 text-muted-foreground" />
                   </div>
                   {file && <p className="text-sm text-muted-foreground">Selected: {file.name}</p>}
                 </div>
