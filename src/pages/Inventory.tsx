@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, History, Layers } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Upload, Download, History, Layers } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+// --- FIX 2: Corrected and Expanded Interface ---
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
@@ -43,13 +44,16 @@ interface ItemWithDetails extends Item {
   color: string;
   size: string;
   category: string;
-  main_group: string;
+  main_group: string; // Assuming 'main_group' is desired, though the FK is unknown
   store_name: string;
+  supplier: string;
+  gender: string;
 }
 
+// --- FIX 1: Corrected fetchInventory function ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
-            id, 
+            variant_id, 
             sku, 
             selling_price, 
             cost, 
@@ -60,21 +64,34 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             season,
             color_id, 
             item_color_code, 
+            cost_price,
             created_at,        
             updated_at,        
             last_restocked,    
+            
             products!inner (
+                product_id,
                 name, 
                 pos_description, 
                 description, 
-                gender,
                 item_number,
                 theme,
-                brand_id,
-                categories (name), 
-                main_groups (name)
+                wholesale_price,
+                
+                -- EXPLICIT JOINS based on products table schema (image_88fa42.png)
+                brand:brands!products_brand_id_fkey(name),
+                category:categories!products_category_id_fkey(name), 
+                gender:genders!products_gender_id_fkey(name),
+                origin:origins!products_origin_id_fkey(name)
             ),
-            suppliers (name),
+            
+            -- EXPLICIT JOINS based on variants table schema (image_88fde6.png)
+            supplier:suppliers!variants_supplier_id_fkey(name),
+            
+            -- ASSUMPTION: 'main_groups' is joined via a FK on 'products' or 'variants'. 
+            -- I'll keep it simple for now, as the FK is not visible on either table.
+            -- If the 'main_group' column is needed, you must find its FK column/constraint.
+            
             store_inventory (quantity, min_stock, stores (name))
         `);
 
@@ -84,33 +101,37 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   }
 
   return data.map((variant: any) => ({
-    id: variant.id,
+    id: variant.variant_id, // Use the actual PK
     sku: variant.sku,
-    name: variant.products.name,
-    pos_description: variant.products.pos_description,
-    description: variant.products.description,
-    gender: variant.products.gender,
-    item_number: variant.products.item_number,
-    supplier: variant.suppliers?.name || "N/A",
+    name: variant.products?.name || "N/A",
+    pos_description: variant.products?.pos_description,
+    description: variant.products?.description,
+    item_number: variant.products?.item_number,
+
+    // Mapped relationship fields (using the aliases from the select query)
+    supplier: variant.supplier?.name || "N/A",
+    category: variant.products.category?.name || "N/A",
+    gender: variant.products.gender?.name || "N/A",
+    brand: variant.products.brand?.name || null,
+    origin: variant.products.origin?.name || null,
 
     created_at: variant.created_at,
     updated_at: variant.updated_at,
     last_restocked: variant.last_restocked,
-    category: variant.products.categories?.name || "N/A",
-    main_group: variant.products.main_groups?.name || "N/A",
+
     season: variant.season,
     size: variant.size,
     color: variant.color,
     color_id: variant.color_id || null,
     item_color_code: variant.item_color_code || null,
-    brand: variant.products.brand_id || null,
-    theme: variant.products.theme || null,
-    origin: "N/A",
-    department: "N/A",
-    wholesale_price: null,
+    theme: variant.products?.theme || null,
+    department: "N/A", // Not joined
+    main_group: "N/A", // Not joined
+
+    wholesale_price: variant.products?.wholesale_price || null,
 
     sellingPrice: variant.selling_price,
-    cost: variant.cost,
+    cost: variant.cost || variant.cost_price, // Use either 'cost' or 'cost_price'
     tax: variant.tax_rate,
     unit: variant.unit,
 
@@ -141,6 +162,7 @@ const InventoryNew = () => {
   const [filterMainGroup, setFilterMainGroup] = useState("");
   const [filterStore, setFilterStore] = useState("");
 
+  // Use the corrected fetchInventory function
   const {
     data: inventory = [],
     isLoading,
@@ -150,7 +172,7 @@ const InventoryNew = () => {
     queryFn: fetchInventory,
   });
 
-  // FIX: Filter out empty strings before creating options array to prevent the Select.Item error.
+  // Option filters (FIXED to filter out empty strings)
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
@@ -206,7 +228,6 @@ const InventoryNew = () => {
       ).sort(),
     [inventory],
   );
-  // END FIX
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
@@ -246,12 +267,14 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
+  // Correct call to usePagination hook using a single object argument
   const pagination = usePagination({
     data: filteredInventory,
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   } as any);
 
+  // Extract the paginated data array
   const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
 
   const handleCreateNew = () => {
@@ -267,7 +290,7 @@ const InventoryNew = () => {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item and all its stock?")) return;
 
-    const { error: variantError } = await supabase.from("variants").delete().eq("id", id);
+    const { error: variantError } = await supabase.from("variants").delete().eq("variant_id", id); // Use 'variant_id' as the actual PK for deletion
 
     if (variantError) {
       toast.error(`Failed to delete item: ${variantError.message}`);
@@ -439,8 +462,8 @@ const InventoryNew = () => {
               <TableHead>Item No.</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead>Main Group</TableHead>
               <TableHead>Supplier</TableHead>
+              <TableHead>Gender</TableHead>
               <TableHead>Season</TableHead>
               <TableHead>Size</TableHead>
               <TableHead>Color</TableHead>
@@ -464,8 +487,8 @@ const InventoryNew = () => {
                     <TableCell>{item.item_number}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{item.category}</TableCell>
-                    <TableCell>{item.main_group}</TableCell>
                     <TableCell>{item.supplier}</TableCell>
+                    <TableCell>{item.gender}</TableCell>
                     <TableCell>{item.season}</TableCell>
                     <TableCell>{item.size}</TableCell>
                     <TableCell>
