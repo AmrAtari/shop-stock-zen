@@ -18,7 +18,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// --- FIX 2: Corrected and Expanded Interface ---
+// Define a local interface that extends the imported Item type.
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
@@ -38,19 +38,20 @@ interface ItemWithDetails extends Item {
   unit: string;
   sellingPrice?: number | null;
   cost: number | null;
+  tax_rate: number | null;
 
   item_number: string;
   season: string;
   color: string;
   size: string;
   category: string;
-  main_group: string; // Assuming 'main_group' is desired, though the FK is unknown
+  main_group: string; // Placeholder, as no FK was found
   store_name: string;
   supplier: string;
   gender: string;
 }
 
-// --- FIX 1: Corrected fetchInventory function ---
+// Supabase Data Fetching Function (FIXED: Cleaned up comments and ensured correct FK joins)
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -77,20 +78,13 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 item_number,
                 theme,
                 wholesale_price,
-                
-                -- EXPLICIT JOINS based on products table schema (image_88fa42.png)
                 brand:brands!products_brand_id_fkey(name),
                 category:categories!products_category_id_fkey(name), 
                 gender:genders!products_gender_id_fkey(name),
                 origin:origins!products_origin_id_fkey(name)
             ),
             
-            -- EXPLICIT JOINS based on variants table schema (image_88fde6.png)
             supplier:suppliers!variants_supplier_id_fkey(name),
-            
-            -- ASSUMPTION: 'main_groups' is joined via a FK on 'products' or 'variants'. 
-            -- I'll keep it simple for now, as the FK is not visible on either table.
-            -- If the 'main_group' column is needed, you must find its FK column/constraint.
             
             store_inventory (quantity, min_stock, stores (name))
         `);
@@ -108,7 +102,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     description: variant.products?.description,
     item_number: variant.products?.item_number,
 
-    // Mapped relationship fields (using the aliases from the select query)
+    // Mapped relationship fields
     supplier: variant.supplier?.name || "N/A",
     category: variant.products.category?.name || "N/A",
     gender: variant.products.gender?.name || "N/A",
@@ -125,13 +119,12 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     color_id: variant.color_id || null,
     item_color_code: variant.item_color_code || null,
     theme: variant.products?.theme || null,
-    department: "N/A", // Not joined
-    main_group: "N/A", // Not joined
-
+    department: "N/A",
+    main_group: "N/A", // Placeholder
     wholesale_price: variant.products?.wholesale_price || null,
 
     sellingPrice: variant.selling_price,
-    cost: variant.cost || variant.cost_price, // Use either 'cost' or 'cost_price'
+    cost: variant.cost || variant.cost_price,
     tax: variant.tax_rate,
     unit: variant.unit,
 
@@ -139,7 +132,15 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     min_stock: variant.store_inventory[0]?.min_stock || 0,
     store_name: variant.store_inventory[0]?.stores?.name || "N/A",
     location: variant.store_inventory[0]?.stores?.name || "N/A",
-  }));
+  })) as ItemWithDetails[];
+};
+
+// Data Hook connected to React Query
+const useInventoryQuery = () => {
+  return useQuery<ItemWithDetails[]>({
+    queryKey: queryKeys.inventory.all,
+    queryFn: fetchInventory,
+  });
 };
 
 const ITEMS_PER_PAGE = 20;
@@ -162,7 +163,6 @@ const InventoryNew = () => {
   const [filterMainGroup, setFilterMainGroup] = useState("");
   const [filterStore, setFilterStore] = useState("");
 
-  // Use the corrected fetchInventory function
   const {
     data: inventory = [],
     isLoading,
@@ -267,14 +267,12 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  // Correct call to usePagination hook using a single object argument
   const pagination = usePagination({
     data: filteredInventory,
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   } as any);
 
-  // Extract the paginated data array
   const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
 
   const handleCreateNew = () => {
@@ -495,8 +493,8 @@ const InventoryNew = () => {
                       <div className="flex items-center gap-2">
                         <span
                           className="w-4 h-4 rounded-full border"
-                          style={{ backgroundColor: item.color.toLowerCase() }}
-                          title={item.color}
+                          style={{ backgroundColor: item.color?.toLowerCase() }}
+                          title={item.color || "N/A"}
                         />
                         {item.color}
                       </div>
