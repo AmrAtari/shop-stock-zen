@@ -18,12 +18,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// --- 1. FULLY DEFINED INTERFACE ---
+// --- 1. FULLY DEFINED INTERFACE (FIXED: Removed 'theme') ---
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
-  theme: string | null;
+  // theme: string | null; <-- REMOVED
   origin: string | null;
   department: string | null; // Placeholder
   wholesale_price: number | null;
@@ -53,9 +53,8 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (CLEANED) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (FIXED: Removed 'theme') ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // NOTE: All comments have been removed from this multi-line string.
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
             sku, 
@@ -80,7 +79,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 pos_description, 
                 description, 
                 item_number,
-                theme,
+                // theme, <-- REMOVED
                 wholesale_price,
                 brand:brand_id(name),
                 category:category_id(name), 
@@ -122,7 +121,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     color: variant.color,
     color_id: variant.color_id || null,
     item_color_code: variant.item_color_code || null,
-    theme: variant.products?.theme || null,
+    // theme: variant.products?.theme || null, <-- REMOVED
     department: "N/A",
     main_group: "N/A",
 
