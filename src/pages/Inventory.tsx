@@ -147,9 +147,8 @@ const InventoryNew = () => {
     queryFn: fetchInventory,
   });
 
-  // --- UTILITY MEMOS FOR FILTER OPTIONS (FIXED: Logic Inlined) ---
-  // The previous error was likely here, calling .map on an undefined inventory.
-  // By relying on the `= []` default and inlining the logic, we maximize stability.
+  const getUniqueOptions = (key: keyof ItemWithDetails) =>
+    Array.from(new Set(inventory.map((item) => item[key] as string).filter(Boolean))).sort();
 
   const itemNumberOptions = useMemo(
     () => Array.from(new Set(inventory.map((item) => item["item_number"] as string).filter(Boolean))).sort(),
@@ -185,8 +184,6 @@ const InventoryNew = () => {
     () => Array.from(new Set(inventory.map((item) => item["store_name"] as string).filter(Boolean))).sort(),
     [inventory],
   );
-
-  // --- END OF FILTER OPTIONS FIX ---
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
@@ -226,7 +223,9 @@ const InventoryNew = () => {
     filterStore,
   ]);
 
-  const { data: displayInventory, ...pagination } = usePagination(filteredInventory, 20);
+  // FINAL PAGINATION FIX: Switched from object destructuring to array (tuple) destructuring.
+  // This resolves the TS2339 error (missing 'data' property) and TS2554 error (unexpected arguments).
+  const [displayInventory, pagination] = usePagination(filteredInventory, 20);
 
   const handleCreateNew = () => {
     setEditingItem(null);
