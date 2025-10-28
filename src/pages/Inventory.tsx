@@ -18,14 +18,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// --- 1. FULLY RESTORED INTERFACE ---
+// --- 1. FULLY DEFINED INTERFACE ---
 interface ItemWithDetails extends Item {
   brand: string | null;
   color_id: string | null;
   item_color_code: string | null;
   theme: string | null;
   origin: string | null;
-  department: string | null;
+  department: string | null; // Placeholder
   wholesale_price: number | null;
 
   created_at: string;
@@ -41,19 +41,19 @@ interface ItemWithDetails extends Item {
   tax_rate: number | null;
 
   item_number: string;
-  pos_description: string;
-  description: string;
+  pos_description: string; // Added from products
+  description: string; // Added from products
   season: string;
   color: string;
   size: string;
   category: string;
-  main_group: string;
+  main_group: string; // Placeholder
   store_name: string;
   supplier: string;
   gender: string;
 }
 
-// --- 2. FULLY RESTORED Supabase Fetch Function (Final Query) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (TABLE NAME FIX APPLIED) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -66,12 +66,11 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             size,
             season,
             color_id, 
-            item_color_code,  
+            item_color_code, 
             cost_price,
             created_at,        
             updated_at,        
             last_restocked,    
-            supplier_id, 
             
             products!inner (
                 product_id,
@@ -79,17 +78,17 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 pos_description, 
                 description, 
                 item_number,
-                wholesale_price,  
-                theme,            
+                theme,
+                wholesale_price,
                 brand:brand_id(name),
                 category:category_id(name), 
                 gender:gender_id(name),
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers(name), 
+            supplier:suppliers!variants_supplier_id_fkey(name),
             
-            stock_on_hand (quantity, min_stock, stores (name)) 
+            stock_on_hand (quantity, min_stock, stores (name)) // FIXED: Changed 'store_inventory' to 'stock_on_hand'
         `);
 
   if (error) {
@@ -121,18 +120,18 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     color: variant.color,
     color_id: variant.color_id || null,
     item_color_code: variant.item_color_code || null,
+    theme: variant.products?.theme || null,
     department: "N/A",
     main_group: "N/A",
 
     wholesale_price: variant.products?.wholesale_price || null,
-    theme: variant.products?.theme || null,
 
     sellingPrice: variant.selling_price,
     cost: variant.cost || variant.cost_price,
     tax: variant.tax_rate,
     unit: variant.unit,
 
-    // Data access uses the correct 'stock_on_hand' relationship name
+    // FIXED: Accessing the corrected relationship name: stock_on_hand
     quantity: variant.stock_on_hand[0]?.quantity || 0,
     min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
@@ -194,11 +193,11 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // FIX APPLIED in previous step: Robust filtering to exclude empty strings
+  // Option filters generation (using robust filtering)
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.item_number || "").trim()).filter((val) => val.length > 0)),
+        new Set(inventory.map((item) => item["item_number"] as string).filter((val) => val && val.trim() !== "")),
       ).sort(),
     [inventory],
   );
@@ -206,7 +205,7 @@ const InventoryNew: React.FC = () => {
   const seasonOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.season || "").trim()).filter((val) => val.length > 0)),
+        new Set(inventory.map((item) => item["season"] as string).filter((val) => val && val.trim() !== "")),
       ).sort(),
     [inventory],
   );
@@ -214,7 +213,7 @@ const InventoryNew: React.FC = () => {
   const colorOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.color || "").trim()).filter((val) => val.length > 0)),
+        new Set(inventory.map((item) => item["color"] as string).filter((val) => val && val.trim() !== "")),
       ).sort(),
     [inventory],
   );
@@ -222,7 +221,7 @@ const InventoryNew: React.FC = () => {
   const sizeOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.size || "").trim()).filter((val) => val.length > 0)),
+        new Set(inventory.map((item) => item["size"] as string).filter((val) => val && val.trim() !== "")),
       ).sort(),
     [inventory],
   );
@@ -230,7 +229,7 @@ const InventoryNew: React.FC = () => {
   const categoryOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.category || "").trim()).filter((val) => val.length > 0)),
+        new Set(inventory.map((item) => item["category"] as string).filter((val) => val && val.trim() !== "")),
       ).sort(),
     [inventory],
   );
@@ -238,7 +237,7 @@ const InventoryNew: React.FC = () => {
   const mainGroupOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.main_group || "").trim()).filter((val) => val.length > 0)),
+        new Set(inventory.map((item) => item["main_group"] as string).filter((val) => val && val.trim() !== "")),
       ).sort(),
     [inventory],
   );
@@ -246,11 +245,10 @@ const InventoryNew: React.FC = () => {
   const storeOptions = useMemo(
     () =>
       Array.from(
-        new Set(inventory.map((item) => String(item.store_name || "").trim()).filter((val) => val.length > 0)),
+        new Set(inventory.map((item) => item["store_name"] as string).filter((val) => val && val.trim() !== "")),
       ).sort(),
     [inventory],
   );
-  // --- END OF OPTION GENERATION ---
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
@@ -556,7 +554,6 @@ const InventoryNew: React.FC = () => {
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 const isSelected = selectedItems.some((i) => i.id === item.id);
-                // Low Stock Check is now functional
                 const isLowStock = item.quantity <= item.min_stock;
                 return (
                   <TableRow key={item.id} className={isSelected ? "bg-blue-50" : isLowStock ? "bg-red-50/50" : ""}>
