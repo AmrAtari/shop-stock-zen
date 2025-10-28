@@ -23,7 +23,7 @@ import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
-import { Progress } from "@/components/ui/progress"; // Added Progress component
+import { Progress } from "@/components/ui/progress"; // Progress component added
 
 interface FileImportProps {
   open: boolean;
@@ -109,7 +109,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
   const [importType, setImportType] = useState<"full" | "quantity">("full");
   const [isUploading, setIsUploading] = useState(false);
-  const [progress, setProgress] = useState(0); // State for the loading bar progress
+  const [progress, setProgress] = useState(0);
 
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
@@ -225,6 +225,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       const { data: existing } = await (supabase as any).from(table).select("id").eq("name", trimmedName).maybeSingle();
 
       if (!existing) {
+        // Suppress toast/error handling here to keep the main flow clean
         await (supabase as any).from(table).insert({ name: trimmedName });
       }
     };
@@ -238,7 +239,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         .replace(/[_-]/g, "")
         .replace(/[^a-z0-9]/g, "") || "";
 
-    // CRITICAL FIX: Helper to get the value from the row using normalized keys for robust matching
+    // FIX: Helper to get the value from the row using normalized keys for robust matching
     const getVal = (row: any, ...keys: string[]): any => {
       // 1. Create a map of normalized headers to values for the current row
       const normalizedRow: Record<string, any> = {};
@@ -283,7 +284,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         // Validate row data - ALL MAPPINGS MUST NOW USE getVal()
         const validationResult = itemSchema.safeParse({
-          sku: sku, // Use the coerced SKU string
+          sku: sku,
           name: getVal(row, "Name", "name"),
           pos_description: getVal(row, "Pos Description", "pos_description"),
           item_number: getVal(row, "Item Number", "item_number"),
@@ -317,7 +318,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         if (!validationResult.success) {
           failCount++;
-          const errors = validationResult.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ");
+          // This handles Zod validation errors (e.g., missing required fields)
           validationErrors.push({ row: i + 1, sku, errors: validationResult.error.errors });
           continue;
         }
@@ -325,7 +326,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         const validatedData = validationResult.data;
 
         // Auto-create missing attributes
-        await Promise.all([
+        // Promise.allSettled is used to ensure all attempts are made and errors don't stop the flow
+        await Promise.allSettled([
           ensureAttributeExists("brands", validatedData.brand || ""),
           ensureAttributeExists("categories", validatedData.category),
           ensureAttributeExists("suppliers", validatedData.supplier),
@@ -380,7 +382,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           fieldsToCompare.forEach((field) => {
             if ((existing as any)[field] !== validatedData[field as keyof typeof validatedData]) {
               differences[field] = {
-                old: (existing as any)[field], // Explicitly cast to any for access
+                old: (existing as any)[field],
                 new: validatedData[field as keyof typeof validatedData],
               };
             }
@@ -394,10 +396,14 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         } else {
           // New Item Logic (Inserting into products, variants, price_levels, etc.)
 
-          // 1. Get IDs for foreign keys (requires a separate function in a real app, simplified here)
+          // 1. Get IDs for foreign keys
           const getOrCreateID = async (table: string, name: string) => {
             if (!name) return null;
-            const { data: existingData } = await (supabase as any).from(table).select("id").eq("name", name).single();
+            const { data: existingData } = await (supabase as any)
+              .from(table)
+              .select("id")
+              .eq("name", name)
+              .maybeSingle();
             return existingData ? existingData.id : null;
           };
 
@@ -406,6 +412,22 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             getOrCreateID("brands", validatedData.brand),
             getOrCreateID("suppliers", validatedData.supplier),
           ]);
+
+          // If any critical attribute ID is missing, skip the row and log the error.
+          if (!category_id || !supplier_id) {
+            failCount++;
+            validationErrors.push({
+              row: i + 1,
+              sku,
+              errors: [
+                {
+                  path: ["database"],
+                  message: `Missing critical attribute ID(s): Category(${validatedData.category}) or Supplier(${validatedData.supplier}) not found/created.`,
+                },
+              ],
+            });
+            continue;
+          }
 
           // 2. Insert into products (main product model)
           const { data: productData, error: productError } = await supabase
@@ -423,7 +445,17 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
           if (productError || !productData) {
             failCount++;
-            // console.error("Product Insert Error:", productError);
+            // FIX: Capture and log the specific database error
+            validationErrors.push({
+              row: i + 1,
+              sku,
+              errors: [
+                {
+                  path: ["database", "products"],
+                  message: `Product insert failed: ${productError?.message || "Unknown error."}`,
+                },
+              ],
+            });
             continue; // Skip variant insertion
           }
 
@@ -439,7 +471,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
               cost_price: validatedData.cost_price,
               tax_rate: validatedData.tax,
               unit: validatedData.unit,
-              // These fields may be moved to a separate product_attributes table in a fully normalized schema
               color: validatedData.color,
               size: validatedData.size,
               season: validatedData.season,
@@ -449,19 +480,35 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
           if (variantError || !variantData) {
             failCount++;
-            // console.error("Variant Insert Error:", variantError);
+            // FIX: Capture and log the specific database error
+            validationErrors.push({
+              row: i + 1,
+              sku,
+              errors: [
+                {
+                  path: ["database", "variants"],
+                  message: `Variant insert failed: ${variantError?.message || "Unknown error."}`,
+                },
+              ],
+            });
             continue;
           }
 
           // 4. Insert into stock_on_hand (initial quantity and location)
-          if (validatedData.quantity !== null) {
-            const location_id = await getOrCreateID("stores", validatedData.location || "Default");
-            await supabase.from("stock_on_hand").insert({
-              variant_id: variantData.variant_id,
-              store_id: location_id,
-              quantity: validatedData.quantity,
-              min_stock: validatedData.min_stock,
-            });
+          try {
+            if (validatedData.quantity !== null) {
+              const location_id = await getOrCreateID("stores", validatedData.location || "Default");
+              await supabase.from("stock_on_hand").insert({
+                variant_id: variantData.variant_id,
+                store_id: location_id,
+                quantity: validatedData.quantity,
+                min_stock: validatedData.min_stock,
+              });
+            }
+          } catch (e) {
+            // Log non-critical stock_on_hand error
+            console.error(`Stock update failed for SKU ${validatedData.sku}:`, e);
+            // We still count this as a success if the product/variant inserted.
           }
 
           successCount++;
@@ -483,7 +530,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         if (!validationResult.success) {
           failCount++;
-          const errors = validationResult.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ");
           validationErrors.push({ row: i + 1, sku, errors: validationResult.error.errors });
           continue;
         }
@@ -495,15 +541,26 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           .from("variants")
           .select("variant_id")
           .eq("sku", validatedData.sku)
-          .single();
+          .maybeSingle(); // Used maybeSingle for safety
 
         if (variantSelectError || !variantData) {
           failCount++;
+          validationErrors.push({
+            row: i + 1,
+            sku,
+            errors: [
+              {
+                path: ["database", "sku_lookup"],
+                message: variantSelectError
+                  ? `Lookup failed: ${variantSelectError.message}`
+                  : "SKU not found for quantity update.",
+              },
+            ],
+          });
           continue;
         }
 
-        // Update stock_on_hand based on the variant_id (assumes a default store/location)
-        // NOTE: A robust system would require the store_id in the import file.
+        // Update stock_on_hand based on the variant_id
         const { error } = await supabase
           .from("stock_on_hand")
           .update({ quantity: validatedData.quantity })
@@ -512,6 +569,17 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         if (error) {
           failCount++;
+          // FIX: Capture and log the specific database error
+          validationErrors.push({
+            row: i + 1,
+            sku,
+            errors: [
+              {
+                path: ["database", "stock_update"],
+                message: `Stock update failed: ${error.message}`,
+              },
+            ],
+          });
         } else {
           successCount++;
         }
@@ -536,8 +604,9 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     // Show error dialog if there were validation errors
     if (validationErrors.length > 0) {
       setImportErrors({
-        type: "Validation Errors",
-        message: `${failCount} row(s) failed validation. Please review the errors below and correct your data.`,
+        type: "Validation/Database Errors",
+        // The message now mentions validation and database errors
+        message: `${failCount} row(s) failed validation or database insertion. Please review the errors below.`,
         validationErrors,
       });
       setErrorDialogOpen(true);
@@ -549,11 +618,18 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       setDuplicateDialogOpen(true);
     }
 
-    toast.success(
-      `Import completed: ${successCount} successful${failCount > 0 ? `, ${failCount} failed` : ""}${
-        duplicatesFound > 0 ? `, ${duplicatesFound} duplicates skipped` : ""
-      }`,
-    );
+    const totalProcessed = successCount + failCount + duplicatesFound;
+    if (totalProcessed > 0 && successCount === 0 && failCount > 0) {
+      // If all new items failed (not duplicates), show a specific error toast
+      toast.error(`Import failed. ${failCount} row(s) could not be processed.`);
+    } else {
+      // Show success/partial success toast
+      toast.success(
+        `Import completed: ${successCount} successful${failCount > 0 ? `, ${failCount} failed` : ""}${
+          duplicatesFound > 0 ? `, ${duplicatesFound} duplicates skipped` : ""
+        }`,
+      );
+    }
 
     // Invalidate all related queries for real-time updates
     await invalidateInventoryData(queryClient);
@@ -698,7 +774,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           {isUploading && (
             <div className="space-y-2 pt-2">
               <p className="text-sm font-medium text-blue-600">Processing Data...</p>
-              {/* The progress bar will be 'indeterminate' since we don't track row-by-row progress */}
               <Progress value={progress} className="w-full h-2 transition-all duration-300" />
               <p className="text-xs text-muted-foreground italic">This may take a moment for large files.</p>
             </div>
@@ -739,10 +814,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
                       Row {error.row} {error.sku && `(SKU: ${error.sku})`}
                     </div>
                     <ul className="space-y-1 text-sm text-muted-foreground">
+                      {/* The error.errors array now contains both Zod validation and Supabase database errors */}
                       {error.errors.map((err: any, errIdx: number) => (
                         <li key={errIdx} className="flex items-start gap-2">
                           <span className="text-destructive">•</span>
                           <span>
+                            {/* Display the path (e.g., name, database.products) and the message */}
                             <strong>{err.path.join(".")}</strong>: {err.message}
                           </span>
                         </li>
@@ -757,11 +834,13 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
           <div className="bg-muted p-4 rounded-lg text-sm space-y-2">
             <p className="font-medium">💡 Tips to fix these errors:</p>
             <ul className="space-y-1 text-muted-foreground">
-              <li>• Ensure all required fields (SKU, Name, Main Group, Category) are filled</li>
-              <li>• Check that numeric fields (Quantity, Price) contain valid numbers</li>
-              <li>• Verify text fields don't exceed maximum character limits</li>
-              <li>• Make sure there are no special characters in numeric fields</li>
-              <li>• Save your file as Excel (.xlsx) or CSV before importing</li>
+              <li>
+                • If the error path is `database.*`, check your database schema for **unique constraints** (e.g.,
+                duplicate SKU) or **foreign key constraints** (e.g., missing Category ID).
+              </li>
+              <li>• Ensure all required fields (SKU, Name, Main Group, Category) are filled.</li>
+              <li>• Check that numeric fields (Quantity, Price) contain valid numbers.</li>
+              <li>• Save your file as Excel (.xlsx) or CSV before importing.</li>
             </ul>
           </div>
 
