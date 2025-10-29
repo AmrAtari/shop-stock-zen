@@ -21,7 +21,6 @@ import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { useAttributeTypes } from "@/hooks/useAttributeTypes";
 
 // --- New: Type definitions for the item being edited (Fixes Inventory.tsx error) ---
-// This interface MUST include all properties the component attempts to access
 interface ProductDialogItem {
   id: string; // variant_id
   product_id: string;
@@ -35,12 +34,12 @@ interface ProductDialogItem {
   color: string;
   size: string;
   unit: string;
-  // Financial/Price Data (sellingPrice MUST be defined as number | null)
+  // Financial/Price Data - REQUIRED to be present (number | null)
   sellingPrice: number | null;
   cost: number | null;
   tax_rate: number | null;
   wholesale_price: number | null;
-  // Foreign Key IDs (the ones that were missing in the original Item type)
+  // Foreign Key IDs
   brand_id: string | null;
   category_id: string | null;
   gender_id: string | null;
@@ -48,7 +47,7 @@ interface ProductDialogItem {
   supplier_id: string | null;
 }
 
-// New: Defines the expected structure of lookup data from useAttributeTypes (Fixes attribute access error)
+// New: Defines the expected structure of lookup data from useAttributeTypes
 interface AttributeMap {
   brands: { id: string; name: string }[];
   categories: { id: string; name: string }[];
@@ -100,7 +99,7 @@ interface PriceData {
 interface ProductDialogNewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  item?: ProductDialogItem; // <-- FIXED TYPE HERE
+  item?: ProductDialogItem; // <-- Uses the fixed required interface
   onSave: () => void;
 }
 
@@ -181,9 +180,9 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
 
-  // Custom Hook to fetch all your attribute/lookup data
-  // FIX: Alias 'attributeTypes' property (returned by the hook) to 'attributes' (expected by the component)
-  const { attributeTypes: attributes, isLoading: isLoadingAttributes } = useAttributeTypes() as {
+  // FIX: Use 'unknown' cast to force TypeScript to accept that the actual runtime data
+  // structure of 'attributeTypes' matches 'AttributeMap', and alias it to 'attributes'.
+  const { attributeTypes: attributes, isLoading: isLoadingAttributes } = useAttributeTypes() as unknown as {
     attributeTypes: AttributeMap;
     isLoading: boolean;
   };
@@ -199,7 +198,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         description: item.description || "",
         theme: item.theme || "",
         wholesale_price: item.wholesale_price || null,
-        // NOTE: We need to pull the IDs from the joined tables/item object for editing
         brand_id: item.brand_id || "",
         category_id: item.category_id || "",
         gender_id: item.gender_id || "",
@@ -216,7 +214,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         cost: item.cost || null,
         tax_rate: item.tax_rate || null,
         unit: item.unit || "",
-        supplier_id: item.supplier_id || "", // NOTE: Ensure you have supplier_id on the Item interface
+        supplier_id: item.supplier_id || "",
       });
 
       // 3. Load price data (used for confirmation logic)
@@ -261,12 +259,11 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
     setLoading(true);
 
     try {
-      let finalProductId = item?.product_id; // Keep existing ID if editing
+      let finalProductId = item?.product_id;
       let productInsertError = null;
 
       // 1. CREATE/UPDATE PARENT PRODUCT RECORD
       if (!isEditing || !item?.product_id) {
-        // Use optional chaining for safety
         // New product: Insert into 'products' table first
         const { data: product, error: pError } = await supabase
           .from("products")
@@ -341,7 +338,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         const { error: vUpdateError } = await supabase
           .from("variants")
           .update(variantPayload)
-          .eq("variant_id", item!.id); // Use non-null assertion as isEditing is true
+          .eq("variant_id", item!.id);
 
         if (vUpdateError) {
           throw new Error(`Failed to update variant: ${vUpdateError.message}`);
@@ -367,7 +364,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
             selling_price: variantData.selling_price,
             cost: variantData.cost,
           })
-          .eq("product_id", finalProductId); // Update all variants of this product
+          .eq("product_id", finalProductId);
 
         if (bulkError) {
           toast.error(`Warning: Failed to bulk update other variants: ${bulkError.message}`);
@@ -378,7 +375,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
 
       // Close the dialog and refresh inventory data
       onOpenChange(false);
-      onSave(); // Calls queryClient.invalidateQueries
+      onSave();
     } catch (error: any) {
       console.error("Save Error:", error);
       toast.error(error.message || "An unexpected error occurred during save.");
@@ -416,7 +413,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
     );
   }
 
-  // --- Render logic using Formik/React Hook Form is often cleaner, but for this simple state approach:
+  // --- Render logic ---
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
