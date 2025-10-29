@@ -53,104 +53,90 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (Comments Removed) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Fetch core data in parallel to avoid PostgREST embedding requirements
-  const [variantsRes, productsRes, suppliersRes, stockRes, storesRes] = await Promise.all([
-    supabase
-      .from("variants")
-      .select(
-        `variant_id, sku, selling_price, cost, tax_rate, unit, color, size, season, color_id, item_color_code, cost_price, created_at, updated_at, last_restocked, product_id, supplier_id`
-      ),
-    supabase
-      .from("products")
-      .select(`product_id, name, pos_description, description, item_number, theme, wholesale_price`),
-    supabase.from("suppliers").select(`id, name`),
-    supabase.from("stock_on_hand").select(`variant_id, quantity, min_stock, store_id`).order("last_updated", { ascending: false }),
-    supabase.from("stores").select(`id, name`),
-  ]);
+  const { data, error } = await supabase.from("variants").select(`
+            variant_id, 
+            sku, 
+            selling_price, 
+            cost, 
+            tax_rate, 
+            unit, 
+            color,
+            size,
+            season,
+            color_id, 
+            item_color_code, 
+            cost_price,
+            created_at,        
+            updated_at,        
+            last_restocked,    
+            
+            products!inner (
+                product_id,
+                name, 
+                pos_description, 
+                description, 
+                item_number,
+                theme,
+                wholesale_price,
+                brand:brand_id(name),
+                category:category_id(name), 
+                gender:gender_id(name),
+                origin:origin_id(name)
+            ),
+            
+            supplier:suppliers!variants_supplier_id_fkey(name),
+            
+            stock_on_hand (quantity, min_stock, stores (name)) // FIX: Corrected to stock_on_hand
+        `);
 
-  // Handle errors explicitly
-  if (variantsRes.error) {
-    console.error("Error fetching variants:", variantsRes.error.message);
-    throw new Error(`Failed to fetch variants: ${variantsRes.error.message}`);
+  if (error) {
+    console.error("Error fetching inventory:", error.message);
+    throw new Error(`Failed to fetch inventory data. Supabase Error: ${error.message}`);
   }
-  if (productsRes.error) {
-    console.warn("Products fetch warning:", productsRes.error.message);
-  }
-  if (suppliersRes.error) {
-    console.warn("Suppliers fetch warning:", suppliersRes.error.message);
-  }
-  if (stockRes.error) {
-    console.warn("Stock fetch warning:", stockRes.error.message);
-  }
-  if (storesRes.error) {
-    console.warn("Stores fetch warning:", storesRes.error.message);
-  }
 
-  const products = productsRes.data || [];
-  const suppliers = suppliersRes.data || [];
-  const stock = stockRes.data || [];
-  const stores = storesRes.data || [];
+  return data.map((variant: any) => ({
+    id: variant.variant_id,
+    sku: variant.sku,
+    name: variant.products?.name || "N/A",
+    pos_description: variant.products?.pos_description,
+    description: variant.products?.description,
+    item_number: variant.products?.item_number,
 
-  // Build quick lookup maps
-  const productById = new Map<number, any>(products.map((p: any) => [p.product_id, p]));
-  const supplierNameById = new Map<string, string>(suppliers.map((s: any) => [s.id, s.name]));
-  const storeNameById = new Map<string, string>(stores.map((s: any) => [s.id, s.name]));
+    // Mapped relationship fields (using the new aliases)
+    supplier: variant.supplier?.name || "N/A",
+    category: variant.products.category?.name || "N/A",
+    gender: variant.products.gender?.name || "N/A",
+    brand: variant.products.brand?.name || null,
+    origin: variant.products.origin?.name || null,
 
-  // For each variant, pick the most recent stock record (we ordered by last_updated desc)
-  const stockByVariant = new Map<number, any>();
-  (stock as any[]).forEach((s) => {
-    if (!stockByVariant.has(s.variant_id)) {
-      stockByVariant.set(s.variant_id, s);
-    }
-  });
+    created_at: variant.created_at,
+    updated_at: variant.updated_at,
+    last_restocked: variant.last_restocked,
 
-  return (variantsRes.data || []).map((variant: any) => {
-    const prod = productById.get(variant.product_id);
-    const stockEntry = stockByVariant.get(variant.variant_id);
-    const storeName = stockEntry?.store_id ? storeNameById.get(stockEntry.store_id) : undefined;
+    season: variant.season,
+    size: variant.size,
+    color: variant.color,
+    color_id: variant.color_id || null,
+    item_color_code: variant.item_color_code || null,
+    theme: variant.products?.theme || null,
+    department: "N/A",
+    main_group: "N/A",
 
-    return {
-      id: variant.variant_id,
-      sku: variant.sku,
-      name: prod?.name || "N/A",
-      pos_description: prod?.pos_description,
-      description: prod?.description,
-      item_number: prod?.item_number,
+    wholesale_price: variant.products?.wholesale_price || null,
 
-      supplier: supplierNameById.get(variant.supplier_id) || "N/A",
-      category: "N/A",
-      gender: "N/A",
-      brand: null,
-      origin: null,
+    sellingPrice: variant.selling_price,
+    cost: variant.cost || variant.cost_price,
+    tax: variant.tax_rate,
+    unit: variant.unit,
 
-      created_at: variant.created_at,
-      updated_at: variant.updated_at,
-      last_restocked: variant.last_restocked,
-
-      season: variant.season,
-      size: variant.size,
-      color: variant.color,
-      color_id: variant.color_id || null,
-      item_color_code: variant.item_color_code || null,
-      theme: prod?.theme || null,
-      department: "N/A",
-      main_group: "N/A",
-
-      wholesale_price: prod?.wholesale_price || null,
-
-      sellingPrice: variant.selling_price,
-      cost: variant.cost ?? variant.cost_price,
-      tax: variant.tax_rate,
-      unit: variant.unit,
-
-      quantity: stockEntry?.quantity ?? 0,
-      min_stock: stockEntry?.min_stock ?? 0,
-      store_name: storeName || "N/A",
-      location: storeName || "N/A",
-    } as ItemWithDetails;
-  });
+    // Mapped Stock - FIX: Uses stock_on_hand
+    quantity: variant.stock_on_hand[0]?.quantity || 0,
+    min_stock: variant.stock_on_hand[0]?.min_stock || 0,
+    store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
+    location: variant.stock_on_hand[0]?.stores?.name || "N/A",
+  })) as ItemWithDetails[];
 };
 
 // Data Hook connected to React Query
@@ -183,7 +169,7 @@ const BulkActions: React.FC<BulkActionsProps> = ({ selectedItems, onBulkUpdate, 
   );
 };
 
-const ITEMS_PER_PAGE = 20; // Changed to 20 for better table view
+const ITEMS_PER_PAGE = 20;
 
 const InventoryNew: React.FC = () => {
   const navigate = useNavigate();
@@ -318,6 +304,8 @@ const InventoryNew: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item and all its stock?")) return;
 
+    // NOTE: This uses variant_id (integer), but the type system currently expects string (UUID).
+    // If you keep variant_id as integer, the type system may need an update.
     const { error: variantError } = await supabase.from("variants").delete().eq("variant_id", id);
 
     if (variantError) {
@@ -403,7 +391,7 @@ const InventoryNew: React.FC = () => {
 
         {/* Filters Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {/* Item Number Filter */}
+          {/* Item Number Filter - FIX: Applied onValueChange and value="all" */}
           <Select value={filterItemNumber} onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Item Number" />
@@ -418,7 +406,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Season Filter */}
+          {/* Season Filter - FIX: Applied onValueChange and value="all" */}
           <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Season" />
@@ -433,7 +421,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Color Filter */}
+          {/* Color Filter - FIX: Applied onValueChange and value="all" */}
           <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Color" />
@@ -448,7 +436,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Size Filter */}
+          {/* Size Filter - FIX: Applied onValueChange and value="all" */}
           <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Size" />
@@ -463,7 +451,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Category Filter */}
+          {/* Category Filter - FIX: Applied onValueChange and value="all" */}
           <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Category" />
@@ -478,7 +466,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Main Group Filter */}
+          {/* Main Group Filter - FIX: Applied onValueChange and value="all" */}
           <Select value={filterMainGroup} onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Main Group" />
@@ -493,7 +481,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Store/Location Filter */}
+          {/* Store/Location Filter - FIX: Applied onValueChange and value="all" */}
           <Select value={filterStore} onValueChange={(v) => setFilterStore(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Store/Location" />
