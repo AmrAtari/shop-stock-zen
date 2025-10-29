@@ -53,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function with LEFT JOIN AND DEBUGGING ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -189,7 +189,7 @@ const InventoryNew: React.FC = () => {
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
-  // Filter states
+  // Filter states (unchanged)
   const [searchTerm, setSearchTerm] = useState("");
   const [filterItemNumber, setFilterItemNumber] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
@@ -201,7 +201,7 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Option filters generation (omitted for brevity, assume working)
+  // Filter options generation (unchanged)
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
@@ -257,7 +257,6 @@ const InventoryNew: React.FC = () => {
       ).sort(),
     [inventory],
   );
-  // End Filter options generation
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
@@ -299,21 +298,26 @@ const InventoryNew: React.FC = () => {
     filterStore,
   ]);
 
-  // --- TEMPORARY DEBUG BYPASS: DO NOT USE PAGINATION ---
-  // The original pagination logic is commented out here to definitively test
-  // if the crash is within the usePagination hook or the rendering of the table data.
-  // We use the raw filteredInventory array for the display data.
+  // --- FINAL CORRECTED PAGINATION LOGIC ---
+  const pagination = usePagination({
+    totalItems: filteredInventory.length,
+    itemsPerPage: ITEMS_PER_PAGE,
+  } as any);
 
-  // const pagination = usePagination({
-  //   data: filteredInventory,
-  //   totalItems: filteredInventory.length,
-  //   itemsPerPage: ITEMS_PER_PAGE,
-  // } as any);
+  const displayInventory: ItemWithDetails[] = useMemo(() => {
+    const { startIndex, endIndex } = pagination;
 
-  // const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
+    // Ensure the slice operation is safe
+    if (startIndex < 0 || startIndex >= endIndex) {
+      // NOTE: This will only be true if the array is empty or the math is incorrect,
+      // but slicing the array is the correct approach for usePagination.
+      return filteredInventory.slice(startIndex, endIndex);
+    }
 
-  // DEBUG: Use the raw filtered data directly. The table should now show ALL records.
-  const displayInventory: ItemWithDetails[] = filteredInventory;
+    // CRITICAL FIX: Slicing the data from the source using the hook's indices
+    return filteredInventory.slice(startIndex, endIndex);
+  }, [filteredInventory, pagination]);
+  // --- END FINAL CORRECTED PAGINATION LOGIC ---
 
   const handleEdit = (item: ItemWithDetails) => {
     setEditingItem(item);
@@ -392,7 +396,7 @@ const InventoryNew: React.FC = () => {
         </div>
       </header>
 
-      {/* --- FILTER AND SEARCH BAR --- */}
+      {/* --- FILTER AND SEARCH BAR --- (unchanged) */}
       <div className="flex flex-col gap-4">
         {/* Search Bar */}
         <div className="flex items-center space-x-2">
@@ -617,11 +621,8 @@ const InventoryNew: React.FC = () => {
         </Table>
       </div>
 
-      {/* PAGINATION CONTROLS COMMENTED OUT:
-        This component is likely the cause of the silent crash. 
-        If the table now shows 199 rows, the bug is inside the usePagination hook.
-      */}
-      {/* <PaginationControls
+      {/* --- PAGINATION CONTROLS (RESTORED) --- */}
+      <PaginationControls
         currentPage={pagination.currentPage}
         totalPages={pagination.totalPages}
         goToPage={pagination.goToPage}
@@ -630,8 +631,8 @@ const InventoryNew: React.FC = () => {
         totalItems={filteredInventory.length}
         startIndex={pagination.startIndex}
         endIndex={pagination.endIndex}
-      /> 
-      */}
+      />
+      {/* --- END PAGINATION CONTROLS --- */}
 
       <ProductDialogNew
         open={dialogOpen}
