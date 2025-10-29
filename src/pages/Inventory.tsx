@@ -55,6 +55,7 @@ interface ItemWithDetails extends Item {
 
 // --- 2. FINAL CORRECTED Supabase Fetch Function with LEFT JOIN AND DEBUGGING ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
+  // Use Left Join behavior by implicitly not using `innerJoin` syntax
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
             sku, 
@@ -93,7 +94,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   if (error) {
     console.error("Error fetching inventory:", error.message);
-    // Re-throwing error to be caught by React Query
     throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`);
   }
 
@@ -145,7 +145,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   // 💥 DEBUG OUTPUT 💥
   console.log("--- Supabase Data Fetch Successful ---");
   console.log(`Total records fetched and mapped: ${mappedData.length}`);
-  console.log("First 3 mapped data items (Check for empty/null values):", mappedData.slice(0, 3));
+  console.log("First 3 mapped data items (Check for null or 'N/A' values):", mappedData.slice(0, 3));
   // 💥 END DEBUG OUTPUT 💥
 
   return mappedData; // Return the mapped data
@@ -574,7 +574,7 @@ const InventoryNew: React.FC = () => {
                     {/* Displaying cost/price as simple strings */}
                     <TableCell className="text-right">{item.cost || "N/A"}</TableCell>
                     <TableCell className="text-right">{item.sellingPrice || "N/A"}</TableCell>
-                    {/* Displaying quantity as a simple string */}
+                    {/* Displaying quantity as a Badge */}
                     <TableCell className="text-right">
                       <Badge
                         variant={
