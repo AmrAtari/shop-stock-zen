@@ -216,6 +216,19 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     }
   };
 
+  // --- CRITICAL NEW HELPER FUNCTION: Aggressively cleans attribute names for lookup keys ---
+  const cleanAttributeName = (name: string): string => {
+    if (!name) return '';
+    return name
+        .trim()
+        // Aggressive non-breaking space replacement (the most common hidden culprit)
+        .replace(/\u00A0/g, ' ') 
+        // Normalize all other whitespace (including tabs, multiple spaces, etc.) to a single space
+        .replace(/\s+/g, ' ')
+        .toLowerCase(); // Convert to lowercase for case-insensitive lookup key
+  };
+  // ------------------------------------------------------------------------------------------
+
   const processImportData = async (data: any[], fileName: string) => {
     const normalizeKey = (k: string): string =>
       k
@@ -307,13 +320,13 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
     /**
      * Finds or creates attributes in the database. Uses a case-insensitive approach
-     * by mapping all database names and incoming names to lowercase.
-     * * @param table The Supabase table name (e.g., 'categories').
+     * by mapping all database names and incoming names to the aggressively cleaned string.
+     * @param table The Supabase table name (e.g., 'categories').
      * @param names The set of unique names from the import file.
-     * @returns A Map where the key is the lowercase attribute name and the value is the UUID.
+     * @returns A Map where the key is the CLEANED lowercase attribute name and the value is the UUID.
      */
     const ensureAndMapAttributes = async (table: string, names: Set<string>): Promise<Map<string, string>> => {
-      const nameToIdMap = new Map<string, string>();
+      const nameToIdMap = new Map<string, string>(); 
       if (names.size === 0) return nameToIdMap;
 
       const originalNamesArray = Array.from(names).filter((n) => n.length > 0);
@@ -325,66 +338,73 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       if (fetchError) {
         throw new Error(`[${table}] Lookup failed: ${fetchError.message}`);
       }
-
-      const existingNamesLower = new Set<string>();
+      
+      const existingNamesClean = new Set<string>();
 
       if (allExisting) {
         allExisting.forEach((attr: any) => {
-          const lowerName = attr.name.toLowerCase();
-          // Only map the first ID found for a given lowercase name
-          if (!nameToIdMap.has(lowerName)) {
-            nameToIdMap.set(lowerName, attr.id);
-            existingNamesLower.add(lowerName);
+          // Use the aggressive cleaner for the map key
+          const cleanName = cleanAttributeName(attr.name);
+          
+          if (!nameToIdMap.has(cleanName)) {
+            nameToIdMap.set(cleanName, attr.id);
+            existingNamesClean.add(cleanName);
           }
         });
       }
-
+      
       // 2. Identify missing attributes and sanitize
       const namesToInsert: { name: string }[] = [];
-      const tempInsertSet = new Set<string>(); // Tracks what we plan to insert by lower-cased, cleaned name
+      const tempInsertSet = new Set<string>(); // Tracks what we plan to insert by CLEANED name
 
-      originalNamesArray.forEach((originalName) => {
-        const lowerName = originalName.toLowerCase();
+      originalNamesArray.forEach(originalName => {
+        // Use the aggressive cleaner for checking against existing data/pending inserts
+        const cleanKey = cleanAttributeName(originalName);
+        
+        // Use a simple trim for the name inserted into the DB (to keep original casing)
+        const nameToStore = originalName.trim().replace(/\s+/g, ' '); 
 
-        // Final Fix: Aggressive name cleanup before checking/inserting
-        const cleanedName = originalName.trim().replace(/\s+/g, " "); // Remove leading/trailing spaces, normalize internal spaces
-        if (cleanedName.length === 0) return; // Skip if it's just spaces
+        if (nameToStore.length === 0) return; // Skip if it's just spaces
 
-        // Check if the lowercase version of the name is already mapped
-        // OR if we've already queued its lowercase version for insertion
-        if (!existingNamesLower.has(lowerName) && !tempInsertSet.has(lowerName)) {
-          // Insert the cleaned name using its original casing from the file
-          namesToInsert.push({ name: cleanedName });
-          tempInsertSet.add(lowerName);
+        // Check if the CLEANED name is already mapped 
+        // OR if we've already queued its CLEANED version for insertion
+        if (!existingNamesClean.has(cleanKey) && !tempInsertSet.has(cleanKey)) {
+          // Insert the cleaned, trimmed name using its original casing from the file
+          namesToInsert.push({ name: nameToStore }); 
+          tempInsertSet.add(cleanKey); // Mark the clean key as pending insert
         }
       });
 
       // 3. Insert all new attributes in one batch (Guaranteed Fix applied here)
       if (namesToInsert.length > 0) {
-        const { error: insertError } = await (supabase as any).from(table).insert(namesToInsert);
+        const { error: insertError } = await (supabase as any)
+            .from(table)
+            .insert(namesToInsert);
 
         if (insertError) {
-          throw new Error(`[${table}] Failed to create new attributes: ${insertError.message}`);
+            throw new Error(`[${table}] Failed to create new attributes: ${insertError.message}`);
         }
 
         // CRITICAL FIX: Re-fetch the entire attribute list after inserting new values
-        // This guarantees we capture the correct UUIDs for the newly inserted attributes,
-        // regardless of potential DB casing quirks.
+        // This guarantees we capture the correct UUIDs for the newly inserted attributes, 
+        // regardless of potential DB casing quirks or invisible character issues.
         nameToIdMap.clear();
-
-        const { data: updatedExisting, error: refetchError } = await (supabase as any).from(table).select("id, name");
+        
+        const { data: updatedExisting, error: refetchError } = await (supabase as any)
+            .from(table)
+            .select("id, name");
 
         if (refetchError) {
-          throw new Error(`[${table}] Refetch failed after insert: ${refetchError.message}`);
+            throw new Error(`[${table}] Refetch failed after insert: ${refetchError.message}`);
         }
 
         if (updatedExisting) {
-          updatedExisting.forEach((attr: any) => {
-            const lowerName = attr.name.toLowerCase();
-            if (!nameToIdMap.has(lowerName)) {
-              nameToIdMap.set(lowerName, attr.id);
-            }
-          });
+            updatedExisting.forEach((attr: any) => {
+                const cleanName = cleanAttributeName(attr.name); // Use the cleaner again
+                if (!nameToIdMap.has(cleanName)) {
+                    nameToIdMap.set(cleanName, attr.id);
+                }
+            });
         }
       }
 
@@ -487,15 +507,16 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         const validatedData = validationResult.data;
 
-        // FIX: Use lowercase for lookup keys here
-        const lowerCategory = validatedData.category.toLowerCase();
-        const lowerSupplier = validatedData.supplier.toLowerCase();
-        const lowerStore = (validatedData.location || "Default").toLowerCase();
-
-        const category_id = categoryMap.get(lowerCategory);
-        const supplier_id = supplierMap.get(lowerSupplier);
-        const brand_id = validatedData.brand ? brandMap.get(validatedData.brand.toLowerCase()) : null;
-        const store_id = storeMap.get(lowerStore);
+        // CRITICAL FIX: Use the aggressive cleaner for the final attribute ID lookup
+        const cleanCategory = cleanAttributeName(validatedData.category);
+        const cleanSupplier = cleanAttributeName(validatedData.supplier);
+        const cleanStore = cleanAttributeName(validatedData.location || "Default");
+        const cleanBrand = validatedData.brand ? cleanAttributeName(validatedData.brand) : null;
+        
+        const category_id = categoryMap.get(cleanCategory);
+        const supplier_id = supplierMap.get(cleanSupplier);
+        const brand_id = cleanBrand ? brandMap.get(cleanBrand) : null;
+        const store_id = storeMap.get(cleanStore);
 
         // CRITICAL CHECK for foreign keys
         if (!category_id || !supplier_id || !store_id) {
@@ -506,7 +527,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             errors: [
               {
                 path: ["database", "foreign_key_precheck"],
-                // Error message now reflects the successful case-insensitive lookup/creation logic
                 message: `Critical attribute missing: Category(${validatedData.category}), Supplier(${validatedData.supplier}), or Store(${validatedData.location || "Default"}) could not be found/created.`,
               },
             ],
