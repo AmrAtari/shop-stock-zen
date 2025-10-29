@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Item, PriceLevel } from "@/types/database";
+import { PriceLevel } from "@/types/database"; // Removed 'Item' import to replace it
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { History } from "lucide-react";
@@ -20,7 +20,47 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { useAttributeTypes } from "@/hooks/useAttributeTypes";
 
-// --- Helper Types for Form Data ---
+// --- New: Type definitions for the item being edited ---
+// This interface includes all Foreign Key IDs needed for submission/editing
+interface ProductDialogItem {
+  id: string; // variant_id
+  product_id: string;
+  sku: string;
+  name: string;
+  item_number: string;
+  pos_description: string | null;
+  description: string | null;
+  theme: string | null;
+  season: string;
+  color: string;
+  size: string;
+  unit: string;
+  // Financial/Price Data
+  sellingPrice: number | null;
+  cost: number | null;
+  tax_rate: number | null;
+  wholesale_price: number | null;
+  // Foreign Key IDs (the ones that were missing in the original Item type)
+  brand_id: string | null;
+  category_id: string | null;
+  gender_id: string | null;
+  origin_id: string | null;
+  supplier_id: string | null;
+}
+
+// New: Defines the expected structure of lookup data from useAttributeTypes
+interface AttributeMap {
+  brands: { id: string; name: string }[];
+  categories: { id: string; name: string }[];
+  genders: { id: string; name: string }[];
+  origins: { id: string; name: string }[];
+  seasons: { id: string; name: string }[];
+  colors: { id: string; name: string }[];
+  sizes: { id: string; name: string }[];
+  suppliers: { id: string; name: string }[];
+}
+
+// --- Helper Types for Form Data (KEEP) ---
 interface ProductFormData {
   name: string;
   item_number: string;
@@ -60,7 +100,7 @@ interface PriceData {
 interface ProductDialogNewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  item?: Item; // The item being edited (ItemWithDetails from Inventory page)
+  item?: ProductDialogItem; // <-- FIXED TYPE HERE
   onSave: () => void;
 }
 
@@ -141,13 +181,16 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
 
-  // Custom Hook to fetch all your attribute/lookup data
-  const { attributes, isLoading: isLoadingAttributes } = useAttributeTypes();
+  // Use type casting to ensure the component expects the correct property structure
+  const { attributes, isLoading: isLoadingAttributes } = useAttributeTypes() as {
+    attributes: AttributeMap;
+    isLoading: boolean;
+  };
 
   // Load data into form when editing an existing item
   useEffect(() => {
     if (item && open) {
-      // 1. Load data for the PRODUCT
+      // 1. Load data for the PRODUCT (Uses the rich type properties)
       setProductData({
         name: item.name || "",
         item_number: item.item_number || "",
@@ -155,14 +198,13 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         description: item.description || "",
         theme: item.theme || "",
         wholesale_price: item.wholesale_price || null,
-        // NOTE: We need to pull the IDs from the joined tables/item object for editing
         brand_id: item.brand_id || "",
         category_id: item.category_id || "",
         gender_id: item.gender_id || "",
         origin_id: item.origin_id || "",
       });
 
-      // 2. Load data for the VARIANT
+      // 2. Load data for the VARIANT (Uses the rich type properties)
       setVariantData({
         sku: item.sku || "",
         season: item.season || "",
@@ -172,7 +214,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         cost: item.cost || null,
         tax_rate: item.tax_rate || null,
         unit: item.unit || "",
-        supplier_id: item.supplier_id || "", // NOTE: Ensure you have supplier_id on the Item interface
+        supplier_id: item.supplier_id || "",
       });
 
       // 3. Load price data (used for confirmation logic)
@@ -217,11 +259,12 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
     setLoading(true);
 
     try {
-      let finalProductId = item?.product_id; // Keep existing ID if editing
+      let finalProductId = item?.product_id; // <-- Uses the rich type property
       let productInsertError = null;
 
       // 1. CREATE/UPDATE PARENT PRODUCT RECORD
       if (!isEditing || !item.product_id) {
+        // <-- Uses the rich type property
         // New product: Insert into 'products' table first
         const { data: product, error: pError } = await supabase
           .from("products")
@@ -244,8 +287,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
 
         if (pError) {
           productInsertError = pError;
-          // The database will now throw an error here if category_id or gender_id is missing,
-          // because we set the NOT NULL constraints in the database.
           throw new Error(`Failed to create product record: ${pError.message}`);
         }
 
@@ -266,7 +307,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
             gender_id: productData.gender_id || null,
             origin_id: productData.origin_id || null,
           })
-          .eq("product_id", item.product_id);
+          .eq("product_id", item.product_id); // <-- Uses the rich type property
 
         if (pUpdateError) {
           throw new Error(`Failed to update product record: ${pUpdateError.message}`);
@@ -298,7 +339,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         const { error: vUpdateError } = await supabase
           .from("variants")
           .update(variantPayload)
-          .eq("variant_id", item.id);
+          .eq("variant_id", item.id); // <-- Uses the rich type property
 
         if (vUpdateError) {
           throw new Error(`Failed to update variant: ${vUpdateError.message}`);
@@ -436,7 +477,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Brand" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE: Use optional chaining ?. on attributes */}
                       {(attributes?.brands || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
@@ -457,7 +497,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE */}
                       {(attributes?.categories || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
@@ -478,7 +517,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Gender" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE */}
                       {(attributes?.genders || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
@@ -499,7 +537,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Origin" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE */}
                       {(attributes?.origins || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
@@ -536,7 +573,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Season" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE */}
                       {(attributes?.seasons || []).map((a) => (
                         <SelectItem key={a.id} value={a.name}>
                           {a.name}
@@ -554,7 +590,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Color" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE */}
                       {(attributes?.colors || []).map((a) => (
                         <SelectItem key={a.id} value={a.name}>
                           {a.name}
@@ -572,7 +607,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Size" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE */}
                       {(attributes?.sizes || []).map((a) => (
                         <SelectItem key={a.id} value={a.name}>
                           {a.name}
@@ -598,7 +632,6 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Supplier" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* FIX APPLIED HERE */}
                       {(attributes?.suppliers || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
