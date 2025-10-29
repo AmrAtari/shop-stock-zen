@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo } from "react";
 
 interface UsePaginationProps {
   totalItems: number;
@@ -27,6 +27,7 @@ export const usePagination = ({
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
+  // CRITICAL LOGIC: Calculating the indices
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
 
@@ -34,6 +35,7 @@ export const usePagination = ({
   const canGoNext = currentPage < totalPages;
 
   const goToPage = (page: number) => {
+    // Prevents going to pages < 1 or > totalPages
     const validPage = Math.max(1, Math.min(page, totalPages));
     setCurrentPage(validPage);
   };
@@ -50,15 +52,19 @@ export const usePagination = ({
     }
   };
 
-  return {
-    currentPage,
-    totalPages,
-    startIndex,
-    endIndex,
-    goToPage,
-    nextPage,
-    prevPage,
-    canGoNext,
-    canGoPrev,
-  };
+  // Use useMemo to ensure the return values are stable for React
+  return useMemo(
+    () => ({
+      currentPage,
+      totalPages,
+      startIndex,
+      endIndex,
+      goToPage,
+      nextPage,
+      prevPage,
+      canGoNext,
+      canGoPrev,
+    }),
+    [currentPage, totalPages, startIndex, endIndex, canGoNext, canGoPrev],
+  );
 };
