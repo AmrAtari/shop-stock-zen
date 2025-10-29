@@ -31,7 +31,7 @@ interface FileImportProps {
   onImportComplete: () => void;
 }
 
-// Validation schema for item data
+// Validation schema for item data (no change)
 const itemSchema = z.object({
   sku: z.string().trim().min(1, "SKU is required").max(50, "SKU must be less than 50 characters"),
   name: z.string().trim().min(1, "Name is required").max(200, "Name must be less than 200 characters"),
@@ -93,7 +93,7 @@ const itemSchema = z.object({
     .nullable(),
 });
 
-// Validation schema for quantity update
+// Validation schema for quantity update (no change)
 const quantityUpdateSchema = z.object({
   sku: z.string().trim().min(1, "SKU is required").max(50, "SKU must be less than 50 characters"),
   quantity: z
@@ -305,36 +305,71 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       return unique;
     };
 
+    /**
+     * Finds or creates attributes in the database. Uses a case-insensitive approach
+     * by mapping all database names and incoming names to lowercase.
+     * @param table The Supabase table name (e.g., 'categories').
+     * @param names The set of unique names from the import file.
+     * @returns A Map where the key is the lowercase attribute name and the value is the UUID.
+     */
     const ensureAndMapAttributes = async (table: string, names: Set<string>): Promise<Map<string, string>> => {
-      // NOTE: Returning a map of strings (UUIDs) now, not numbers
+      // FIX: Use lowercase name as the key for case-insensitive lookup
       const nameToIdMap = new Map<string, string>();
       if (names.size === 0) return nameToIdMap;
 
-      const namesArray = Array.from(names).filter((n) => n.length > 0);
-      if (namesArray.length === 0) return nameToIdMap;
+      const originalNamesArray = Array.from(names).filter((n) => n.length > 0);
+      if (originalNamesArray.length === 0) return nameToIdMap;
 
-      const { data: existing } = await (supabase as any).from(table).select("id, name").in("name", namesArray);
+      // 1. Fetch all existing attributes to build a case-insensitive map
+      const { data: allExisting, error: fetchError } = await (supabase as any).from(table).select("id, name");
 
-      const existingNames = new Set<string>();
-      if (existing) {
-        existing.forEach((attr: any) => {
-          nameToIdMap.set(attr.name, attr.id);
-          existingNames.add(attr.name);
+      if (fetchError) {
+        throw new Error(`[${table}] Lookup failed: ${fetchError.message}`);
+      }
+
+      const existingNamesLower = new Set<string>();
+
+      if (allExisting) {
+        allExisting.forEach((attr: any) => {
+          const lowerName = attr.name.toLowerCase();
+          // Only map the first ID found for a given lowercase name
+          if (!nameToIdMap.has(lowerName)) {
+            nameToIdMap.set(lowerName, attr.id);
+            existingNamesLower.add(lowerName);
+          }
         });
       }
 
-      const missingAttributes = namesArray.filter((name) => !existingNames.has(name)).map((name) => ({ name }));
+      // 2. Identify missing attributes
+      const namesToInsert: { name: string }[] = [];
+      const tempInsertSet = new Set<string>(); // Used to prevent adding the same name twice if input has 'Men' and 'MEN'
 
-      if (missingAttributes.length > 0) {
-        // FIX: Using UUID generation is default in Supabase tables, so we just need to insert
-        const { data: newAttributes } = await (supabase as any)
+      originalNamesArray.forEach((originalName) => {
+        const lowerName = originalName.toLowerCase();
+        // Check if the lowercase version of the name is already mapped OR if we've already queued it for insertion
+        if (!existingNamesLower.has(lowerName) && !tempInsertSet.has(lowerName)) {
+          // Insert the name using its original casing from the file
+          namesToInsert.push({ name: originalName });
+          tempInsertSet.add(lowerName);
+        }
+      });
+
+      // 3. Insert all new attributes in one batch
+      if (namesToInsert.length > 0) {
+        const { data: newAttributes, error: insertError } = await (supabase as any)
           .from(table)
-          .insert(missingAttributes)
+          .insert(namesToInsert)
           .select("id, name");
+
+        if (insertError) {
+          // Re-throw the error for better logging
+          throw new Error(`[${table}] Failed to create new attributes: ${insertError.message}`);
+        }
 
         if (newAttributes) {
           newAttributes.forEach((attr: any) => {
-            nameToIdMap.set(attr.name, attr.id);
+            // Map the newly created item using its lowercase name
+            nameToIdMap.set(attr.name.toLowerCase(), attr.id);
           });
         }
       }
@@ -344,6 +379,9 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
     const uniqueAttributes = extractUniqueAttributes(data);
 
+    // FIX: Using Promise.all, which is correct, but ensure that any nested attribute
+    // dependencies (e.g., Category -> Main Group) are handled if needed.
+    // Assuming Main Group is independent for now based on current logic, but noted below.
     const [
       categoryMap,
       supplierMap,
@@ -438,10 +476,15 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         const validatedData = validationResult.data;
 
-        const category_id = categoryMap.get(validatedData.category);
-        const supplier_id = supplierMap.get(validatedData.supplier);
-        const brand_id = validatedData.brand ? brandMap.get(validatedData.brand) : null;
-        const store_id = storeMap.get(validatedData.location || "Default");
+        // FIX: Use lowercase for lookup keys here
+        const lowerCategory = validatedData.category.toLowerCase();
+        const lowerSupplier = validatedData.supplier.toLowerCase();
+        const lowerStore = (validatedData.location || "Default").toLowerCase();
+
+        const category_id = categoryMap.get(lowerCategory);
+        const supplier_id = supplierMap.get(lowerSupplier);
+        const brand_id = validatedData.brand ? brandMap.get(validatedData.brand.toLowerCase()) : null;
+        const store_id = storeMap.get(lowerStore);
 
         // CRITICAL CHECK for foreign keys
         if (!category_id || !supplier_id || !store_id) {
@@ -452,6 +495,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             errors: [
               {
                 path: ["database", "foreign_key_precheck"],
+                // Error message now reflects the successful case-insensitive lookup/creation logic
                 message: `Critical attribute missing: Category(${validatedData.category}), Supplier(${validatedData.supplier}), or Store(${validatedData.location || "Default"}) could not be found/created.`,
               },
             ],
