@@ -47,13 +47,13 @@ interface ItemWithDetails extends Item {
   color: string;
   size: string;
   category: string;
-  main_group: string; // Keep this field
+  main_group: string; // REQUIRED FIELD
   store_name: string;
   supplier: string;
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function (Comments Removed) ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function with NESTED JOIN for Main Group ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -81,14 +81,12 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 theme,
                 wholesale_price,
                 brand:brand_id(name),
-                gender:gender_id(name), 
-                origin:origin_id(name),
-                
-                -- CRITICAL FIX: REMOVED COMMENTS FROM HERE
-                category:category_id(
-                    name, 
-                    main_group:main_group_id(name) 
-                ) 
+                category:category_id( // <<-- CORRECTED NESTED JOIN
+                    name,
+                    main_group:main_group_id(name) // <<-- FETCH MAIN GROUP NAME
+                ), 
+                gender:gender_id(name),
+                origin:origin_id(name)
             ),
             
             supplier:suppliers!variants_supplier_id_fkey(name),
@@ -97,8 +95,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
         `);
 
   if (error) {
-    // Retain this robust error handling for better debugging
     console.error("Error fetching inventory:", error.message);
+    // Re-throwing error to be caught by React Query
     throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`);
   }
 
@@ -119,6 +117,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     brand: variant.products?.brand?.name || null,
     origin: variant.products?.origin?.name || null,
 
+    // Mapped Main Group from the nested join
+    main_group: variant.products?.category?.main_group?.name || "N/A", // <<-- CORRECTED MAPPING
+
     created_at: variant.created_at,
     updated_at: variant.updated_at,
     last_restocked: variant.last_restocked,
@@ -131,9 +132,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     theme: variant.products?.theme || null,
     department: "N/A",
 
-    // CRITICAL FIX: Map the nested Main Group name
-    main_group: variant.products?.category?.main_group?.name || "N/A",
-
     wholesale_price: variant.products?.wholesale_price || null,
 
     sellingPrice: variant.selling_price,
@@ -141,14 +139,21 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax_rate: variant.tax_rate,
     unit: variant.unit,
 
-    // Mapped Stock - (Will populate once stock is recorded)
-    quantity: variant.stock_on_hand[0]?.quantity ?? 0,
-    min_stock: variant.stock_on_hand[0]?.min_stock ?? 0,
+    // Mapped Stock - Uses stock_on_hand
+    // Note: stock_on_hand returns an array of objects, we take the first one [0]
+    quantity: variant.stock_on_hand[0]?.quantity || 0,
+    min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
     location: variant.stock_on_hand[0]?.stores?.name || "N/A",
   })) as ItemWithDetails[];
 
-  return mappedData;
+  // 💥 DEBUG OUTPUT 💥
+  console.log("--- Supabase Data Fetch Successful ---");
+  console.log(`Total records fetched and mapped: ${mappedData.length}`);
+  console.log("First 3 mapped data items (Check for empty/null values):", mappedData.slice(0, 3));
+  // 💥 END DEBUG OUTPUT 💥
+
+  return mappedData; // Return the mapped data
 };
 
 // Data Hook connected to React Query
@@ -193,7 +198,7 @@ const InventoryNew: React.FC = () => {
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
-  // Filter states (unchanged)
+  // Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [filterItemNumber, setFilterItemNumber] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
@@ -205,7 +210,7 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Filter options generation (unchanged)
+  // Option filters generation
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
@@ -264,6 +269,7 @@ const InventoryNew: React.FC = () => {
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
+      // Ensure all properties accessed are handled robustly (e.g., optional chaining or null coalescence)
       const itemNumberStr = item.item_number || "";
 
       const matchesSearch =
@@ -302,22 +308,13 @@ const InventoryNew: React.FC = () => {
     filterStore,
   ]);
 
-  // --- FINAL CORRECTED PAGINATION LOGIC (UNCHANGED) ---
   const pagination = usePagination({
+    data: filteredInventory,
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   } as any);
 
-  const displayInventory: ItemWithDetails[] = useMemo(() => {
-    const { startIndex, endIndex } = pagination;
-
-    if (startIndex < 0 || startIndex >= endIndex) {
-      return filteredInventory.slice(startIndex, endIndex);
-    }
-
-    return filteredInventory.slice(startIndex, endIndex);
-  }, [filteredInventory, pagination]);
-  // --- END FINAL CORRECTED PAGINATION LOGIC ---
+  const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
 
   const handleEdit = (item: ItemWithDetails) => {
     setEditingItem(item);
@@ -361,6 +358,7 @@ const InventoryNew: React.FC = () => {
   }
 
   if (error) {
+    // Display a more user-friendly error message, while still showing the technical error.
     return <div className="p-8 text-red-500">Error loading inventory: {error.message}</div>;
   }
 
@@ -396,7 +394,7 @@ const InventoryNew: React.FC = () => {
         </div>
       </header>
 
-      {/* --- FILTER AND SEARCH BAR (unchanged) --- */}
+      {/* --- FILTER AND SEARCH BAR --- */}
       <div className="flex flex-col gap-4">
         {/* Search Bar */}
         <div className="flex items-center space-x-2">
@@ -411,7 +409,7 @@ const InventoryNew: React.FC = () => {
           <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
         </div>
 
-        {/* Filters Row (unchanged) */}
+        {/* Filters Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {/* Item Number Filter */}
           <Select value={filterItemNumber} onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)}>
@@ -541,9 +539,6 @@ const InventoryNew: React.FC = () => {
               <TableHead>Item No.</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
-              {/* --- ADDED COLUMN --- */}
-              <TableHead>Main Group</TableHead>
-              {/* --- END ADDED COLUMN --- */}
               <TableHead>Supplier</TableHead>
               <TableHead>Gender</TableHead>
               <TableHead>Season</TableHead>
@@ -556,14 +551,12 @@ const InventoryNew: React.FC = () => {
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
-          {/* --- TABLE BODY (ROBUST FINAL VERSION) --- */}
+          {/* --- TABLE BODY --- */}
           <TableBody>
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
+                // Skip rendering if 'id' is somehow missing
                 if (!item.id) return null;
-
-                const quantity = item.quantity ?? 0;
-                const minStock = item.min_stock ?? 0;
 
                 return (
                   <TableRow key={String(item.id)}>
@@ -577,22 +570,23 @@ const InventoryNew: React.FC = () => {
                     <TableCell>{item.item_number}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{item.category}</TableCell>
-                    {/* --- ADDED CELL --- */}
-                    <TableCell>{item.main_group}</TableCell>
-                    {/* --- END ADDED CELL --- */}
                     <TableCell>{item.supplier}</TableCell>
                     <TableCell>{item.gender}</TableCell>
                     <TableCell>{item.season}</TableCell>
                     <TableCell>{item.size}</TableCell>
                     <TableCell>{item.color || "N/A"}</TableCell>
                     <TableCell>{item.store_name}</TableCell>
-                    <TableCell className="text-right">{item.cost != null ? item.cost.toFixed(2) : "N/A"}</TableCell>
+                    {/* Displaying cost/price as simple strings */}
+                    <TableCell className="text-right">{item.cost || "N/A"}</TableCell>
+                    <TableCell className="text-right">{item.sellingPrice || "N/A"}</TableCell>
+                    {/* Displaying quantity as a simple string */}
                     <TableCell className="text-right">
-                      {item.sellingPrice != null ? item.sellingPrice.toFixed(2) : "N/A"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant={quantity > minStock ? "outline" : quantity > 0 ? "warning" : "destructive"}>
-                        {quantity}
+                      <Badge
+                        variant={
+                          item.quantity > item.min_stock ? "outline" : item.quantity > 0 ? "warning" : "destructive"
+                        }
+                      >
+                        {item.quantity || 0}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right flex space-x-2 justify-end">
@@ -627,7 +621,6 @@ const InventoryNew: React.FC = () => {
         </Table>
       </div>
 
-      {/* --- PAGINATION CONTROLS (RESTORED) --- */}
       <PaginationControls
         currentPage={pagination.currentPage}
         totalPages={pagination.totalPages}
@@ -638,7 +631,6 @@ const InventoryNew: React.FC = () => {
         startIndex={pagination.startIndex}
         endIndex={pagination.endIndex}
       />
-      {/* --- END PAGINATION CONTROLS --- */}
 
       <ProductDialogNew
         open={dialogOpen}
