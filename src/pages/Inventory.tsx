@@ -25,7 +25,7 @@ interface ItemWithDetails extends Item {
   item_color_code: string | null;
   theme: string | null;
   origin: string | null;
-  department: string | null;
+  department: string | null; 
   wholesale_price: number | null;
 
   created_at: string;
@@ -41,19 +41,19 @@ interface ItemWithDetails extends Item {
   tax_rate: number | null;
 
   item_number: string;
-  pos_description: string;
-  description: string;
+  pos_description: string; 
+  description: string; 
   season: string;
   color: string;
   size: string;
   category: string;
-  main_group: string;
+  main_group: string; // Keep this field
   store_name: string;
   supplier: string;
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function with Nested Join ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -81,9 +81,14 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 theme,
                 wholesale_price,
                 brand:brand_id(name),
-                category:category_id(name), 
-                gender:gender_id(name),
-                origin:origin_id(name)
+                gender:gender_id(name), 
+                origin:origin_id(name),
+                
+                -- CRITICAL FIX: Nested Join for Main Group (Category -> Main Group)
+                category:category_id(
+                    name, 
+                    main_group:main_group_id(name) -- Fetches Main Group Name via Foreign Key
+                ) 
             ),
             
             supplier:suppliers!variants_supplier_id_fkey(name),
@@ -93,23 +98,23 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   if (error) {
     console.error("Error fetching inventory:", error.message);
-    throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`);
+    throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`); 
   }
 
   const mappedData = data.map((variant: any) => ({
     id: variant.variant_id,
-    sku: variant.sku || "N/A",
-
+    sku: variant.sku || "N/A", 
+    
     // Ensure essential strings from joined tables are never null
-    name: variant.products?.name || "N/A",
-    pos_description: variant.products?.pos_description || "N/A",
-    description: variant.products?.description || "N/A",
-    item_number: variant.products?.item_number || "N/A",
+    name: variant.products?.name || "N/A", 
+    pos_description: variant.products?.pos_description || "N/A", 
+    description: variant.products?.description || "N/A", 
+    item_number: variant.products?.item_number || "N/A", 
 
     // Mapped relationship fields (using the new aliases)
     supplier: variant.supplier?.name || "N/A",
-    category: variant.products?.category?.name || "N/A",
-    gender: variant.products?.gender?.name || "N/A",
+    category: variant.products?.category?.name || "N/A", 
+    gender: variant.products?.gender?.name || "N/A", 
     brand: variant.products?.brand?.name || null,
     origin: variant.products?.origin?.name || null,
 
@@ -124,7 +129,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     item_color_code: variant.item_color_code || null,
     theme: variant.products?.theme || null,
     department: "N/A",
-    main_group: "N/A",
+
+    // CRITICAL FIX: Map the nested Main Group name
+    main_group: variant.products?.category?.main_group?.name || "N/A", 
 
     wholesale_price: variant.products?.wholesale_price || null,
 
@@ -133,18 +140,14 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax_rate: variant.tax_rate,
     unit: variant.unit,
 
-    // Mapped Stock - Uses stock_on_hand (ensure all are numbers, defaulting to 0)
+    // Mapped Stock - (Will populate once stock is recorded)
     quantity: variant.stock_on_hand[0]?.quantity ?? 0,
     min_stock: variant.stock_on_hand[0]?.min_stock ?? 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
     location: variant.stock_on_hand[0]?.stores?.name || "N/A",
   })) as ItemWithDetails[];
-
-  console.log("--- Supabase Data Fetch Successful ---");
-  console.log(`Total records fetched and mapped: ${mappedData.length}`);
-  console.log("First 3 mapped data items (Check for null or 'N/A' values):", mappedData.slice(0, 3));
-
-  return mappedData;
+  
+  return mappedData; 
 };
 
 // Data Hook connected to React Query
@@ -260,14 +263,14 @@ const InventoryNew: React.FC = () => {
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
-      const itemNumberStr = item.item_number || "";
-
+      const itemNumberStr = item.item_number || '';
+      
       const matchesSearch =
         (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
         (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
-        itemNumberStr.toLowerCase().includes(searchTerm.toLowerCase());
+        (itemNumberStr.toLowerCase()).includes(searchTerm.toLowerCase()); 
 
-      const matchesItemNumber = !filterItemNumber || itemNumberStr === filterItemNumber;
+      const matchesItemNumber = !filterItemNumber || itemNumberStr === filterItemNumber; 
       const matchesSeason = !filterSeason || item.season === filterSeason;
       const matchesColor = !filterColor || item.color === filterColor;
       const matchesSize = !filterSize || item.size === filterSize;
@@ -298,26 +301,23 @@ const InventoryNew: React.FC = () => {
     filterStore,
   ]);
 
-  // --- FINAL CORRECTED PAGINATION LOGIC ---
+  // --- FINAL CORRECTED PAGINATION LOGIC (UNCHANGED) ---
   const pagination = usePagination({
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   } as any);
-
+  
   const displayInventory: ItemWithDetails[] = useMemo(() => {
-    const { startIndex, endIndex } = pagination;
-
-    // Ensure the slice operation is safe
-    if (startIndex < 0 || startIndex >= endIndex) {
-      // NOTE: This will only be true if the array is empty or the math is incorrect,
-      // but slicing the array is the correct approach for usePagination.
+      const { startIndex, endIndex } = pagination;
+      
+      if (startIndex < 0 || startIndex >= endIndex) {
+          return filteredInventory.slice(startIndex, endIndex);
+      }
+      
       return filteredInventory.slice(startIndex, endIndex);
-    }
-
-    // CRITICAL FIX: Slicing the data from the source using the hook's indices
-    return filteredInventory.slice(startIndex, endIndex);
   }, [filteredInventory, pagination]);
   // --- END FINAL CORRECTED PAGINATION LOGIC ---
+
 
   const handleEdit = (item: ItemWithDetails) => {
     setEditingItem(item);
@@ -396,7 +396,7 @@ const InventoryNew: React.FC = () => {
         </div>
       </header>
 
-      {/* --- FILTER AND SEARCH BAR --- (unchanged) */}
+      {/* --- FILTER AND SEARCH BAR (unchanged) --- */}
       <div className="flex flex-col gap-4">
         {/* Search Bar */}
         <div className="flex items-center space-x-2">
@@ -411,7 +411,7 @@ const InventoryNew: React.FC = () => {
           <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
         </div>
 
-        {/* Filters Row */}
+        {/* Filters Row (unchanged) */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {/* Item Number Filter */}
           <Select value={filterItemNumber} onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)}>
@@ -541,6 +541,9 @@ const InventoryNew: React.FC = () => {
               <TableHead>Item No.</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
+              {/* --- ADDED COLUMN --- */}
+              <TableHead>Main Group</TableHead>
+              {/* --- END ADDED COLUMN --- */}
               <TableHead>Supplier</TableHead>
               <TableHead>Gender</TableHead>
               <TableHead>Season</TableHead>
@@ -557,61 +560,63 @@ const InventoryNew: React.FC = () => {
           <TableBody>
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
-                if (!item.id) return null;
-
+                if (!item.id) return null; 
+                
                 const quantity = item.quantity ?? 0;
                 const minStock = item.min_stock ?? 0;
-
+                
                 return (
-                  <TableRow key={String(item.id)}>
+                  <TableRow 
+                    key={String(item.id)} 
+                  >
                     <TableCell className="text-center">
-                      <Checkbox
-                        checked={selectedItems.some((i) => i.id === item.id)}
-                        onCheckedChange={() => toggleSelectItem(item)}
+                      <Checkbox 
+                         checked={selectedItems.some((i) => i.id === item.id)}
+                         onCheckedChange={() => toggleSelectItem(item)}
                       />
                     </TableCell>
                     <TableCell className="font-medium">{item.sku}</TableCell>
                     <TableCell>{item.item_number}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{item.category}</TableCell>
+                    {/* --- ADDED CELL --- */}
+                    <TableCell>{item.main_group}</TableCell>
+                    {/* --- END ADDED CELL --- */}
                     <TableCell>{item.supplier}</TableCell>
                     <TableCell>{item.gender}</TableCell>
                     <TableCell>{item.season}</TableCell>
                     <TableCell>{item.size}</TableCell>
-                    <TableCell>{item.color || "N/A"}</TableCell>
-                    <TableCell>{item.store_name}</TableCell>
-                    <TableCell className="text-right">{item.cost != null ? item.cost.toFixed(2) : "N/A"}</TableCell>
-                    <TableCell className="text-right">
-                      {item.sellingPrice != null ? item.sellingPrice.toFixed(2) : "N/A"}
+                    <TableCell>
+                      {item.color || "N/A"}
                     </TableCell>
+                    <TableCell>{item.store_name}</TableCell>
+                    <TableCell className="text-right">{item.cost != null ? item.cost.toFixed(2) : 'N/A'}</TableCell>
+                    <TableCell className="text-right">{item.sellingPrice != null ? item.sellingPrice.toFixed(2) : 'N/A'}</TableCell>
                     <TableCell className="text-right">
-                      <Badge variant={quantity > minStock ? "outline" : quantity > 0 ? "warning" : "destructive"}>
-                        {quantity}
-                      </Badge>
+                       <Badge 
+                           variant={quantity > minStock ? "outline" : (quantity > 0 ? "warning" : "destructive")}
+                       >
+                           {quantity}
+                       </Badge>
                     </TableCell>
                     <TableCell className="text-right flex space-x-2 justify-end">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          setSelectedItemForHistory(item);
-                          setPriceHistoryOpen(true);
-                        }}
-                      >
-                        <History className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(item)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-red-500"
-                        onClick={() => handleDelete(item.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                       <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6" 
+                          onClick={() => {
+                            setSelectedItemForHistory(item);
+                            setPriceHistoryOpen(true);
+                          }}
+                        >
+                          <History className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(item)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => handleDelete(item.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                     </TableCell>
                   </TableRow>
                 );
@@ -633,6 +638,7 @@ const InventoryNew: React.FC = () => {
         endIndex={pagination.endIndex}
       />
       {/* --- END PAGINATION CONTROLS --- */}
+
 
       <ProductDialogNew
         open={dialogOpen}
