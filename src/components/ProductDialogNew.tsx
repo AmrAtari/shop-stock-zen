@@ -18,7 +18,7 @@ import { History } from "lucide-react";
 import PriceHistoryDialog from "./PriceHistoryDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
-import { useAttributeTypes } from "@/hooks/useAttributeTypes"; // Assuming this is correct
+import { useAttributeTypes } from "@/hooks/useAttributeTypes";
 
 // --- Helper Types for Form Data ---
 interface ProductFormData {
@@ -434,7 +434,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Brand" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.brands.map((a) => (
+                      {/* FIX APPLIED HERE: Use optional chaining ?. on attributes */}
+                      {(attributes?.brands || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
                         </SelectItem>
@@ -454,7 +455,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.categories.map((a) => (
+                      {/* FIX APPLIED HERE */}
+                      {(attributes?.categories || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
                         </SelectItem>
@@ -474,7 +476,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Gender" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.genders.map((a) => (
+                      {/* FIX APPLIED HERE */}
+                      {(attributes?.genders || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
                         </SelectItem>
@@ -494,7 +497,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Origin" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.origins.map((a) => (
+                      {/* FIX APPLIED HERE */}
+                      {(attributes?.origins || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
                         </SelectItem>
@@ -530,7 +534,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Season" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.seasons.map((a) => (
+                      {/* FIX APPLIED HERE */}
+                      {(attributes?.seasons || []).map((a) => (
                         <SelectItem key={a.id} value={a.name}>
                           {a.name}
                         </SelectItem>
@@ -547,7 +552,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Color" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.colors.map((a) => (
+                      {/* FIX APPLIED HERE */}
+                      {(attributes?.colors || []).map((a) => (
                         <SelectItem key={a.id} value={a.name}>
                           {a.name}
                         </SelectItem>
@@ -564,7 +570,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Size" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.sizes.map((a) => (
+                      {/* FIX APPLIED HERE */}
+                      {(attributes?.sizes || []).map((a) => (
                         <SelectItem key={a.id} value={a.name}>
                           {a.name}
                         </SelectItem>
@@ -589,7 +596,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
                       <SelectValue placeholder="Select Supplier" />
                     </SelectTrigger>
                     <SelectContent>
-                      {attributes.suppliers.map((a) => (
+                      {/* FIX APPLIED HERE */}
+                      {(attributes?.suppliers || []).map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
                         </SelectItem>
