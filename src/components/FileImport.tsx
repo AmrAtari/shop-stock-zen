@@ -340,16 +340,21 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
         });
       }
 
-      // 2. Identify missing attributes
+      // 2. Identify missing attributes and sanitize
       const namesToInsert: { name: string }[] = [];
       const tempInsertSet = new Set<string>(); // Used to prevent adding the same name twice if input has 'Men' and 'MEN'
 
       originalNamesArray.forEach((originalName) => {
         const lowerName = originalName.toLowerCase();
+
+        // NEW FIX: Aggressive name cleanup before checking/inserting
+        const cleanedName = originalName.trim().replace(/\s+/g, " "); // Remove leading/trailing spaces, normalize internal spaces
+        if (cleanedName.length === 0) return; // Skip if it's just spaces
+
         // Check if the lowercase version of the name is already mapped OR if we've already queued it for insertion
         if (!existingNamesLower.has(lowerName) && !tempInsertSet.has(lowerName)) {
-          // Insert the name using its original casing from the file
-          namesToInsert.push({ name: originalName });
+          // Insert the cleaned name using its original casing from the file
+          namesToInsert.push({ name: cleanedName }); // <-- PUSH THE CLEANED NAME
           tempInsertSet.add(lowerName);
         }
       });
@@ -379,9 +384,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
     const uniqueAttributes = extractUniqueAttributes(data);
 
-    // FIX: Using Promise.all, which is correct, but ensure that any nested attribute
-    // dependencies (e.g., Category -> Main Group) are handled if needed.
-    // Assuming Main Group is independent for now based on current logic, but noted below.
     const [
       categoryMap,
       supplierMap,
@@ -764,7 +766,6 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     setIsUploading(false);
   };
 
-  // ... (exportDuplicateLog and return JSX remain the same) ...
   const exportDuplicateLog = () => {
     const errorData = duplicateErrors.map((dup) => ({
       SKU: dup.sku,
@@ -955,8 +956,8 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             <ul className="space-y-1 text-muted-foreground">
               <li>
                 • If the error path is **`database.foreign_key_precheck`**, it means a required attribute (Category or
-                Supplier) was not found in the database. Run the **RLS SQL queries** provided to allow attribute
-                creation.
+                Supplier) was not found in the database. Ensure you have run the necessary **RLS SQL queries** to allow
+                attribute creation (which you have confirmed!).
               </li>
               <li>
                 • If the error path is `database.products` and the message is **`duplicate key value violates unique
