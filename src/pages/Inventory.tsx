@@ -34,12 +34,12 @@ interface ItemWithDetails extends Item {
   category_id: string | null;
   gender_id: string | null;
   origin_id: string | null;
-  supplier_id: string | null; // Assuming this is on the variant record or parent
+  supplier_id: string | null;
   product_id: string; // The ID of the parent product record
 
   // Variant/Product Fields
   wholesale_price: number | null;
-  sellingPrice: number | null; // <-- Previously fixed (removed '?')
+  sellingPrice: number | null; // Fixed: Not optional
   cost: number | null;
   tax_rate: number | null;
 
@@ -63,7 +63,7 @@ interface ItemWithDetails extends Item {
   size: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function with NESTED JOIN for Main Group ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function (Comment Removed) ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -97,7 +97,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 brand:brand_id(name),
                 category:category_id( 
                     name,
-                    main_group:main_group_id(name) // <-- FIX: Simplified the nested join to use the FK column name
+                    main_group:main_group_id(name) 
                 ), 
                 gender:gender_id(name),
                 origin:origin_id(name)
@@ -170,7 +170,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   return mappedData;
 };
 
-// ... (Rest of the InventoryNew component remains the same)
 const useInventoryQuery = () => {
   return useQuery<ItemWithDetails[]>({
     queryKey: queryKeys.inventory.all,
