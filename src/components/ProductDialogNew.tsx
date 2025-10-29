@@ -20,10 +20,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { useAttributeTypes } from "@/hooks/useAttributeTypes";
 
-// --- New: Type definitions for the item being edited (Fixes Inventory.tsx error) ---
+// --- NEW: Type definitions for the item being edited (Strictly requires all fields used) ---
 interface ProductDialogItem {
   id: string; // variant_id
-  product_id: string;
+  product_id: string; // Required for linking/updating
   sku: string;
   name: string;
   item_number: string;
@@ -34,8 +34,8 @@ interface ProductDialogItem {
   color: string;
   size: string;
   unit: string;
-  // Financial/Price Data - REQUIRED to be present (number | null)
-  sellingPrice: number | null;
+  // Financial/Price Data - MUST be present (number | null)
+  sellingPrice: number | null; // Must match the name/type in Inventory.tsx
   cost: number | null;
   tax_rate: number | null;
   wholesale_price: number | null;
@@ -47,7 +47,7 @@ interface ProductDialogItem {
   supplier_id: string | null;
 }
 
-// New: Defines the expected structure of lookup data from useAttributeTypes
+// NEW: Defines the expected structure of lookup data from useAttributeTypes
 interface AttributeMap {
   brands: { id: string; name: string }[];
   categories: { id: string; name: string }[];
@@ -59,7 +59,7 @@ interface AttributeMap {
   suppliers: { id: string; name: string }[];
 }
 
-// --- Helper Types for Form Data ---
+// --- Helper Types for Form Data (UNCHANGED) ---
 interface ProductFormData {
   name: string;
   item_number: string;
@@ -99,7 +99,7 @@ interface PriceData {
 interface ProductDialogNewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  item?: ProductDialogItem; // <-- Uses the fixed required interface
+  item?: ProductDialogItem; // <-- FIX: Use the strict type
   onSave: () => void;
 }
 
@@ -142,7 +142,9 @@ const UpdateConfirmationDialog = ({
 
 const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange, item, onSave }) => {
   const queryClient = useQueryClient();
-  const isEditing = !!item;
+  // Casting item to the expected strict type to access properties safely
+  const typedItem = item as ProductDialogItem | undefined;
+  const isEditing = !!typedItem;
 
   const [productData, setProductData] = useState<ProductFormData>({
     name: "",
@@ -180,49 +182,52 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
 
-  // FIX: Use 'unknown' cast to force TypeScript to accept that the actual runtime data
-  // structure of 'attributeTypes' matches 'AttributeMap', and alias it to 'attributes'.
-  const { attributeTypes: attributes, isLoading: isLoadingAttributes } = useAttributeTypes() as unknown as {
-    attributeTypes: AttributeMap;
+  // Custom Hook to fetch all your attribute/lookup data
+  // FIX: Cast the result for type safety since the hook signature might be generic
+  const { attributes, isLoading: isLoadingAttributes } = useAttributeTypes() as unknown as {
+    attributes: AttributeMap;
     isLoading: boolean;
   };
 
   // Load data into form when editing an existing item
   useEffect(() => {
-    if (item && open) {
+    // Use typedItem for safe access
+    if (typedItem && open) {
       // 1. Load data for the PRODUCT
       setProductData({
-        name: item.name || "",
-        item_number: item.item_number || "",
-        pos_description: item.pos_description || "",
-        description: item.description || "",
-        theme: item.theme || "",
-        wholesale_price: item.wholesale_price || null,
-        brand_id: item.brand_id || "",
-        category_id: item.category_id || "",
-        gender_id: item.gender_id || "",
-        origin_id: item.origin_id || "",
+        name: typedItem.name || "",
+        item_number: typedItem.item_number || "",
+        pos_description: typedItem.pos_description || "",
+        description: typedItem.description || "",
+        theme: typedItem.theme || "",
+        wholesale_price: typedItem.wholesale_price || null,
+        // NOTE: We need to pull the IDs from the joined tables/item object for editing
+        brand_id: typedItem.brand_id || "",
+        category_id: typedItem.category_id || "",
+        gender_id: typedItem.gender_id || "",
+        origin_id: typedItem.origin_id || "",
       });
 
       // 2. Load data for the VARIANT
       setVariantData({
-        sku: item.sku || "",
-        season: item.season || "",
-        color: item.color || "",
-        size: item.size || "",
-        selling_price: item.sellingPrice || null,
-        cost: item.cost || null,
-        tax_rate: item.tax_rate || null,
-        unit: item.unit || "",
-        supplier_id: item.supplier_id || "",
+        sku: typedItem.sku || "",
+        season: typedItem.season || "",
+        color: typedItem.color || "",
+        size: typedItem.size || "",
+        // This is where sellingPrice from the ItemWithDetails (PascalCase) is read:
+        selling_price: typedItem.sellingPrice || null,
+        cost: typedItem.cost || null,
+        tax_rate: typedItem.tax_rate || null,
+        unit: typedItem.unit || "",
+        supplier_id: typedItem.supplier_id || "",
       });
 
       // 3. Load price data (used for confirmation logic)
       setPriceData({
-        selling_price: item.sellingPrice || null,
-        cost: item.cost || null,
-        tax_rate: item.tax_rate || null,
-        wholesale_price: item.wholesale_price || null,
+        selling_price: typedItem.sellingPrice || null,
+        cost: typedItem.cost || null,
+        tax_rate: typedItem.tax_rate || null,
+        wholesale_price: typedItem.wholesale_price || null,
       });
     } else if (open) {
       // Clear form when opening for a new product
@@ -251,7 +256,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
       });
       setPriceData({ selling_price: null, cost: null, tax_rate: null, wholesale_price: null });
     }
-  }, [item, open]);
+  }, [typedItem, open]); // Use typedItem in dependency array
 
   // --- Core Save Logic ---
   const handleSave = async (e: React.FormEvent, applyToAll: boolean = false) => {
@@ -259,11 +264,11 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
     setLoading(true);
 
     try {
-      let finalProductId = item?.product_id;
+      let finalProductId = typedItem?.product_id; // Keep existing ID if editing
       let productInsertError = null;
 
       // 1. CREATE/UPDATE PARENT PRODUCT RECORD
-      if (!isEditing || !item?.product_id) {
+      if (!isEditing || !typedItem?.product_id) {
         // New product: Insert into 'products' table first
         const { data: product, error: pError } = await supabase
           .from("products")
@@ -306,7 +311,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
             gender_id: productData.gender_id || null,
             origin_id: productData.origin_id || null,
           })
-          .eq("product_id", item.product_id);
+          .eq("product_id", typedItem.product_id);
 
         if (pUpdateError) {
           throw new Error(`Failed to update product record: ${pUpdateError.message}`);
@@ -338,7 +343,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         const { error: vUpdateError } = await supabase
           .from("variants")
           .update(variantPayload)
-          .eq("variant_id", item!.id);
+          .eq("variant_id", typedItem!.id);
 
         if (vUpdateError) {
           throw new Error(`Failed to update variant: ${vUpdateError.message}`);
@@ -364,7 +369,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
             selling_price: variantData.selling_price,
             cost: variantData.cost,
           })
-          .eq("product_id", finalProductId);
+          .eq("product_id", finalProductId); // Update all variants of this product
 
         if (bulkError) {
           toast.error(`Warning: Failed to bulk update other variants: ${bulkError.message}`);
@@ -375,7 +380,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
 
       // Close the dialog and refresh inventory data
       onOpenChange(false);
-      onSave();
+      onSave(); // Calls queryClient.invalidateQueries
     } catch (error: any) {
       console.error("Save Error:", error);
       toast.error(error.message || "An unexpected error occurred during save.");
@@ -701,7 +706,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
           </form>
 
           {/* Price History Button (Only for existing items) */}
-          {item && (
+          {typedItem && (
             <div className="absolute top-4 right-4">
               <Button variant="ghost" size="icon" onClick={() => setPriceHistoryOpen(true)}>
                 <History className="w-5 h-5" />
@@ -710,12 +715,12 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
           )}
         </DialogContent>
 
-        {item && (
+        {typedItem && (
           <PriceHistoryDialog
             open={priceHistoryOpen}
             onOpenChange={setPriceHistoryOpen}
-            itemId={item.id}
-            itemName={item.name}
+            itemId={typedItem.id}
+            itemName={typedItem.name}
           />
         )}
       </Dialog>
@@ -725,8 +730,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         open={showUpdateConfirmation}
         onOpenChange={setShowUpdateConfirmation}
         onConfirm={handleUpdateConfirmation}
-        itemName={item?.name || ""}
-        itemNumber={item?.item_number}
+        itemName={typedItem?.name || ""}
+        itemNumber={typedItem?.item_number}
       />
     </>
   );
