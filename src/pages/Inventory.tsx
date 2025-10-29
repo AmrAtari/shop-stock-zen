@@ -19,7 +19,6 @@ import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // --- 1. FULLY DEFINED INTERFACE ---
-// FIX: sellingPrice is now REQUIRED (removed '?')
 interface ItemWithDetails extends Item {
   // Fields from JOINED TABLES
   brand: string | null;
@@ -35,12 +34,12 @@ interface ItemWithDetails extends Item {
   category_id: string | null;
   gender_id: string | null;
   origin_id: string | null;
-  supplier_id: string | null;
+  supplier_id: string | null; // Assuming this is on the variant record or parent
   product_id: string; // The ID of the parent product record
 
   // Variant/Product Fields
   wholesale_price: number | null;
-  sellingPrice: number | null; // <-- FIXED: Removed '?'
+  sellingPrice: number | null; // <-- Previously fixed (removed '?')
   cost: number | null;
   tax_rate: number | null;
 
@@ -98,7 +97,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 brand:brand_id(name),
                 category:category_id( 
                     name,
-                    main_group:main_groups!categories_main_group_id_fkey(name) 
+                    main_group:main_group_id(name) // <-- FIX: Simplified the nested join to use the FK column name
                 ), 
                 gender:gender_id(name),
                 origin:origin_id(name)
@@ -111,6 +110,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   if (error) {
     console.error("Error fetching inventory:", error.message);
+    // Re-throw the error to be caught by React Query
     throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`);
   }
 
@@ -155,7 +155,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     item_color_code: variant.item_color_code || null,
     department: "N/A",
 
-    sellingPrice: variant.selling_price, // Mapped name 'sellingPrice' is correct
+    sellingPrice: variant.selling_price,
     cost: variant.cost || variant.cost_price,
     tax_rate: variant.tax_rate,
     unit: variant.unit,
