@@ -244,6 +244,8 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
 
         if (pError) {
           productInsertError = pError;
+          // The database will now throw an error here if category_id or gender_id is missing,
+          // because we set the NOT NULL constraints in the database.
           throw new Error(`Failed to create product record: ${pError.message}`);
         }
 
