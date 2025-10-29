@@ -98,18 +98,20 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   return data.map((variant: any) => ({
     id: variant.variant_id,
-    sku: variant.sku,
+    sku: variant.sku || "N/A", // CRITICAL FIX: Ensure SKU exists
+
+    // CRITICAL FIX: Ensure essential strings from joined tables are never null
     name: variant.products?.name || "N/A",
-    pos_description: variant.products?.pos_description,
-    description: variant.products?.description,
-    item_number: variant.products?.item_number,
+    pos_description: variant.products?.pos_description || "N/A",
+    description: variant.products?.description || "N/A",
+    item_number: variant.products?.item_number || "N/A",
 
     // Mapped relationship fields (using the new aliases)
     supplier: variant.supplier?.name || "N/A",
-    category: variant.products.category?.name || "N/A",
-    gender: variant.products.gender?.name || "N/A",
-    brand: variant.products.brand?.name || null,
-    origin: variant.products.origin?.name || null,
+    category: variant.products?.category?.name || "N/A",
+    gender: variant.products?.gender?.name || "N/A",
+    brand: variant.products?.brand?.name || null,
+    origin: variant.products?.origin?.name || null,
 
     created_at: variant.created_at,
     updated_at: variant.updated_at,
@@ -536,10 +538,17 @@ const InventoryNew: React.FC = () => {
             {/* Display Inventory should now work without crashing */}
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
+                // CRITICAL FIX: Skip rendering if 'id' is somehow missing, preventing a crash.
+                if (!item.id) return null;
+
                 const isSelected = selectedItems.some((i) => i.id === item.id);
                 const isLowStock = item.quantity <= item.min_stock;
+
                 return (
-                  <TableRow key={item.id} className={isSelected ? "bg-blue-50" : isLowStock ? "bg-red-50/50" : ""}>
+                  <TableRow
+                    key={String(item.id)} // Ensures key is always a string
+                    className={isSelected ? "bg-blue-50" : isLowStock ? "bg-red-50/50" : ""}
+                  >
                     <TableCell className="text-center">
                       <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectItem(item)} />
                     </TableCell>
