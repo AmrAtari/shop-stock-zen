@@ -18,16 +18,53 @@ import { History } from "lucide-react";
 import PriceHistoryDialog from "./PriceHistoryDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
-import { useAttributeTypes } from "@/hooks/useAttributeTypes";
+import { useAttributeTypes } from "@/hooks/useAttributeTypes"; // Assuming this is correct
+
+// --- Helper Types for Form Data ---
+interface ProductFormData {
+  name: string;
+  item_number: string;
+  pos_description: string;
+  description: string;
+  theme: string;
+  wholesale_price: number | null;
+  // Foreign Keys for Products table
+  brand_id: string;
+  category_id: string;
+  gender_id: string;
+  origin_id: string;
+}
+
+interface VariantFormData {
+  sku: string;
+  season: string;
+  color: string;
+  size: string;
+  // Financial/Price Data on Variant
+  selling_price: number | null;
+  cost: number | null;
+  tax_rate: number | null;
+  unit: string;
+  // Foreign Key for Supplier
+  supplier_id: string;
+}
+
+interface PriceData {
+  selling_price: number | null;
+  cost: number | null;
+  tax_rate: number | null;
+  wholesale_price: number | null;
+}
+// --- END Helper Types ---
 
 interface ProductDialogNewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  item?: Item;
+  item?: Item; // The item being edited (ItemWithDetails from Inventory page)
   onSave: () => void;
 }
 
-// Confirmation Dialog Component
+// Confirmation Dialog Component (omitted for brevity, assume correct)
 interface UpdateConfirmationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -47,488 +84,552 @@ const UpdateConfirmationDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Update Scope</DialogTitle>
+          <DialogTitle>Confirm Update</DialogTitle>
           <DialogDescription>
-            How would you like to apply the changes to <strong>{itemName}</strong>?
-            {itemNumber && (
-              <div className="mt-2 text-sm">
-                This item belongs to model number: <strong>{itemNumber}</strong>
-              </div>
-            )}
+            Do you want to apply this price change only to **{itemName}** (SKU: {itemNumber}) or to **all variants**
+            under this item number?
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-            <h4 className="font-semibold text-blue-800 mb-2">Apply to all related SKUs</h4>
-            <p className="text-sm text-blue-700">
-              Update all products with the same model number. This ensures consistency across all variants (sizes,
-              colors, etc.).
-            </p>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <h4 className="font-semibold text-gray-800 mb-2">Apply only to this SKU</h4>
-            <p className="text-sm text-gray-700">
-              Update only this specific product. Other variants with the same model number will remain unchanged.
-            </p>
-          </div>
-        </div>
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter>
           <Button variant="outline" onClick={() => onConfirm(false)}>
-            Only This SKU
+            Only this Variant
           </Button>
-          <Button onClick={() => onConfirm(true)}>All Related SKUs</Button>
+          <Button onClick={() => onConfirm(true)}>All Variants (Item No.)</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
 
-const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNewProps) => {
+const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange, item, onSave }) => {
   const queryClient = useQueryClient();
-  const { attributeTypes, fetchAllAttributeValues } = useAttributeTypes();
-  
-  const [formData, setFormData] = useState<Partial<Item>>({
+  const isEditing = !!item;
+
+  const [productData, setProductData] = useState<ProductFormData>({
     name: "",
-    sku: "",
-    category: "",
-    brand: "",
-    size: "",
-    color: "",
-    gender: "",
-    season: "",
-    quantity: 0,
-    min_stock: 0,
-    unit: "pcs",
-    supplier: "",
-    location: "",
-    department: "",
-    main_group: "",
-    origin: "",
+    item_number: "",
+    pos_description: "",
+    description: "",
     theme: "",
+    wholesale_price: null,
+    brand_id: "",
+    category_id: "",
+    gender_id: "",
+    origin_id: "",
   });
 
-  const [attributeValues, setAttributeValues] = useState<Record<string, any[]>>({});
-
-  const [priceData, setPriceData] = useState({
-    cost_price: 0,
-    selling_price: 0,
-    wholesale_price: 0,
+  const [variantData, setVariantData] = useState<VariantFormData>({
+    sku: "",
+    season: "",
+    color: "",
+    size: "",
+    selling_price: null,
+    cost: null,
+    tax_rate: null,
+    unit: "",
+    supplier_id: "",
   });
 
+  const [priceData, setPriceData] = useState<PriceData>({
+    selling_price: null,
+    cost: null,
+    tax_rate: null,
+    wholesale_price: null,
+  });
+
+  const [loading, setLoading] = useState(false);
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
-  const [pendingUpdateData, setPendingUpdateData] = useState<any>(null);
 
-  useEffect(() => {
-    if (open) {
-      fetchAttributes();
-    }
-  }, [open, attributeTypes]);
+  // Custom Hook to fetch all your attribute/lookup data
+  const { attributes, isLoading: isLoadingAttributes } = useAttributeTypes();
 
+  // Load data into form when editing an existing item
   useEffect(() => {
-    if (item) {
-      setFormData(item);
-      fetchCurrentPrice(item.id);
-    } else {
-      // Reset form for new item - set all dynamic attributes to empty string
-      const resetData: any = {
-        name: "",
-        sku: "",
-        quantity: 0,
-        min_stock: 0,
-        unit: "pcs",
-      };
-      
-      // Set all attribute fields to empty string
-      attributeTypes.forEach(type => {
-        resetData[type.table_name.replace(/s$/, '')] = ""; // Remove trailing 's' if present
+    if (item && open) {
+      // 1. Load data for the PRODUCT
+      setProductData({
+        name: item.name || "",
+        item_number: item.item_number || "",
+        pos_description: item.pos_description || "",
+        description: item.description || "",
+        theme: item.theme || "",
+        wholesale_price: item.wholesale_price || null,
+        // NOTE: We need to pull the IDs from the joined tables/item object for editing
+        brand_id: item.brand_id || "",
+        category_id: item.category_id || "",
+        gender_id: item.gender_id || "",
+        origin_id: item.origin_id || "",
       });
-      
-      setFormData(resetData);
+
+      // 2. Load data for the VARIANT
+      setVariantData({
+        sku: item.sku || "",
+        season: item.season || "",
+        color: item.color || "",
+        size: item.size || "",
+        selling_price: item.sellingPrice || null,
+        cost: item.cost || null,
+        tax_rate: item.tax_rate || null,
+        unit: item.unit || "",
+        supplier_id: item.supplier_id || "", // NOTE: Ensure you have supplier_id on the Item interface
+      });
+
+      // 3. Load price data (used for confirmation logic)
       setPriceData({
-        cost_price: 0,
-        selling_price: 0,
-        wholesale_price: 0,
+        selling_price: item.sellingPrice || null,
+        cost: item.cost || null,
+        tax_rate: item.tax_rate || null,
+        wholesale_price: item.wholesale_price || null,
       });
-    }
-  }, [item, open, attributeTypes]);
-
-  const fetchAttributes = async () => {
-    try {
-      const values = await fetchAllAttributeValues();
-      setAttributeValues(values);
-    } catch (error) {
-      console.error("Error fetching attributes:", error);
-    }
-  };
-
-  const fetchCurrentPrice = async (itemId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("price_levels")
-        .select("*")
-        .eq("item_id", itemId)
-        .eq("is_current", true)
-        .single();
-
-      if (error) throw error;
-      if (data) {
-        setPriceData({
-          cost_price: Number(data.cost_price),
-          selling_price: Number(data.selling_price),
-          wholesale_price: Number(data.wholesale_price) || 0,
-        });
-      }
-    } catch (error) {
-      // No current price found, that's okay for new items
-    }
-  };
-
-  /**
-   * Check if any shared fields have been modified
-   */
-  const hasSharedFieldsChanged = (originalItem: Item, newFormData: Partial<Item>, sharedFields: string[]): boolean => {
-    return sharedFields.some((field) => {
-      const originalValue = originalItem[field as keyof Item];
-      const newValue = newFormData[field as keyof Item];
-      return originalValue !== newValue;
-    });
-  };
-
-  /**
-   * Update all related SKUs with the same item_number
-   */
-  const updateRelatedSKUs = async (itemNumber: string, updateData: any, sharedFields: string[]) => {
-    try {
-      // Filter update data to only include shared fields
-      const sharedUpdateData: any = {};
-      sharedFields.forEach((field) => {
-        if (updateData[field] !== undefined) {
-          sharedUpdateData[field] = updateData[field];
-        }
+    } else if (open) {
+      // Clear form when opening for a new product
+      setProductData({
+        name: "",
+        item_number: "",
+        pos_description: "",
+        description: "",
+        theme: "",
+        wholesale_price: null,
+        brand_id: "",
+        category_id: "",
+        gender_id: "",
+        origin_id: "",
       });
-
-      // If no shared fields to update, return early
-      if (Object.keys(sharedUpdateData).length === 0) {
-        return;
-      }
-
-      // Update all items with the same item_number (excluding variant-specific fields)
-      const { error: bulkUpdateError } = await supabase
-        .from("items")
-        .update(sharedUpdateData)
-        .eq("item_number", itemNumber);
-
-      if (bulkUpdateError) throw bulkUpdateError;
-
-      // Get the count of updated items
-      const { count: updatedCount } = await supabase
-        .from("items")
-        .select("*", { count: "exact", head: true })
-        .eq("item_number", itemNumber);
-
-      toast.success(`Updated ${Object.keys(sharedUpdateData).length} field(s) across ${updatedCount} related SKUs`);
-    } catch (error: any) {
-      console.error("Error updating related SKUs:", error);
-      toast.error("Failed to update related SKUs: " + error.message);
+      setVariantData({
+        sku: "",
+        season: "",
+        color: "",
+        size: "",
+        selling_price: null,
+        cost: null,
+        tax_rate: null,
+        unit: "",
+        supplier_id: "",
+      });
+      setPriceData({ selling_price: null, cost: null, tax_rate: null, wholesale_price: null });
     }
-  };
+  }, [item, open]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // --- Core Save Logic ---
+  const handleSave = async (e: React.FormEvent, applyToAll: boolean = false) => {
     e.preventDefault();
+    setLoading(true);
 
     try {
-      if (item) {
-        // Determine which fields should be propagated to related SKUs
-        const sharedFields = [
-          "name",
-          "category",
-          "brand",
-          "department",
-          "supplier",
-          "season",
-          "main_group",
-          "origin",
-          "theme",
-          "min_stock",
-          "unit",
-        ];
+      let finalProductId = item?.product_id; // Keep existing ID if editing
+      let productInsertError = null;
 
-        const updateData: any = { ...formData };
+      // 1. CREATE/UPDATE PARENT PRODUCT RECORD
+      if (!isEditing || !item.product_id) {
+        // New product: Insert into 'products' table first
+        const { data: product, error: pError } = await supabase
+          .from("products")
+          .insert([
+            {
+              name: productData.name,
+              item_number: productData.item_number,
+              pos_description: productData.pos_description,
+              description: productData.description,
+              theme: productData.theme,
+              wholesale_price: productData.wholesale_price,
+              brand_id: productData.brand_id || null,
+              category_id: productData.category_id || null,
+              gender_id: productData.gender_id || null,
+              origin_id: productData.origin_id || null,
+            },
+          ])
+          .select("product_id")
+          .single();
 
-        // Check if this item has an item_number and shared fields were modified
-        if (item.item_number && hasSharedFieldsChanged(item, formData, sharedFields)) {
-          // Show confirmation dialog instead of automatically updating
-          setPendingUpdateData({ updateData, sharedFields });
-          setShowUpdateConfirmation(true);
-          return;
-        } else {
-          // No shared fields changed or no item_number, proceed with normal update
-          await performItemUpdate(item.id, updateData, false);
+        if (pError) {
+          productInsertError = pError;
+          throw new Error(`Failed to create product record: ${pError.message}`);
+        }
+
+        finalProductId = product?.product_id;
+      } else {
+        // Existing product: Update the parent 'products' record
+        const { error: pUpdateError } = await supabase
+          .from("products")
+          .update({
+            name: productData.name,
+            item_number: productData.item_number,
+            pos_description: productData.pos_description,
+            description: productData.description,
+            theme: productData.theme,
+            wholesale_price: productData.wholesale_price,
+            brand_id: productData.brand_id || null,
+            category_id: productData.category_id || null,
+            gender_id: productData.gender_id || null,
+            origin_id: productData.origin_id || null,
+          })
+          .eq("product_id", item.product_id);
+
+        if (pUpdateError) {
+          throw new Error(`Failed to update product record: ${pUpdateError.message}`);
+        }
+      }
+
+      // Ensure we have an ID before proceeding to save the variant
+      if (!finalProductId) {
+        throw new Error("Missing Product ID after save attempt.");
+      }
+
+      // 2. CREATE/UPDATE VARIANT RECORD
+      const variantPayload = {
+        sku: variantData.sku,
+        season: variantData.season,
+        color: variantData.color,
+        size: variantData.size,
+        selling_price: variantData.selling_price,
+        cost: variantData.cost,
+        tax_rate: variantData.tax_rate,
+        unit: variantData.unit,
+        supplier_id: variantData.supplier_id || null,
+        // CRITICAL LINK: Use the ID from Step 1
+        product_id: finalProductId,
+      };
+
+      if (isEditing) {
+        // Editing existing variant
+        const { error: vUpdateError } = await supabase
+          .from("variants")
+          .update(variantPayload)
+          .eq("variant_id", item.id);
+
+        if (vUpdateError) {
+          throw new Error(`Failed to update variant: ${vUpdateError.message}`);
         }
       } else {
-        // Create new item
-        const insertData: any = { ...formData };
-        const { data: newItem, error: itemError } = await supabase.from("items").insert(insertData).select().single();
+        // Creating new variant
+        const { error: vInsertError } = await supabase.from("variants").insert([variantPayload]);
 
-        if (itemError) throw itemError;
-
-        // Create initial price level
-        await supabase.from("price_levels").insert({
-          item_id: newItem.id,
-          ...priceData,
-          is_current: true,
-        });
-
-        toast.success("Product added successfully");
-
-        // Invalidate all related queries
-        await invalidateInventoryData(queryClient);
-
-        onSave();
-        onOpenChange(false);
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save product");
-    }
-  };
-
-  const handleUpdateConfirmation = async (applyToAll: boolean) => {
-    if (!item || !pendingUpdateData) return;
-
-    try {
-      await performItemUpdate(item.id, pendingUpdateData.updateData, applyToAll);
-      setShowUpdateConfirmation(false);
-      setPendingUpdateData(null);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update product");
-    }
-  };
-
-  const performItemUpdate = async (itemId: string, updateData: any, applyToAll: boolean) => {
-    // Update the current item
-    const { error: itemError } = await supabase.from("items").update(updateData).eq("id", itemId);
-
-    if (itemError) throw itemError;
-
-    // If user chose to apply to all related SKUs
-    if (applyToAll && item?.item_number) {
-      const sharedFields = [
-        "name",
-        "category",
-        "brand",
-        "department",
-        "supplier",
-        "season",
-        "main_group",
-        "origin",
-        "theme",
-        "min_stock",
-        "unit",
-      ];
-      await updateRelatedSKUs(item.item_number, updateData, sharedFields);
-    }
-
-    // Handle price updates
-    const { data: currentPrice } = await supabase
-      .from("price_levels")
-      .select("*")
-      .eq("item_id", itemId)
-      .eq("is_current", true)
-      .single();
-
-    if (
-      !currentPrice ||
-      Number(currentPrice.cost_price) !== priceData.cost_price ||
-      Number(currentPrice.selling_price) !== priceData.selling_price ||
-      Number(currentPrice.wholesale_price || 0) !== priceData.wholesale_price
-    ) {
-      if (currentPrice) {
-        await supabase.from("price_levels").update({ is_current: false }).eq("item_id", itemId);
+        if (vInsertError) {
+          // If variant insert fails, attempt to delete the product if it was just created
+          if (productInsertError === null) {
+            await supabase.from("products").delete().eq("product_id", finalProductId);
+          }
+          throw new Error(`Failed to create variant: ${vInsertError.message}`);
+        }
       }
 
-      await supabase.from("price_levels").insert({
-        item_id: itemId,
-        ...priceData,
-        is_current: true,
-      });
+      // 3. Handle Bulk Price Update if confirmed
+      if (isEditing && applyToAll) {
+        const { error: bulkError } = await supabase
+          .from("variants")
+          .update({
+            selling_price: variantData.selling_price,
+            cost: variantData.cost,
+          })
+          .eq("product_id", finalProductId); // Update all variants of this product
+
+        if (bulkError) {
+          toast.error(`Warning: Failed to bulk update other variants: ${bulkError.message}`);
+        }
+      }
+
+      toast.success(isEditing ? "Product variant updated successfully." : "New product variant added successfully.");
+
+      // Close the dialog and refresh inventory data
+      onOpenChange(false);
+      onSave(); // Calls queryClient.invalidateQueries
+    } catch (error: any) {
+      console.error("Save Error:", error);
+      toast.error(error.message || "An unexpected error occurred during save.");
+    } finally {
+      setLoading(false);
     }
-
-    toast.success(applyToAll ? "Product and all related SKUs updated successfully" : "Product updated successfully");
-
-    // Invalidate all related queries
-    await invalidateInventoryData(queryClient);
-
-    onSave();
-    onOpenChange(false);
   };
 
+  const handleUpdateConfirmation = (applyToAll: boolean) => {
+    setShowUpdateConfirmation(false);
+    handleSave({ preventDefault: () => {} } as React.FormEvent, applyToAll);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Logic to check if a price was changed (only for editing existing items)
+    const priceChanged =
+      isEditing && (priceData.selling_price !== variantData.selling_price || priceData.cost !== variantData.cost);
+
+    if (isEditing && priceChanged) {
+      setShowUpdateConfirmation(true);
+    } else {
+      handleSave(e, false);
+    }
+  };
+
+  if (isLoadingAttributes) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <p>Loading attributes...</p>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // --- Render logic using Formik/React Hook Form is often cleaner, but for this simple state approach:
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{item ? "Edit Product" : "Add New Product"}</DialogTitle>
+            <DialogTitle>{isEditing ? "Edit Product Variant" : "Add New Product"}</DialogTitle>
             <DialogDescription>
-              {item ? "Update product information and pricing" : "Add a new product to your inventory"}
-              {item?.item_number && (
-                <div className="mt-2 text-sm text-blue-600">
-                  This item is part of a product group (Model: {item.item_number}). Changes to shared fields can be
-                  applied to all related SKUs.
-                </div>
-              )}
+              {isEditing
+                ? "Update details for the selected product variant."
+                : "Enter details for the new product and its first variant."}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="sku">SKU *</Label>
-                <Input
-                  id="sku"
-                  value={formData.sku}
-                  onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="name">Product Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Dynamic Attribute Fields */}
-            {attributeTypes.length > 0 && (
-              <div className="grid grid-cols-2 gap-4">
-                {attributeTypes.map((attrType) => {
-                  const fieldName = attrType.table_name.replace(/s$/, ''); // Remove trailing 's'
-                  const values = attributeValues[attrType.table_name] || [];
-                  const isRequired = attrType.name === 'category';
-
-                  return (
-                    <div key={attrType.id} className="space-y-2">
-                      <Label htmlFor={fieldName}>
-                        {attrType.label} {isRequired && '*'}
-                      </Label>
-                      <Select
-                        value={(formData as any)[fieldName] || ""}
-                        onValueChange={(value) => setFormData({ ...formData, [fieldName]: value })}
-                        required={isRequired}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={`Select ${attrType.label.toLowerCase()}`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {values.map((val: any) => (
-                            <SelectItem key={val.id} value={val.name}>
-                              {val.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="quantity">Current Quantity *</Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="min_stock">Minimum Stock Level *</Label>
-                <Input
-                  id="min_stock"
-                  type="number"
-                  value={formData.min_stock}
-                  onChange={(e) => setFormData({ ...formData, min_stock: Number(e.target.value) })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="unit">Unit</Label>
-                <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(attributeValues['units'] || []).map((unit: any) => (
-                      <SelectItem key={unit.id} value={unit.name}>
-                        {unit.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location">Storage Location</Label>
-              <Select
-                value={formData.location || ""}
-                onValueChange={(value) => setFormData({ ...formData, location: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select location" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(attributeValues['locations'] || []).map((location: any) => (
-                    <SelectItem key={location.id} value={location.name}>
-                      {location.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="border-t pt-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Pricing Information</h3>
-                {item && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setPriceHistoryOpen(true)}>
-                    <History className="w-4 h-4 mr-2" />
-                    View Price History
-                  </Button>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* --- SECTION 1: CORE PRODUCT DETAILS (PRODUCTS TABLE) --- */}
+            <div className="border-b pb-4">
+              <h3 className="text-lg font-semibold mb-3">Product Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="cost_price">Cost Price ($) *</Label>
+                  <Label htmlFor="name">Product Name*</Label>
                   <Input
-                    id="cost_price"
+                    id="name"
+                    value={productData.name}
+                    onChange={(e) => setProductData({ ...productData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="item_number">Item Number*</Label>
+                  <Input
+                    id="item_number"
+                    value={productData.item_number}
+                    onChange={(e) => setProductData({ ...productData, item_number: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    value={productData.description}
+                    onChange={(e) => setProductData({ ...productData, description: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* --- SECTION 2: ATTRIBUTES (PRODUCTS TABLE FOREIGN KEYS) --- */}
+            <div className="border-b pb-4">
+              <h3 className="text-lg font-semibold mb-3">Product Attributes (Lookup IDs)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Brand */}
+                <div className="space-y-2">
+                  <Label htmlFor="brand_id">Brand</Label>
+                  <Select
+                    value={productData.brand_id}
+                    onValueChange={(v) => setProductData({ ...productData, brand_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Brand" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.brands.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Category */}
+                <div className="space-y-2">
+                  <Label htmlFor="category_id">Category</Label>
+                  <Select
+                    value={productData.category_id}
+                    onValueChange={(v) => setProductData({ ...productData, category_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.categories.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Gender */}
+                <div className="space-y-2">
+                  <Label htmlFor="gender_id">Gender</Label>
+                  <Select
+                    value={productData.gender_id}
+                    onValueChange={(v) => setProductData({ ...productData, gender_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.genders.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Origin */}
+                <div className="space-y-2">
+                  <Label htmlFor="origin_id">Origin</Label>
+                  <Select
+                    value={productData.origin_id}
+                    onValueChange={(v) => setProductData({ ...productData, origin_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Origin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.origins.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* --- SECTION 3: VARIANT DETAILS (VARIANTS TABLE) --- */}
+            <div className="border-b pb-4">
+              <h3 className="text-lg font-semibold mb-3">Variant Details</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sku">SKU*</Label>
+                  <Input
+                    id="sku"
+                    value={variantData.sku}
+                    onChange={(e) => setVariantData({ ...variantData, sku: e.target.value })}
+                    required
+                  />
+                </div>
+
+                {/* Season */}
+                <div className="space-y-2">
+                  <Label htmlFor="season">Season</Label>
+                  <Select
+                    value={variantData.season}
+                    onValueChange={(v) => setVariantData({ ...variantData, season: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Season" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.seasons.map((a) => (
+                        <SelectItem key={a.id} value={a.name}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Color */}
+                <div className="space-y-2">
+                  <Label htmlFor="color">Color</Label>
+                  <Select value={variantData.color} onValueChange={(v) => setVariantData({ ...variantData, color: v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Color" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.colors.map((a) => (
+                        <SelectItem key={a.id} value={a.name}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Size */}
+                <div className="space-y-2">
+                  <Label htmlFor="size">Size</Label>
+                  <Select value={variantData.size} onValueChange={(v) => setVariantData({ ...variantData, size: v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Size" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.sizes.map((a) => (
+                        <SelectItem key={a.id} value={a.name}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* --- SECTION 4: FINANCIAL & SUPPLIER (VARIANTS TABLE) --- */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3">Pricing & Sourcing</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="supplier_id">Supplier</Label>
+                  <Select
+                    value={variantData.supplier_id}
+                    onValueChange={(v) => setVariantData({ ...variantData, supplier_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Supplier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {attributes.suppliers.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cost">Cost ($)*</Label>
+                  <Input
+                    id="cost"
                     type="number"
                     step="0.01"
-                    value={priceData.cost_price}
-                    onChange={(e) => setPriceData({ ...priceData, cost_price: Number(e.target.value) })}
+                    value={variantData.cost === null ? "" : variantData.cost}
+                    onChange={(e) => setVariantData({ ...variantData, cost: Number(e.target.value) || null })}
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="selling_price">Selling Price ($) *</Label>
+                  <Label htmlFor="selling_price">Selling Price ($)*</Label>
                   <Input
                     id="selling_price"
                     type="number"
                     step="0.01"
-                    value={priceData.selling_price}
-                    onChange={(e) => setPriceData({ ...priceData, selling_price: Number(e.target.value) })}
+                    value={variantData.selling_price === null ? "" : variantData.selling_price}
+                    onChange={(e) => setVariantData({ ...variantData, selling_price: Number(e.target.value) || null })}
                     required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="tax_rate">Tax Rate (%)</Label>
+                  <Input
+                    id="tax_rate"
+                    type="number"
+                    step="0.01"
+                    value={variantData.tax_rate === null ? "" : variantData.tax_rate}
+                    onChange={(e) => setVariantData({ ...variantData, tax_rate: Number(e.target.value) || null })}
                   />
                 </div>
 
@@ -538,20 +639,33 @@ const ProductDialogNew = ({ open, onOpenChange, item, onSave }: ProductDialogNew
                     id="wholesale_price"
                     type="number"
                     step="0.01"
-                    value={priceData.wholesale_price}
-                    onChange={(e) => setPriceData({ ...priceData, wholesale_price: Number(e.target.value) })}
+                    value={productData.wholesale_price === null ? "" : productData.wholesale_price}
+                    onChange={(e) =>
+                      setProductData({ ...productData, wholesale_price: Number(e.target.value) || null })
+                    }
                   />
                 </div>
               </div>
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
                 Cancel
               </Button>
-              <Button type="submit">{item ? "Update Product" : "Add Product"}</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Saving..." : isEditing ? "Update Product" : "Add Product"}
+              </Button>
             </DialogFooter>
           </form>
+
+          {/* Price History Button (Only for existing items) */}
+          {item && (
+            <div className="absolute top-4 right-4">
+              <Button variant="ghost" size="icon" onClick={() => setPriceHistoryOpen(true)}>
+                <History className="w-5 h-5" />
+              </Button>
+            </div>
+          )}
         </DialogContent>
 
         {item && (
