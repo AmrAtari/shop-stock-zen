@@ -19,7 +19,7 @@ import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // --- 1. FULLY DEFINED INTERFACE ---
-// This rich interface is what the ProductDialogNew component now expects
+// FIX: sellingPrice is now REQUIRED (removed '?')
 interface ItemWithDetails extends Item {
   // Fields from JOINED TABLES
   brand: string | null;
@@ -35,12 +35,12 @@ interface ItemWithDetails extends Item {
   category_id: string | null;
   gender_id: string | null;
   origin_id: string | null;
-  supplier_id: string | null; // Assuming this is on the variant record or parent
+  supplier_id: string | null;
   product_id: string; // The ID of the parent product record
 
   // Variant/Product Fields
   wholesale_price: number | null;
-  sellingPrice?: number | null;
+  sellingPrice: number | null; // <-- FIXED: Removed '?'
   cost: number | null;
   tax_rate: number | null;
 
@@ -91,20 +91,20 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 item_number,
                 theme,
                 wholesale_price,
-                brand_id,          // <--- FETCHING FK ID
-                category_id,       // <--- FETCHING FK ID
-                gender_id,         // <--- FETCHING FK ID
-                origin_id,         // <--- FETCHING FK ID
+                brand_id,          
+                category_id,       
+                gender_id,         
+                origin_id,         
                 brand:brand_id(name),
-                category:category_id( // <<-- CORRECTED NESTED JOIN
+                category:category_id( 
                     name,
-                    main_group:main_groups!categories_main_group_id_fkey(name) // Explicitly use the fkey name if needed, or just 'main_group:main_group_id(name)'
+                    main_group:main_groups!categories_main_group_id_fkey(name) 
                 ), 
                 gender:gender_id(name),
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers!variants_supplier_id_fkey(name, id), // Fetch supplier ID as well
+            supplier:suppliers!variants_supplier_id_fkey(name, id), 
             
             stock_on_hand (quantity, min_stock, stores (name))
         `);
@@ -116,7 +116,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   const mappedData = data.map((variant: any) => ({
     id: variant.variant_id,
-    product_id: variant.products?.product_id, // MAPPED FOR EDITING
+    product_id: variant.products?.product_id,
     sku: variant.sku || "N/A",
 
     // Product fields
@@ -132,7 +132,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     category_id: variant.products?.category_id || null,
     gender_id: variant.products?.gender_id || null,
     origin_id: variant.products?.origin_id || null,
-    supplier_id: variant.supplier?.id || null, // Assuming supplier ID is returned in the join
+    supplier_id: variant.supplier?.id || null,
 
     // Mapped relationship fields (Name strings)
     supplier: variant.supplier?.name || "N/A",
@@ -142,7 +142,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     origin: variant.products?.origin?.name || null,
 
     // Mapped Main Group from the nested join
-    main_group: variant.products?.category?.main_group?.name || "N/A", // CORRECTED MAPPING
+    main_group: variant.products?.category?.main_group?.name || "N/A",
 
     created_at: variant.created_at,
     updated_at: variant.updated_at,
@@ -155,7 +155,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     item_color_code: variant.item_color_code || null,
     department: "N/A",
 
-    sellingPrice: variant.selling_price,
+    sellingPrice: variant.selling_price, // Mapped name 'sellingPrice' is correct
     cost: variant.cost || variant.cost_price,
     tax_rate: variant.tax_rate,
     unit: variant.unit,
