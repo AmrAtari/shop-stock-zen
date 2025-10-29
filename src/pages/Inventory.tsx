@@ -252,12 +252,15 @@ const InventoryNew: React.FC = () => {
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
+      // CRITICAL FIX: Ensure all properties accessed are handled robustly (e.g., optional chaining or null coalescence)
+      const itemNumberStr = item.item_number || "";
+
       const matchesSearch =
         (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
         (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
-        (item.item_number?.toLowerCase() ?? "").includes(searchTerm.toLowerCase());
+        itemNumberStr.toLowerCase().includes(searchTerm.toLowerCase()); // Use itemNumberStr
 
-      const matchesItemNumber = !filterItemNumber || item.item_number === filterItemNumber;
+      const matchesItemNumber = !filterItemNumber || itemNumberStr === filterItemNumber; // Use itemNumberStr
       const matchesSeason = !filterSeason || item.season === filterSeason;
       const matchesColor = !filterColor || item.color === filterColor;
       const matchesSize = !filterSize || item.size === filterSize;
@@ -304,8 +307,6 @@ const InventoryNew: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item and all its stock?")) return;
 
-    // NOTE: This uses variant_id (integer), but the type system currently expects string (UUID).
-    // If you keep variant_id as integer, the type system may need an update.
     const { error: variantError } = await supabase.from("variants").delete().eq("variant_id", id);
 
     if (variantError) {
@@ -532,6 +533,7 @@ const InventoryNew: React.FC = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {/* Display Inventory should now work without crashing */}
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 const isSelected = selectedItems.some((i) => i.id === item.id);
