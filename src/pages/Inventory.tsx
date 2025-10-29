@@ -25,7 +25,7 @@ interface ItemWithDetails extends Item {
   item_color_code: string | null;
   theme: string | null;
   origin: string | null;
-  department: string | null;
+  department: string | null; 
   wholesale_price: number | null;
 
   created_at: string;
@@ -41,13 +41,13 @@ interface ItemWithDetails extends Item {
   tax_rate: number | null;
 
   item_number: string;
-  pos_description: string;
-  description: string;
+  pos_description: string; 
+  description: string; 
   season: string;
   color: string;
   size: string;
   category: string;
-  main_group: string;
+  main_group: string; 
   store_name: string;
   supplier: string;
   gender: string;
@@ -56,6 +56,7 @@ interface ItemWithDetails extends Item {
 // --- 2. FINAL CORRECTED Supabase Fetch Function with LEFT JOIN AND DEBUGGING ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   // Use Left Join behavior by implicitly not using `innerJoin` syntax
+  // Selects: variants + products (joining product attributes) + supplier + stock_on_hand
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
             sku, 
@@ -94,24 +95,23 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   if (error) {
     console.error("Error fetching inventory:", error.message);
-    throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`);
+    throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`); 
   }
 
   const mappedData = data.map((variant: any) => ({
     id: variant.variant_id,
-    sku: variant.sku || "N/A",
-
+    sku: variant.sku || "N/A", 
+    
     // Ensure essential strings from joined tables are never null
-    // This is the CRITICAL part now that we fixed the data
-    name: variant.products?.name || "N/A",
-    pos_description: variant.products?.pos_description || "N/A",
-    description: variant.products?.description || "N/A",
-    item_number: variant.products?.item_number || "N/A",
+    name: variant.products?.name || "N/A", 
+    pos_description: variant.products?.pos_description || "N/A", 
+    description: variant.products?.description || "N/A", 
+    item_number: variant.products?.item_number || "N/A", 
 
     // Mapped relationship fields (using the new aliases)
     supplier: variant.supplier?.name || "N/A",
-    category: variant.products?.category?.name || "N/A",
-    gender: variant.products?.gender?.name || "N/A",
+    category: variant.products?.category?.name || "N/A", 
+    gender: variant.products?.gender?.name || "N/A", 
     brand: variant.products?.brand?.name || null,
     origin: variant.products?.origin?.name || null,
 
@@ -125,8 +125,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     color_id: variant.color_id || null,
     item_color_code: variant.item_color_code || null,
     theme: variant.products?.theme || null,
-    department: "N/A",
-    main_group: "N/A",
+    department: "N/A", // Static for now
+    main_group: "N/A", // Static for now
 
     wholesale_price: variant.products?.wholesale_price || null,
 
@@ -135,21 +135,20 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     tax_rate: variant.tax_rate,
     unit: variant.unit,
 
-    // Mapped Stock - Uses stock_on_hand
-    // Note: stock_on_hand returns an array of objects, we take the first one [0]
-    quantity: variant.stock_on_hand[0]?.quantity || 0,
-    min_stock: variant.stock_on_hand[0]?.min_stock || 0,
+    // Mapped Stock - Uses stock_on_hand (ensure all are numbers, defaulting to 0)
+    quantity: variant.stock_on_hand[0]?.quantity ?? 0,
+    min_stock: variant.stock_on_hand[0]?.min_stock ?? 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
     location: variant.stock_on_hand[0]?.stores?.name || "N/A",
   })) as ItemWithDetails[];
-
-  // 💥 DEBUG OUTPUT 💥
+  
+  // 💥 DEBUG OUTPUT (CONFIRMED WORKING) 💥
   console.log("--- Supabase Data Fetch Successful ---");
   console.log(`Total records fetched and mapped: ${mappedData.length}`);
   console.log("First 3 mapped data items (Check for null or 'N/A' values):", mappedData.slice(0, 3));
   // 💥 END DEBUG OUTPUT 💥
 
-  return mappedData; // Return the mapped data
+  return mappedData; 
 };
 
 // Data Hook connected to React Query
@@ -194,7 +193,7 @@ const InventoryNew: React.FC = () => {
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
-  // Filter states
+  // Filter states (omitted generation logic for brevity)
   const [searchTerm, setSearchTerm] = useState("");
   const [filterItemNumber, setFilterItemNumber] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
@@ -206,7 +205,8 @@ const InventoryNew: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Option filters generation
+  // Option filters generation (using useMemo to prevent unnecessary re-renders)
+  // ... (Filter options generation logic remains the same) ...
   const itemNumberOptions = useMemo(
     () =>
       Array.from(
@@ -266,14 +266,14 @@ const InventoryNew: React.FC = () => {
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       // Ensure all properties accessed are handled robustly (e.g., optional chaining or null coalescence)
-      const itemNumberStr = item.item_number || "";
-
+      const itemNumberStr = item.item_number || '';
+      
       const matchesSearch =
         (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
         (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
-        itemNumberStr.toLowerCase().includes(searchTerm.toLowerCase());
+        (itemNumberStr.toLowerCase()).includes(searchTerm.toLowerCase()); 
 
-      const matchesItemNumber = !filterItemNumber || itemNumberStr === filterItemNumber;
+      const matchesItemNumber = !filterItemNumber || itemNumberStr === filterItemNumber; 
       const matchesSeason = !filterSeason || item.season === filterSeason;
       const matchesColor = !filterColor || item.color === filterColor;
       const matchesSize = !filterSize || item.size === filterSize;
@@ -547,19 +547,25 @@ const InventoryNew: React.FC = () => {
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
-          {/* --- TABLE BODY --- */}
+          {/* --- TABLE BODY (ROBUST FINAL VERSION) --- */}
           <TableBody>
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 // Skip rendering if 'id' is somehow missing
-                if (!item.id) return null;
-
+                if (!item.id) return null; 
+                
+                // CRITICAL: Ensure stock values are numbers before comparison
+                const quantity = item.quantity ?? 0;
+                const minStock = item.min_stock ?? 0;
+                
                 return (
-                  <TableRow key={String(item.id)}>
+                  <TableRow 
+                    key={String(item.id)} 
+                  >
                     <TableCell className="text-center">
-                      <Checkbox
-                        checked={selectedItems.some((i) => i.id === item.id)}
-                        onCheckedChange={() => toggleSelectItem(item)}
+                      <Checkbox 
+                         checked={selectedItems.some((i) => i.id === item.id)}
+                         onCheckedChange={() => toggleSelectItem(item)}
                       />
                     </TableCell>
                     <TableCell className="font-medium">{item.sku}</TableCell>
@@ -570,44 +576,39 @@ const InventoryNew: React.FC = () => {
                     <TableCell>{item.gender}</TableCell>
                     <TableCell>{item.season}</TableCell>
                     <TableCell>{item.size}</TableCell>
-                    <TableCell>{item.color || "N/A"}</TableCell>
+                    <TableCell>
+                      {item.color || "N/A"}
+                    </TableCell>
                     <TableCell>{item.store_name}</TableCell>
-                    {/* Displaying cost/price as simple strings */}
-                    <TableCell className="text-right">{item.cost || "N/A"}</TableCell>
-                    <TableCell className="text-right">{item.sellingPrice || "N/A"}</TableCell>
-                    {/* Displaying quantity as a Badge */}
+                    {/* Displaying cost/price with robust null checks */}
+                    <TableCell className="text-right">{item.cost != null ? item.cost.toFixed(2) : 'N/A'}</TableCell>
+                    <TableCell className="text-right">{item.sellingPrice != null ? item.sellingPrice.toFixed(2) : 'N/A'}</TableCell>
+                    {/* Displaying quantity as a Badge (Protected against non-numeric values) */}
                     <TableCell className="text-right">
-                      <Badge
-                        variant={
-                          item.quantity > item.min_stock ? "outline" : item.quantity > 0 ? "warning" : "destructive"
-                        }
-                      >
-                        {item.quantity || 0}
-                      </Badge>
+                       <Badge 
+                           variant={quantity > minStock ? "outline" : (quantity > 0 ? "warning" : "destructive")}
+                       >
+                           {quantity}
+                       </Badge>
                     </TableCell>
                     <TableCell className="text-right flex space-x-2 justify-end">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          setSelectedItemForHistory(item);
-                          setPriceHistoryOpen(true);
-                        }}
-                      >
-                        <History className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(item)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-red-500"
-                        onClick={() => handleDelete(item.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                       <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6" 
+                          onClick={() => {
+                            setSelectedItemForHistory(item);
+                            setPriceHistoryOpen(true);
+                          }}
+                        >
+                          <History className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(item)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => handleDelete(item.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                     </TableCell>
                   </TableRow>
                 );
