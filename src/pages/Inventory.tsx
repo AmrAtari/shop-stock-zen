@@ -87,7 +87,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             ),
             
             supplier:suppliers!variants_supplier_id_fkey(name),
-            stock_on_hand(quantity, min_stock, stores(name))
+            stock_on_hand(quantity, min_stock, store_id, stores(name))
         `);
 
   if (error) {
