@@ -53,7 +53,7 @@ interface ItemWithDetails extends Item {
   gender: string;
 }
 
-// --- 2. FINAL CORRECTED Supabase Fetch Function ---
+// --- 2. FINAL CORRECTED Supabase Fetch Function with LEFT JOIN ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase.from("variants").select(`
             variant_id, 
@@ -72,7 +72,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             updated_at,        
             last_restocked,    
             
-            products!inner (
+            products (  // <<< CRITICAL FIX: Removed '!inner' to use Left Join
                 product_id,
                 name, 
                 pos_description, 
@@ -389,12 +389,13 @@ const InventoryNew: React.FC = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="flex-1 max-w-sm"
           />
+          {/* Displays the count for the filtered results */}
           <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
         </div>
 
         {/* Filters Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {/* Item Number Filter - FIX: Applied onValueChange and value="all" */}
+          {/* Item Number Filter */}
           <Select value={filterItemNumber} onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Item Number" />
@@ -409,7 +410,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Season Filter - FIX: Applied onValueChange and value="all" */}
+          {/* Season Filter */}
           <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Season" />
@@ -424,7 +425,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Color Filter - FIX: Applied onValueChange and value="all" */}
+          {/* Color Filter */}
           <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Color" />
@@ -439,7 +440,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Size Filter - FIX: Applied onValueChange and value="all" */}
+          {/* Size Filter */}
           <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Size" />
@@ -454,7 +455,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Category Filter - FIX: Applied onValueChange and value="all" */}
+          {/* Category Filter */}
           <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Category" />
@@ -469,7 +470,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Main Group Filter - FIX: Applied onValueChange and value="all" */}
+          {/* Main Group Filter */}
           <Select value={filterMainGroup} onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Main Group" />
@@ -484,7 +485,7 @@ const InventoryNew: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Store/Location Filter - FIX: Applied onValueChange and value="all" */}
+          {/* Store/Location Filter */}
           <Select value={filterStore} onValueChange={(v) => setFilterStore(v === "all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Store/Location" />
@@ -534,14 +535,12 @@ const InventoryNew: React.FC = () => {
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
-          {/* --- DEBUG-SAFE TABLE BODY START --- */}
+          {/* --- DEBUG-SAFE TABLE BODY START (Kept for maximum compatibility) --- */}
           <TableBody>
             {Array.isArray(displayInventory) &&
               displayInventory.map((item: ItemWithDetails) => {
                 // CRITICAL FIX: Skip rendering if 'id' is somehow missing, preventing a crash.
                 if (!item.id) return null;
-
-                // Note: isSelected and isLowStock logic is temporarily disabled here to prevent crashes
 
                 return (
                   <TableRow
@@ -558,10 +557,7 @@ const InventoryNew: React.FC = () => {
                     <TableCell>{item.gender}</TableCell>
                     <TableCell>{item.season}</TableCell>
                     <TableCell>{item.size}</TableCell>
-                    <TableCell>
-                      {/* Only showing color name to avoid style/component errors */}
-                      {item.color || "N/A"}
-                    </TableCell>
+                    <TableCell>{item.color || "N/A"}</TableCell>
                     <TableCell>{item.store_name}</TableCell>
                     {/* CRITICAL: Displaying cost/price as simple strings to avoid .toFixed(2) errors */}
                     <TableCell className="text-right">{item.cost || "N/A"}</TableCell>
@@ -569,7 +565,6 @@ const InventoryNew: React.FC = () => {
                     {/* CRITICAL: Displaying quantity as a simple string to avoid Badge errors */}
                     <TableCell className="text-right">{item.quantity || 0}</TableCell>
                     <TableCell className="text-right">
-                      {/* Actions buttons are removed to simplify rendering */}
                       <span className="text-xs text-muted-foreground">OK</span>
                     </TableCell>
                   </TableRow>
