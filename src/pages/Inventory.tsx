@@ -102,6 +102,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     sku: variant.sku || "N/A",
 
     // Ensure essential strings from joined tables are never null
+    // This is the CRITICAL part now that we fixed the data
     name: variant.products?.name || "N/A",
     pos_description: variant.products?.pos_description || "N/A",
     description: variant.products?.description || "N/A",
