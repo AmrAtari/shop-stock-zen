@@ -19,38 +19,49 @@ import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // --- 1. FULLY DEFINED INTERFACE ---
+// This rich interface is what the ProductDialogNew component now expects
 interface ItemWithDetails extends Item {
+  // Fields from JOINED TABLES
   brand: string | null;
-  color_id: string | null;
-  item_color_code: string | null;
-  theme: string | null;
   origin: string | null;
-  department: string | null;
+  category: string;
+  main_group: string; // CORRECTED FIELD
+  gender: string;
+  supplier: string;
+  store_name: string;
+
+  // Foreign Key IDs (needed for passing to ProductDialogNew)
+  brand_id: string | null;
+  category_id: string | null;
+  gender_id: string | null;
+  origin_id: string | null;
+  supplier_id: string | null; // Assuming this is on the variant record or parent
+  product_id: string; // The ID of the parent product record
+
+  // Variant/Product Fields
   wholesale_price: number | null;
-
-  created_at: string;
-  updated_at: string;
-  last_restocked: string | null;
-
-  location: string;
-  min_stock: number;
-  quantity: number;
-  unit: string;
   sellingPrice?: number | null;
   cost: number | null;
   tax_rate: number | null;
 
+  // Other fields
+  color_id: string | null;
+  item_color_code: string | null;
+  theme: string | null;
+  department: string | null;
+  created_at: string;
+  updated_at: string;
+  last_restocked: string | null;
+  location: string;
+  min_stock: number;
+  quantity: number;
+  unit: string;
   item_number: string;
   pos_description: string;
   description: string;
   season: string;
   color: string;
   size: string;
-  category: string;
-  main_group: string; // REQUIRED FIELD
-  store_name: string;
-  supplier: string;
-  gender: string;
 }
 
 // --- 2. FINAL CORRECTED Supabase Fetch Function with NESTED JOIN for Main Group ---
@@ -70,7 +81,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
             cost_price,
             created_at,        
             updated_at,        
-            last_restocked,    
+            last_restocked,
             
             products (  
                 product_id,
@@ -80,37 +91,50 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 item_number,
                 theme,
                 wholesale_price,
+                brand_id,          // <--- FETCHING FK ID
+                category_id,       // <--- FETCHING FK ID
+                gender_id,         // <--- FETCHING FK ID
+                origin_id,         // <--- FETCHING FK ID
                 brand:brand_id(name),
                 category:category_id( // <<-- CORRECTED NESTED JOIN
                     name,
-                    main_group:main_group_id(name) // <<-- FETCH MAIN GROUP NAME
+                    main_group:main_groups!categories_main_group_id_fkey(name) // Explicitly use the fkey name if needed, or just 'main_group:main_group_id(name)'
                 ), 
                 gender:gender_id(name),
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers!variants_supplier_id_fkey(name),
+            supplier:suppliers!variants_supplier_id_fkey(name, id), // Fetch supplier ID as well
             
             stock_on_hand (quantity, min_stock, stores (name))
         `);
 
   if (error) {
     console.error("Error fetching inventory:", error.message);
-    // Re-throwing error to be caught by React Query
     throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`);
   }
 
   const mappedData = data.map((variant: any) => ({
     id: variant.variant_id,
+    product_id: variant.products?.product_id, // MAPPED FOR EDITING
     sku: variant.sku || "N/A",
 
-    // Ensure essential strings from joined tables are never null
+    // Product fields
     name: variant.products?.name || "N/A",
     pos_description: variant.products?.pos_description || "N/A",
     description: variant.products?.description || "N/A",
     item_number: variant.products?.item_number || "N/A",
+    theme: variant.products?.theme || null,
+    wholesale_price: variant.products?.wholesale_price || null,
 
-    // Mapped relationship fields (using the new aliases)
+    // Foreign Key IDs (CRITICAL: These are passed to ProductDialogNew)
+    brand_id: variant.products?.brand_id || null,
+    category_id: variant.products?.category_id || null,
+    gender_id: variant.products?.gender_id || null,
+    origin_id: variant.products?.origin_id || null,
+    supplier_id: variant.supplier?.id || null, // Assuming supplier ID is returned in the join
+
+    // Mapped relationship fields (Name strings)
     supplier: variant.supplier?.name || "N/A",
     category: variant.products?.category?.name || "N/A",
     gender: variant.products?.gender?.name || "N/A",
@@ -118,7 +142,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     origin: variant.products?.origin?.name || null,
 
     // Mapped Main Group from the nested join
-    main_group: variant.products?.category?.main_group?.name || "N/A", // <<-- CORRECTED MAPPING
+    main_group: variant.products?.category?.main_group?.name || "N/A", // CORRECTED MAPPING
 
     created_at: variant.created_at,
     updated_at: variant.updated_at,
@@ -129,10 +153,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     color: variant.color,
     color_id: variant.color_id || null,
     item_color_code: variant.item_color_code || null,
-    theme: variant.products?.theme || null,
     department: "N/A",
-
-    wholesale_price: variant.products?.wholesale_price || null,
 
     sellingPrice: variant.selling_price,
     cost: variant.cost || variant.cost_price,
@@ -140,23 +161,16 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     unit: variant.unit,
 
     // Mapped Stock - Uses stock_on_hand
-    // Note: stock_on_hand returns an array of objects, we take the first one [0]
     quantity: variant.stock_on_hand[0]?.quantity || 0,
     min_stock: variant.stock_on_hand[0]?.min_stock || 0,
     store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
     location: variant.stock_on_hand[0]?.stores?.name || "N/A",
   })) as ItemWithDetails[];
 
-  // 💥 DEBUG OUTPUT 💥
-  console.log("--- Supabase Data Fetch Successful ---");
-  console.log(`Total records fetched and mapped: ${mappedData.length}`);
-  console.log("First 3 mapped data items (Check for empty/null values):", mappedData.slice(0, 3));
-  // 💥 END DEBUG OUTPUT 💥
-
-  return mappedData; // Return the mapped data
+  return mappedData;
 };
 
-// Data Hook connected to React Query
+// ... (Rest of the InventoryNew component remains the same)
 const useInventoryQuery = () => {
   return useQuery<ItemWithDetails[]>({
     queryKey: queryKeys.inventory.all,
