@@ -204,13 +204,9 @@ const Dashboard = () => {
       // Check all possible table names
       const tables = [
         "stores",
-        "inventory_items",
+        "variants",
         "products",
-        "items",
-        "stock",
-        "inventory",
-        "store_inventory",
-        "product_inventory",
+        "stock_on_hand", // Added correct table names
       ];
 
       for (const tableName of tables) {
@@ -241,207 +237,107 @@ const Dashboard = () => {
     }
   };
 
-  // Fixed: Get real store metrics from your actual database
+  /**
+   * FIX: Rewritten to directly query the correct tables: stock_on_hand and variants.
+   * This eliminates the guesswork loop and the associated 404 errors for 'items', etc.
+   */
   const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
       console.log("🔍 Fetching REAL store metrics from database...");
 
-      // Get all stores
-      const { data: stores, error: storesError } = await supabase.from("stores").select("id, name").order("name");
+      // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
+      // Querying stock_on_hand is the most efficient way to get store-specific inventory.
+      const { data: fullInventory, error: fullInventoryError } = await supabase
+        .from("stock_on_hand")
+        .select(
+          `
+            quantity,
+            min_stock,
+            store_id,
+            stores(name),
+            variants(
+                variant_id,
+                sku, 
+                selling_price, 
+                cost,
+                products(name)
+            )
+          `,
+        )
+        .limit(5000);
 
-      if (storesError) {
-        console.error("❌ Error fetching stores:", storesError);
-        toast.error("Failed to load stores");
+      if (fullInventoryError) {
+        console.error("❌ Error fetching full inventory:", fullInventoryError);
+        toast.error("Failed to load inventory for metrics");
         return;
       }
 
-      console.log("🏪 Stores found:", stores);
+      console.log(`📦 Found ${fullInventory.length} stock records.`);
 
-      const storeMetricsData: StoreMetrics[] = [];
+      const newInventoryByStore = new Map<
+        string,
+        { totalItems: number; inventoryValue: number; lowStockCount: number }
+      >();
+      const newStoreNameMap = new Map<string, string>();
+      const newUnassignedItemsData: any[] = [];
+      const newStoreMetricsData: StoreMetrics[] = [];
 
-      // Try multiple possible table names for inventory data
-      const possibleInventoryTables = ["inventory_items", "products", "items", "stock", "inventory", "store_inventory"];
+      fullInventory.forEach((item: any) => {
+        // Use 'unspecified' if store_id is null, which allows us to group unassigned items.
+        const storeId = item.store_id || "unspecified";
+        const storeName = item.stores?.name || "(Non-Specified Store)";
 
-      let allInventory: any[] = [];
-      let foundTable = "";
+        const variant = item.variants;
 
-      for (const tableName of possibleInventoryTables) {
-        const { data, error } = await supabase.from(tableName).select("*").limit(5000);
-        if (!error && data && data.length > 0) {
-          allInventory = data;
-          foundTable = tableName;
-          break;
-        }
-      }
+        // Map to a simplified, flat object for CSV export consistency
+        const mappedItem = {
+          item_name: variant?.products?.name || "N/A",
+          sku: variant?.sku || "N/A",
+          quantity: item.quantity,
+          min_stock: item.min_stock,
+          store_name: storeName,
+          selling_price: variant?.selling_price,
+          cost: variant?.cost,
+        };
 
-      // If no inventory data found
-      if (allInventory.length === 0) {
-        console.log("❌ No inventory data found in any table");
-        for (const store of stores || []) {
-          storeMetricsData.push({
-            storeName: store.name,
-            totalItems: 0,
-            inventoryValue: 0,
-            lowStockCount: 0,
-          });
-        }
-        setStoreMetrics(storeMetricsData);
-        setUnassignedItemsData([]);
-        return;
-      }
-
-      console.log(`📦 Found ${allInventory.length} items in table: ${foundTable}`);
-
-      const firstItem = allInventory[0];
-
-      // --- FIX: Added 'store_fk_id' to the hasStoreId check ---
-      const hasStoreId =
-        "store_fk_id" in firstItem || "store_id" in firstItem || "storeId" in firstItem || "location_id" in firstItem || "warehouse_id" in firstItem;
-      // --------------------------------------------------------
-
-      const hasLocation = "location" in firstItem || "store_location" in firstItem;
-      const hasQuantity =
-        "quantity" in firstItem ||
-        "stock_quantity" in firstItem ||
-        "qty" in firstItem ||
-        "stock" in firstItem ||
-        "current_stock" in firstItem;
-      const hasPrice = "price" in firstItem || "unit_price" in firstItem || "selling_price" in firstItem;
-      const hasCost = "cost_price" in firstItem || "cost" in firstItem || "unit_cost" in firstItem;
-
-      const hasMinStock = "min_stock" in firstItem || "minimum_stock" in firstItem || "reorder_level" in firstItem;
-
-      // Helper to calculate metrics
-      const calculateItemMetrics = (item: any) => {
-        // Quantity
-        let quantity = 1;
-        if (hasQuantity) {
-          const quantityField = ["quantity", "stock_quantity", "qty", "stock", "current_stock"].find(
-            (field) => field in item,
-          );
-          if (quantityField) quantity = Number(item[quantityField]) || 1;
+        if (storeId === "unspecified") {
+          newUnassignedItemsData.push(mappedItem);
         }
 
-        // Price
-        let price = 0;
-        let priceField = null;
-        if (hasPrice) {
-          priceField = ["unit_price", "price", "selling_price"].find((field) => field in item);
+        if (!newInventoryByStore.has(storeId)) {
+          newInventoryByStore.set(storeId, { totalItems: 0, inventoryValue: 0, lowStockCount: 0 });
+          newStoreNameMap.set(storeId, storeName);
         }
-        if (!priceField && hasCost) {
-          priceField = ["cost_price", "cost", "unit_cost"].find((field) => field in item);
-        }
-        if (priceField) price = Number(item[priceField]) || 0;
-        if (price === 0) price = 50;
 
+        const metrics = newInventoryByStore.get(storeId)!;
+
+        const quantity = Number(item.quantity) || 0;
+        const minStock = Number(item.min_stock) || 0;
+
+        // Price logic: Use selling price, fallback to cost, default to 50 for calculation
+        const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
         const value = quantity * price;
 
-        // Low stock
-        let minStock = 5;
-        if (hasMinStock) {
-          const minStockField = ["min_stock", "minimum_stock", "reorder_level"].find((field) => field in item);
-          if (minStockField) minStock = Number(item[minStockField]) || 5;
+        metrics.totalItems += quantity;
+        metrics.inventoryValue += value;
+        if (quantity > 0 && quantity <= minStock) {
+          // Only count low stock if quantity > 0
+          metrics.lowStockCount += 1;
         }
-        const isLowStock = quantity <= minStock;
+      });
 
-        return { quantity, value, isLowStock };
-      };
-
-      // Track which items have been assigned to any store
-      const isItemAssigned: boolean[] = new Array(allInventory.length).fill(false);
-
-      // Process each store
-      for (const store of stores || []) {
-        let storeItemsIndices: number[] = [];
-        let totalItems = 0;
-        let inventoryValue = 0;
-        let lowStockCount = 0;
-
-        allInventory.forEach((item, index) => {
-          let matches = false;
-
-          // Match by store_id
-          if (hasStoreId) {
-            // --- FIX: Added 'store_fk_id' to be checked first ---
-            const storeIdField =
-                "store_fk_id" in item
-                    ? "store_fk_id" // Use our confirmed foreign key
-                    : "store_id" in item
-                        ? "store_id"
-                        : "storeId" in item
-                            ? "storeId"
-                            : "location_id" in item
-                                ? "location_id"
-                                : "warehouse_id" in item
-                                    ? "warehouse_id"
-                                    : null;
-            // -----------------------------------------------------
-
-            if (storeIdField && item[storeIdField]?.toString() === store.id.toString()) {
-              matches = true;
-            }
-          }
-
-          // Match by location text
-          if (!matches && hasLocation) {
-            const locationField = "location" in item ? "location" : "store_location";
-            if (
-              item[locationField] &&
-              item[locationField].toString().toLowerCase().includes(store.name.toLowerCase())
-            ) {
-              matches = true;
-            }
-          }
-
-          if (matches) {
-            storeItemsIndices.push(index);
-            isItemAssigned[index] = true;
-          }
+      // Convert Map results to the final StoreMetrics array
+      newInventoryByStore.forEach((metrics, storeId) => {
+        newStoreMetricsData.push({
+          storeName: newStoreNameMap.get(storeId) || "(Unknown Store)",
+          ...metrics,
         });
+      });
 
-        // Calculate metrics for store
-        storeItemsIndices.forEach((index) => {
-          const { quantity, value, isLowStock } = calculateItemMetrics(allInventory[index]);
-          totalItems += quantity;
-          inventoryValue += value;
-          if (isLowStock) lowStockCount += 1;
-        });
-
-        storeMetricsData.push({
-          storeName: store.name,
-          totalItems,
-          inventoryValue,
-          lowStockCount,
-        });
-      }
-
-      // Process unassigned items
-      const unassignedItems = allInventory.filter((_, index) => !isItemAssigned[index]);
-      setUnassignedItemsData(unassignedItems);
-
-      if (unassignedItems.length > 0) {
-        let totalItems = 0,
-          totalValue = 0,
-          totalLowStock = 0;
-
-        unassignedItems.forEach((item) => {
-          const { quantity, value, isLowStock } = calculateItemMetrics(item);
-          totalItems += quantity;
-          totalValue += value;
-          if (isLowStock) totalLowStock += 1;
-        });
-
-        storeMetricsData.push({
-          storeName: "(Non-Specified Store)",
-          totalItems,
-          inventoryValue: totalValue,
-          lowStockCount: totalLowStock,
-        });
-      }
-
-      console.log("🎯 Final store metrics:", storeMetricsData);
-      setStoreMetrics(storeMetricsData);
+      console.log("🎯 Final store metrics:", newStoreMetricsData);
+      setStoreMetrics(newStoreMetricsData);
+      setUnassignedItemsData(newUnassignedItemsData);
     } catch (error) {
       console.error("💥 Error in fetchRealStoreMetrics:", error);
       toast.error("Failed to load store metrics");
@@ -449,12 +345,14 @@ const Dashboard = () => {
       setStoreMetricsLoading(false);
     }
   };
+
   // Fetch real notifications from database
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
 
-      // First, check and create low stock notifications
+      // NOTE: This RPC call is likely the source of the 404 error for the RPC endpoint.
+      // It is left in place as it is likely a planned feature (a PostgreSQL function).
       try {
         await supabase.rpc("check_low_stock_notifications");
       } catch (error) {
@@ -547,7 +445,8 @@ const Dashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
         fetchNotifications();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "items" }, () => {
+      // FIX: Changed 'items' table listener to the correct 'stock_on_hand' table
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock_on_hand" }, () => {
         fetchRealStoreMetrics();
       })
       .subscribe();
