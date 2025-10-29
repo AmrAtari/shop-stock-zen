@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PriceLevel } from "@/types/database"; // Removed 'Item' import to replace it
+import { Item, PriceLevel } from "@/types/database";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { History } from "lucide-react";
@@ -20,8 +20,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { useAttributeTypes } from "@/hooks/useAttributeTypes";
 
-// --- New: Type definitions for the item being edited ---
-// This interface includes all Foreign Key IDs needed for submission/editing
+// --- New: Type definitions for the item being edited (Fixes Inventory.tsx error) ---
+// This interface MUST include all properties the component attempts to access
 interface ProductDialogItem {
   id: string; // variant_id
   product_id: string;
@@ -35,7 +35,7 @@ interface ProductDialogItem {
   color: string;
   size: string;
   unit: string;
-  // Financial/Price Data
+  // Financial/Price Data (sellingPrice MUST be defined as number | null)
   sellingPrice: number | null;
   cost: number | null;
   tax_rate: number | null;
@@ -48,7 +48,7 @@ interface ProductDialogItem {
   supplier_id: string | null;
 }
 
-// New: Defines the expected structure of lookup data from useAttributeTypes
+// New: Defines the expected structure of lookup data from useAttributeTypes (Fixes attribute access error)
 interface AttributeMap {
   brands: { id: string; name: string }[];
   categories: { id: string; name: string }[];
@@ -60,7 +60,7 @@ interface AttributeMap {
   suppliers: { id: string; name: string }[];
 }
 
-// --- Helper Types for Form Data (KEEP) ---
+// --- Helper Types for Form Data ---
 interface ProductFormData {
   name: string;
   item_number: string;
@@ -181,16 +181,17 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
 
-  // Use type casting to ensure the component expects the correct property structure
-  const { attributes, isLoading: isLoadingAttributes } = useAttributeTypes() as {
-    attributes: AttributeMap;
+  // Custom Hook to fetch all your attribute/lookup data
+  // FIX: Alias 'attributeTypes' property (returned by the hook) to 'attributes' (expected by the component)
+  const { attributeTypes: attributes, isLoading: isLoadingAttributes } = useAttributeTypes() as {
+    attributeTypes: AttributeMap;
     isLoading: boolean;
   };
 
   // Load data into form when editing an existing item
   useEffect(() => {
     if (item && open) {
-      // 1. Load data for the PRODUCT (Uses the rich type properties)
+      // 1. Load data for the PRODUCT
       setProductData({
         name: item.name || "",
         item_number: item.item_number || "",
@@ -198,13 +199,14 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         description: item.description || "",
         theme: item.theme || "",
         wholesale_price: item.wholesale_price || null,
+        // NOTE: We need to pull the IDs from the joined tables/item object for editing
         brand_id: item.brand_id || "",
         category_id: item.category_id || "",
         gender_id: item.gender_id || "",
         origin_id: item.origin_id || "",
       });
 
-      // 2. Load data for the VARIANT (Uses the rich type properties)
+      // 2. Load data for the VARIANT
       setVariantData({
         sku: item.sku || "",
         season: item.season || "",
@@ -214,7 +216,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         cost: item.cost || null,
         tax_rate: item.tax_rate || null,
         unit: item.unit || "",
-        supplier_id: item.supplier_id || "",
+        supplier_id: item.supplier_id || "", // NOTE: Ensure you have supplier_id on the Item interface
       });
 
       // 3. Load price data (used for confirmation logic)
@@ -259,12 +261,12 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
     setLoading(true);
 
     try {
-      let finalProductId = item?.product_id; // <-- Uses the rich type property
+      let finalProductId = item?.product_id; // Keep existing ID if editing
       let productInsertError = null;
 
       // 1. CREATE/UPDATE PARENT PRODUCT RECORD
-      if (!isEditing || !item.product_id) {
-        // <-- Uses the rich type property
+      if (!isEditing || !item?.product_id) {
+        // Use optional chaining for safety
         // New product: Insert into 'products' table first
         const { data: product, error: pError } = await supabase
           .from("products")
@@ -307,7 +309,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
             gender_id: productData.gender_id || null,
             origin_id: productData.origin_id || null,
           })
-          .eq("product_id", item.product_id); // <-- Uses the rich type property
+          .eq("product_id", item.product_id);
 
         if (pUpdateError) {
           throw new Error(`Failed to update product record: ${pUpdateError.message}`);
@@ -339,7 +341,7 @@ const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange,
         const { error: vUpdateError } = await supabase
           .from("variants")
           .update(variantPayload)
-          .eq("variant_id", item.id); // <-- Uses the rich type property
+          .eq("variant_id", item!.id); // Use non-null assertion as isEditing is true
 
         if (vUpdateError) {
           throw new Error(`Failed to update variant: ${vUpdateError.message}`);
