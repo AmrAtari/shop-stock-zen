@@ -308,12 +308,11 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
     /**
      * Finds or creates attributes in the database. Uses a case-insensitive approach
      * by mapping all database names and incoming names to lowercase.
-     * @param table The Supabase table name (e.g., 'categories').
+     * * @param table The Supabase table name (e.g., 'categories').
      * @param names The set of unique names from the import file.
      * @returns A Map where the key is the lowercase attribute name and the value is the UUID.
      */
     const ensureAndMapAttributes = async (table: string, names: Set<string>): Promise<Map<string, string>> => {
-      // FIX: Use lowercase name as the key for case-insensitive lookup
       const nameToIdMap = new Map<string, string>();
       if (names.size === 0) return nameToIdMap;
 
@@ -342,39 +341,49 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
       // 2. Identify missing attributes and sanitize
       const namesToInsert: { name: string }[] = [];
-      const tempInsertSet = new Set<string>(); // Used to prevent adding the same name twice if input has 'Men' and 'MEN'
+      const tempInsertSet = new Set<string>(); // Tracks what we plan to insert by lower-cased, cleaned name
 
       originalNamesArray.forEach((originalName) => {
         const lowerName = originalName.toLowerCase();
 
-        // NEW FIX: Aggressive name cleanup before checking/inserting
+        // Final Fix: Aggressive name cleanup before checking/inserting
         const cleanedName = originalName.trim().replace(/\s+/g, " "); // Remove leading/trailing spaces, normalize internal spaces
         if (cleanedName.length === 0) return; // Skip if it's just spaces
 
-        // Check if the lowercase version of the name is already mapped OR if we've already queued it for insertion
+        // Check if the lowercase version of the name is already mapped
+        // OR if we've already queued its lowercase version for insertion
         if (!existingNamesLower.has(lowerName) && !tempInsertSet.has(lowerName)) {
           // Insert the cleaned name using its original casing from the file
-          namesToInsert.push({ name: cleanedName }); // <-- PUSH THE CLEANED NAME
+          namesToInsert.push({ name: cleanedName });
           tempInsertSet.add(lowerName);
         }
       });
 
-      // 3. Insert all new attributes in one batch
+      // 3. Insert all new attributes in one batch (Guaranteed Fix applied here)
       if (namesToInsert.length > 0) {
-        const { data: newAttributes, error: insertError } = await (supabase as any)
-          .from(table)
-          .insert(namesToInsert)
-          .select("id, name");
+        const { error: insertError } = await (supabase as any).from(table).insert(namesToInsert);
 
         if (insertError) {
-          // Re-throw the error for better logging
           throw new Error(`[${table}] Failed to create new attributes: ${insertError.message}`);
         }
 
-        if (newAttributes) {
-          newAttributes.forEach((attr: any) => {
-            // Map the newly created item using its lowercase name
-            nameToIdMap.set(attr.name.toLowerCase(), attr.id);
+        // CRITICAL FIX: Re-fetch the entire attribute list after inserting new values
+        // This guarantees we capture the correct UUIDs for the newly inserted attributes,
+        // regardless of potential DB casing quirks.
+        nameToIdMap.clear();
+
+        const { data: updatedExisting, error: refetchError } = await (supabase as any).from(table).select("id, name");
+
+        if (refetchError) {
+          throw new Error(`[${table}] Refetch failed after insert: ${refetchError.message}`);
+        }
+
+        if (updatedExisting) {
+          updatedExisting.forEach((attr: any) => {
+            const lowerName = attr.name.toLowerCase();
+            if (!nameToIdMap.has(lowerName)) {
+              nameToIdMap.set(lowerName, attr.id);
+            }
           });
         }
       }
