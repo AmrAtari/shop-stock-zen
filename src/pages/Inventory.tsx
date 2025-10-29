@@ -86,9 +86,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
                 origin:origin_id(name)
             ),
             
-            supplier:suppliers!variants_supplier_id_fkey(name), // FIX: No comment inside the string
-            
-            stock_on_hand (quantity, min_stock, stores (name)) // FIX: No comment inside the string
+            supplier:suppliers!variants_supplier_id_fkey(name),
+            stock_on_hand(quantity, min_stock, stores(name))
         `);
 
   if (error) {
