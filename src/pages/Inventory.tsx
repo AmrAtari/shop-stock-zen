@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 // --- Data Interface ---
 interface ItemWithDetails {
   id: number;
+  product_id?: string | null;
   sku: string;
   name: string;
   supplier: string;
@@ -38,6 +39,11 @@ interface ItemWithDetails {
   pos_description?: string;
   theme?: string;
   wholesale_price?: number | null;
+  tax_rate?: number | null;
+  brand_id?: string | null;
+  category_id?: string | null;
+  gender_id?: string | null;
+  origin_id?: string | null;
 }
 
 // --- Fetch Inventory Data ---
@@ -66,7 +72,11 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
         description,
         item_number,
         theme,
-        wholesale_price
+        wholesale_price,
+        brand_id,
+        category_id,
+        gender_id,
+        origin_id
       ),
       suppliers (
         id,
@@ -84,6 +94,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   return (
     data?.map((variant: any) => ({
       id: variant.variant_id,
+      product_id: variant.products?.product_id || null,
       sku: variant.sku || "N/A",
       name: variant.products?.name || "N/A",
       supplier: variant.suppliers?.name || "N/A",
@@ -102,6 +113,11 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       pos_description: variant.products?.pos_description || "N/A",
       theme: variant.products?.theme || null,
       wholesale_price: variant.products?.wholesale_price || null,
+      tax_rate: variant.tax_rate || null,
+      brand_id: variant.products?.brand_id || null,
+      category_id: variant.products?.category_id || null,
+      gender_id: variant.products?.gender_id || null,
+      origin_id: variant.products?.origin_id || null,
     })) || []
   );
 };
@@ -353,7 +369,7 @@ const InventoryPage: React.FC = () => {
         <PriceHistoryDialog
           open={priceHistoryOpen}
           onOpenChange={setPriceHistoryOpen}
-          itemId={selectedItemForHistory.id}
+          itemId={String(selectedItemForHistory.id)}   // ✅ fixed type issue
           itemName={selectedItemForHistory.name}
         />
       )}
