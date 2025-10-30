@@ -34,29 +34,29 @@ interface FileImportProps {
 // --- Header Mapping for Key Normalization ---
 // Maps the user's column headers (keys in the parsed data) to the database/schema keys.
 const HEADER_MAP: { [key: string]: keyof ImportData | undefined } = {
-  "SKU": "sku",
-  "Name": "name",
+  SKU: "sku",
+  Name: "name",
   "Pos Description": "pos_description",
   "POS Description": "pos_description", // common variant
   "Item Number": "item_number",
-  "Supplier": "supplier",
-  "Gender": "gender",
+  Supplier: "supplier",
+  Gender: "gender",
   "Main Group": "main_group",
-  "Category": "category",
-  "Origin": "origin",
-  "Season": "season",
-  "Size": "size",
-  "Color": "color",
+  Category: "category",
+  Origin: "origin",
+  Season: "season",
+  Size: "size",
+  Color: "color",
   "Color Id": "color_id",
-  "ColorID": "color_id",
+  ColorID: "color_id",
   "Item Color Code": "item_color_code",
   "Color Id Code": "color_id_code",
-  "ColorIDCode": "color_id_code",
-  "Theme": "theme",
-  "Quantity": "quantity",
-  "Price": "price",
-  "Cost": "cost",
-  "Tax": "tax",
+  ColorIDCode: "color_id_code",
+  Theme: "theme",
+  Quantity: "quantity",
+  Price: "price",
+  Cost: "cost",
+  Tax: "tax",
 };
 
 // Validation schema for item data
@@ -89,19 +89,19 @@ type ImportData = z.infer<typeof itemSchema>;
 
 // Defines which file headers map to which database tables for attribute creation
 const ATTRIBUTE_COLUMNS = [
-  { header: 'Supplier', table: 'suppliers', column: 'name' },
-  { header: 'Gender', table: 'genders', column: 'name' },
-  { header: 'Main Group', table: 'main_groups', column: 'name' },
-  { header: 'Category', table: 'categories', column: 'name' },
-  { header: 'Origin', table: 'origins', column: 'name' },
-  { header: 'Season', table: 'seasons', column: 'name' },
-  { header: 'Size', table: 'sizes', column: 'name' },
-  { header: 'Color', table: 'colors', column: 'name' },
-  { header: 'Theme', table: 'themes', column: 'name' },
+  { header: "Supplier", table: "suppliers", column: "name" },
+  { header: "Gender", table: "genders", column: "name" },
+  { header: "Main Group", table: "main_groups", column: "name" },
+  { header: "Category", table: "categories", column: "name" },
+  { header: "Origin", table: "origins", column: "name" },
+  { header: "Season", table: "seasons", column: "name" },
+  { header: "Size", table: "sizes", column: "name" },
+  { header: "Color", table: "colors", column: "name" },
+  { header: "Theme", table: "themes", column: "name" },
 ] as const;
 
 type AttributeToConfirm = {
-  column: typeof ATTRIBUTE_COLUMNS[number]['header'];
+  column: (typeof ATTRIBUTE_COLUMNS)[number]["header"];
   value: string;
 };
 
@@ -181,7 +181,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           const data = e.target?.result;
           let json: any[] = [];
 
-          if (file.name.endsWith('.csv')) {
+          if (file.name.endsWith(".csv")) {
             Papa.parse(data as string, {
               header: true,
               skipEmptyLines: true,
@@ -189,15 +189,15 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
               transformHeader: (header) => header.trim(), // Trim headers here to help matching
               complete: (results) => {
                 // PapaParse sometimes returns empty objects, filter them out
-                json = results.data.filter(d => Object.values(d).some(v => v !== null && v !== ''));
+                json = results.data.filter((d) => Object.values(d).some((v) => v !== null && v !== ""));
                 resolve(json);
               },
               error: (error) => {
                 reject(error.message);
-              }
+              },
             });
-          } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-            const workbook = XLSX.read(data, { type: 'binary' });
+          } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+            const workbook = XLSX.read(data, { type: "binary" });
             const sheetName = workbook.SheetNames[0];
             json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
             resolve(json);
@@ -214,305 +214,314 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
     });
   };
 
-  const checkAttributeExistence = useCallback(async (table: string, column: string, value: string): Promise<boolean> => {
-    if (!value || value === "") return true; // Skip check for empty values
-    // Normalization: Trim whitespace and convert to uppercase for case-insensitive matching
-    const normalizedValue = value.trim().toUpperCase();
+  const checkAttributeExistence = useCallback(
+    async (table: string, column: string, value: string): Promise<boolean> => {
+      if (!value || value === "") return true; // Skip check for empty values
+      // Normalization: Trim whitespace and convert to uppercase for case-insensitive matching
+      const normalizedValue = value.trim().toUpperCase();
 
-    const { count, error } = await supabase
-      .from(table)
-      .select(column, { count: 'exact', head: true })
-      .ilike(column, normalizedValue); // Use ilike for case-insensitive match (database permitting)
+      const { count, error } = await supabase
+        .from(table)
+        .select(column, { count: "exact", head: true })
+        .ilike(column, normalizedValue); // Use ilike for case-insensitive match (database permitting)
 
-    if (error) {
-      console.error(`Error checking attribute existence in ${table}:`, error);
-      return false; // Treat as existing if there's a database error to avoid creating duplicates on error
-    }
+      if (error) {
+        console.error(`Error checking attribute existence in ${table}:`, error);
+        return false; // Treat as existing if there's a database error to avoid creating duplicates on error
+      }
 
-    return (count || 0) > 0;
-  }, []);
+      return (count || 0) > 0;
+    },
+    [],
+  );
 
-  const createAttribute = useCallback(async (table: string, column: string, value: string): Promise<string | null> => {
-    const normalizedValue = value.trim().toUpperCase();
+  const createAttribute = useCallback(
+    async (table: string, column: string, value: string): Promise<string | null> => {
+      const normalizedValue = value.trim().toUpperCase();
 
-    // Check again to prevent race condition if another user/import just created it
-    const exists = await checkAttributeExistence(table, column, normalizedValue);
-    if (exists) {
-      // Fetch the ID if it was just created
+      // Check again to prevent race condition if another user/import just created it
+      const exists = await checkAttributeExistence(table, column, normalizedValue);
+      if (exists) {
+        // Fetch the ID if it was just created
+        const { data, error } = await supabase.from(table).select("id").ilike(column, normalizedValue).maybeSingle();
+        return data ? data.id : null;
+      }
+
       const { data, error } = await supabase
         .from(table)
-        .select('id')
-        .ilike(column, normalizedValue)
-        .maybeSingle();
-      return data ? data.id : null;
-    }
+        .insert({ [column]: normalizedValue })
+        .select("id")
+        .single();
 
-    const { data, error } = await supabase
-      .from(table)
-      .insert({ [column]: normalizedValue })
-      .select('id')
-      .single();
-
-    if (error) {
-      // **CRITICAL FIX/IMPROVEMENT:** Log the full error to help debug RLS/Policy issues
-      console.error(`Error creating attribute in ${table} (Value: ${normalizedValue}):`, error);
-      // Return the error message to the caller for display in the UI
-      throw new Error(`Supabase error creating attribute in ${table}: ${error.message}`);
-    }
-    return data.id;
-  }, [checkAttributeExistence]);
-
-
-  const preCheckAttributes = useCallback(async (parsedData: any[]) => {
-    const requiredAttributes: AttributeToConfirm[] = [];
-    const uniqueAttributes = new Map<string, Set<string>>();
-
-    // 1. Collect all unique attribute values that need checking
-    for (const item of parsedData) {
-      for (const attr of ATTRIBUTE_COLUMNS) {
-        const fileHeader = attr.header; // e.g., 'Supplier', 'Main Group'
-
-        // Map the file header to the schema key (e.g., 'Supplier' -> 'supplier')
-        const schemaKey = HEADER_MAP[fileHeader];
-
-        // Access the value using the normalized key name in the transformed row
-        const value = (item as any)[schemaKey!];
-
-        if (value) {
-          const normalizedValue = String(value).trim().toUpperCase();
-          const dbTable = attr.table;
-          const key = `${dbTable}:${normalizedValue}`;
-
-          if (!uniqueAttributes.has(key)) {
-            uniqueAttributes.set(key, new Set([normalizedValue]));
-          }
-        }
+      if (error) {
+        // **CRITICAL FIX/IMPROVEMENT:** Log the full error to help debug RLS/Policy issues
+        console.error(`Error creating attribute in ${table} (Value: ${normalizedValue}):`, error);
+        // Return the error message to the caller for display in the UI
+        throw new Error(`Supabase error creating attribute in ${table}: ${error.message}`);
       }
-    }
+      return data.id;
+    },
+    [checkAttributeExistence],
+  );
 
-    // 2. Check existence for unique values
-    for (const [key, values] of uniqueAttributes.entries()) {
-      const [table, normalizedValue] = key.split(':');
-      const attrConfig = ATTRIBUTE_COLUMNS.find(a => a.table === table);
+  const preCheckAttributes = useCallback(
+    async (parsedData: any[]) => {
+      const requiredAttributes: AttributeToConfirm[] = [];
+      const uniqueAttributes = new Map<string, Set<string>>();
 
-      if (attrConfig) {
-        const exists = await checkAttributeExistence(table, attrConfig.column, normalizedValue);
+      // 1. Collect all unique attribute values that need checking
+      for (const item of parsedData) {
+        for (const attr of ATTRIBUTE_COLUMNS) {
+          const fileHeader = attr.header; // e.g., 'Supplier', 'Main Group'
 
-        if (!exists) {
-          // If it doesn't exist, queue it for confirmation
-          requiredAttributes.push({ column: attrConfig.header, value: normalizedValue });
-        }
-      }
-      setProgress((prev) => Math.min(prev + 1, 99));
-    }
+          // Map the file header to the schema key (e.g., 'Supplier' -> 'supplier')
+          const schemaKey = HEADER_MAP[fileHeader];
 
-    return requiredAttributes;
-  }, [checkAttributeExistence]);
+          // Access the value using the normalized key name in the transformed row
+          const value = (item as any)[schemaKey!];
 
-  const processImportData = useCallback(async (data: ImportData[]) => {
-    setIsLoading(true);
-    setProgress(0);
-    setErrorDetails([]);
-    setDuplicateErrors([]);
-
-    let successfulRows = 0;
-    let failedRows = 0;
-    let duplicateRows = 0;
-
-    const skuMap = new Map<string, string>(); // To store existing SKUs and their IDs
-    const attributeCache = new Map<string, string>(); // To cache created attribute IDs
-
-    // 1. Fetch all existing SKUs to quickly check for duplicates
-    const { data: existingItems, error: fetchError } = await supabase
-      .from('items')
-      .select('id, sku')
-      .in('sku', data.map(d => d.sku));
-
-    if (fetchError) {
-      toast.error("Failed to fetch existing items: " + fetchError.message);
-      setIsLoading(false);
-      return;
-    }
-
-    existingItems?.forEach(item => skuMap.set(item.sku, item.id));
-
-    // 2. Process Data Batch
-    const itemsToInsert: Partial<Item>[] = [];
-    const itemsToUpdate: { id: string; update: Partial<Item> }[] = [];
-
-    for (let i = 0; i < data.length; i++) {
-      const validatedData = data[i];
-      const existingId = skuMap.get(validatedData.sku);
-      const rowNum = i + 1;
-      const progressValue = Math.floor((i / data.length) * 100);
-      setProgress(progressValue);
-
-      try {
-        if (existingId && importType === 'full') {
-          // Full import, but item exists -> treat as duplicate/update
-          duplicateRows++;
-          const newRow: DuplicateComparison = {
-            id: crypto.randomUUID(), // Temp ID
-            import_log_id: 'temp',
-            sku: validatedData.sku,
-            existing_data: existingItems?.find(item => item.sku === validatedData.sku),
-            new_data: validatedData,
-            differences: "Data conflicts. Use update or resolve manually.",
-            resolution: null,
-            resolved_at: null,
-            created_at: new Date().toISOString(),
-          };
-          setDuplicateErrors((prev) => [...prev, newRow]);
-          failedRows++;
-          continue;
-        }
-
-        if (existingId && importType === 'quantity_only') {
-          // Quantity is always expected in validatedData for quantity_only import,
-          // but we use the nullish coalescing to be safe.
-          const quantityToUpdate = validatedData.quantity ?? 0;
-          
-          itemsToUpdate.push({
-            id: existingId,
-            update: {
-              quantity: quantityToUpdate,
-              updated_at: new Date().toISOString(),
-            }
-          });
-          successfulRows++;
-          continue;
-        }
-
-        if (existingId && importType === 'new_only') {
-          duplicateRows++;
-          failedRows++;
-          continue;
-        }
-
-        // --- FULL INSERT LOGIC ---
-        if (!existingId && importType !== 'quantity_only') {
-          const itemToInsert: Partial<Item> = {
-            sku: validatedData.sku,
-            name: validatedData.name,
-            pos_description: validatedData.pos_description || null,
-            item_number: validatedData.item_number || null,
-            // Use validated quantity, default to 0 if missing (optional in schema)
-            quantity: validatedData.quantity ?? 0, 
-            price: validatedData.price,
-            cost: validatedData.cost,
-            // Use validated tax rate, default to 0 if missing (optional in schema)
-            tax: validatedData.tax ?? 0, 
-            updated_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-          };
-
-          // Resolve Attributes (Gender, Supplier, Category, etc.)
-          for (const attr of ATTRIBUTE_COLUMNS) {
-            const fileHeader = attr.header;
+          if (value) {
+            const normalizedValue = String(value).trim().toUpperCase();
             const dbTable = attr.table;
-            
-            // Map the fileHeader to the schema key (e.g., 'Supplier' -> 'supplier')
-            const schemaKey = HEADER_MAP[fileHeader]; 
-            // Access value using the normalized schema key (e.g., validatedData.supplier)
-            const value = schemaKey ? (validatedData as any)[schemaKey] : null;
+            const key = `${dbTable}:${normalizedValue}`;
 
-            if (value && typeof value === 'string' && value.trim() !== "") {
-              const normalizedValue = value.trim().toUpperCase();
-              const cacheKey = `${dbTable}:${normalizedValue}`;
-              const dbColumn = attr.column;
-
-              let id = attributeCache.get(cacheKey);
-
-              // If ID not in cache, create it (we already confirmed new ones are allowed)
-              if (!id) {
-                // *** ERROR HANDLING INVOCATION IS NOW INSIDE A TRY/CATCH ***
-                try {
-                  const resultId = await createAttribute(dbTable, dbColumn, normalizedValue);
-                  if (resultId) {
-                    id = resultId;
-                    attributeCache.set(cacheKey, resultId);
-                  } else {
-                     // This path should ideally not be reached if createAttribute throws on error
-                    throw new Error(`Creation failed but no ID returned for ${dbTable} - ${normalizedValue}`);
-                  }
-                } catch (e: any) {
-                  // Catch error thrown by createAttribute (likely RLS error)
-                  throw new Error(`Failed to create attribute: ${dbTable} - ${normalizedValue}. Details: ${e.message}`);
-                }
-              }
-
-              // Map the attribute ID back to the item
-              if (dbTable === 'suppliers') itemToInsert.supplier = id;
-              else if (dbTable === 'categories') itemToInsert.category = id;
-              else if (dbTable === 'origins') itemToInsert.origin = id;
-              else if (dbTable === 'main_groups') itemToInsert.main_group = id;
-              else if (dbTable === 'genders') itemToInsert.gender = id;
-              else if (dbTable === 'seasons') itemToInsert.season = id;
-              else if (dbTable === 'sizes') itemToInsert.size = id;
-              else if (dbTable === 'colors') itemToInsert.color = id;
-              else if (dbTable === 'themes') itemToInsert.theme = id;
+            if (!uniqueAttributes.has(key)) {
+              uniqueAttributes.set(key, new Set([normalizedValue]));
             }
           }
-
-          itemsToInsert.push(itemToInsert);
-          successfulRows++;
         }
-
-      } catch (e: any) {
-        failedRows++;
-        // Use e.message directly which contains the error from createAttribute (including RLS details if available)
-        setErrorDetails(prev => [...prev, `Row ${rowNum} (SKU: ${validatedData.sku}): ${e.message}`]);
       }
-    }
 
-    // 3. Perform Batched Insertion
-    if (itemsToInsert.length > 0) {
-      const { error: insertError } = await supabase.from('items').insert(itemsToInsert);
+      // 2. Check existence for unique values
+      for (const [key, values] of uniqueAttributes.entries()) {
+        const [table, normalizedValue] = key.split(":");
+        const attrConfig = ATTRIBUTE_COLUMNS.find((a) => a.table === table);
 
-      if (insertError) {
-        toast.error("Batch Insertion Failed. Some items might have been inserted.");
-        console.error("Batch Insert Error:", insertError);
-        failedRows += itemsToInsert.length;
-        successfulRows -= itemsToInsert.length;
+        if (attrConfig) {
+          const exists = await checkAttributeExistence(table, attrConfig.column, normalizedValue);
+
+          if (!exists) {
+            // If it doesn't exist, queue it for confirmation
+            requiredAttributes.push({ column: attrConfig.header, value: normalizedValue });
+          }
+        }
+        setProgress((prev) => Math.min(prev + 1, 99));
       }
-    }
 
-    // 4. Perform Batched Update (Quantity Only)
-    if (itemsToUpdate.length > 0) {
-      const updatePromises = itemsToUpdate.map(async ({ id, update }) => {
-        return supabase.from('items').update(update).eq('id', id);
-      });
+      return requiredAttributes;
+    },
+    [checkAttributeExistence],
+  );
 
-      const updateResults = await Promise.allSettled(updatePromises);
-      updateResults.forEach(result => {
-        if (result.status === 'rejected' || (result.status === 'fulfilled' && result.value.error)) {
+  const processImportData = useCallback(
+    async (data: ImportData[]) => {
+      setIsLoading(true);
+      setProgress(0);
+      setErrorDetails([]);
+      setDuplicateErrors([]);
+
+      let successfulRows = 0;
+      let failedRows = 0;
+      let duplicateRows = 0;
+
+      const skuMap = new Map<string, string>(); // To store existing SKUs and their IDs
+      const attributeCache = new Map<string, string>(); // To cache created attribute IDs
+
+      // 1. Fetch all existing SKUs to quickly check for duplicates
+      const { data: existingItems, error: fetchError } = await supabase
+        .from("items")
+        .select("id, sku")
+        .in(
+          "sku",
+          data.map((d) => d.sku),
+        );
+
+      if (fetchError) {
+        toast.error("Failed to fetch existing items: " + fetchError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      existingItems?.forEach((item) => skuMap.set(item.sku, item.id));
+
+      // 2. Process Data Batch
+      const itemsToInsert: Partial<Item>[] = [];
+      const itemsToUpdate: { id: string; update: Partial<Item> }[] = [];
+
+      for (let i = 0; i < data.length; i++) {
+        const validatedData = data[i];
+        const existingId = skuMap.get(validatedData.sku);
+        const rowNum = i + 1;
+        const progressValue = Math.floor((i / data.length) * 100);
+        setProgress(progressValue);
+
+        try {
+          if (existingId && importType === "full") {
+            // Full import, but item exists -> treat as duplicate/update
+            duplicateRows++;
+            const newRow: DuplicateComparison = {
+              id: crypto.randomUUID(), // Temp ID
+              import_log_id: "temp",
+              sku: validatedData.sku,
+              existing_data: existingItems?.find((item) => item.sku === validatedData.sku),
+              new_data: validatedData,
+              differences: "Data conflicts. Use update or resolve manually.",
+              resolution: null,
+              resolved_at: null,
+              created_at: new Date().toISOString(),
+            };
+            setDuplicateErrors((prev) => [...prev, newRow]);
+            failedRows++;
+            continue;
+          }
+
+          if (existingId && importType === "quantity_only") {
+            // Quantity is always expected in validatedData for quantity_only import,
+            // but we use the nullish coalescing to be safe.
+            const quantityToUpdate = validatedData.quantity ?? 0;
+
+            itemsToUpdate.push({
+              id: existingId,
+              update: {
+                quantity: quantityToUpdate,
+                updated_at: new Date().toISOString(),
+              },
+            });
+            successfulRows++;
+            continue;
+          }
+
+          if (existingId && importType === "new_only") {
+            duplicateRows++;
+            failedRows++;
+            continue;
+          }
+
+          // --- FULL INSERT LOGIC ---
+          if (!existingId && importType !== "quantity_only") {
+            const itemToInsert: Partial<Item> = {
+              sku: validatedData.sku,
+              name: validatedData.name,
+              pos_description: validatedData.pos_description || null,
+              item_number: validatedData.item_number || null,
+              // Use validated quantity, default to 0 if missing (optional in schema)
+              quantity: validatedData.quantity ?? 0,
+              price: validatedData.price,
+              cost: validatedData.cost,
+              // Use validated tax rate, default to 0 if missing (optional in schema)
+              tax: validatedData.tax ?? 0,
+              updated_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            };
+
+            // Resolve Attributes (Gender, Supplier, Category, etc.)
+            for (const attr of ATTRIBUTE_COLUMNS) {
+              const fileHeader = attr.header;
+              const dbTable = attr.table;
+
+              // Map the fileHeader to the schema key (e.g., 'Supplier' -> 'supplier')
+              const schemaKey = HEADER_MAP[fileHeader];
+              // Access value using the normalized schema key (e.g., validatedData.supplier)
+              const value = schemaKey ? (validatedData as any)[schemaKey] : null;
+
+              if (value && typeof value === "string" && value.trim() !== "") {
+                const normalizedValue = value.trim().toUpperCase();
+                const cacheKey = `${dbTable}:${normalizedValue}`;
+                const dbColumn = attr.column;
+
+                let id = attributeCache.get(cacheKey);
+
+                // If ID not in cache, create it (we already confirmed new ones are allowed)
+                if (!id) {
+                  // *** ERROR HANDLING INVOCATION IS NOW INSIDE A TRY/CATCH ***
+                  try {
+                    const resultId = await createAttribute(dbTable, dbColumn, normalizedValue);
+                    if (resultId) {
+                      id = resultId;
+                      attributeCache.set(cacheKey, resultId);
+                    } else {
+                      // This path should ideally not be reached if createAttribute throws on error
+                      throw new Error(`Creation failed but no ID returned for ${dbTable} - ${normalizedValue}`);
+                    }
+                  } catch (e: any) {
+                    // Catch error thrown by createAttribute (likely RLS error)
+                    throw new Error(
+                      `Failed to create attribute: ${dbTable} - ${normalizedValue}. Details: ${e.message}`,
+                    );
+                  }
+                }
+
+                // Map the attribute ID back to the item
+                if (dbTable === "suppliers") itemToInsert.supplier = id;
+                else if (dbTable === "categories") itemToInsert.category = id;
+                else if (dbTable === "origins") itemToInsert.origin = id;
+                else if (dbTable === "main_groups") itemToInsert.main_group = id;
+                else if (dbTable === "genders") itemToInsert.gender = id;
+                else if (dbTable === "seasons") itemToInsert.season = id;
+                else if (dbTable === "sizes") itemToInsert.size = id;
+                else if (dbTable === "colors") itemToInsert.color = id;
+                else if (dbTable === "themes") itemToInsert.theme = id;
+              }
+            }
+
+            itemsToInsert.push(itemToInsert);
+            successfulRows++;
+          }
+        } catch (e: any) {
           failedRows++;
-          successfulRows--;
-          // Log specific update error if needed
+          // Use e.message directly which contains the error from createAttribute (including RLS details if available)
+          setErrorDetails((prev) => [...prev, `Row ${rowNum} (SKU: ${validatedData.sku}): ${e.message}`]);
         }
+      }
+
+      // 3. Perform Batched Insertion
+      if (itemsToInsert.length > 0) {
+        const { error: insertError } = await supabase.from("items").insert(itemsToInsert);
+
+        if (insertError) {
+          toast.error("Batch Insertion Failed. Some items might have been inserted.");
+          console.error("Batch Insert Error:", insertError);
+          failedRows += itemsToInsert.length;
+          successfulRows -= itemsToInsert.length;
+        }
+      }
+
+      // 4. Perform Batched Update (Quantity Only)
+      if (itemsToUpdate.length > 0) {
+        const updatePromises = itemsToUpdate.map(async ({ id, update }) => {
+          return supabase.from("items").update(update).eq("id", id);
+        });
+
+        const updateResults = await Promise.allSettled(updatePromises);
+        updateResults.forEach((result) => {
+          if (result.status === "rejected" || (result.status === "fulfilled" && result.value.error)) {
+            failedRows++;
+            successfulRows--;
+            // Log specific update error if needed
+          }
+        });
+      }
+
+      // 5. Finalize
+      setProgress(100);
+      setIsLoading(false);
+      setImportResults({
+        total: data.length,
+        success: successfulRows,
+        failed: failedRows,
+        duplicates: duplicateRows,
       });
-    }
+      onImportComplete();
+      invalidateInventoryData(queryClient);
 
-    // 5. Finalize
-    setProgress(100);
-    setIsLoading(false);
-    setImportResults({
-      total: data.length,
-      success: successfulRows,
-      failed: failedRows,
-      duplicates: duplicateRows,
-    });
-    onImportComplete();
-    invalidateInventoryData(queryClient);
-
-    if (errorDetails.length > 0 || duplicateErrors.length > 0) {
-      toast.warning(`Import completed with ${errorDetails.length + duplicateErrors.length} errors/duplicates.`);
-    } else {
-      toast.success("Inventory imported successfully!");
-    }
-
-  }, [importType, onImportComplete, queryClient, createAttribute]);
-
+      if (errorDetails.length > 0 || duplicateErrors.length > 0) {
+        toast.warning(`Import completed with ${errorDetails.length + duplicateErrors.length} errors/duplicates.`);
+      } else {
+        toast.success("Inventory imported successfully!");
+      }
+    },
+    [importType, onImportComplete, queryClient, createAttribute],
+  );
 
   const handleDataProcessingFlow = async (parsedData: any[]) => {
     resetState();
@@ -538,7 +547,9 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         if (result.success) {
           validatedData.push(result.data);
         } else {
-          validationErrors.push(`Row ${rowNum} (SKU: ${row.sku || 'N/A'}): ${result.error.issues.map(i => i.path.join('.') + ': ' + i.message).join(', ')}`);
+          validationErrors.push(
+            `Row ${rowNum} (SKU: ${row.sku || "N/A"}): ${result.error.issues.map((i) => i.path.join(".") + ": " + i.message).join(", ")}`,
+          );
         }
       });
 
@@ -560,7 +571,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
       // 3. If no new attributes, proceed directly to insertion
       await processImportData(validatedData);
-
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "An unexpected error occurred during data processing.");
@@ -591,7 +601,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
     await handleDataProcessingFlow(parsedData);
   };
 
-
   const handleConfirmNewAttributes = async (accept: boolean) => {
     setIsConfirmationDialogOpen(false);
     if (accept) {
@@ -601,20 +610,26 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       let attributeCreationError = false;
 
       for (const attr of newAttributesToConfirm) {
-        const attrConfig = ATTRIBUTE_COLUMNS.find(a => a.header === attr.column);
+        const attrConfig = ATTRIBUTE_COLUMNS.find((a) => a.header === attr.column);
         if (attrConfig) {
           try {
             const id = await createAttribute(attrConfig.table, attrConfig.column, attr.value);
             if (!id) {
               attributeCreationError = true;
-              setErrorDetails(prev => [...prev, `Failed to create required attribute: ${attr.column} - ${attr.value}. No ID returned.`]);
+              setErrorDetails((prev) => [
+                ...prev,
+                `Failed to create required attribute: ${attr.column} - ${attr.value}. No ID returned.`,
+              ]);
             } else {
               tempCache.set(`${attrConfig.table}:${attr.value}`, id);
             }
           } catch (e: any) {
             attributeCreationError = true;
             // Catch the specific Supabase error from createAttribute and display it
-            setErrorDetails(prev => [...prev, `Failed to create required attribute: ${attr.column} - ${attr.value}. Details: ${e.message}`]);
+            setErrorDetails((prev) => [
+              ...prev,
+              `Failed to create required attribute: ${attr.column} - ${attr.value}. Details: ${e.message}`,
+            ]);
           }
         }
       }
@@ -627,7 +642,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
       // Proceed with import using dataToProcess
       await processImportData(dataToProcess);
-
     } else {
       toast.info("Import canceled by user.");
       resetState();
@@ -643,8 +657,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
     const data = duplicateErrors.map((e) => ({
       SKU: e.sku,
       Resolution: e.resolution || "Pending Manual Review",
-      'Existing Data (JSON)': JSON.stringify(e.existing_data),
-      'New Data (JSON)': JSON.stringify(e.new_data),
+      "Existing Data (JSON)": JSON.stringify(e.existing_data),
+      "New Data (JSON)": JSON.stringify(e.new_data),
       Differences: e.differences,
     }));
 
@@ -663,7 +677,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           <DialogHeader>
             <DialogTitle>Import Inventory Data</DialogTitle>
             <DialogDescription>
-              Import items from a CSV or Excel file. Data must match the required columns (SKU, Name, Price, Cost, etc.).
+              Import items from a CSV or Excel file. Data must match the required columns (SKU, Name, Price, Cost,
+              etc.).
             </DialogDescription>
           </DialogHeader>
 
@@ -677,7 +692,9 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Full Import Rules</AlertTitle>
                 <AlertDescription>
-                  This mode creates new items. **Quantity** and **Tax** will default to **0** (as they are transactional details). Existing SKUs are treated as duplicates and will be flagged for review (no data is overwritten).
+                  This mode creates new items. **Quantity** and **Tax** will default to **0** (as they are transactional
+                  details). Existing SKUs are treated as duplicates and will be flagged for review (no data is
+                  overwritten).
                 </AlertDescription>
               </Alert>
             </TabsContent>
@@ -689,15 +706,15 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
                   This mode only updates the **Quantity** of existing items based on **SKU**. New items are ignored.
                 </AlertDescription>
               </Alert>
-            </Alert>
-          </TabsContent>
+            </TabsContent>
+          </Tabs>
 
           <div className="grid w-full items-center gap-1.5 mt-4">
             <Label htmlFor="inventory-file">Select File (CSV/XLSX)</Label>
             <Input id="inventory-file" type="file" accept=".csv, .xlsx, .xls" onChange={handleFileChange} />
           </div>
-          
-          <GoogleSheetsInput 
+
+          <GoogleSheetsInput
             onImport={handleGoogleSheetsImport}
             isProcessing={isLoading}
             setIsProcessing={setIsLoading}
@@ -767,7 +784,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             </Button>
             <Button onClick={handleFileImport} disabled={isUploadDisabled}>
               <Upload className="w-4 h-4 mr-2" />
-              {isLoading ? 'Importing...' : 'Start Import'}
+              {isLoading ? "Importing..." : "Start Import"}
             </Button>
             <Button
               variant="secondary"
@@ -787,7 +804,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           <DialogHeader>
             <DialogTitle>Confirm New Attributes</DialogTitle>
             <DialogDescription>
-              The import file contains new values for attributes that don't exist in your database. Do you want to create them now?
+              The import file contains new values for attributes that don't exist in your database. Do you want to
+              create them now?
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-64 overflow-y-auto p-4 border rounded-lg space-y-2">
@@ -802,7 +820,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Warning</AlertTitle>
             <AlertDescription>
-              Creating these attributes will make them available globally for all future items. Ensure they are correctly spelled.
+              Creating these attributes will make them available globally for all future items. Ensure they are
+              correctly spelled.
             </AlertDescription>
           </Alert>
           <DialogFooter>
@@ -823,7 +842,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           <DialogHeader>
             <DialogTitle>Duplicate Items Found ({duplicateErrors.length})</DialogTitle>
             <DialogDescription>
-              These SKUs already exist in the database. Review the differences below or export the full log for manual resolution.
+              These SKUs already exist in the database. Review the differences below or export the full log for manual
+              resolution.
             </DialogDescription>
           </DialogHeader>
 
