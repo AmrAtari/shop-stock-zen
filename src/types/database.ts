@@ -29,6 +29,9 @@ export interface Item {
   item_number: string | null;
   pos_description: string | null;
   description: string | null;
+  // NEW: Added price and cost to align with FileImport component
+  price: number | null;
+  cost: number | null;
   tax: number | null;
   last_restocked: string | null;
   created_at: string;
@@ -56,44 +59,31 @@ export interface Supplier {
   created_at: string;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: "admin" | "manager" | "staff" | "viewer";
+  phone_number: string | null;
+  last_login: string | null;
+  created_at: string;
+}
+
 export interface PurchaseOrder {
   id: string;
   po_number: string;
-  store_id: string | null;
-  supplier: string;
+  supplier_id: string;
   status: string;
-  total_items: number;
-  total_cost: number;
-  expected_delivery: string | null;
-  notes: string | null;
-  order_date: string;
-  buyer_company_name: string | null;
-  buyer_address: string | null;
-  buyer_contact: string | null;
-  billing_address: string | null;
-  shipping_address: string | null;
-  supplier_contact_person: string | null;
-  payment_terms: string;
-  currency: string;
-  shipping_method: string | null;
-  fob_terms: string | null;
-  special_instructions: string | null;
-  subtotal: number;
-  tax_amount: number;
-  shipping_charges: number;
-  authorized_by: string | null;
   created_at: string;
-  updated_at: string;
+  expected_delivery_date: string | null;
 }
 
 export interface PurchaseOrderItem {
   id: string;
-  po_id: string;
-  item_id: string | null;
+  purchase_order_id: string;
+  item_id: string;
   sku: string;
-  item_name: string;
-  item_description: string | null;
-  color: string | null;
+  name: string;
   size: string | null;
   model_number: string | null;
   unit: string;
@@ -150,20 +140,5 @@ export interface Transfer {
   reason: string | null;
   notes: string | null;
   created_by: string | null;
-  approved_by: string | null;
-  received_by: string | null;
-  approved_at: string | null;
-  received_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TransferItem {
-  id: string;
-  transfer_id: string;
-  item_id: string | null;
-  sku: string;
-  item_name: string;
-  quantity: number;
   created_at: string;
 }
