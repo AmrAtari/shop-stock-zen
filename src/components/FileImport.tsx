@@ -441,17 +441,12 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
     [importType, onImportComplete, queryClient, createAttribute],
   );
 
-  const handleImport = async () => {
-    if (!file) {
-      toast.error("Please select a file to import.");
-      return;
-    }
+  const handleDataProcessingFlow = async (parsedData: any[]) => {
     resetState();
     setIsLoading(true);
 
     try {
-      const parsed = await parseFile(file);
-      if (parsed.length === 0) {
+      if (parsedData.length === 0) {
         throw new Error("File is empty or could not be parsed.");
       }
 
@@ -459,7 +454,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       const validatedData: ImportData[] = [];
       const validationErrors: string[] = [];
 
-      parsed.forEach((row, index) => {
+      parsedData.forEach((row, index) => {
         const rowNum = index + 1;
         const result = itemSchema.safeParse(row);
 
@@ -474,11 +469,11 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
       if (validationErrors.length > 0) {
         setErrorDetails(validationErrors);
-        throw new Error(`File failed validation: ${validationErrors.length} rows have errors.`);
+        throw new Error(`Data failed validation: ${validationErrors.length} rows have errors.`);
       }
 
       // 2. Pre-Check for New Attributes
-      const newAttributes = await preCheckAttributes(parsed);
+      const newAttributes = await preCheckAttributes(parsedData);
 
       if (newAttributes.length > 0) {
         setNewAttributesToConfirm(newAttributes);
@@ -492,9 +487,32 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       await processImportData(validatedData);
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || "An unexpected error occurred during file processing.");
+      toast.error(error.message || "An unexpected error occurred during data processing.");
       setIsLoading(false);
     }
+  };
+
+  const handleFileImport = async () => {
+    if (!file) {
+      toast.error("Please select a file to import.");
+      return;
+    }
+    try {
+      const parsed = await parseFile(file);
+      await handleDataProcessingFlow(parsed);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "An unexpected error occurred during file parsing.");
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * New function to handle data imported directly from Google Sheets
+   * @param parsedData Array of objects fetched from the Google Sheet
+   */
+  const handleGoogleSheetsImport = async (parsedData: any[]) => {
+    await handleDataProcessingFlow(parsedData);
   };
 
   const handleConfirmNewAttributes = async (accept: boolean) => {
@@ -597,7 +615,12 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             <Input id="inventory-file" type="file" accept=".csv, .xlsx, .xls" onChange={handleFileChange} />
           </div>
 
-          <GoogleSheetsInput />
+          {/* FIX: Passing required props to resolve TS2739 error */}
+          <GoogleSheetsInput
+            onImport={handleGoogleSheetsImport}
+            isProcessing={isLoading}
+            setIsProcessing={setIsLoading}
+          />
 
           {file && (
             <div className="text-sm text-muted-foreground mt-2">
@@ -661,7 +684,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
               Close
             </Button>
-            <Button onClick={handleImport} disabled={isUploadDisabled}>
+            <Button onClick={handleFileImport} disabled={isUploadDisabled}>
               <Upload className="w-4 h-4 mr-2" />
               {isLoading ? "Importing..." : "Start Import"}
             </Button>
