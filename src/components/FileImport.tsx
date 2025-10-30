@@ -31,6 +31,34 @@ interface FileImportProps {
   onImportComplete: () => void;
 }
 
+// --- NEW: Header Mapping for Key Normalization ---
+// Maps the user's column headers (keys in the parsed data) to the database/schema keys.
+const HEADER_MAP: { [key: string]: keyof ImportData | undefined } = {
+  SKU: "sku",
+  Name: "name",
+  "Pos Description": "pos_description",
+  "POS Description": "pos_description", // common variant
+  "Item Number": "item_number",
+  Supplier: "supplier",
+  Gender: "gender",
+  "Main Group": "main_group",
+  Category: "category",
+  Origin: "origin",
+  Season: "season",
+  Size: "size",
+  Color: "color",
+  "Color Id": "color_id",
+  ColorID: "color_id",
+  "Item Color Code": "item_color_code",
+  "Color Id Code": "color_id_code",
+  ColorIDCode: "color_id_code",
+  Theme: "theme",
+  Quantity: "quantity",
+  Price: "price",
+  Cost: "cost",
+  Tax: "tax",
+};
+
 // Validation schema for item data
 const itemSchema = z.object({
   sku: z.string().trim().min(1, "SKU is required").max(50),
@@ -73,6 +101,32 @@ const ATTRIBUTE_COLUMNS = [
 type AttributeToConfirm = {
   column: (typeof ATTRIBUTE_COLUMNS)[number]["header"];
   value: string;
+};
+
+// --- New utility function to normalize keys and coerce types ---
+const transformDataRow = (row: any): Partial<ImportData> => {
+  const newRow: Partial<ImportData> = {};
+
+  for (const key in row) {
+    if (Object.prototype.hasOwnProperty.call(row, key)) {
+      const targetKey = HEADER_MAP[key.trim()]; // trim to catch whitespace issues
+      let value = row[key];
+
+      if (targetKey) {
+        // Coerce numerical fields from string/null to number
+        if (["quantity", "price", "cost", "tax"].includes(targetKey)) {
+          // Attempt to parse float, default to 0 if null/empty/invalid
+          const numValue = parseFloat(String(value).trim());
+          (newRow as any)[targetKey] = isNaN(numValue) || value === "" ? 0 : numValue;
+        } else {
+          // Keep other fields as strings (which Zod will validate)
+          (newRow as any)[targetKey] = value === null || value === undefined ? "" : String(value);
+        }
+      }
+    }
+  }
+
+  return newRow;
 };
 
 const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportComplete }) => {
@@ -127,6 +181,9 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             Papa.parse(data as string, {
               header: true,
               skipEmptyLines: true,
+              // Add dynamic typing for number fields during parsing for better reliability
+              // The transformDataRow function will still handle final coercion.
+              transformHeader: (header) => header.trim(), // Trim headers here to help matching
               complete: (results) => {
                 // PapaParse sometimes returns empty objects, filter them out
                 json = results.data.filter((d) => Object.values(d).some((v) => v !== null && v !== ""));
@@ -210,12 +267,17 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       // 1. Collect all unique attribute values that need checking
       for (const item of parsedData) {
         for (const attr of ATTRIBUTE_COLUMNS) {
-          const fileHeader = attr.header;
-          const dbTable = attr.table;
-          const value = item[fileHeader];
+          const fileHeader = attr.header; // e.g., 'Supplier', 'Main Group'
+
+          // Map the file header to the schema key (e.g., 'Supplier' -> 'supplier')
+          const schemaKey = HEADER_MAP[fileHeader];
+
+          // Access the value using the normalized key name in the transformed row
+          const value = (item as any)[schemaKey!];
 
           if (value) {
             const normalizedValue = String(value).trim().toUpperCase();
+            const dbTable = attr.table;
             const key = `${dbTable}:${normalizedValue}`;
 
             if (!uniqueAttributes.has(key)) {
@@ -347,9 +409,13 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
               const fileHeader = attr.header;
               const dbTable = attr.table;
               const dbColumn = attr.column;
-              const value = validatedData[dbColumn as keyof ImportData] as string; // Access value by DB column name
 
-              if (value) {
+              // Access value using the normalized schema key (e.g., validatedData.supplier)
+              // Need to map the fileHeader to the schema key to get the value
+              const schemaKey = HEADER_MAP[fileHeader];
+              const value = schemaKey ? (validatedData as any)[schemaKey] : null;
+
+              if (value && typeof value === "string" && value.trim() !== "") {
                 const normalizedValue = value.trim().toUpperCase();
                 const cacheKey = `${dbTable}:${normalizedValue}`;
 
@@ -367,9 +433,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
                 }
 
                 // Map the attribute ID back to the item
-                // Note: The item table uses item_number, supplier, category, brand, etc.
-                // This is a mapping assumption based on common inventory schemas.
-                // Assuming your Item table fields match the attribute headers (e.g., item.supplier for supplier table name)
                 if (dbTable === "suppliers") itemToInsert.supplier = id;
                 else if (dbTable === "categories") itemToInsert.category = id;
                 else if (dbTable === "origins") itemToInsert.origin = id;
@@ -379,7 +442,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
                 else if (dbTable === "sizes") itemToInsert.size = id;
                 else if (dbTable === "colors") itemToInsert.color = id;
                 else if (dbTable === "themes") itemToInsert.theme = id;
-                // Add other mappings as needed...
               }
             }
 
@@ -450,12 +512,16 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         throw new Error("File is empty or could not be parsed.");
       }
 
+      // --- CRITICAL STEP: Normalize Keys and Coerce Types ---
+      const transformedData = parsedData.map(transformDataRow);
+
       // 1. Validation
       const validatedData: ImportData[] = [];
       const validationErrors: string[] = [];
 
-      parsedData.forEach((row, index) => {
+      transformedData.forEach((row, index) => {
         const rowNum = index + 1;
+        // Zod validation is now run on the transformed, normalized data
         const result = itemSchema.safeParse(row);
 
         if (result.success) {
@@ -473,7 +539,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       }
 
       // 2. Pre-Check for New Attributes
-      const newAttributes = await preCheckAttributes(parsedData);
+      const newAttributes = await preCheckAttributes(validatedData);
 
       if (newAttributes.length > 0) {
         setNewAttributesToConfirm(newAttributes);
@@ -615,7 +681,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             <Input id="inventory-file" type="file" accept=".csv, .xlsx, .xls" onChange={handleFileChange} />
           </div>
 
-          {/* FIX: Passing required props to resolve TS2739 error */}
           <GoogleSheetsInput
             onImport={handleGoogleSheetsImport}
             isProcessing={isLoading}
