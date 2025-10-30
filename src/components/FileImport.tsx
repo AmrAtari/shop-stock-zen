@@ -31,7 +31,7 @@ interface FileImportProps {
   onImportComplete: () => void;
 }
 
-// --- NEW: Header Mapping for Key Normalization ---
+// --- Header Mapping for Key Normalization ---
 // Maps the user's column headers (keys in the parsed data) to the database/schema keys.
 const HEADER_MAP: { [key: string]: keyof ImportData | undefined } = {
   SKU: "sku",
@@ -77,7 +77,8 @@ const itemSchema = z.object({
   item_color_code: z.string().trim().optional(),
   color_id_code: z.string().trim().optional(),
   theme: z.string().trim().optional(),
-  quantity: z.number().min(0, "Quantity must be non-negative"),
+  // FIX: Quantity is now optional for new item definition, defaulting to 0 in insertion logic
+  quantity: z.number().min(0, "Quantity must be non-negative").optional(),
   price: z.number().min(0, "Price must be non-negative"),
   cost: z.number().min(0, "Cost must be non-negative"),
   tax: z.number().min(0, "Tax rate must be non-negative"),
@@ -103,7 +104,7 @@ type AttributeToConfirm = {
   value: string;
 };
 
-// --- New utility function to normalize keys and coerce types ---
+// --- Utility function to normalize keys and coerce types ---
 const transformDataRow = (row: any): Partial<ImportData> => {
   const newRow: Partial<ImportData> = {};
 
@@ -117,7 +118,9 @@ const transformDataRow = (row: any): Partial<ImportData> => {
         if (["quantity", "price", "cost", "tax"].includes(targetKey)) {
           // Attempt to parse float, default to 0 if null/empty/invalid
           const numValue = parseFloat(String(value).trim());
-          (newRow as any)[targetKey] = isNaN(numValue) || value === "" ? 0 : numValue;
+          // If the field is present but empty, it is converted to 0.
+          // If the field is not present in the file, it won't be in newRow, and Zod's .optional() handles it.
+          (newRow as any)[targetKey] = isNaN(numValue) || String(value).trim() === "" ? 0 : numValue;
         } else {
           // Keep other fields as strings (which Zod will validate)
           (newRow as any)[targetKey] = value === null || value === undefined ? "" : String(value);
@@ -182,7 +185,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
               header: true,
               skipEmptyLines: true,
               // Add dynamic typing for number fields during parsing for better reliability
-              // The transformDataRow function will still handle final coercion.
               transformHeader: (header) => header.trim(), // Trim headers here to help matching
               complete: (results) => {
                 // PapaParse sometimes returns empty objects, filter them out
@@ -371,10 +373,14 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           }
 
           if (existingId && importType === "quantity_only") {
+            // Quantity is always expected in validatedData for quantity_only import,
+            // but we use the nullish coalescing to be safe.
+            const quantityToUpdate = validatedData.quantity ?? 0;
+
             itemsToUpdate.push({
               id: existingId,
               update: {
-                quantity: validatedData.quantity,
+                quantity: quantityToUpdate,
                 updated_at: new Date().toISOString(),
               },
             });
@@ -395,11 +401,11 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
               name: validatedData.name,
               pos_description: validatedData.pos_description || null,
               item_number: validatedData.item_number || null,
-              // Use the standard field names from the Item type
+              // FIX: Set quantity to 0 if missing from file/validatedData (due to .optional() schema)
+              quantity: validatedData.quantity ?? 0,
               price: validatedData.price,
               cost: validatedData.cost,
               tax: validatedData.tax,
-              quantity: validatedData.quantity,
               updated_at: new Date().toISOString(),
               created_at: new Date().toISOString(),
             };
@@ -408,16 +414,16 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             for (const attr of ATTRIBUTE_COLUMNS) {
               const fileHeader = attr.header;
               const dbTable = attr.table;
-              const dbColumn = attr.column;
 
-              // Access value using the normalized schema key (e.g., validatedData.supplier)
-              // Need to map the fileHeader to the schema key to get the value
+              // Map the fileHeader to the schema key (e.g., 'Supplier' -> 'supplier')
               const schemaKey = HEADER_MAP[fileHeader];
+              // Access value using the normalized schema key (e.g., validatedData.supplier)
               const value = schemaKey ? (validatedData as any)[schemaKey] : null;
 
               if (value && typeof value === "string" && value.trim() !== "") {
                 const normalizedValue = value.trim().toUpperCase();
                 const cacheKey = `${dbTable}:${normalizedValue}`;
+                const dbColumn = attr.column;
 
                 let id = attributeCache.get(cacheKey);
 
@@ -528,7 +534,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           validatedData.push(result.data);
         } else {
           validationErrors.push(
-            `Row ${rowNum}: ${result.error.issues.map((i) => i.path.join(".") + ": " + i.message).join(", ")}`,
+            `Row ${rowNum} (SKU: ${row.sku || "N/A"}): ${result.error.issues.map((i) => i.path.join(".") + ": " + i.message).join(", ")}`,
           );
         }
       });
@@ -645,8 +651,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           <DialogHeader>
             <DialogTitle>Import Inventory Data</DialogTitle>
             <DialogDescription>
-              Import items from a CSV or Excel file. Data must match the required columns (SKU, Name, Price, Cost,
-              Quantity, etc.).
+              Import items from a CSV or Excel file. Data must match the required columns (SKU, Name, Price, Cost, Tax,
+              etc.).
             </DialogDescription>
           </DialogHeader>
 
@@ -660,8 +666,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Full Import Rules</AlertTitle>
                 <AlertDescription>
-                  This mode creates new items. Existing SKUs are treated as duplicates and will be flagged for review
-                  (no data is overwritten).
+                  This mode creates new items with **Quantity defaulting to 0** (as is standard for item definition).
+                  Existing SKUs are treated as duplicates and will be flagged for review (no data is overwritten).
                 </AlertDescription>
               </Alert>
             </TabsContent>
