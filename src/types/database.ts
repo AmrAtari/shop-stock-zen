@@ -15,6 +15,8 @@ export interface Item {
   color: string | null;
   color_id: string | null;
   item_color_code: string | null;
+  // FIX for FileImport.tsx TS2353 error
+  color_id_code: string | null;
   gender: string | null;
   season: string | null;
   unit: string;
@@ -140,5 +142,16 @@ export interface Transfer {
   reason: string | null;
   notes: string | null;
   created_by: string | null;
+  created_at: string;
+}
+
+// FIX for useTransferDetail.tsx: Added missing TransferItem interface
+export interface TransferItem {
+  id: string;
+  transfer_id: string;
+  item_id: string;
+  sku: string;
+  name: string;
+  quantity: number;
   created_at: string;
 }
