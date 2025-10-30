@@ -57,6 +57,22 @@ import { UserPermissionsDialog } from "@/components/UserPermissionsDialog";
 // ADDED: Import the DatabaseAdmin page
 import DatabaseAdmin from "./DatabaseAdmin";
 
+// ===================================
+// ADDED HELPER FUNCTION (From FileImport)
+// ===================================
+/**
+ * Cleans the attribute name by trimming whitespace, converting to uppercase,
+ * and normalizing multiple internal spaces.
+ * @param name The raw attribute name.
+ * @returns The cleaned, standardized attribute name.
+ */
+const cleanAttributeName = (name: string): string => {
+  if (!name) return "";
+  // Trim, convert to uppercase, and replace multiple spaces with a single space (or just trim and uppercase)
+  return name.trim().toUpperCase().replace(/\s+/g, " ");
+};
+// ===================================
+
 type AttributeTable =
   | "categories"
   | "units"
@@ -304,10 +320,20 @@ const Configuration = () => {
     setSearchTerm("");
   };
 
+  // ===================================
+  // MODIFIED: handleAdd function
+  // ===================================
   const handleAdd = async () => {
-    if (!activeCatalog || !newValue.trim()) return toast.error("Please enter a value");
+    if (!activeCatalog) return toast.error("Please select an attribute type");
+
+    // Use the new cleanAttributeName function to standardize the input
+    const cleanedName = cleanAttributeName(newValue);
+
+    if (!cleanedName) return toast.error("Please enter a valid value");
+
     try {
-      const insertData: any = { name: newValue.trim() };
+      // Use the cleaned name for insertion
+      const insertData: any = { name: cleanedName };
 
       const { error } = await supabase.from(activeCatalog.key as any).insert(insertData);
 
@@ -320,6 +346,7 @@ const Configuration = () => {
       toast.error(err.message || "Error adding item");
     }
   };
+  // ===================================
 
   const handleDelete = async (id: string) => {
     if (!activeCatalog) return;
@@ -341,10 +368,15 @@ const Configuration = () => {
 
   const handleEditSave = async (id: string) => {
     if (!activeCatalog || !editValue.trim()) return toast.error("Please enter a name");
+
+    // You should also clean the editValue here for consistency, but for now, we'll keep the minimal change.
+    const cleanedEditValue = cleanAttributeName(editValue);
+    if (!cleanedEditValue) return toast.error("Please enter a valid name");
+
     try {
       const { error } = await supabase
         .from(activeCatalog.key as any)
-        .update({ name: editValue.trim() })
+        .update({ name: cleanedEditValue })
         .eq("id", id);
 
       if (error) throw error;
