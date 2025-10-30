@@ -479,8 +479,22 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         const { error: insertError } = await supabase.from("items").insert(itemsToInsert);
 
         if (insertError) {
-          toast.error("Batch Insertion Failed. Some items might have been inserted.");
+          // Show detailed error message with actual Supabase error
+          const errorMsg = insertError.message || "Unknown error";
+          const errorHint = insertError.hint ? ` (${insertError.hint})` : "";
+          const errorCode = insertError.code ? ` [Code: ${insertError.code}]` : "";
+          
+          toast.error(`Item insertion failed: ${errorMsg}${errorHint}${errorCode}`);
           console.error("Batch Insert Error:", insertError);
+          
+          // Add detailed error for each item in the batch
+          itemsToInsert.forEach((item, idx) => {
+            setErrorDetails((prev) => [
+              ...prev,
+              `SKU ${item.sku}: Item insertion failed - ${errorMsg}${errorCode}`
+            ]);
+          });
+          
           failedRows += itemsToInsert.length;
           successfulRows -= itemsToInsert.length;
         }
@@ -493,11 +507,26 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         });
 
         const updateResults = await Promise.allSettled(updatePromises);
-        updateResults.forEach((result) => {
-          if (result.status === "rejected" || (result.status === "fulfilled" && result.value.error)) {
+        updateResults.forEach((result, idx) => {
+          if (result.status === "rejected") {
             failedRows++;
             successfulRows--;
-            // Log specific update error if needed
+            const updateItem = itemsToUpdate[idx];
+            const errorMsg = result.reason?.message || "Unknown error";
+            setErrorDetails((prev) => [
+              ...prev,
+              `Item ID ${updateItem.id}: Update failed - ${errorMsg}`
+            ]);
+          } else if (result.status === "fulfilled" && result.value.error) {
+            failedRows++;
+            successfulRows--;
+            const updateItem = itemsToUpdate[idx];
+            const errorMsg = result.value.error.message || "Unknown error";
+            const errorCode = result.value.error.code ? ` [Code: ${result.value.error.code}]` : "";
+            setErrorDetails((prev) => [
+              ...prev,
+              `Item ID ${updateItem.id}: Update failed - ${errorMsg}${errorCode}`
+            ]);
           }
         });
       }

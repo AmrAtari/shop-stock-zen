@@ -96,19 +96,30 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          main_group_id: string
           name: string
         }
         Insert: {
           created_at?: string
           id?: string
+          main_group_id: string
           name: string
         }
         Update: {
           created_at?: string
           id?: string
+          main_group_id?: string
           name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_main_group"
+            columns: ["main_group_id"]
+            isOneToOne: false
+            referencedRelation: "main_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       colors: {
         Row: {
@@ -295,6 +306,160 @@ export type Database = {
         }
         Relationships: []
       }
+      items: {
+        Row: {
+          category: string | null
+          color: string | null
+          color_id: string | null
+          color_id_code: string | null
+          cost: number
+          created_at: string | null
+          gender: string | null
+          id: string
+          item_color_code: string | null
+          item_number: string | null
+          last_restocked: string | null
+          location: string | null
+          main_group: string | null
+          min_stock: number
+          name: string
+          origin: string | null
+          pos_description: string | null
+          price: number
+          quantity: number
+          season: string | null
+          size: string | null
+          sku: string
+          supplier: string | null
+          tax: number
+          theme: string | null
+          unit: string
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          color?: string | null
+          color_id?: string | null
+          color_id_code?: string | null
+          cost: number
+          created_at?: string | null
+          gender?: string | null
+          id?: string
+          item_color_code?: string | null
+          item_number?: string | null
+          last_restocked?: string | null
+          location?: string | null
+          main_group?: string | null
+          min_stock?: number
+          name: string
+          origin?: string | null
+          pos_description?: string | null
+          price: number
+          quantity?: number
+          season?: string | null
+          size?: string | null
+          sku: string
+          supplier?: string | null
+          tax?: number
+          theme?: string | null
+          unit?: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          color?: string | null
+          color_id?: string | null
+          color_id_code?: string | null
+          cost?: number
+          created_at?: string | null
+          gender?: string | null
+          id?: string
+          item_color_code?: string | null
+          item_number?: string | null
+          last_restocked?: string | null
+          location?: string | null
+          main_group?: string | null
+          min_stock?: number
+          name?: string
+          origin?: string | null
+          pos_description?: string | null
+          price?: number
+          quantity?: number
+          season?: string | null
+          size?: string | null
+          sku?: string
+          supplier?: string | null
+          tax?: number
+          theme?: string | null
+          unit?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "items_category_fkey"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_color_fkey"
+            columns: ["color"]
+            isOneToOne: false
+            referencedRelation: "colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_gender_fkey"
+            columns: ["gender"]
+            isOneToOne: false
+            referencedRelation: "genders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_main_group_fkey"
+            columns: ["main_group"]
+            isOneToOne: false
+            referencedRelation: "main_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_origin_fkey"
+            columns: ["origin"]
+            isOneToOne: false
+            referencedRelation: "origins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_season_fkey"
+            columns: ["season"]
+            isOneToOne: false
+            referencedRelation: "seasons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_size_fkey"
+            columns: ["size"]
+            isOneToOne: false
+            referencedRelation: "sizes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_supplier_fkey"
+            columns: ["supplier"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_theme_fkey"
+            columns: ["theme"]
+            isOneToOne: false
+            referencedRelation: "themes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       main_groups: {
         Row: {
           created_at: string
@@ -468,42 +633,48 @@ export type Database = {
       products: {
         Row: {
           brand_id: string | null
-          category_id: string | null
+          category_id: string
           description: string | null
           gender: string | null
-          gender_id: string | null
+          gender_id: string
           item_number: string
           name: string
           origin_id: string | null
           pos_description: string | null
           product_id: number
           supplier_id: string | null
+          theme: string | null
+          wholesale_price: number | null
         }
         Insert: {
           brand_id?: string | null
-          category_id?: string | null
+          category_id: string
           description?: string | null
           gender?: string | null
-          gender_id?: string | null
+          gender_id: string
           item_number: string
           name: string
           origin_id?: string | null
           pos_description?: string | null
           product_id?: number
           supplier_id?: string | null
+          theme?: string | null
+          wholesale_price?: number | null
         }
         Update: {
           brand_id?: string | null
-          category_id?: string | null
+          category_id?: string
           description?: string | null
           gender?: string | null
-          gender_id?: string | null
+          gender_id?: string
           item_number?: string
           name?: string
           origin_id?: string | null
           pos_description?: string | null
           product_id?: number
           supplier_id?: string | null
+          theme?: string | null
+          wholesale_price?: number | null
         }
         Relationships: [
           {
@@ -785,22 +956,22 @@ export type Database = {
       stock_on_hand: {
         Row: {
           last_updated: string | null
+          min_stock: number | null
           quantity: number
-          stock_on_hand_id: number
           store_id: string
           variant_id: number
         }
         Insert: {
           last_updated?: string | null
+          min_stock?: number | null
           quantity?: number
-          stock_on_hand_id?: number
           store_id: string
           variant_id: number
         }
         Update: {
           last_updated?: string | null
+          min_stock?: number | null
           quantity?: number
-          stock_on_hand_id?: number
           store_id?: string
           variant_id?: number
         }
@@ -818,53 +989,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "variants"
             referencedColumns: ["variant_id"]
-          },
-        ]
-      }
-      store_inventory: {
-        Row: {
-          cost: number | null
-          created_at: string
-          id: string
-          item_id: string
-          last_restocked: string | null
-          min_stock: number
-          quantity: number
-          store_fk_id: string | null
-          store_id: string
-          updated_at: string
-        }
-        Insert: {
-          cost?: number | null
-          created_at?: string
-          id?: string
-          item_id: string
-          last_restocked?: string | null
-          min_stock?: number
-          quantity?: number
-          store_fk_id?: string | null
-          store_id: string
-          updated_at?: string
-        }
-        Update: {
-          cost?: number | null
-          created_at?: string
-          id?: string
-          item_id?: string
-          last_restocked?: string | null
-          min_stock?: number
-          quantity?: number
-          store_fk_id?: string | null
-          store_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "store_inventory_store_id_fkey"
-            columns: ["store_id"]
-            isOneToOne: false
-            referencedRelation: "stores"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -1134,6 +1258,9 @@ export type Database = {
           color_id: string | null
           cost: number | null
           cost_price: number | null
+          created_at: string | null
+          item_color_code: string | null
+          last_restocked: string | null
           product_id: number
           season: string | null
           season_id: string | null
@@ -1144,6 +1271,7 @@ export type Database = {
           supplier_id: string | null
           tax_rate: number | null
           unit: string | null
+          updated_at: string | null
           variant_id: number
         }
         Insert: {
@@ -1151,6 +1279,9 @@ export type Database = {
           color_id?: string | null
           cost?: number | null
           cost_price?: number | null
+          created_at?: string | null
+          item_color_code?: string | null
+          last_restocked?: string | null
           product_id: number
           season?: string | null
           season_id?: string | null
@@ -1161,6 +1292,7 @@ export type Database = {
           supplier_id?: string | null
           tax_rate?: number | null
           unit?: string | null
+          updated_at?: string | null
           variant_id?: number
         }
         Update: {
@@ -1168,6 +1300,9 @@ export type Database = {
           color_id?: string | null
           cost?: number | null
           cost_price?: number | null
+          created_at?: string | null
+          item_color_code?: string | null
+          last_restocked?: string | null
           product_id?: number
           season?: string | null
           season_id?: string | null
@@ -1178,9 +1313,17 @@ export type Database = {
           supplier_id?: string | null
           tax_rate?: number | null
           unit?: string | null
+          updated_at?: string | null
           variant_id?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_supplier"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fk_variants_color_id"
             columns: ["color_id"]
@@ -1208,6 +1351,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "variants_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
           },
         ]
       }
