@@ -240,17 +240,17 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             continue;
           }
 
-          // 3. Prepare Final Insert Object (FIX: Revert to 'price', 'cost', 'tax')
+          // 3. Prepare Final Insert Object (FIX: Using standard snake_case database columns)
           const finalInsert: Partial<Item> = {
             sku: item.sku,
             name: item.name,
             item_number: item["Item Number"],
             pos_description: item["Pos Description"],
 
-            // --- CRITICAL FIX: Reverting to the simpler property names defined in Item type ---
-            price: item.Price,
-            cost: item.Cost,
-            tax: item.Tax,
+            // --- CRITICAL FIX: Mapping CSV headers to standard database snake_case columns ---
+            selling_price: item.Price, // Maps CSV Price
+            cost_price: item.Cost, // Maps CSV Cost
+            tax_rate: item.Tax, // Maps CSV Tax
             // ---------------------------------------------------------------------------------
 
             color_id_code: item["Color Id"],
