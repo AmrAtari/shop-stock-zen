@@ -3,7 +3,366 @@ import { Plus, Search, Edit, Trash2, Upload, Download, History, Layers } from "l
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";import { useState, useMemo } from "react";
+import { Plus, Search, Edit, Trash2, Upload, Layers, History } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import ProductDialogNew from "@/components/ProductDialogNew";
+import FileImport from "@/components/FileImport";
+import PriceHistoryDialog from "@/components/PriceHistoryDialog";
+import { PaginationControls } from "@/components/PaginationControls";
+import { usePagination } from "@/hooks/usePagination";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/hooks/queryKeys";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// --- Interface for item data ---
+interface ItemWithDetails {
+  id: number;
+  sku: string;
+  name: string;
+  supplier: string;
+  supplier_id: string | null;
+  size: string | null;
+  color: string | null;
+  season: string | null;
+  sellingPrice: number | null;
+  cost: number | null;
+  unit: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_restocked: string | null;
+  item_number?: string;
+  description?: string;
+  pos_description?: string;
+  theme?: string;
+  wholesale_price?: number | null;
+}
+
+// --- Fetch data from Supabase ---
+const fetchInventory = async (): Promise<ItemWithDetails[]> => {
+  const { data, error } = await supabase
+    .from("variants")
+    .select(`
+      variant_id,
+      sku,
+      selling_price,
+      cost,
+      cost_price,
+      tax_rate,
+      unit,
+      color,
+      size,
+      season,
+      supplier_id,
+      created_at,
+      updated_at,
+      last_restocked,
+      products (
+        product_id,
+        name,
+        pos_description,
+        description,
+        item_number,
+        theme,
+        wholesale_price
+      ),
+      suppliers (
+        id,
+        name
+      )
+    `);
+
+  if (error) {
+    console.error("❌ Error fetching inventory:", error.message);
+    throw new Error(`Failed to fetch inventory data: ${error.message}`);
+  }
+
+  console.log("🧩 Raw inventory data:", data);
+
+  const mappedData =
+    data?.map((variant: any) => ({
+      id: variant.variant_id,
+      sku: variant.sku || "N/A",
+      name: variant.products?.name || "N/A",
+      supplier: variant.suppliers?.name || "N/A",
+      supplier_id: variant.suppliers?.id || null,
+      size: variant.size || null,
+      color: variant.color || null,
+      season: variant.season || null,
+      sellingPrice: variant.selling_price || null,
+      cost: variant.cost || variant.cost_price || null,
+      unit: variant.unit || null,
+      created_at: variant.created_at || null,
+      updated_at: variant.updated_at || null,
+      last_restocked: variant.last_restocked || null,
+      item_number: variant.products?.item_number || "N/A",
+      description: variant.products?.description || "N/A",
+      pos_description: variant.products?.pos_description || "N/A",
+      theme: variant.products?.theme || null,
+      wholesale_price: variant.products?.wholesale_price || null,
+    })) || [];
+
+  return mappedData;
+};
+
+const useInventoryQuery = () => {
+  return useQuery<ItemWithDetails[]>({
+    queryKey: queryKeys.inventory.all,
+    queryFn: fetchInventory,
+  });
+};
+
+const ITEMS_PER_PAGE = 20;
+
+const InventoryPage: React.FC = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
+  const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
+  const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
+
+  // Filters
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterSeason, setFilterSeason] = useState("");
+  const [filterColor, setFilterColor] = useState("");
+  const [filterSize, setFilterSize] = useState("");
+
+  const { data: inventory = [], isLoading, error } = useInventoryQuery();
+
+  // Filter options
+  const seasonOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.season).filter(Boolean))).sort(),
+    [inventory],
+  );
+  const colorOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.color).filter(Boolean))).sort(),
+    [inventory],
+  );
+  const sizeOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.size).filter(Boolean))).sort(),
+    [inventory],
+  );
+
+  // Apply filters
+  const filteredInventory = useMemo(() => {
+    return inventory.filter((item) => {
+      const matchesSearch =
+        (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
+        (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
+        (item.item_number?.toLowerCase() ?? "").includes(searchTerm.toLowerCase());
+      const matchesSeason = !filterSeason || item.season === filterSeason;
+      const matchesColor = !filterColor || item.color === filterColor;
+      const matchesSize = !filterSize || item.size === filterSize;
+
+      return matchesSearch && matchesSeason && matchesColor && matchesSize;
+    });
+  }, [inventory, searchTerm, filterSeason, filterColor, filterSize]);
+
+  const pagination = usePagination({
+    data: filteredInventory,
+    totalItems: filteredInventory.length,
+    itemsPerPage: ITEMS_PER_PAGE,
+  } as any);
+
+  const displayInventory: ItemWithDetails[] =
+    (pagination as any).data || (pagination as any).paginatedData || [];
+
+  const toggleSelectItem = (item: ItemWithDetails) => {
+    setSelectedItems((prev) =>
+      prev.some((i) => i.id === item.id)
+        ? prev.filter((i) => i.id !== item.id)
+        : [...prev, item],
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItems.length === displayInventory.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(displayInventory);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Delete this item?")) return;
+
+    const { error: delError } = await supabase.from("variants").delete().eq("variant_id", id);
+    if (delError) toast.error(delError.message);
+    else {
+      toast.success("Item deleted");
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+    }
+  };
+
+  if (isLoading) return <div className="p-8">Loading inventory...</div>;
+  if (error) return <div className="p-8 text-red-500">Error: {error.message}</div>;
+
+  return (
+    <div className="space-y-6 p-6">
+      <header className="flex justify-between items-center border-b pb-4">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <Layers className="w-6 h-6" /> Inventory Management
+        </h1>
+        <div className="flex gap-2">
+          <Button onClick={() => setImportOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" /> Import / Export
+          </Button>
+          <Button onClick={() => { setEditingItem(null); setDialogOpen(true); }}>
+            <Plus className="w-4 h-4 mr-2" /> New Item
+          </Button>
+        </div>
+      </header>
+
+      {/* Search & Filters */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <Search className="w-5 h-5 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, SKU, or item number..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+          <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
+            <SelectTrigger><SelectValue placeholder="Season" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Seasons</SelectItem>
+              {seasonOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
+            <SelectTrigger><SelectValue placeholder="Color" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Colors</SelectItem>
+              {colorOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
+            <SelectTrigger><SelectValue placeholder="Size" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sizes</SelectItem>
+              {sizeOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="border rounded-lg overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[50px] text-center">
+                <Checkbox
+                  checked={selectedItems.length > 0 && selectedItems.length === displayInventory.length}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
+              <TableHead>SKU</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Supplier</TableHead>
+              <TableHead>Season</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Color</TableHead>
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {displayInventory.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell className="text-center">
+                  <Checkbox
+                    checked={selectedItems.some((i) => i.id === item.id)}
+                    onCheckedChange={() => toggleSelectItem(item)}
+                  />
+                </TableCell>
+                <TableCell>{item.sku}</TableCell>
+                <TableCell>{item.name}</TableCell>
+                <TableCell>{item.supplier}</TableCell>
+                <TableCell>{item.season}</TableCell>
+                <TableCell>{item.size}</TableCell>
+                <TableCell>{item.color}</TableCell>
+                <TableCell className="text-right">{item.cost || "N/A"}</TableCell>
+                <TableCell className="text-right">{item.sellingPrice || "N/A"}</TableCell>
+                <TableCell className="text-right flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => { setSelectedItemForHistory(item); setPriceHistoryOpen(true); }}
+                  >
+                    <History className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => { setEditingItem(item); setDialogOpen(true); }}
+                  >
+                    <Edit className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-red-500"
+                    onClick={() => handleDelete(item.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <PaginationControls
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
+        goToPage={pagination.goToPage}
+        canGoPrev={pagination.canGoPrev}
+        canGoNext={pagination.canGoNext}
+        totalItems={filteredInventory.length}
+        startIndex={pagination.startIndex}
+        endIndex={pagination.endIndex}
+      />
+
+      <ProductDialogNew
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        item={editingItem}
+        onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
+      />
+      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
+      {selectedItemForHistory && (
+        <PriceHistoryDialog
+          open={priceHistoryOpen}
+          onOpenChange={setPriceHistoryOpen}
+          itemId={selectedItemForHistory.id}
+          itemName={selectedItemForHistory.name}
+        />
+      )}
+    </div>
+  );
+};
+
+export default InventoryPage;
+
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import ProductDialogNew from "@/components/ProductDialogNew";
