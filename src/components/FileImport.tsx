@@ -31,7 +31,7 @@ interface FileImportProps {
   onImportComplete: () => void;
 }
 
-// --- ZOD VALIDATION SCHEMA (Keep as is, but ensure keys match CSV headers) ---
+// --- ZOD VALIDATION SCHEMA (Matches the CSV headers) ---
 const itemSchema = z.object({
   sku: z.string().trim().min(1, "SKU is required").max(50, "SKU too long"),
   name: z.string().trim().min(1, "Name is required").max(255, "Name too long"),
@@ -48,13 +48,13 @@ const itemSchema = z.object({
   "Color Id": z.string().optional(),
   "Item Color Code": z.string().optional(),
   Theme: z.string().optional(),
+  // Note: The CSV headers are used here, even if the database columns are different
   Price: z.number({ invalid_type_error: "Price must be a number" }).min(0, "Price must be non-negative"),
   Cost: z.number({ invalid_type_error: "Cost must be a number" }).min(0, "Cost must be non-negative"),
   Tax: z.number({ invalid_type_error: "Tax must be a number" }).min(0, "Tax must be non-negative"),
-  // Note: Quantity is handled separately in the processing logic, not here.
 });
 
-// --- CRITICAL ATTRIBUTE CLEANING FUNCTION (MUST BE USED EVERYWHERE) ---
+// --- CRITICAL ATTRIBUTE CLEANING FUNCTION ---
 const cleanAttributeName = (name: string): string => {
   if (!name) return "";
   // Trim all whitespace, convert to uppercase, and replace any sequence of
@@ -62,7 +62,7 @@ const cleanAttributeName = (name: string): string => {
   return name.trim().toUpperCase().replace(/\s+/g, " ");
 };
 
-// --- CORE ATTRIBUTE LOOKUP AND CREATION LOGIC (FIXED) ---
+// --- CORE ATTRIBUTE LOOKUP AND CREATION LOGIC (FIXED for consistency) ---
 const ensureAndMapAttribute = async (
   tableName: string,
   attributeName: string,
@@ -78,7 +78,7 @@ const ensureAndMapAttribute = async (
     let { data: attributeData, error: selectError } = await supabase
       .from(tableName)
       .select("id")
-      .eq("name", cleanedName) // CRITICAL: Use cleanedName here
+      .eq("name", cleanedName) // CRITICAL: Use cleanedName here for reliable lookup
       .maybeSingle();
 
     if (selectError) throw selectError;
@@ -96,7 +96,6 @@ const ensureAndMapAttribute = async (
       .single();
 
     if (insertError) {
-      // This is the error we were seeing: RLS or uniqueness constraint
       throw insertError;
     }
 
@@ -117,6 +116,7 @@ const ensureAndMapAttribute = async (
 const ensureAllAttributes = async (item: z.infer<typeof itemSchema>) => {
   const storeName = "Default"; // Assuming all imports default to a 'Default' store
 
+  // Mapping of foreign key type to the value read from the file
   const attributeMap: { [key: string]: string } = {
     category: item.Category,
     supplier: item.Supplier,
@@ -160,7 +160,6 @@ const ensureAllAttributes = async (item: z.infer<typeof itemSchema>) => {
 // --- END OF CORE ATTRIBUTE LOGIC ---
 
 const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportComplete }) => {
-  // ... (Keep existing state definitions)
   const [file, setFile] = useState<File | null>(null);
   const [dataType, setDataType] = useState<"full_stock" | "quantity_update">("full_stock");
   const [importStatus, setImportStatus] = useState<"idle" | "processing" | "finished">("idle");
@@ -170,19 +169,15 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  // ... (Keep existing readFile function)
   const readFile = (uploadedFile: File) => {
     setFile(uploadedFile);
     setImportStatus("idle");
     setProgress(0);
     setErrorDetails([]);
     setDuplicateErrors([]);
-
-    // ... (rest of the readFile logic)
-    // ... (You can skip the implementation of readFile and focus on handleImport)
+    toast.info(`File selected: ${uploadedFile.name}`);
   };
 
-  // ... (Keep existing processData and handleImport functions)
   const handleImport = async () => {
     if (!file) return toast.error("Please select a file first.");
     setImportStatus("processing");
@@ -203,10 +198,9 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet);
 
         const totalRows = rawJson.length;
-        let successfulInserts = 0;
         let currentErrors: any[] = [];
         let currentDuplicates: any[] = [];
-        const itemsToInsert: any[] = [];
+        const itemsToInsert: Partial<Item>[] = [];
 
         // --- Start processing loop ---
         for (let i = 0; i < totalRows; i++) {
@@ -216,15 +210,17 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           // 1. Zod Validation (Basic structure and types)
           const validatedItem = itemSchema.safeParse({
             ...rawItem,
-            Price: parseFloat(rawItem.Price),
-            Cost: parseFloat(rawItem.Cost),
-            Tax: parseFloat(rawItem.Tax),
+            // Ensure numeric conversions for Zod validation
+            Price: rawItem.Price ? parseFloat(rawItem.Price) : undefined,
+            Cost: rawItem.Cost ? parseFloat(rawItem.Cost) : undefined,
+            Tax: rawItem.Tax ? parseFloat(rawItem.Tax) : undefined,
+            sku: String(rawItem.SKU || "").trim(), // Ensure SKU is trimmed string
           });
 
           if (!validatedItem.success) {
             currentErrors.push({
               row: rowNumber,
-              sku: rawItem.SKU || "N/A",
+              sku: String(rawItem.SKU || "N/A"),
               errors: validatedItem.error.issues.map((issue) => `• ${issue.path.join(".")}: ${issue.message}`),
             });
             continue;
@@ -232,7 +228,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
           const item = validatedItem.data;
 
-          // 2. Attribute Mapping (The FIX is here!)
+          // 2. Attribute Mapping (Ensures Category, Supplier, etc. exist)
           const { attributeIds, error: attributeError } = await ensureAllAttributes(item);
 
           if (attributeError) {
@@ -244,32 +240,30 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             continue;
           }
 
-          // 3. Prepare Final Insert Object
+          // 3. Prepare Final Insert Object (FIX for TypeScript error)
           const finalInsert: Partial<Item> = {
             sku: item.sku,
             name: item.name,
             item_number: item["Item Number"],
             pos_description: item["Pos Description"],
-            price: item.Price,
-            cost: item.Cost,
-            tax: item.Tax,
+
+            // --- CRITICAL FIX: Mapping CSV headers to DB column names ---
+            selling_price: item.Price, // Changed from 'price' to 'selling_price'
+            cost_price: item.Cost, // Changed from 'cost' to 'cost_price'
+            tax_rate: item.Tax, // Changed from 'tax' to 'tax_rate'
+            // -----------------------------------------------------------
+
             color_id_code: item["Color Id"],
             item_color_code: item["Item Color Code"],
             theme: item.Theme,
 
-            // Map the foreign key IDs from the attribute step
+            // Map the foreign key IDs
             ...attributeIds,
-
-            // The 'Quantity' column is typically not in the initial item table
-            // but in a separate 'inventory_stock' table, so we handle it later or implicitly.
-            // For now, assume a simple item insertion.
-            // If you have a 'Quantity' column in your CSV:
-            // initial_stock: parseFloat(rawItem.Quantity || 0)
           };
 
           itemsToInsert.push(finalInsert);
 
-          // Update progress (e.g., every 10 rows)
+          // Update progress
           if ((i + 1) % 10 === 0 || i === totalRows - 1) {
             setProgress(Math.round(((i + 1) / totalRows) * 100));
           }
@@ -278,15 +272,14 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
         // 4. Batch Insertion of Valid Items
         if (itemsToInsert.length > 0 && dataType === "full_stock") {
-          const { error: insertError, data: insertedItems } = await supabase
+          const { error: insertError } = await supabase
             .from("inventory_items")
-            .insert(itemsToInsert)
+            .insert(itemsToInsert as any) // Cast as any to avoid complex TS issues for batch insert
             .select("sku");
 
           if (insertError) {
-            // A final batch error, usually a duplicate key violation
+            // Handle unique constraint violation (duplicate SKU) or other batch errors
             console.error("Batch Insert Error:", insertError);
-            toast.error("A batch insert failed. Check logs for database-level errors.");
             currentErrors.push({
               row: "Batch",
               sku: "N/A",
@@ -317,11 +310,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       }
     };
 
-    // ... (rest of the handleImport function - reader.readAsArrayBuffer(file))
     reader.readAsArrayBuffer(file);
   };
-
-  // ... (Keep existing utility functions like handleDrop, exportErrorLog, exportDuplicateLog)
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -344,6 +334,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
   };
 
   const exportDuplicateLog = () => {
+    // Logic for exporting duplicates (assuming currentDuplicates has the raw data)
     if (duplicateErrors.length === 0) return;
     const ws = XLSX.utils.json_to_sheet(duplicateErrors);
     const wb = XLSX.utils.book_new();
@@ -367,7 +358,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             </TabsList>
           </Tabs>
 
-          {/* ... (Keep existing file drop area and status display) */}
           <div
             className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition-colors"
             onDrop={handleDrop}
@@ -402,7 +392,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             </div>
           )}
 
-          {/* Error Display Section (FIXED display logic) */}
+          {/* Error Display Section */}
           {errorDetails.length > 0 && (
             <div className="space-y-4">
               <Alert variant="destructive">
@@ -434,7 +424,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             </div>
           )}
 
-          {/* ... (Keep existing DialogFooter with conditional buttons) */}
           <DialogFooter>
             <Button
               variant="outline"
@@ -469,7 +458,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         </DialogContent>
       </Dialog>
 
-      {/* ... (Keep existing Duplicate Dialog) */}
       <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -478,7 +466,45 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
               {duplicateErrors.length} items already exist in the database and were skipped.
             </DialogDescription>
           </DialogHeader>
-          {/* ... (rest of the duplicate dialog content) */}
+          <div className="max-h-60 overflow-y-auto mt-4 border rounded-lg">
+            <div className="p-3">
+              {duplicateErrors.slice(0, 15).map((item, index) => (
+                <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
+                  <span className="text-sm font-medium truncate">
+                    {item.sku} - {item.name}
+                  </span>
+                  <div className="flex-shrink-0">
+                    <span className="bg-destructive/10 text-destructive px-2 py-1 rounded">Duplicate</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {duplicateErrors.length > 15 && (
+              <div className="bg-muted px-3 py-2 text-center text-sm text-muted-foreground">
+                And {duplicateErrors.length - 15} more duplicate{duplicateErrors.length - 15 > 1 ? "s" : ""}...
+              </div>
+            )}
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg text-sm space-y-2">
+            <p className="font-medium">💡 What to do next:</p>
+            <ul className="space-y-1 text-muted-foreground">
+              <li>• Export the error log to see all duplicate items and their differences</li>
+              <li>• Review if the existing data needs to be updated manually</li>
+              <li>• Remove duplicate rows from your import file and try again</li>
+              <li>• Use the "Quantity Update Only" import type if you only need to update quantities</li>
+            </ul>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={exportDuplicateLog}>
+              <Download className="w-4 h-4 mr-2" />
+              Export Error Log
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
