@@ -242,8 +242,18 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       // Check again to prevent race condition if another user/import just created it
       const exists = await checkAttributeExistence(table, column, normalizedValue);
       if (exists) {
-        // Fetch the ID if it was just created
-        const { data, error } = await supabase.from(table).select("id").ilike(column, normalizedValue).maybeSingle();
+        // Fetch the ID if it was just created - use limit(1) to handle duplicates
+        const { data, error } = await supabase
+          .from(table)
+          .select("id")
+          .ilike(column, normalizedValue)
+          .limit(1)
+          .single();
+        
+        if (error) {
+          console.error(`Error fetching existing attribute from ${table}:`, error);
+          throw new Error(`Failed to fetch existing ${table} ID: ${error.message}`);
+        }
         return data ? data.id : null;
       }
 
