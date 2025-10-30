@@ -1,9 +1,4 @@
-import { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Download, History, Layers } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Plus, Search, Edit, Trash2, Upload, Layers, History } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -22,7 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// --- Interface for item data ---
+// --- Data Interface ---
 interface ItemWithDetails {
   id: number;
   sku: string;
@@ -45,7 +40,7 @@ interface ItemWithDetails {
   wholesale_price?: number | null;
 }
 
-// --- Fetch data from Supabase ---
+// --- Fetch Inventory Data ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data, error } = await supabase
     .from("variants")
@@ -86,7 +81,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   console.log("🧩 Raw inventory data:", data);
 
-  const mappedData =
+  return (
     data?.map((variant: any) => ({
       id: variant.variant_id,
       sku: variant.sku || "N/A",
@@ -107,9 +102,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       pos_description: variant.products?.pos_description || "N/A",
       theme: variant.products?.theme || null,
       wholesale_price: variant.products?.wholesale_price || null,
-    })) || [];
-
-  return mappedData;
+    })) || []
+  );
 };
 
 const useInventoryQuery = () => {
@@ -125,14 +119,15 @@ const InventoryPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
   const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
-  const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
 
-  // Filters
+  // Selection & filters
+  const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
   const [filterColor, setFilterColor] = useState("");
@@ -140,21 +135,21 @@ const InventoryPage: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Filter options
+  // --- Filter Options ---
   const seasonOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.season).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
   const colorOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.color).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
   const sizeOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.size).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
 
-  // Apply filters
+  // --- Filtered Data ---
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const matchesSearch =
@@ -169,47 +164,47 @@ const InventoryPage: React.FC = () => {
     });
   }, [inventory, searchTerm, filterSeason, filterColor, filterSize]);
 
+  // --- Pagination ---
   const pagination = usePagination({
     data: filteredInventory,
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   } as any);
-
   const displayInventory: ItemWithDetails[] =
     (pagination as any).data || (pagination as any).paginatedData || [];
 
+  // --- Selection logic ---
   const toggleSelectItem = (item: ItemWithDetails) => {
     setSelectedItems((prev) =>
       prev.some((i) => i.id === item.id)
         ? prev.filter((i) => i.id !== item.id)
-        : [...prev, item],
+        : [...prev, item]
     );
   };
 
   const toggleSelectAll = () => {
-    if (selectedItems.length === displayInventory.length) {
-      setSelectedItems([]);
-    } else {
-      setSelectedItems(displayInventory);
-    }
+    if (selectedItems.length === displayInventory.length) setSelectedItems([]);
+    else setSelectedItems(displayInventory);
   };
 
+  // --- Delete handler ---
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Delete this item?")) return;
-
+    if (!window.confirm("Are you sure you want to delete this item?")) return;
     const { error: delError } = await supabase.from("variants").delete().eq("variant_id", id);
     if (delError) toast.error(delError.message);
     else {
-      toast.success("Item deleted");
+      toast.success("Item deleted successfully");
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     }
   };
 
+  // --- UI States ---
   if (isLoading) return <div className="p-8">Loading inventory...</div>;
   if (error) return <div className="p-8 text-red-500">Error: {error.message}</div>;
 
   return (
     <div className="space-y-6 p-6">
+      {/* Header */}
       <header className="flex justify-between items-center border-b pb-4">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Layers className="w-6 h-6" /> Inventory Management
@@ -224,8 +219,9 @@ const InventoryPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Search & Filters */}
+      {/* Filters */}
       <div className="flex flex-col gap-4">
+        {/* Search */}
         <div className="flex items-center gap-2">
           <Search className="w-5 h-5 text-muted-foreground" />
           <Input
@@ -237,6 +233,7 @@ const InventoryPage: React.FC = () => {
           <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
         </div>
 
+        {/* Filter dropdowns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
             <SelectTrigger><SelectValue placeholder="Season" /></SelectTrigger>
@@ -284,6 +281,7 @@ const InventoryPage: React.FC = () => {
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
+
           <TableBody>
             {displayInventory.map((item) => (
               <TableRow key={item.id}>
@@ -331,6 +329,7 @@ const InventoryPage: React.FC = () => {
         </Table>
       </div>
 
+      {/* Pagination */}
       <PaginationControls
         currentPage={pagination.currentPage}
         totalPages={pagination.totalPages}
@@ -342,6 +341,7 @@ const InventoryPage: React.FC = () => {
         endIndex={pagination.endIndex}
       />
 
+      {/* Dialogs */}
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -362,668 +362,3 @@ const InventoryPage: React.FC = () => {
 };
 
 export default InventoryPage;
-
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import ProductDialogNew from "@/components/ProductDialogNew";
-import FileImport from "@/components/FileImport";
-import PriceHistoryDialog from "@/components/PriceHistoryDialog";
-import { PaginationControls } from "@/components/PaginationControls";
-import { usePagination } from "@/hooks/usePagination";
-import { supabase } from "@/integrations/supabase/client";
-import { Item } from "@/types/database";
-import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-// --- 1. FULLY DEFINED INTERFACE ---
-interface ItemWithDetails extends Item {
-  // Fields from JOINED TABLES
-  brand: string | null;
-  origin: string | null;
-  category: string;
-  main_group: string; // CORRECTED FIELD
-  gender: string;
-  supplier: string;
-  store_name: string;
-
-  // Foreign Key IDs (needed for passing to ProductDialogNew)
-  brand_id: string | null;
-  category_id: string | null;
-  gender_id: string | null;
-  origin_id: string | null;
-  supplier_id: string | null;
-  product_id: string; // The ID of the parent product record
-
-  // Variant/Product Fields
-  wholesale_price: number | null;
-  sellingPrice: number | null; // Fixed: Not optional
-  cost: number | null;
-  tax_rate: number | null;
-
-  // Other fields
-  color_id: string | null;
-  item_color_code: string | null;
-  theme: string | null;
-  department: string | null;
-  created_at: string;
-  updated_at: string;
-  last_restocked: string | null;
-  location: string;
-  min_stock: number;
-  quantity: number;
-  unit: string;
-  item_number: string;
-  pos_description: string;
-  description: string;
-  season: string;
-  color: string;
-  size: string;
-}
-
-// --- 2. FINAL CORRECTED Supabase Fetch Function (Comment Removed) ---
-const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  const { data, error } = await supabase.from("variants").select(`
-            variant_id, 
-            sku, 
-            selling_price, 
-            cost, 
-            tax_rate, 
-            unit, 
-            color,
-            size,
-            season,
-            color_id, 
-            item_color_code, 
-            cost_price,
-            created_at,        
-            updated_at,        
-            last_restocked,
-            
-            products (  
-                product_id,
-                name, 
-                pos_description, 
-                description, 
-                item_number,
-                theme,
-                wholesale_price,
-                brand_id,          
-                category_id,       
-                gender_id,         
-                origin_id,         
-                brand:brand_id(name),
-                category:category_id( 
-                    name,
-                    main_group:main_group_id(name) 
-                ), 
-                gender:gender_id(name),
-                origin:origin_id(name)
-            ),
-            
-            supplier:suppliers!variants_supplier_id_fkey(name, id), 
-            
-            stock_on_hand (quantity, min_stock, stores (name))
-        `);
-
-  if (error) {
-    console.error("Error fetching inventory:", error.message);
-    // Re-throw the error to be caught by React Query
-    throw new Error(`Failed to fetch inventory data. Supabase Error: "${error.message}"`);
-  }
-
-  const mappedData = data.map((variant: any) => ({
-    id: variant.variant_id,
-    product_id: variant.products?.product_id,
-    sku: variant.sku || "N/A",
-
-    // Product fields
-    name: variant.products?.name || "N/A",
-    pos_description: variant.products?.pos_description || "N/A",
-    description: variant.products?.description || "N/A",
-    item_number: variant.products?.item_number || "N/A",
-    theme: variant.products?.theme || null,
-    wholesale_price: variant.products?.wholesale_price || null,
-
-    // Foreign Key IDs (CRITICAL: These are passed to ProductDialogNew)
-    brand_id: variant.products?.brand_id || null,
-    category_id: variant.products?.category_id || null,
-    gender_id: variant.products?.gender_id || null,
-    origin_id: variant.products?.origin_id || null,
-    supplier_id: variant.supplier?.id || null,
-
-    // Mapped relationship fields (Name strings)
-    supplier: variant.supplier?.name || "N/A",
-    category: variant.products?.category?.name || "N/A",
-    gender: variant.products?.gender?.name || "N/A",
-    brand: variant.products?.brand?.name || null,
-    origin: variant.products?.origin?.name || null,
-
-    // Mapped Main Group from the nested join
-    main_group: variant.products?.category?.main_group?.name || "N/A",
-
-    created_at: variant.created_at,
-    updated_at: variant.updated_at,
-    last_restocked: variant.last_restocked,
-
-    season: variant.season,
-    size: variant.size,
-    color: variant.color,
-    color_id: variant.color_id || null,
-    item_color_code: variant.item_color_code || null,
-    department: "N/A",
-
-    sellingPrice: variant.selling_price,
-    cost: variant.cost || variant.cost_price,
-    tax_rate: variant.tax_rate,
-    unit: variant.unit,
-
-    // Mapped Stock - Uses stock_on_hand
-    quantity: variant.stock_on_hand[0]?.quantity || 0,
-    min_stock: variant.stock_on_hand[0]?.min_stock || 0,
-    store_name: variant.stock_on_hand[0]?.stores?.name || "N/A",
-    location: variant.stock_on_hand[0]?.stores?.name || "N/A",
-  })) as ItemWithDetails[];
-
-  return mappedData;
-};
-
-const useInventoryQuery = () => {
-  return useQuery<ItemWithDetails[]>({
-    queryKey: queryKeys.inventory.all,
-    queryFn: fetchInventory,
-  });
-};
-
-interface BulkActionsProps {
-  selectedItems: ItemWithDetails[];
-  onBulkUpdate: () => void;
-  onClearSelection: () => void;
-}
-
-const BulkActions: React.FC<BulkActionsProps> = ({ selectedItems, onBulkUpdate, onClearSelection }) => {
-  if (selectedItems.length === 0) return null;
-
-  return (
-    <div className="flex items-center space-x-2 py-2 px-4 bg-blue-50 border-b border-blue-200">
-      <span className="text-sm font-medium text-blue-800">{selectedItems.length} items selected.</span>
-      <Button variant="secondary" size="sm" onClick={onBulkUpdate}>
-        Bulk Update
-      </Button>
-      <Button variant="outline" size="sm" onClick={onClearSelection}>
-        Clear Selection
-      </Button>
-    </div>
-  );
-};
-
-const ITEMS_PER_PAGE = 20;
-
-const InventoryNew: React.FC = () => {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
-  const [selectedItemForHistory, setSelectedItemForHistory] = useState<ItemWithDetails | null>(null);
-  const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
-
-  // Filter states
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterItemNumber, setFilterItemNumber] = useState("");
-  const [filterSeason, setFilterSeason] = useState("");
-  const [filterColor, setFilterColor] = useState("");
-  const [filterSize, setFilterSize] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterMainGroup, setFilterMainGroup] = useState("");
-  const [filterStore, setFilterStore] = useState("");
-
-  const { data: inventory = [], isLoading, error } = useInventoryQuery();
-
-  // Option filters generation
-  const itemNumberOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(inventory.map((item) => item["item_number"] as string).filter((val) => val && val.trim() !== "")),
-      ).sort(),
-    [inventory],
-  );
-
-  const seasonOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(inventory.map((item) => item["season"] as string).filter((val) => val && val.trim() !== "")),
-      ).sort(),
-    [inventory],
-  );
-
-  const colorOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(inventory.map((item) => item["color"] as string).filter((val) => val && val.trim() !== "")),
-      ).sort(),
-    [inventory],
-  );
-
-  const sizeOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(inventory.map((item) => item["size"] as string).filter((val) => val && val.trim() !== "")),
-      ).sort(),
-    [inventory],
-  );
-
-  const categoryOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(inventory.map((item) => item["category"] as string).filter((val) => val && val.trim() !== "")),
-      ).sort(),
-    [inventory],
-  );
-
-  const mainGroupOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(inventory.map((item) => item["main_group"] as string).filter((val) => val && val.trim() !== "")),
-      ).sort(),
-    [inventory],
-  );
-
-  const storeOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(inventory.map((item) => item["store_name"] as string).filter((val) => val && val.trim() !== "")),
-      ).sort(),
-    [inventory],
-  );
-
-  const filteredInventory = useMemo(() => {
-    return inventory.filter((item) => {
-      // Ensure all properties accessed are handled robustly (e.g., optional chaining or null coalescence)
-      const itemNumberStr = item.item_number || "";
-
-      const matchesSearch =
-        (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
-        (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
-        itemNumberStr.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesItemNumber = !filterItemNumber || itemNumberStr === filterItemNumber;
-      const matchesSeason = !filterSeason || item.season === filterSeason;
-      const matchesColor = !filterColor || item.color === filterColor;
-      const matchesSize = !filterSize || item.size === filterSize;
-      const matchesCategory = !filterCategory || item.category === filterCategory;
-      const matchesMainGroup = !filterMainGroup || item.main_group === filterMainGroup;
-      const matchesStore = !filterStore || item.store_name === filterStore;
-
-      return (
-        matchesSearch &&
-        matchesItemNumber &&
-        matchesSeason &&
-        matchesColor &&
-        matchesSize &&
-        matchesCategory &&
-        matchesMainGroup &&
-        matchesStore
-      );
-    });
-  }, [
-    inventory,
-    searchTerm,
-    filterItemNumber,
-    filterSeason,
-    filterColor,
-    filterSize,
-    filterCategory,
-    filterMainGroup,
-    filterStore,
-  ]);
-
-  const pagination = usePagination({
-    data: filteredInventory,
-    totalItems: filteredInventory.length,
-    itemsPerPage: ITEMS_PER_PAGE,
-  } as any);
-
-  const displayInventory: ItemWithDetails[] = (pagination as any).data || (pagination as any).paginatedData || [];
-
-  const handleEdit = (item: ItemWithDetails) => {
-    setEditingItem(item);
-    setDialogOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this item and all its stock?")) return;
-
-    const { error: variantError } = await supabase.from("variants").delete().eq("variant_id", id);
-
-    if (variantError) {
-      toast.error(`Failed to delete item: ${variantError.message}`);
-    } else {
-      toast.success("Item deleted successfully.");
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-    }
-  };
-
-  const handleBulkUpdate = () => {
-    toast.info(`Attempting bulk update for ${selectedItems.length} items.`);
-    // Logic for opening a bulk update dialog goes here
-  };
-
-  const toggleSelectItem = (item: ItemWithDetails) => {
-    setSelectedItems((prev) =>
-      prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item],
-    );
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedItems.length > 0 && selectedItems.length === displayInventory.length) {
-      setSelectedItems([]);
-    } else {
-      setSelectedItems(displayInventory);
-    }
-  };
-
-  if (isLoading) {
-    return <div className="p-8">Loading inventory...</div>;
-  }
-
-  if (error) {
-    // Display a more user-friendly error message, while still showing the technical error.
-    return <div className="p-8 text-red-500">Error loading inventory: {error.message}</div>;
-  }
-
-  return (
-    <div className="space-y-6 p-6">
-      <header className="flex justify-between items-center border-b pb-4">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Layers className="w-6 h-6" />
-          Inventory Management
-        </h1>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => navigate("/inventory/physical")}
-            className="bg-purple-100 text-purple-800 hover:bg-purple-200"
-          >
-            <Layers className="w-4 h-4 mr-2" />
-            View/Manage Counts
-          </Button>
-          <Button onClick={() => setImportOpen(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Export/Import Data
-          </Button>
-          <Button
-            onClick={() => {
-              setEditingItem(null);
-              setDialogOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Item
-          </Button>
-        </div>
-      </header>
-
-      {/* --- FILTER AND SEARCH BAR --- */}
-      <div className="flex flex-col gap-4">
-        {/* Search Bar */}
-        <div className="flex items-center space-x-2">
-          <Search className="w-5 h-5 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, SKU, or item number..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 max-w-sm"
-          />
-          {/* Displays the count for the filtered results */}
-          <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
-        </div>
-
-        {/* Filters Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {/* Item Number Filter */}
-          <Select value={filterItemNumber} onValueChange={(v) => setFilterItemNumber(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Item Number" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Item Numbers</SelectItem>
-              {itemNumberOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Season Filter */}
-          <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Season" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Seasons</SelectItem>
-              {seasonOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Color Filter */}
-          <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Color" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Colors</SelectItem>
-              {colorOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Size Filter */}
-          <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Size" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sizes</SelectItem>
-              {sizeOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Category Filter */}
-          <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categoryOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Main Group Filter */}
-          <Select value={filterMainGroup} onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Main Group" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Main Groups</SelectItem>
-              {mainGroupOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Store/Location Filter */}
-          <Select value={filterStore} onValueChange={(v) => setFilterStore(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Store/Location" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem>
-              {storeOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      {/* --- END OF FILTER AND SEARCH BAR --- */}
-
-      <BulkActions
-        selectedItems={selectedItems}
-        onBulkUpdate={handleBulkUpdate}
-        onClearSelection={() => setSelectedItems([])}
-      />
-
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[50px] text-center">
-                <Checkbox
-                  checked={selectedItems.length > 0 && selectedItems.length === displayInventory.length}
-                  onCheckedChange={toggleSelectAll}
-                />
-              </TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead>Item No.</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Gender</TableHead>
-              <TableHead>Season</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Color</TableHead>
-              <TableHead>Loc/Store</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Stock</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          {/* --- TABLE BODY --- */}
-          <TableBody>
-            {Array.isArray(displayInventory) &&
-              displayInventory.map((item: ItemWithDetails) => {
-                // Skip rendering if 'id' is somehow missing
-                if (!item.id) return null;
-
-                return (
-                  <TableRow key={String(item.id)}>
-                    <TableCell className="text-center">
-                      <Checkbox
-                        checked={selectedItems.some((i) => i.id === item.id)}
-                        onCheckedChange={() => toggleSelectItem(item)}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{item.sku}</TableCell>
-                    <TableCell>{item.item_number}</TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.category}</TableCell>
-                    <TableCell>{item.supplier}</TableCell>
-                    <TableCell>{item.gender}</TableCell>
-                    <TableCell>{item.season}</TableCell>
-                    <TableCell>{item.size}</TableCell>
-                    <TableCell>{item.color || "N/A"}</TableCell>
-                    <TableCell>{item.store_name}</TableCell>
-                    {/* Displaying cost/price as simple strings */}
-                    <TableCell className="text-right">{item.cost || "N/A"}</TableCell>
-                    <TableCell className="text-right">{item.sellingPrice || "N/A"}</TableCell>
-                    {/* Displaying quantity as a simple string */}
-                    <TableCell className="text-right">
-                      <Badge
-                        variant={
-                          item.quantity > item.min_stock ? "outline" : item.quantity > 0 ? "warning" : "destructive"
-                        }
-                      >
-                        {item.quantity || 0}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right flex space-x-2 justify-end">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          setSelectedItemForHistory(item);
-                          setPriceHistoryOpen(true);
-                        }}
-                      >
-                        <History className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(item)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-red-500"
-                        onClick={() => handleDelete(item.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-          </TableBody>
-          {/* --- END OF TABLE BODY --- */}
-        </Table>
-      </div>
-
-      <PaginationControls
-        currentPage={pagination.currentPage}
-        totalPages={pagination.totalPages}
-        goToPage={pagination.goToPage}
-        canGoPrev={pagination.canGoPrev}
-        canGoNext={pagination.canGoNext}
-        totalItems={filteredInventory.length}
-        startIndex={pagination.startIndex}
-        endIndex={pagination.endIndex}
-      />
-
-      <ProductDialogNew
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        item={editingItem}
-        onSave={() => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-        }}
-      />
-      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
-
-      {selectedItemForHistory && (
-        <PriceHistoryDialog
-          open={priceHistoryOpen}
-          onOpenChange={setPriceHistoryOpen}
-          itemId={selectedItemForHistory.id}
-          itemName={selectedItemForHistory.name}
-        />
-      )}
-    </div>
-  );
-};
-
-export default InventoryNew;
