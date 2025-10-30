@@ -77,11 +77,12 @@ const itemSchema = z.object({
   item_color_code: z.string().trim().optional(),
   color_id_code: z.string().trim().optional(),
   theme: z.string().trim().optional(),
-  // FIX: Quantity is now optional for new item definition, defaulting to 0 in insertion logic
+  // FIX: Quantity is optional, defaulting to 0 for initial item definition
   quantity: z.number().min(0, "Quantity must be non-negative").optional(),
   price: z.number().min(0, "Price must be non-negative"),
   cost: z.number().min(0, "Cost must be non-negative"),
-  tax: z.number().min(0, "Tax rate must be non-negative"),
+  // FIX: Tax is now optional, defaulting to 0 for initial item definition
+  tax: z.number().min(0, "Tax rate must be non-negative").optional(),
 });
 
 type ImportData = z.infer<typeof itemSchema>;
@@ -115,6 +116,7 @@ const transformDataRow = (row: any): Partial<ImportData> => {
 
       if (targetKey) {
         // Coerce numerical fields from string/null to number
+        // 'tax' has been added to this list and will be coerced to 0 if blank in the file.
         if (["quantity", "price", "cost", "tax"].includes(targetKey)) {
           // Attempt to parse float, default to 0 if null/empty/invalid
           const numValue = parseFloat(String(value).trim());
@@ -401,11 +403,12 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
               name: validatedData.name,
               pos_description: validatedData.pos_description || null,
               item_number: validatedData.item_number || null,
-              // FIX: Set quantity to 0 if missing from file/validatedData (due to .optional() schema)
+              // Use validated quantity, default to 0 if missing (optional in schema)
               quantity: validatedData.quantity ?? 0,
               price: validatedData.price,
               cost: validatedData.cost,
-              tax: validatedData.tax,
+              // Use validated tax rate, default to 0 if missing (optional in schema)
+              tax: validatedData.tax ?? 0,
               updated_at: new Date().toISOString(),
               created_at: new Date().toISOString(),
             };
@@ -651,7 +654,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           <DialogHeader>
             <DialogTitle>Import Inventory Data</DialogTitle>
             <DialogDescription>
-              Import items from a CSV or Excel file. Data must match the required columns (SKU, Name, Price, Cost, Tax,
+              Import items from a CSV or Excel file. Data must match the required columns (SKU, Name, Price, Cost,
               etc.).
             </DialogDescription>
           </DialogHeader>
@@ -666,8 +669,9 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Full Import Rules</AlertTitle>
                 <AlertDescription>
-                  This mode creates new items with **Quantity defaulting to 0** (as is standard for item definition).
-                  Existing SKUs are treated as duplicates and will be flagged for review (no data is overwritten).
+                  This mode creates new items. **Quantity** and **Tax** will default to **0** (as they are transactional
+                  details). Existing SKUs are treated as duplicates and will be flagged for review (no data is
+                  overwritten).
                 </AlertDescription>
               </Alert>
             </TabsContent>
