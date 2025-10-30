@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 // --- Data Interface ---
 interface ItemWithDetails {
-  id: number;
+  id: string; // ✅ changed from number → string
   product_id?: string | null;
   sku: string;
   name: string;
@@ -93,7 +93,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   return (
     data?.map((variant: any) => ({
-      id: variant.variant_id,
+      id: String(variant.variant_id), // ✅ cast to string
       product_id: variant.products?.product_id || null,
       sku: variant.sku || "N/A",
       name: variant.products?.name || "N/A",
@@ -204,7 +204,7 @@ const InventoryPage: React.FC = () => {
   };
 
   // --- Delete handler ---
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
     const { error: delError } = await supabase.from("variants").delete().eq("variant_id", id);
     if (delError) toast.error(delError.message);
@@ -220,7 +220,6 @@ const InventoryPage: React.FC = () => {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
       <header className="flex justify-between items-center border-b pb-4">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Layers className="w-6 h-6" /> Inventory Management
@@ -237,7 +236,6 @@ const InventoryPage: React.FC = () => {
 
       {/* Filters */}
       <div className="flex flex-col gap-4">
-        {/* Search */}
         <div className="flex items-center gap-2">
           <Search className="w-5 h-5 text-muted-foreground" />
           <Input
@@ -249,7 +247,6 @@ const InventoryPage: React.FC = () => {
           <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
         </div>
 
-        {/* Filter dropdowns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
             <SelectTrigger><SelectValue placeholder="Season" /></SelectTrigger>
@@ -369,7 +366,7 @@ const InventoryPage: React.FC = () => {
         <PriceHistoryDialog
           open={priceHistoryOpen}
           onOpenChange={setPriceHistoryOpen}
-          itemId={String(selectedItemForHistory.id)}   // ✅ fixed type issue
+          itemId={selectedItemForHistory.id}
           itemName={selectedItemForHistory.name}
         />
       )}
