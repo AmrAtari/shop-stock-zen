@@ -116,12 +116,11 @@ const transformDataRow = (row: any): Partial<ImportData> => {
 
       if (targetKey) {
         // Coerce numerical fields from string/null to number
-        // 'tax' has been added to this list and will be coerced to 0 if blank in the file.
+        // 'quantity' and 'tax' are included here. If blank, they default to 0 during coercion.
         if (["quantity", "price", "cost", "tax"].includes(targetKey)) {
           // Attempt to parse float, default to 0 if null/empty/invalid
           const numValue = parseFloat(String(value).trim());
           // If the field is present but empty, it is converted to 0.
-          // If the field is not present in the file, it won't be in newRow, and Zod's .optional() handles it.
           (newRow as any)[targetKey] = isNaN(numValue) || String(value).trim() === "" ? 0 : numValue;
         } else {
           // Keep other fields as strings (which Zod will validate)
