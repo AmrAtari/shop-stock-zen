@@ -240,18 +240,18 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             continue;
           }
 
-          // 3. Prepare Final Insert Object (FIX for TypeScript error)
+          // 3. Prepare Final Insert Object (FIX: Revert to 'price', 'cost', 'tax')
           const finalInsert: Partial<Item> = {
             sku: item.sku,
             name: item.name,
             item_number: item["Item Number"],
             pos_description: item["Pos Description"],
 
-            // --- CRITICAL FIX: Mapping CSV headers to DB column names ---
-            selling_price: item.Price, // Changed from 'price' to 'selling_price'
-            cost_price: item.Cost, // Changed from 'cost' to 'cost_price'
-            tax_rate: item.Tax, // Changed from 'tax' to 'tax_rate'
-            // -----------------------------------------------------------
+            // --- CRITICAL FIX: Reverting to the simpler property names defined in Item type ---
+            price: item.Price,
+            cost: item.Cost,
+            tax: item.Tax,
+            // ---------------------------------------------------------------------------------
 
             color_id_code: item["Color Id"],
             item_color_code: item["Item Color Code"],
