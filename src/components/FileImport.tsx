@@ -213,6 +213,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
   const [importStatus, setImportStatus] = useState<"idle" | "processing" | "finished">("idle");
   const [progress, setProgress] = useState(0);
   const [errorDetails, setErrorDetails] = useState<any[]>([]);
+
+  // States related to the old duplicate logic (kept but logic removed to fix TS error)
   const [duplicateErrors, setDuplicateErrors] = useState<any[]>([]);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
 
@@ -372,14 +374,14 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           continue;
         }
 
-        // c. Prepare Final Insert Object (Using the corrected price/cost/tax keys)
+        // c. Prepare Final Insert Object (Using 'price' and 'cost' to fix TS error)
         const finalInsert: Partial<Item> = {
           sku: item.sku,
           name: item.name,
           item_number: item["Item Number"],
           pos_description: item["Pos Description"],
-          retail_price: item.Price, // Maps CSV Price
-          unit_cost: item.Cost, // Maps CSV Cost
+          price: item.Price, // FIXED: Changed from retail_price to price
+          cost: item.Cost, // FIXED: Changed from unit_cost to cost
           tax: item.Tax, // Maps CSV Tax
           color_id_code: item["Color Id"],
           item_color_code: item["Item Color Code"],
@@ -403,6 +405,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
         if (insertError) {
           console.error("Batch Insert Error:", insertError);
+          // Note: Database unique constraint errors (duplicates) will also land here
           currentErrors.push({
             row: "Batch",
             sku: "N/A",
@@ -412,13 +415,11 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       }
 
       // 4. Final Report
+      // NOTE: Removed the check for 'currentDuplicates' as it was undefined.
+      // All failures (validation and database insert errors/duplicates) are now in currentErrors.
       if (currentErrors.length > 0) {
         setErrorDetails(currentErrors);
         toast.error(`${currentErrors.length} row(s) failed validation or database insertion.`);
-      } else if (currentDuplicates.length > 0) {
-        setDuplicateErrors(currentDuplicates);
-        setDuplicateDialogOpen(true);
-        toast.warning(`Import complete with ${currentDuplicates.length} duplicates found.`);
       } else {
         toast.success(`Import successful! ${itemsToInsert.length} items processed.`);
         onOpenChange(false); // Close dialog on success
@@ -632,7 +633,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         </DialogContent>
       </Dialog>
 
-      {/* --- EXISTING DUPLICATE DIALOG --- */}
+      {/* --- DUPLICATE DIALOG (Kept for potential future logic re-integration) --- */}
       <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -675,9 +676,10 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
             <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
               Close
             </Button>
+            {/* Keeping the button but it will export an empty log if logic isn't re-integrated */}
             <Button onClick={exportDuplicateLog}>
               <Download className="w-4 h-4 mr-2" />
-              Export Error Log
+              Export Duplicate Log
             </Button>
           </DialogFooter>
         </DialogContent>
