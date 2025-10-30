@@ -1,7 +1,5 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -10,19 +8,16 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Upload, FileSpreadsheet, Download, AlertCircle, RefreshCcw } from "lucide-react";
+import { Upload, Download, AlertCircle, RefreshCcw, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
 import { Item } from "@/types/database";
 import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
-import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
+import { invalidateInventoryData } from "@/hooks/queryKeys";
 import { Progress } from "@/components/ui/progress";
 
 interface FileImportProps {
@@ -30,6 +25,19 @@ interface FileImportProps {
   onOpenChange: (open: boolean) => void;
   onImportComplete: () => void;
 }
+
+// Define the attribute tables that are checked for existence
+const ATTRIBUTE_COLUMNS = [
+  { fileHeader: "Category", dbTable: "categories", dbColumn: "category_id" },
+  { fileHeader: "Supplier", dbTable: "suppliers", dbColumn: "supplier_id" },
+  { fileHeader: "Gender", dbTable: "genders", dbColumn: "gender_id" },
+  { fileHeader: "Main Group", dbTable: "main_groups", dbColumn: "main_group_id" },
+  { fileHeader: "Origin", dbTable: "origins", dbColumn: "origin_id" },
+  { fileHeader: "Season", dbTable: "seasons", dbColumn: "season_id" },
+  { fileHeader: "Color", dbTable: "colors", dbColumn: "color_id" },
+  { fileHeader: "Size", dbTable: "sizes", dbColumn: "size_id" },
+  // NOTE: Store is handled separately as it's hardcoded to 'Default'
+];
 
 // --- ZOD VALIDATION SCHEMA (Matches the CSV headers) ---
 const itemSchema = z.object({
@@ -48,7 +56,6 @@ const itemSchema = z.object({
   "Color Id": z.string().optional(),
   "Item Color Code": z.string().optional(),
   Theme: z.string().optional(),
-  // Note: The CSV headers are used here, even if the database columns are different
   Price: z.number({ invalid_type_error: "Price must be a number" }).min(0, "Price must be non-negative"),
   Cost: z.number({ invalid_type_error: "Cost must be a number" }).min(0, "Cost must be non-negative"),
   Tax: z.number({ invalid_type_error: "Tax must be a number" }).min(0, "Tax must be non-negative"),
@@ -62,53 +69,98 @@ const cleanAttributeName = (name: string): string => {
   return name.trim().toUpperCase().replace(/\s+/g, " ");
 };
 
-// --- CORE ATTRIBUTE LOOKUP AND CREATION LOGIC (FIXED for consistency) ---
+// --- CORE ATTRIBUTE CHECK FUNCTION (Modified to only check existence) ---
+const checkAttributeExistence = async (tableName: string, attributeNames: string[]): Promise<string[]> => {
+  if (attributeNames.length === 0) return [];
+  const cleanedNames = attributeNames.map(cleanAttributeName).filter((n) => n.length > 0);
+
+  if (cleanedNames.length === 0) return [];
+
+  // Query database to find attributes that already exist
+  const { data, error } = await supabase.from(tableName).select("name").in("name", cleanedNames);
+
+  if (error) {
+    console.error(`Error checking attributes in ${tableName}:`, error);
+    // On error, assume all are new to prevent accidental skipping if RLS is strict
+    return cleanedNames;
+  }
+
+  const existingNames = new Set(data?.map((row) => cleanAttributeName(row.name)) || []);
+
+  // Return the list of cleaned names that DO NOT exist
+  return cleanedNames.filter((name) => !existingNames.has(name));
+};
+
+// --- CORE ATTRIBUTE CREATION FUNCTION (Used after user confirmation) ---
+const createAttribute = async (tableName: string, name: string): Promise<string | null> => {
+  const cleanedName = cleanAttributeName(name);
+  if (!cleanedName) return null;
+
+  try {
+    // 1. Try to insert
+    let { data, error: insertError } = await supabase
+      .from(tableName)
+      .insert({ name: cleanedName })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      // 2. If insert fails (likely unique constraint violation due to race condition), select
+      // NOTE: This handles cases where two parallel processes try to insert the same value.
+      if (insertError.code === "23505") {
+        // PostgreSQL unique violation code
+        const { data: selectData, error: selectError } = await supabase
+          .from(tableName)
+          .select("id")
+          .eq("name", cleanedName)
+          .maybeSingle();
+
+        if (selectError || !selectData)
+          throw selectError || new Error("Failed to retrieve existing attribute after insert failure.");
+        return selectData.id;
+      }
+      throw insertError;
+    }
+
+    return data.id;
+  } catch (error: any) {
+    console.error(`Error processing attribute ${tableName}(${cleanedName}):`, error.message);
+    return null;
+  }
+};
+
+// --- CORE ATTRIBUTE LOOKUP AND MAPPING LOGIC (USED IN PHASE 2) ---
+// This function now ASSUMES all attributes already exist or have been created.
 const ensureAndMapAttribute = async (
   tableName: string,
   attributeName: string,
 ): Promise<{ id: string | null; error: string | null }> => {
   const cleanedName = cleanAttributeName(attributeName);
-
   if (!cleanedName) {
     return { id: null, error: `Empty attribute name for table ${tableName}` };
   }
 
   try {
-    // 1. SELECT: Try to find the attribute ID using the CLEANED name
+    // Attempt to find the ID (it must exist now)
     let { data: attributeData, error: selectError } = await supabase
       .from(tableName)
       .select("id")
-      .eq("name", cleanedName) // CRITICAL: Use cleanedName here for reliable lookup
+      .eq("name", cleanedName)
       .maybeSingle();
 
     if (selectError) throw selectError;
 
     if (attributeData) {
-      // Attribute found, return ID
       return { id: attributeData.id, error: null };
     }
 
-    // 2. INSERT: Attribute not found, attempt to insert the CLEANED name
-    let { data: newAttributeData, error: insertError } = await supabase
-      .from(tableName)
-      .insert({ name: cleanedName }) // CRITICAL: Insert cleanedName here
-      .select("id")
-      .single();
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    // Insertion successful, return new ID
-    return { id: newAttributeData.id, error: null };
+    // Fallback: If not found, something is wrong with the pre-check/creation phase.
+    return { id: null, error: `Critical attribute missing after pre-check/creation: ${tableName}(${attributeName})` };
   } catch (error: any) {
     console.error(`Error processing attribute ${tableName}(${cleanedName}):`, error.message);
     return {
       id: null,
-      error: `Critical attribute missing: ${tableName}(${attributeName}) could not be found/created. Error: ${error.message.substring(
-        0,
-        100,
-      )}...`,
+      error: `Database lookup failed for: ${tableName}(${attributeName}). Error: ${error.message.substring(0, 100)}...`,
     };
   }
 };
@@ -132,18 +184,17 @@ const ensureAllAttributes = async (item: z.infer<typeof itemSchema>) => {
   const attributeIdMap: { [key: string]: string } = {};
   const failedAttributes: string[] = [];
 
+  // We are now calling the helper that is guaranteed to find the ID (since it was pre-checked/created)
   const promises = Object.entries(attributeMap).map(async ([type, name]) => {
-    // The table name is derived from the type (e.g., 'category' -> 'categories')
     const tableName = type === "store" ? "stores" : `${type}s`;
+    const dbKey = type === "store" ? "store_id" : `${type}_id`;
 
     const { id, error } = await ensureAndMapAttribute(tableName, name);
 
     if (error || !id) {
       failedAttributes.push(`${type.toUpperCase()}(${name})`);
     } else {
-      // Map the foreign key to the correct name for the final insert object
-      // e.g., 'category_id', 'supplier_id'
-      attributeIdMap[`${type}_id`] = id;
+      attributeIdMap[dbKey] = id;
     }
   });
 
@@ -151,10 +202,7 @@ const ensureAllAttributes = async (item: z.infer<typeof itemSchema>) => {
 
   return {
     attributeIds: attributeIdMap,
-    error:
-      failedAttributes.length > 0
-        ? `Critical attribute missing: ${failedAttributes.join(", ")} could not be found/created. This is usually due to RLS blocking attribute insertion.`
-        : null,
+    error: failedAttributes.length > 0 ? `Failed to map IDs for: ${failedAttributes.join(", ")}.` : null,
   };
 };
 // --- END OF CORE ATTRIBUTE LOGIC ---
@@ -167,6 +215,12 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
   const [errorDetails, setErrorDetails] = useState<any[]>([]);
   const [duplicateErrors, setDuplicateErrors] = useState<any[]>([]);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+
+  // NEW STATE FOR ATTRIBUTE CONFIRMATION
+  const [rawJsonData, setRawJsonData] = useState<any[]>([]);
+  const [newAttributesToConfirm, setNewAttributesToConfirm] = useState<Record<string, string[]>>({});
+  const [isConfirmationDialogOpen, setIsConfirmationDialogOpen] = useState(false);
+
   const queryClient = useQueryClient();
 
   const readFile = (uploadedFile: File) => {
@@ -175,15 +229,16 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
     setProgress(0);
     setErrorDetails([]);
     setDuplicateErrors([]);
+    setNewAttributesToConfirm({});
+    setRawJsonData([]);
     toast.info(`File selected: ${uploadedFile.name}`);
   };
 
+  // --- PHASE 1: PRE-CHECK AND CONFIRMATION ---
   const handleImport = async () => {
     if (!file) return toast.error("Please select a file first.");
     setImportStatus("processing");
-    setProgress(0);
-    setErrorDetails([]);
-    setDuplicateErrors([]);
+    setProgress(1); // Start progress bar
 
     const reader = new FileReader();
 
@@ -194,123 +249,188 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
 
-        // Convert to JSON
         const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet);
+        setRawJsonData(rawJson); // Store raw data for phase 2
 
-        const totalRows = rawJson.length;
-        let currentErrors: any[] = [];
-        let currentDuplicates: any[] = [];
-        const itemsToInsert: Partial<Item>[] = [];
+        const uniqueAttributes: Record<string, Set<string>> = {};
 
-        // --- Start processing loop ---
-        for (let i = 0; i < totalRows; i++) {
-          const rawItem = rawJson[i];
-          const rowNumber = i + 1;
-
-          // 1. Zod Validation (Basic structure and types)
-          const validatedItem = itemSchema.safeParse({
-            ...rawItem,
-            // Ensure numeric conversions for Zod validation
-            Price: rawItem.Price ? parseFloat(rawItem.Price) : undefined,
-            Cost: rawItem.Cost ? parseFloat(rawItem.Cost) : undefined,
-            Tax: rawItem.Tax ? parseFloat(rawItem.Tax) : undefined,
-            sku: String(rawItem.SKU || "").trim(), // Ensure SKU is trimmed string
+        // 1. Collect all unique attribute values from the file
+        rawJson.forEach((rawItem) => {
+          ATTRIBUTE_COLUMNS.forEach(({ fileHeader, dbTable }) => {
+            const value = String(rawItem[fileHeader] || "").trim();
+            if (value) {
+              if (!uniqueAttributes[dbTable]) {
+                uniqueAttributes[dbTable] = new Set();
+              }
+              uniqueAttributes[dbTable].add(value);
+            }
           });
+        });
 
-          if (!validatedItem.success) {
-            currentErrors.push({
-              row: rowNumber,
-              sku: String(rawItem.SKU || "N/A"),
-              errors: validatedItem.error.issues.map((issue) => `• ${issue.path.join(".")}: ${issue.message}`),
-            });
-            continue;
+        setProgress(25); // Mid-way progress
+
+        // 2. Check which unique attributes are NOT in the database
+        const attributesToCreate: Record<string, string[]> = {};
+        const checkPromises = Object.entries(uniqueAttributes).map(async ([dbTable, valuesSet]) => {
+          const newValues = await checkAttributeExistence(dbTable, Array.from(valuesSet));
+          if (newValues.length > 0) {
+            attributesToCreate[dbTable] = newValues;
           }
+        });
 
-          const item = validatedItem.data;
+        await Promise.all(checkPromises);
+        setProgress(50); // Almost done with pre-check
 
-          // 2. Attribute Mapping (Ensures Category, Supplier, etc. exist)
-          const { attributeIds, error: attributeError } = await ensureAllAttributes(item);
-
-          if (attributeError) {
-            currentErrors.push({
-              row: rowNumber,
-              sku: item.sku,
-              errors: [`• database.foreign_key_precheck: ${attributeError}`],
-            });
-            continue;
-          }
-
-          // 3. Prepare Final Insert Object (FIX: Trying retail_price, unit_cost, tax)
-          const finalInsert: Partial<Item> = {
-            sku: item.sku,
-            name: item.name,
-            item_number: item["Item Number"],
-            pos_description: item["Pos Description"],
-
-            // --- CRITICAL FIX: Mapping CSV headers to revised snake_case columns ---
-            retail_price: item.Price, // Maps CSV Price
-            unit_cost: item.Cost, // Maps CSV Cost
-            tax: item.Tax, // Maps CSV Tax
-            // ---------------------------------------------------------------------------------
-
-            color_id_code: item["Color Id"],
-            item_color_code: item["Item Color Code"],
-            theme: item.Theme,
-
-            // Map the foreign key IDs
-            ...attributeIds,
-          };
-
-          itemsToInsert.push(finalInsert);
-
-          // Update progress
-          if ((i + 1) % 10 === 0 || i === totalRows - 1) {
-            setProgress(Math.round(((i + 1) / totalRows) * 100));
-          }
-        }
-        // --- End processing loop ---
-
-        // 4. Batch Insertion of Valid Items
-        if (itemsToInsert.length > 0 && dataType === "full_stock") {
-          const { error: insertError } = await supabase
-            .from("inventory_items")
-            .insert(itemsToInsert as any) // Cast as any to avoid complex TS issues for batch insert
-            .select("sku");
-
-          if (insertError) {
-            // Handle unique constraint violation (duplicate SKU) or other batch errors
-            console.error("Batch Insert Error:", insertError);
-            currentErrors.push({
-              row: "Batch",
-              sku: "N/A",
-              errors: [`• database.batch_insert_failed: ${insertError.message}`],
-            });
-          }
-        }
-
-        // 5. Final Report
-        if (currentErrors.length > 0) {
-          setErrorDetails(currentErrors);
-          toast.error(`${currentErrors.length} row(s) failed validation or database insertion.`);
-        } else if (currentDuplicates.length > 0) {
-          setDuplicateErrors(currentDuplicates);
-          setDuplicateDialogOpen(true);
-          toast.warning(`Import complete with ${currentDuplicates.length} duplicates found.`);
+        // 3. Handle result
+        if (Object.keys(attributesToCreate).length > 0) {
+          setNewAttributesToConfirm(attributesToCreate);
+          setIsConfirmationDialogOpen(true);
+          setImportStatus("idle"); // Stop the import flow to wait for confirmation
+          setProgress(0);
+          toast.warning("New attributes detected. Please confirm creation.");
         } else {
-          toast.success(`Import successful! ${itemsToInsert.length} items processed.`);
-          onOpenChange(false); // Close dialog on success
-          invalidateInventoryData(queryClient);
+          // If no new attributes, proceed directly to Phase 2
+          handleConfirmedImport(rawJson);
         }
-
-        setImportStatus("finished");
       } catch (e: any) {
-        console.error("Import failed:", e);
-        toast.error(`Import failed during file processing: ${e.message}`);
+        console.error("Import pre-check failed:", e);
+        toast.error(`File reading failed: ${e.message}`);
         setImportStatus("finished");
+        setProgress(0);
       }
     };
 
     reader.readAsArrayBuffer(file);
+  };
+
+  // --- PHASE 2: ATTRIBUTE CREATION AND BATCH INSERTION (Called after confirmation or if no new attributes) ---
+  const handleConfirmedImport = async (jsonToProcess: any[] | null = null) => {
+    const rawJson = jsonToProcess || rawJsonData;
+    if (rawJson.length === 0) return toast.error("No data to import.");
+
+    setIsConfirmationDialogOpen(false); // Close confirmation dialog
+    setImportStatus("processing");
+    setProgress(5);
+
+    try {
+      // 1. Create ALL confirmed new attributes first (Phase 2, Step 1)
+      const creationPromises = Object.entries(newAttributesToConfirm).flatMap(([dbTable, newValues]) =>
+        newValues.map((value) => createAttribute(dbTable, value)),
+      );
+
+      const creationResults = await Promise.all(creationPromises);
+      const failedCreations = creationResults.filter((r) => r === null).length;
+
+      if (failedCreations > 0) {
+        // This is a rare, severe error if the user confirmed but creation still failed
+        setImportStatus("finished");
+        return toast.error("CRITICAL: Failed to create some confirmed attributes. Please check RLS policies.");
+      }
+
+      // Reset confirmation state as they are now created/checked
+      setNewAttributesToConfirm({});
+      setProgress(10); // Initial progress after attribute creation
+
+      // 2. Main Validation and Insertion Loop (Phase 2, Step 2)
+      const totalRows = rawJson.length;
+      let currentErrors: any[] = [];
+      const itemsToInsert: Partial<Item>[] = [];
+
+      for (let i = 0; i < totalRows; i++) {
+        const rawItem = rawJson[i];
+        const rowNumber = i + 1;
+
+        // a. Zod Validation
+        const validatedItem = itemSchema.safeParse({
+          ...rawItem,
+          Price: rawItem.Price ? parseFloat(rawItem.Price) : undefined,
+          Cost: rawItem.Cost ? parseFloat(rawItem.Cost) : undefined,
+          Tax: rawItem.Tax ? parseFloat(rawItem.Tax) : undefined,
+          sku: String(rawItem.SKU || "").trim(),
+        });
+
+        if (!validatedItem.success) {
+          currentErrors.push({
+            row: rowNumber,
+            sku: String(rawItem.SKU || "N/A"),
+            errors: validatedItem.error.issues.map((issue) => `• ${issue.path.join(".")}: ${issue.message}`),
+          });
+          continue;
+        }
+
+        const item = validatedItem.data;
+
+        // b. Attribute Mapping (guaranteed to find IDs now)
+        const { attributeIds, error: attributeError } = await ensureAllAttributes(item);
+
+        if (attributeError) {
+          currentErrors.push({
+            row: rowNumber,
+            sku: item.sku,
+            errors: [`• database.foreign_key_precheck: ${attributeError}`],
+          });
+          continue;
+        }
+
+        // c. Prepare Final Insert Object (Using the corrected price/cost/tax keys)
+        const finalInsert: Partial<Item> = {
+          sku: item.sku,
+          name: item.name,
+          item_number: item["Item Number"],
+          pos_description: item["Pos Description"],
+          retail_price: item.Price, // Maps CSV Price
+          unit_cost: item.Cost, // Maps CSV Cost
+          tax: item.Tax, // Maps CSV Tax
+          color_id_code: item["Color Id"],
+          item_color_code: item["Item Color Code"],
+          theme: item.Theme,
+          ...attributeIds,
+        };
+
+        itemsToInsert.push(finalInsert);
+
+        if ((i + 1) % 10 === 0 || i === totalRows - 1) {
+          setProgress(10 + Math.round(((i + 1) / totalRows) * 90)); // Progress from 10% to 100%
+        }
+      }
+
+      // 3. Batch Insertion
+      if (itemsToInsert.length > 0 && dataType === "full_stock") {
+        const { error: insertError } = await supabase
+          .from("inventory_items")
+          .insert(itemsToInsert as any)
+          .select("sku");
+
+        if (insertError) {
+          console.error("Batch Insert Error:", insertError);
+          currentErrors.push({
+            row: "Batch",
+            sku: "N/A",
+            errors: [`• database.batch_insert_failed: ${insertError.message}`],
+          });
+        }
+      }
+
+      // 4. Final Report
+      if (currentErrors.length > 0) {
+        setErrorDetails(currentErrors);
+        toast.error(`${currentErrors.length} row(s) failed validation or database insertion.`);
+      } else if (currentDuplicates.length > 0) {
+        setDuplicateErrors(currentDuplicates);
+        setDuplicateDialogOpen(true);
+        toast.warning(`Import complete with ${currentDuplicates.length} duplicates found.`);
+      } else {
+        toast.success(`Import successful! ${itemsToInsert.length} items processed.`);
+        onOpenChange(false); // Close dialog on success
+        invalidateInventoryData(queryClient);
+      }
+
+      setImportStatus("finished");
+    } catch (e: any) {
+      console.error("Import failed:", e);
+      toast.error(`Import failed during processing: ${e.message}`);
+      setImportStatus("finished");
+    }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -334,7 +454,6 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
   };
 
   const exportDuplicateLog = () => {
-    // Logic for exporting duplicates (assuming currentDuplicates has the raw data)
     if (duplicateErrors.length === 0) return;
     const ws = XLSX.utils.json_to_sheet(duplicateErrors);
     const wb = XLSX.utils.book_new();
@@ -443,14 +562,17 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
                 Export Error Log
               </Button>
             )}
-            <Button onClick={handleImport} disabled={!file || importStatus === "processing"}>
+            <Button
+              onClick={handleImport}
+              disabled={!file || importStatus === "processing" || isConfirmationDialogOpen}
+            >
               {importStatus === "processing" ? (
                 <>
                   <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> Importing...
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4 mr-2" /> Start Import
+                  <Upload className="w-4 h-4 mr-2" /> Start Import Check
                 </>
               )}
             </Button>
@@ -458,6 +580,59 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         </DialogContent>
       </Dialog>
 
+      {/* --- NEW ATTRIBUTE CONFIRMATION DIALOG --- */}
+      <Dialog open={isConfirmationDialogOpen} onOpenChange={setIsConfirmationDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <AlertCircle className="w-5 h-5 mr-2 text-yellow-500" /> Confirm New Attributes
+            </DialogTitle>
+            <DialogDescription>
+              Your file contains new attribute values that don't exist in the database. Please review the list below. Do
+              you want to add them and continue the inventory import?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 overflow-y-auto mt-4 border rounded-lg p-4 bg-muted/50">
+            {Object.entries(newAttributesToConfirm).map(([dbTable, newValues]) => (
+              <div key={dbTable} className="mb-4">
+                <h4 className="font-semibold capitalize text-sm mb-1">
+                  {dbTable.replace(/s$/, "").replace(/_/g, " ")}s ({newValues.length} new):
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {newValues.map((value, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full border border-yellow-300"
+                    >
+                      {value}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsConfirmationDialogOpen(false);
+                setNewAttributesToConfirm({});
+                setImportStatus("idle");
+                toast.info("Import aborted by user. New attributes were not created.");
+              }}
+            >
+              Cancel Import
+            </Button>
+            <Button onClick={() => handleConfirmedImport(null)} className="bg-green-600 hover:bg-green-700">
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Yes, Add & Continue Import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- EXISTING DUPLICATE DIALOG --- */}
       <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
