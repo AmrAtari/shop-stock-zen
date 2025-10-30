@@ -217,13 +217,13 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
   const checkAttributeExistence = useCallback(
     async (table: string, column: string, value: string): Promise<boolean> => {
       if (!value || value === "") return true; // Skip check for empty values
-      // Normalization: Trim whitespace and convert to uppercase for case-insensitive matching
-      const normalizedValue = value.trim().toUpperCase();
+      // Trim whitespace but DON'T convert to uppercase - preserve original case
+      const normalizedValue = value.trim();
 
       const { count, error } = await supabase
         .from(table)
         .select(column, { count: "exact", head: true })
-        .ilike(column, normalizedValue); // Use ilike for case-insensitive match (database permitting)
+        .ilike(column, normalizedValue); // Use ilike for case-insensitive match
 
       if (error) {
         console.error(`Error checking attribute existence in ${table}:`, error);
@@ -237,12 +237,13 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
   const createAttribute = useCallback(
     async (table: string, column: string, value: string): Promise<string | null> => {
-      const normalizedValue = value.trim().toUpperCase();
+      // Preserve original case - don't convert to uppercase
+      const normalizedValue = value.trim();
 
       // Check again to prevent race condition if another user/import just created it
       const exists = await checkAttributeExistence(table, column, normalizedValue);
       if (exists) {
-        // Fetch the ID if it was just created - use limit(1) to handle duplicates
+        // Fetch the ID of existing attribute (case-insensitive search)
         const { data, error } = await supabase
           .from(table)
           .select("id")
@@ -257,6 +258,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         return data ? data.id : null;
       }
 
+      // Create new attribute with original case preserved
       const { data, error } = await supabase
         .from(table)
         .insert({ [column]: normalizedValue })
@@ -264,9 +266,7 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
         .single();
 
       if (error) {
-        // **CRITICAL FIX/IMPROVEMENT:** Log the full error to help debug RLS/Policy issues
         console.error(`Error creating attribute in ${table} (Value: ${normalizedValue}):`, error);
-        // Return the error message to the caller for display in the UI
         throw new Error(`Supabase error creating attribute in ${table}: ${error.message}`);
       }
       return data.id;
@@ -291,9 +291,10 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           const value = (item as any)[schemaKey!];
 
           if (value) {
-            const normalizedValue = String(value).trim().toUpperCase();
+            // Preserve original case for display, but use lowercase key for comparison
+            const normalizedValue = String(value).trim();
             const dbTable = attr.table;
-            const key = `${dbTable}:${normalizedValue}`;
+            const key = `${dbTable}:${normalizedValue.toLowerCase()}`;
 
             if (!uniqueAttributes.has(key)) {
               uniqueAttributes.set(key, new Set([normalizedValue]));
@@ -304,7 +305,8 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
 
       // 2. Check existence for unique values
       for (const [key, values] of uniqueAttributes.entries()) {
-        const [table, normalizedValue] = key.split(":");
+        const [table, _] = key.split(":");
+        const normalizedValue = Array.from(values)[0]; // Get the original case value
         const attrConfig = ATTRIBUTE_COLUMNS.find((a) => a.table === table);
 
         if (attrConfig) {
@@ -435,8 +437,9 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
               const value = schemaKey ? (validatedData as any)[schemaKey] : null;
 
               if (value && typeof value === "string" && value.trim() !== "") {
-                const normalizedValue = value.trim().toUpperCase();
-                const cacheKey = `${dbTable}:${normalizedValue}`;
+                // Preserve original case
+                const normalizedValue = value.trim();
+                const cacheKey = `${dbTable}:${normalizedValue.toLowerCase()}`;
                 const dbColumn = attr.column;
 
                 let id = attributeCache.get(cacheKey);
@@ -841,10 +844,13 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
       <Dialog open={isConfirmationDialogOpen} onOpenChange={setIsConfirmationDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Confirm New Attributes</DialogTitle>
+            <DialogTitle>New Attributes Detected</DialogTitle>
             <DialogDescription>
-              The import file contains new values for attributes that don't exist in your database. Do you want to
-              create them now?
+              The following attributes don't exist in your database yet. Would you like to add them to your system?
+              <br />
+              <span className="text-xs text-muted-foreground mt-1 block">
+                Note: Attributes are case-insensitive (e.g., "Blue" = "BLUE" = "blue")
+              </span>
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-64 overflow-y-auto p-4 border rounded-lg space-y-2">
@@ -857,10 +863,9 @@ const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportCom
           </div>
           <Alert>
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Warning</AlertTitle>
+            <AlertTitle>Important</AlertTitle>
             <AlertDescription>
-              Creating these attributes will make them available globally for all future items. Ensure they are
-              correctly spelled.
+              These new attributes will be added to your system and available for all items. Make sure they are spelled correctly before proceeding.
             </AlertDescription>
           </Alert>
           <DialogFooter>
