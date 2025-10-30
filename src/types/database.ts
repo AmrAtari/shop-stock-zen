@@ -15,6 +15,7 @@ export interface Item {
   color: string | null;
   color_id: string | null;
   item_color_code: string | null;
+  color_id_code: string | null; // ADDED: Resolves error in FileImport.tsx
   gender: string | null;
   season: string | null;
   unit: string;
@@ -90,6 +91,19 @@ export interface PurchaseOrderItem {
   quantity: number;
   cost_price: number;
   received_quantity: number;
+  created_at: string;
+}
+
+// ADDED: Resolves error in useTransferDetail.tsx
+export interface TransferItem {
+  id: string;
+  transfer_id: string;
+  item_id: string;
+  sku: string;
+  name: string;
+  size: string | null;
+  quantity: number;
+  status: "pending" | "sent" | "received"; // Status of the item within the transfer
   created_at: string;
 }
 
