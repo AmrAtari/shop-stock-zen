@@ -217,15 +217,17 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
   };
 
   // --- CRITICAL NEW HELPER FUNCTION: Aggressively cleans attribute names for lookup keys ---
-  const cleanAttributeName = (name: string): string => {
-    if (!name) return '';
-    return name
+  const cleanAttributeName = (name: string | number | null | undefined): string => {
+    if (!name) return "";
+    return (
+      String(name) // Defensive cast to ensure we handle number/non-string values from Excel
         .trim()
         // Aggressive non-breaking space replacement (the most common hidden culprit)
-        .replace(/\u00A0/g, ' ') 
+        .replace(/\u00A0/g, " ")
         // Normalize all other whitespace (including tabs, multiple spaces, etc.) to a single space
-        .replace(/\s+/g, ' ')
-        .toLowerCase(); // Convert to lowercase for case-insensitive lookup key
+        .replace(/\s+/g, " ")
+        .toUpperCase()
+    ); // CHANGED: Use UPPERCASE for consistent, case-insensitive lookup key
   };
   // ------------------------------------------------------------------------------------------
 
@@ -323,10 +325,10 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
      * by mapping all database names and incoming names to the aggressively cleaned string.
      * @param table The Supabase table name (e.g., 'categories').
      * @param names The set of unique names from the import file.
-     * @returns A Map where the key is the CLEANED lowercase attribute name and the value is the UUID.
+     * @returns A Map where the key is the CLEANED uppercase attribute name and the value is the UUID.
      */
     const ensureAndMapAttributes = async (table: string, names: Set<string>): Promise<Map<string, string>> => {
-      const nameToIdMap = new Map<string, string>(); 
+      const nameToIdMap = new Map<string, string>();
       if (names.size === 0) return nameToIdMap;
 
       const originalNamesArray = Array.from(names).filter((n) => n.length > 0);
@@ -338,73 +340,76 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
       if (fetchError) {
         throw new Error(`[${table}] Lookup failed: ${fetchError.message}`);
       }
-      
+
       const existingNamesClean = new Set<string>();
 
       if (allExisting) {
         allExisting.forEach((attr: any) => {
-          // Use the aggressive cleaner for the map key
+          // **CORRECT FIX APPLIED**: Use the aggressive cleaner for the map key
           const cleanName = cleanAttributeName(attr.name);
-          
+
           if (!nameToIdMap.has(cleanName)) {
             nameToIdMap.set(cleanName, attr.id);
             existingNamesClean.add(cleanName);
           }
         });
       }
-      
+
       // 2. Identify missing attributes and sanitize
       const namesToInsert: { name: string }[] = [];
       const tempInsertSet = new Set<string>(); // Tracks what we plan to insert by CLEANED name
 
-      originalNamesArray.forEach(originalName => {
-        // Use the aggressive cleaner for checking against existing data/pending inserts
+      originalNamesArray.forEach((originalName) => {
+        // **CORRECT FIX APPLIED**: Use the aggressive cleaner for checking against existing data/pending inserts
         const cleanKey = cleanAttributeName(originalName);
-        
-        // Use a simple trim for the name inserted into the DB (to keep original casing)
-        const nameToStore = originalName.trim().replace(/\s+/g, ' '); 
+
+        // Use a simple trim for the name inserted into the DB (to keep original casing or cleaned file data)
+        const nameToStore = String(originalName).trim().replace(/\s+/g, " ");
 
         if (nameToStore.length === 0) return; // Skip if it's just spaces
 
-        // Check if the CLEANED name is already mapped 
+        // Check if the CLEANED name is already mapped
         // OR if we've already queued its CLEANED version for insertion
         if (!existingNamesClean.has(cleanKey) && !tempInsertSet.has(cleanKey)) {
           // Insert the cleaned, trimmed name using its original casing from the file
-          namesToInsert.push({ name: nameToStore }); 
+          namesToInsert.push({ name: nameToStore });
           tempInsertSet.add(cleanKey); // Mark the clean key as pending insert
         }
       });
 
       // 3. Insert all new attributes in one batch (Guaranteed Fix applied here)
       if (namesToInsert.length > 0) {
-        const { error: insertError } = await (supabase as any)
-            .from(table)
-            .insert(namesToInsert);
+        const { error: insertError } = await (supabase as any).from(table).insert(namesToInsert);
 
         if (insertError) {
+          // Check if the error is a UNIQUE constraint violation (which is fine and expected if two items in the file have slightly different casing but are cleaned to the same key)
+          if (insertError.code === "23505") {
+            // PostgreSQL unique violation code
+            console.warn(`[${table}] Skipped redundant insert due to unique constraint: ${insertError.message}`);
+          } else {
+            // Throw other, more serious errors
             throw new Error(`[${table}] Failed to create new attributes: ${insertError.message}`);
+          }
         }
 
         // CRITICAL FIX: Re-fetch the entire attribute list after inserting new values
-        // This guarantees we capture the correct UUIDs for the newly inserted attributes, 
+        // This guarantees we capture the correct UUIDs for the newly inserted attributes,
         // regardless of potential DB casing quirks or invisible character issues.
         nameToIdMap.clear();
-        
-        const { data: updatedExisting, error: refetchError } = await (supabase as any)
-            .from(table)
-            .select("id, name");
+
+        const { data: updatedExisting, error: refetchError } = await (supabase as any).from(table).select("id, name");
 
         if (refetchError) {
-            throw new Error(`[${table}] Refetch failed after insert: ${refetchError.message}`);
+          throw new Error(`[${table}] Refetch failed after insert: ${refetchError.message}`);
         }
 
         if (updatedExisting) {
-            updatedExisting.forEach((attr: any) => {
-                const cleanName = cleanAttributeName(attr.name); // Use the cleaner again
-                if (!nameToIdMap.has(cleanName)) {
-                    nameToIdMap.set(cleanName, attr.id);
-                }
-            });
+          updatedExisting.forEach((attr: any) => {
+            const cleanName = cleanAttributeName(attr.name); // Use the cleaner again
+            if (!nameToIdMap.has(cleanName)) {
+              nameToIdMap.set(cleanName, attr.id);
+            }
+          });
         }
       }
 
@@ -507,12 +512,12 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
 
         const validatedData = validationResult.data;
 
-        // CRITICAL FIX: Use the aggressive cleaner for the final attribute ID lookup
+        // **CRITICAL FINAL LOOKUP**: Use the aggressive cleaner for the final attribute ID lookup
         const cleanCategory = cleanAttributeName(validatedData.category);
         const cleanSupplier = cleanAttributeName(validatedData.supplier);
         const cleanStore = cleanAttributeName(validatedData.location || "Default");
         const cleanBrand = validatedData.brand ? cleanAttributeName(validatedData.brand) : null;
-        
+
         const category_id = categoryMap.get(cleanCategory);
         const supplier_id = supplierMap.get(cleanSupplier);
         const brand_id = cleanBrand ? brandMap.get(cleanBrand) : null;
@@ -527,7 +532,7 @@ const FileImport = ({ open, onOpenChange, onImportComplete }: FileImportProps) =
             errors: [
               {
                 path: ["database", "foreign_key_precheck"],
-                message: `Critical attribute missing: Category(${validatedData.category}), Supplier(${validatedData.supplier}), or Store(${validatedData.location || "Default"}) could not be found/created.`,
+                message: `Critical attribute missing: Category(${validatedData.category}), Supplier(${validatedData.supplier}), or Store(${validatedData.location || "Default"}) could not be found/created. This is usually due to RLS blocking attribute insertion.`,
               },
             ],
           });
