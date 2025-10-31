@@ -219,6 +219,8 @@ const PurchaseOrderNew = () => {
       const poDataToInsert = {
         po_number: poNumber,
         supplier: supplierData.name,
+        // FIX: Add the required supplier_id
+        supplier_id: supplierData.id,
         store_id: data.storeId,
         order_date: data.orderDate.toISOString(),
         expected_delivery: data.expectedDelivery?.toISOString(),
