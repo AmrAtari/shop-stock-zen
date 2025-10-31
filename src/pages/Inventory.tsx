@@ -358,7 +358,20 @@ const InventoryPage: React.FC = () => {
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        item={editingItem ? { ...editingItem, product_id: editingItem.product_id || editingItem.id } : undefined}
+        item={editingItem ? { 
+          ...editingItem,
+          product_id: editingItem.product_id || editingItem.id,
+          item_number: editingItem.item_number || '',
+          pos_description: editingItem.pos_description || null,
+          description: editingItem.description || null,
+          theme: editingItem.theme || null,
+          tax_rate: editingItem.tax_rate || null,
+          wholesale_price: editingItem.wholesale_price || null,
+          brand_id: editingItem.brand_id || null,
+          category_id: editingItem.category_id || null,
+          gender_id: editingItem.gender_id || null,
+          origin_id: editingItem.origin_id || null
+        } : undefined}
         onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
       />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
