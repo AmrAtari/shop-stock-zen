@@ -29,10 +29,12 @@ import { Item, Supplier } from "@/types/database";
 
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
-  // FIX 1: Make store selection required and rename to storeId
+  // FIX: Store selection is now required
   storeId: z.string().min(1, "Destination store is required."),
   orderDate: z.date({ required_error: "Order date is required." }),
   expectedDelivery: z.date().optional(),
+  // NOTE: These fields are optional and will be sent as 'undefined' if blank,
+  // which works with the TEXT columns that allow NULL.
   buyerCompanyName: z.string().optional(),
   buyerAddress: z.string().optional(),
   buyerContact: z.string().optional(),
@@ -61,9 +63,6 @@ interface POItem {
   costPrice: number;
 }
 
-// REMOVED: InventoryTransaction interface as it's not needed here
-// REMOVED: updateInventoryFromPO function as inventory is updated on PO Receipt
-
 const PurchaseOrderNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -72,8 +71,7 @@ const PurchaseOrderNew = () => {
   const { data: inventory = [] } = useQuery<Item[]>({
     queryKey: queryKeys.inventory.all,
     queryFn: async () => {
-      // NOTE: This uses the deprecated 'items' table. Inventory fix was in 'Inventory (29).tsx'.
-      // For this page, we rely on the 'inventory' list for item lookup for PO line items.
+      // NOTE: This uses the deprecated 'items' table for lookup.
       const { data, error } = await supabase.from("items").select("*").order("name");
       if (error) throw error;
       return data || [];
@@ -217,19 +215,21 @@ const PurchaseOrderNew = () => {
         data: { user },
       } = await supabase.auth.getUser();
 
-      // Create purchase order data without tax_rate field
+      // Create purchase order data
       const poDataToInsert = {
         po_number: poNumber,
         supplier: supplierData.name,
-        // FIX 2: Use the required storeId
         store_id: data.storeId,
         order_date: data.orderDate.toISOString(),
         expected_delivery: data.expectedDelivery?.toISOString(),
+
+        // These optional fields are sent as 'undefined' if blank
         buyer_company_name: data.buyerCompanyName,
         buyer_address: data.buyerAddress,
         buyer_contact: data.buyerContact,
         billing_address: data.billingAddress,
         shipping_address: data.shippingAddress,
+
         supplier_contact_person: selectedSupplier?.contact_person,
         payment_terms: data.paymentTerms,
         currency: data.currency,
@@ -241,7 +241,6 @@ const PurchaseOrderNew = () => {
         shipping_charges: data.shippingCharges,
         total_cost: grandTotal,
         total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
-        // FIX 3: Set status to 'draft'
         status: "draft",
         authorized_by: user?.id,
       };
@@ -272,9 +271,6 @@ const PurchaseOrderNew = () => {
       const { error: itemsError } = await supabase.from("purchase_order_items").insert(poItemsData);
 
       if (itemsError) throw itemsError;
-
-      // Inventory update is handled by the "Receive" button on the Purchase Order Detail page (PurchaseOrderDetail (2).tsx)
-      // which has been previously fixed to use the correct 'stock_on_hand' table.
 
       // Invalidate queries to refresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
@@ -316,7 +312,6 @@ const PurchaseOrderNew = () => {
                 <Input value="Auto-generated on save" disabled />
               </div>
               <div className="space-y-2">
-                {/* FIX 4: Update Label and Select to use storeId and show error */}
                 <Label htmlFor="storeId">Destination Store *</Label>
                 <Select value={watch("storeId")} onValueChange={(value) => setValue("storeId", value)}>
                   <SelectTrigger>
