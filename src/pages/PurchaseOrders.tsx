@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Eye, Printer, Download, Copy, Trash2, Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Plus, Eye, Printer, Trash2, Calendar as CalendarIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,6 +19,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
 
+// NOTE: Ensure the PaginationControls and usePagination hook are available in your project
+
 const PurchaseOrders = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -26,6 +28,7 @@ const PurchaseOrders = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
 
+  // Data Fetching: usePurchaseOrders fetches the filtered list
   const { data: purchaseOrders = [], isLoading } = usePurchaseOrders(searchTerm, statusFilter, dateRange);
 
   const pagination = usePagination({
@@ -159,12 +162,14 @@ const PurchaseOrders = () => {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Enhanced Loading State */}
           {isLoading ? (
             <div className="text-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" />
               <p className="text-muted-foreground mt-2">Loading Purchase Orders...</p>
             </div>
           ) : purchaseOrders.length === 0 ? (
+            /* Enhanced Empty State */
             <div className="text-center py-12">
               <p className="text-muted-foreground">
                 {searchTerm || statusFilter !== "all" || dateRange
