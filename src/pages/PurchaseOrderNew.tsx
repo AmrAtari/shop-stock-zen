@@ -219,7 +219,6 @@ const PurchaseOrderNew = () => {
       const poDataToInsert = {
         po_number: poNumber,
         supplier: supplierData.name,
-        // FIX: Add the required supplier_id
         supplier_id: supplierData.id,
         store_id: data.storeId,
         order_date: data.orderDate.toISOString(),
@@ -247,18 +246,26 @@ const PurchaseOrderNew = () => {
         authorized_by: user?.id,
       };
 
-      // Create purchase order
+      // Create purchase order and retrieve the inserted row's ID
       const { data: poData, error: poError } = await supabase
         .from("purchase_orders")
         .insert(poDataToInsert)
-        .select()
+        .select("id") // Explicitly select the ID column
         .single();
 
       if (poError) throw poError;
 
-      // Create PO items
+      // FINAL FIX: Safely extract the ID and check its existence
+      const poId = poData?.id;
+      if (!poId) {
+        throw new Error(
+          "Failed to retrieve the ID of the created Purchase Order. Please ensure the 'purchase_orders' table has a primary key column named 'id'.",
+        );
+      }
+
+      // Create PO items, using the confirmed PO ID
       const poItemsData = poItems.map((item) => ({
-        po_id: poData.id,
+        po_id: poId,
         sku: item.sku,
         item_name: item.itemName,
         item_description: item.itemDescription,
