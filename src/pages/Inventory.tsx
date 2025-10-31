@@ -78,7 +78,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
         gender_id,
         origin_id
       ),
-      suppliers (
+      suppliers!variants_supplier_id_fkey (
         id,
         name
       )
