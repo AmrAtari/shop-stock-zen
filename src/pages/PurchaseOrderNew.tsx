@@ -29,8 +29,9 @@ import { Item, Supplier } from "@/types/database";
 
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
-  store: z.string().optional(),
-  orderDate: z.date(),
+  // FIX 1: Make store selection required and rename to storeId
+  storeId: z.string().min(1, "Destination store is required."),
+  orderDate: z.date({ required_error: "Order date is required." }),
   expectedDelivery: z.date().optional(),
   buyerCompanyName: z.string().optional(),
   buyerAddress: z.string().optional(),
@@ -60,14 +61,8 @@ interface POItem {
   costPrice: number;
 }
 
-// Define the inventory transaction type
-interface InventoryTransaction {
-  sku: string;
-  quantity_change: number;
-  reason: string;
-  reference_id?: string;
-  created_at?: string;
-}
+// REMOVED: InventoryTransaction interface as it's not needed here
+// REMOVED: updateInventoryFromPO function as inventory is updated on PO Receipt
 
 const PurchaseOrderNew = () => {
   const navigate = useNavigate();
@@ -77,13 +72,14 @@ const PurchaseOrderNew = () => {
   const { data: inventory = [] } = useQuery<Item[]>({
     queryKey: queryKeys.inventory.all,
     queryFn: async () => {
+      // NOTE: This uses the deprecated 'items' table. Inventory fix was in 'Inventory (29).tsx'.
+      // For this page, we rely on the 'inventory' list for item lookup for PO line items.
       const { data, error } = await supabase.from("items").select("*").order("name");
       if (error) throw error;
       return data || [];
     },
   });
 
-  const [step, setStep] = useState(1);
   const [poItems, setPOItems] = useState<POItem[]>([]);
   const [sameBillingAddress, setSameBillingAddress] = useState(false);
   const [sameShippingAddress, setSameShippingAddress] = useState(false);
@@ -104,6 +100,7 @@ const PurchaseOrderNew = () => {
       currency: "USD",
       taxPercent: 0,
       shippingCharges: 0,
+      storeId: "", // Initialize required field
     },
   });
 
@@ -131,64 +128,6 @@ const PurchaseOrderNew = () => {
       setValue("shippingAddress", watchBuyerAddress);
     }
   }, [sameShippingAddress, watchBuyerAddress, setValue]);
-
-  // NEW: Function to update inventory when PO is completed
-  const updateInventoryFromPO = async (poId: string, items: POItem[]) => {
-    try {
-      // Update inventory for each item in the PO
-      for (const item of items) {
-        // First, get current quantity
-        const { data: currentItem, error: fetchError } = await supabase
-          .from("items")
-          .select("quantity")
-          .eq("sku", item.sku)
-          .single();
-
-        if (fetchError) {
-          console.error("Failed to fetch current item:", fetchError);
-          throw new Error(`Failed to fetch item ${item.sku}`);
-        }
-
-        // Update inventory quantity
-        const { error: updateError } = await supabase
-          .from("items")
-          .update({
-            quantity: (currentItem.quantity || 0) + item.quantity,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("sku", item.sku);
-
-        if (updateError) {
-          console.error("Failed to update inventory for item:", item.sku, updateError);
-          throw new Error(`Failed to update inventory for ${item.sku}`);
-        }
-
-        // Create inventory transaction record - using type assertion to avoid TypeScript errors
-        const transactionData: InventoryTransaction = {
-          sku: item.sku,
-          quantity_change: item.quantity,
-          reason: "purchase_order_received",
-          reference_id: poId,
-          created_at: new Date().toISOString(),
-        };
-
-        // Use type assertion to bypass TypeScript check for the table name
-        const { error: transactionError } = await supabase
-          .from("inventory_transactions" as any)
-          .insert(transactionData);
-
-        if (transactionError) {
-          console.error("Failed to create transaction record:", transactionError);
-          // Don't throw here as the main update succeeded
-        }
-      }
-
-      toast.success(`Inventory updated for ${items.length} items`);
-    } catch (error: any) {
-      console.error("Inventory update error:", error);
-      throw error;
-    }
-  };
 
   const handleAddItemsFromSelector = (items: Array<{ item: Item; quantity: number; price: number }>) => {
     const newItems: POItem[] = items.map(({ item, quantity, price }) => ({
@@ -282,7 +221,8 @@ const PurchaseOrderNew = () => {
       const poDataToInsert = {
         po_number: poNumber,
         supplier: supplierData.name,
-        store_id: data.store || null,
+        // FIX 2: Use the required storeId
+        store_id: data.storeId,
         order_date: data.orderDate.toISOString(),
         expected_delivery: data.expectedDelivery?.toISOString(),
         buyer_company_name: data.buyerCompanyName,
@@ -298,11 +238,11 @@ const PurchaseOrderNew = () => {
         special_instructions: data.specialInstructions,
         subtotal,
         tax_amount: taxAmount,
-        // REMOVED: tax_rate field since it doesn't exist in the table
         shipping_charges: data.shippingCharges,
         total_cost: grandTotal,
         total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
-        status: "completed", // NEW: Set as completed to trigger inventory update
+        // FIX 3: Set status to 'draft'
+        status: "draft",
         authorized_by: user?.id,
       };
 
@@ -333,15 +273,15 @@ const PurchaseOrderNew = () => {
 
       if (itemsError) throw itemsError;
 
-      // NEW: Update inventory quantities
-      await updateInventoryFromPO(poData.id, poItems);
+      // Inventory update is handled by the "Receive" button on the Purchase Order Detail page (PurchaseOrderDetail (2).tsx)
+      // which has been previously fixed to use the correct 'stock_on_hand' table.
 
       // Invalidate queries to refresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
 
-      toast.success(`Purchase Order ${poNumber} created successfully and inventory updated`);
+      toast.success(`Purchase Order ${poNumber} created successfully`);
       navigate("/purchase-orders");
     } catch (error: any) {
       console.error("PO creation error:", error);
@@ -376,8 +316,9 @@ const PurchaseOrderNew = () => {
                 <Input value="Auto-generated on save" disabled />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="store">Store (Optional)</Label>
-                <Select value={watch("store")} onValueChange={(value) => setValue("store", value)}>
+                {/* FIX 4: Update Label and Select to use storeId and show error */}
+                <Label htmlFor="storeId">Destination Store *</Label>
+                <Select value={watch("storeId")} onValueChange={(value) => setValue("storeId", value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select store" />
                   </SelectTrigger>
@@ -389,6 +330,7 @@ const PurchaseOrderNew = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.storeId && <p className="text-sm text-destructive">{errors.storeId.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="orderDate">Order Date *</Label>
