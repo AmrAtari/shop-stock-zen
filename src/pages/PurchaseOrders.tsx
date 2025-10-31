@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Eye, Printer, Download, Copy, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, Eye, Printer, Download, Copy, Trash2, Calendar as CalendarIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,7 +25,7 @@ const PurchaseOrders = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
-  
+
   const { data: purchaseOrders = [], isLoading } = usePurchaseOrders(searchTerm, statusFilter, dateRange);
 
   const pagination = usePagination({
@@ -35,8 +35,19 @@ const PurchaseOrders = () => {
   });
 
   const paginatedPurchaseOrders = useMemo(() => {
+    // Reset to page 1 if search/filter changes dramatically reduce the list size
+    if (pagination.currentPage > pagination.totalPages && pagination.totalPages > 0) {
+      pagination.goToPage(1);
+    }
     return purchaseOrders.slice(pagination.startIndex, pagination.endIndex);
-  }, [purchaseOrders, pagination.startIndex, pagination.endIndex]);
+  }, [
+    purchaseOrders,
+    pagination.startIndex,
+    pagination.endIndex,
+    pagination.currentPage,
+    pagination.totalPages,
+    pagination.goToPage,
+  ]);
 
   const handleDelete = async (id: string, poNumber: string) => {
     if (!confirm(`Are you sure you want to delete ${poNumber}?`)) return;
@@ -44,7 +55,8 @@ const PurchaseOrders = () => {
     try {
       const { error } = await supabase.from("purchase_orders").delete().eq("id", id);
       if (error) throw error;
-      
+
+      // Invalidate the query to force a refresh of the list
       await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
       toast.success("Purchase order deleted");
     } catch (error: any) {
@@ -53,7 +65,8 @@ const PurchaseOrders = () => {
   };
 
   const handlePrint = (id: string) => {
-    window.open(`/purchase-orders/${id}/print`, "_blank");
+    // Navigate to a print-friendly route, assuming this route exists
+    navigate(`/purchase-orders/${id}?print=true`);
   };
 
   const getStatusVariant = (status: string) => {
@@ -71,10 +84,6 @@ const PurchaseOrders = () => {
     }
   };
 
-  if (isLoading) {
-    return <div className="p-8">Loading...</div>;
-  }
-
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -90,7 +99,7 @@ const PurchaseOrders = () => {
 
       <Card>
         <CardHeader>
-          <div className="flex gap-4 items-center">
+          <div className="flex gap-4 items-center flex-wrap">
             <Input
               placeholder="Search by PO Number..."
               value={searchTerm}
@@ -112,7 +121,10 @@ const PurchaseOrders = () => {
             </Select>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("w-64 justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
+                <Button
+                  variant="outline"
+                  className={cn("w-64 justify-start text-left font-normal", !dateRange && "text-muted-foreground")}
+                >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {dateRange ? `${format(dateRange.from, "PPP")} - ${format(dateRange.to, "PPP")}` : "Filter by Date"}
                 </Button>
@@ -125,80 +137,109 @@ const PurchaseOrders = () => {
                   initialFocus
                   className={cn("p-3 pointer-events-auto")}
                 />
+                <div className="p-2 flex justify-end">
+                  <Button variant="outline" onClick={() => setDateRange(undefined)}>
+                    Clear Date
+                  </Button>
+                </div>
               </PopoverContent>
             </Popover>
             {(searchTerm || statusFilter !== "all" || dateRange) && (
-              <Button variant="ghost" onClick={() => { setSearchTerm(""); setStatusFilter("all"); setDateRange(undefined); }}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSearchTerm("");
+                  setStatusFilter("all");
+                  setDateRange(undefined);
+                }}
+              >
                 Clear Filters
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent>
-          {purchaseOrders.length === 0 ? (
+          {isLoading ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">No purchase orders yet</p>
+              <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" />
+              <p className="text-muted-foreground mt-2">Loading Purchase Orders...</p>
+            </div>
+          ) : purchaseOrders.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">
+                {searchTerm || statusFilter !== "all" || dateRange
+                  ? "No purchase orders match your current filters."
+                  : "No purchase orders yet"}
+              </p>
               <Button className="mt-4" onClick={() => navigate("/purchase-orders/new")}>
                 Create Your First PO
               </Button>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>PO Number</TableHead>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Order Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Total Items</TableHead>
-                  <TableHead>Total Cost</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedPurchaseOrders.map((po) => (
-                  <TableRow key={po.id}>
-                    <TableCell className="font-medium">{po.po_number}</TableCell>
-                    <TableCell>{po.supplier}</TableCell>
-                    <TableCell>{new Date(po.order_date).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusVariant(po.status) as any}>
-                        {po.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{po.total_items}</TableCell>
-                    <TableCell>
-                      {po.currency} {po.total_cost.toFixed(2)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => navigate(`/purchase-orders/${po.id}`)} title="View">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handlePrint(po.id)} title="Print">
-                          <Printer className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(po.id, po.po_number)} title="Delete">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>PO Number</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead>Order Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Total Items</TableHead>
+                    <TableHead>Total Cost</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-          {purchaseOrders.length > 0 && (
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              goToPage={pagination.goToPage}
-              canGoPrev={pagination.canGoPrev}
-              canGoNext={pagination.canGoNext}
-              totalItems={purchaseOrders.length}
-              startIndex={pagination.startIndex}
-              endIndex={pagination.endIndex}
-            />
+                </TableHeader>
+                <TableBody>
+                  {paginatedPurchaseOrders.map((po) => (
+                    <TableRow key={po.id}>
+                      <TableCell className="font-medium">{po.po_number}</TableCell>
+                      <TableCell>{po.supplier}</TableCell>
+                      <TableCell>{new Date(po.order_date).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusVariant(po.status) as any}>{po.status}</Badge>
+                      </TableCell>
+                      <TableCell>{po.total_items}</TableCell>
+                      <TableCell>
+                        {po.currency} {po.total_cost.toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => navigate(`/purchase-orders/${po.id}`)}
+                            title="View"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handlePrint(po.id)} title="Print">
+                            <Printer className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(po.id, po.po_number)}
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+                goToPage={pagination.goToPage}
+                canGoPrev={pagination.canGoPrev}
+                canGoNext={pagination.canGoNext}
+                totalItems={purchaseOrders.length}
+                startIndex={pagination.startIndex}
+                endIndex={pagination.endIndex}
+              />
+            </>
           )}
         </CardContent>
       </Card>
