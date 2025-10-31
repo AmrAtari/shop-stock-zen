@@ -84,7 +84,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
         id,
         name
       ),
-      // ** MODIFICATION: ASSUMING 'inventory_stock' TABLE/VIEW HAS 'quantity' **
       inventory_stock ( 
         quantity
       ) 
