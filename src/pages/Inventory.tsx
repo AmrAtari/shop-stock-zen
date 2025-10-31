@@ -358,7 +358,7 @@ const InventoryPage: React.FC = () => {
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        item={editingItem}
+        item={editingItem ? { ...editingItem, product_id: editingItem.product_id || editingItem.id } : undefined}
         onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
       />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />

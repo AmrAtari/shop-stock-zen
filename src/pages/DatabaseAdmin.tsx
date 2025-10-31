@@ -148,6 +148,20 @@ const DatabaseAdminPanel: React.FC = () => {
       return;
     }
 
+    // Validate table name (only lowercase letters, numbers, and underscores)
+    if (!/^[a-z_][a-z0-9_]*$/.test(newTableName)) {
+      toast.error("Invalid table name. Use only lowercase letters, numbers, and underscores.");
+      return;
+    }
+
+    // Validate column names
+    for (const col of columns) {
+      if (!/^[a-z_][a-z0-9_]*$/.test(col.name)) {
+        toast.error(`Invalid column name: ${col.name}. Use only lowercase letters, numbers, and underscores.`);
+        return;
+      }
+    }
+
     const columnDefs = columns.map((c) => `${c.name} ${c.type}${c.isPrimary ? " PRIMARY KEY" : ""}`).join(", ");
     const sql = `CREATE TABLE ${newTableName} (${columnDefs});`;
 
@@ -167,6 +181,13 @@ const DatabaseAdminPanel: React.FC = () => {
   // --- Add column to selected table ---
   const addColumn = async () => {
     if (!selectedTable || !addColumnName || !addColumnType) return;
+    
+    // Validate column name (only lowercase letters, numbers, and underscores)
+    if (!/^[a-z_][a-z0-9_]*$/.test(addColumnName)) {
+      toast.error("Invalid column name. Use only lowercase letters, numbers, and underscores.");
+      return;
+    }
+
     const sql = `ALTER TABLE ${selectedTable} ADD COLUMN ${addColumnName} ${addColumnType};`;
     try {
       const { error } = await supabase.rpc("execute_sql", { sql });
@@ -207,10 +228,13 @@ const DatabaseAdminPanel: React.FC = () => {
     const primaryKey = Object.keys(row).find((key) => key === "id") || Object.keys(row)[0];
     const primaryValue = row[primaryKey];
 
-    const sql = `UPDATE ${selectedTable} SET ${colKey} = '${newValue}' WHERE ${primaryKey} = '${primaryValue}';`;
-
     try {
-      const { error } = await supabase.rpc("execute_sql", { sql });
+      // Use Supabase client methods to prevent SQL injection
+      const { error } = await supabase
+        .from(selectedTable)
+        .update({ [colKey]: newValue })
+        .eq(primaryKey, primaryValue);
+      
       if (error) throw error;
       toast.success("Cell updated!");
       fetchRows(selectedTable);
@@ -230,10 +254,13 @@ const DatabaseAdminPanel: React.FC = () => {
     const primaryKey = Object.keys(row).find((key) => key === "id") || Object.keys(row)[0];
     const primaryValue = row[primaryKey];
 
-    const sql = `DELETE FROM ${selectedTable} WHERE ${primaryKey} = '${primaryValue}';`;
-
     try {
-      const { error } = await supabase.rpc("execute_sql", { sql });
+      // Use Supabase client methods to prevent SQL injection
+      const { error } = await supabase
+        .from(selectedTable)
+        .delete()
+        .eq(primaryKey, primaryValue);
+      
       if (error) throw error;
       toast.success("Row deleted!");
       fetchRows(selectedTable);
