@@ -19,23 +19,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 // --- Data Interface ---
 interface ItemWithDetails {
-  id: string; // variant_id
+  id: string; // ✅ changed from number → string
   product_id?: string | null;
   sku: string;
   name: string;
   supplier: string;
   supplier_id: string | null;
-
-  size_name: string | null;
-  color_name: string | null;
-  category_name: string | null;
-  brand_name: string | null;
-
   size: string | null;
   color: string | null;
-  category_id: string | null;
-  brand_id: string | null;
-
   season: string | null;
   sellingPrice: number | null;
   cost: number | null;
@@ -49,6 +40,8 @@ interface ItemWithDetails {
   theme?: string;
   wholesale_price?: number | null;
   tax_rate?: number | null;
+  brand_id?: string | null;
+  category_id?: string | null;
   gender_id?: string | null;
   origin_id?: string | null;
 }
@@ -86,11 +79,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       suppliers!variants_supplier_id_fkey (
         id,
         name
-      ),
-      colors:colors (name),
-      sizes:sizes (name),
-      categories:categories (name),
-      brands:brands (name)
+      )
     `);
 
   if (error) {
@@ -98,27 +87,18 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     throw new Error(`Failed to fetch inventory data: ${error.message}`);
   }
 
+  console.log("🧩 Raw inventory data:", data);
+
   return (
     data?.map((variant: any) => ({
-      id: String(variant.variant_id),
+      id: String(variant.variant_id), // ✅ cast to string
       product_id: variant.products?.product_id || null,
       sku: variant.sku || "N/A",
       name: variant.products?.name || "N/A",
       supplier: variant.suppliers?.name || "N/A",
       supplier_id: variant.suppliers?.id || null,
-
-      // Display Names
-      color_name: variant.colors?.name || variant.color || null,
-      size_name: variant.sizes?.name || variant.size || null,
-      category_name: variant.categories?.name || null,
-      brand_name: variant.brands?.name || null,
-
-      // Original IDs
-      color: variant.color || null,
       size: variant.size || null,
-      category_id: variant.products?.category_id || null,
-      brand_id: variant.products?.brand_id || null,
-
+      color: variant.color || null,
       season: variant.season || null,
       sellingPrice: variant.selling_price || null,
       cost: variant.cost || variant.cost_price || null,
@@ -132,6 +112,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       theme: variant.products?.theme || null,
       wholesale_price: variant.products?.wholesale_price || null,
       tax_rate: variant.tax_rate || null,
+      brand_id: variant.products?.brand_id || null,
+      category_id: variant.products?.category_id || null,
       gender_id: variant.products?.gender_id || null,
       origin_id: variant.products?.origin_id || null,
     })) || []
@@ -172,14 +154,12 @@ const InventoryPage: React.FC = () => {
     () => Array.from(new Set(inventory.map((i) => i.season).filter(Boolean))).sort(),
     [inventory],
   );
-  // Changed to use color_name for display in filters
   const colorOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.color_name).filter(Boolean))).sort(),
+    () => Array.from(new Set(inventory.map((i) => i.color).filter(Boolean))).sort(),
     [inventory],
   );
-  // Changed to use size_name for display in filters
   const sizeOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.size_name).filter(Boolean))).sort(),
+    () => Array.from(new Set(inventory.map((i) => i.size).filter(Boolean))).sort(),
     [inventory],
   );
 
@@ -191,8 +171,8 @@ const InventoryPage: React.FC = () => {
         (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
         (item.item_number?.toLowerCase() ?? "").includes(searchTerm.toLowerCase());
       const matchesSeason = !filterSeason || item.season === filterSeason;
-      const matchesColor = !filterColor || item.color_name === filterColor; // Filter by name
-      const matchesSize = !filterSize || item.size_name === filterSize; // Filter by name
+      const matchesColor = !filterColor || item.color === filterColor;
+      const matchesSize = !filterSize || item.size === filterSize;
 
       return matchesSearch && matchesSeason && matchesColor && matchesSize;
     });
@@ -325,7 +305,7 @@ const InventoryPage: React.FC = () => {
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Supplier</TableHead>
-              <TableHead>Category</TableHead>
+              <TableHead>Season</TableHead>
               <TableHead>Size</TableHead>
               <TableHead>Color</TableHead>
               <TableHead className="text-right">Cost</TableHead>
@@ -346,9 +326,9 @@ const InventoryPage: React.FC = () => {
                 <TableCell>{item.sku}</TableCell>
                 <TableCell>{item.name}</TableCell>
                 <TableCell>{item.supplier}</TableCell>
-                <TableCell>{item.category_name}</TableCell>
-                <TableCell>{item.size_name}</TableCell>
-                <TableCell>{item.color_name}</TableCell>
+                <TableCell>{item.season}</TableCell>
+                <TableCell>{item.size}</TableCell>
+                <TableCell>{item.color}</TableCell>
                 <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
                 <TableCell className="text-right">{item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}</TableCell>
                 <TableCell className="text-right flex justify-end gap-2">
