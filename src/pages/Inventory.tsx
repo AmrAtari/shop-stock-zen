@@ -44,6 +44,8 @@ interface ItemWithDetails {
   category_id?: string | null;
   gender_id?: string | null;
   origin_id?: string | null;
+  // ** NEW FIELD **
+  stock_quantity: number | null; // Tracks the current stock level
 }
 
 // --- Fetch Inventory Data ---
@@ -81,7 +83,11 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       suppliers!variants_supplier_id_fkey (
         id,
         name
-      )
+      ),
+      // ** MODIFICATION: ASSUMING 'inventory_stock' TABLE/VIEW HAS 'quantity' **
+      inventory_stock ( 
+        quantity
+      ) 
     `);
 
   if (error) {
@@ -118,6 +124,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       category_id: variant.products?.category_id || null,
       gender_id: variant.products?.gender_id || null,
       origin_id: variant.products?.origin_id || null,
+      // ** NEW MAPPING: Getting the stock quantity **
+      // Assumes inventory_stock returns an array, take the first quantity or 0 if null/undefined
+      stock_quantity: variant.inventory_stock?.[0]?.quantity || 0, 
     })) || []
   );
 };
@@ -291,6 +300,7 @@ const InventoryPage: React.FC = () => {
               <TableHead>Color</TableHead>
               <TableHead className="text-right">Cost</TableHead>
               <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Stock</TableHead> {/* ** NEW COLUMN ** */}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -312,6 +322,16 @@ const InventoryPage: React.FC = () => {
                 <TableCell>{item.color}</TableCell>
                 <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
                 <TableCell className="text-right">{item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}</TableCell>
+                {/* ** NEW CELL: Stock Quantity with Low Stock Alert (threshold: 5) ** */}
+                <TableCell className="text-right">
+                  {item.stock_quantity !== null && item.stock_quantity <= 5 ? (
+                    <Badge variant="destructive" className="justify-center">
+                      {item.stock_quantity} (Low)
+                    </Badge>
+                  ) : (
+                    item.stock_quantity
+                  )}
+                </TableCell>
                 <TableCell className="text-right flex justify-end gap-2">
                   <Button
                     variant="ghost"
