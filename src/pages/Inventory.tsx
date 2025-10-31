@@ -182,13 +182,13 @@ const InventoryPage: React.FC = () => {
 
   // --- Pagination ---
   const pagination = usePagination({
-    data: filteredInventory,
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
-  } as any);
-  const displayInventory: ItemWithDetails[] =
-    (pagination as any).data || (pagination as any).paginatedData || [];
-
+  });
+  const displayInventory: ItemWithDetails[] = useMemo(
+    () => filteredInventory.slice(pagination.startIndex, pagination.endIndex),
+    [filteredInventory, pagination.startIndex, pagination.endIndex]
+  );
   // --- Selection logic ---
   const toggleSelectItem = (item: ItemWithDetails) => {
     setSelectedItems((prev) =>
