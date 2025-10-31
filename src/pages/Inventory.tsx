@@ -310,8 +310,8 @@ const InventoryPage: React.FC = () => {
                 <TableCell>{item.season}</TableCell>
                 <TableCell>{item.size}</TableCell>
                 <TableCell>{item.color}</TableCell>
-                <TableCell className="text-right">{item.cost || "N/A"}</TableCell>
-                <TableCell className="text-right">{item.sellingPrice || "N/A"}</TableCell>
+                <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
+                <TableCell className="text-right">{item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}</TableCell>
                 <TableCell className="text-right flex justify-end gap-2">
                   <Button
                     variant="ghost"
