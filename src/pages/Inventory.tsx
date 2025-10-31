@@ -25,13 +25,12 @@ interface ItemWithDetails {
   name: string;
   supplier: string;
   supplier_id: string | null;
-  // Use Names for display
-  size_name: string | null; // Renamed for clarity
-  color_name: string | null; // Renamed for clarity
-  category_name: string | null; // Added
-  brand_name: string | null; // Added
 
-  // Original IDs (kept for editing/saving)
+  size_name: string | null;
+  color_name: string | null;
+  category_name: string | null;
+  brand_name: string | null;
+
   size: string | null;
   color: string | null;
   category_id: string | null;
@@ -88,7 +87,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
         id,
         name
       ),
-      -- NEW JOINS TO GET NAMES INSTEAD OF IDS
       colors:colors (name),
       sizes:sizes (name),
       categories:categories (name),
@@ -327,9 +325,9 @@ const InventoryPage: React.FC = () => {
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Supplier</TableHead>
-              <TableHead>Category</TableHead> {/* Displayed Name */}
-              <TableHead>Size</TableHead> {/* Displayed Name */}
-              <TableHead>Color</TableHead> {/* Displayed Name */}
+              <TableHead>Category</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Color</TableHead>
               <TableHead className="text-right">Cost</TableHead>
               <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -348,9 +346,9 @@ const InventoryPage: React.FC = () => {
                 <TableCell>{item.sku}</TableCell>
                 <TableCell>{item.name}</TableCell>
                 <TableCell>{item.supplier}</TableCell>
-                <TableCell>{item.category_name}</TableCell> {/* Displayed Name */}
-                <TableCell>{item.size_name}</TableCell> {/* Displayed Name */}
-                <TableCell>{item.color_name}</TableCell> {/* Displayed Name */}
+                <TableCell>{item.category_name}</TableCell>
+                <TableCell>{item.size_name}</TableCell>
+                <TableCell>{item.color_name}</TableCell>
                 <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "N/A"}</TableCell>
                 <TableCell className="text-right">{item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}</TableCell>
                 <TableCell className="text-right flex justify-end gap-2">
