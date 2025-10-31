@@ -42,13 +42,12 @@ export const useStores = () => {
   return useQuery({
     queryKey: ["stores"],
     queryFn: async () => {
-      // FIX: Explicitly select ID and Name and add client-side deduplication as a safeguard
+      // Fetch data from the 'stores' table
       const { data, error } = await supabase.from("stores").select("id, name").order("name");
 
       if (error) throw error;
 
-      // Deduplicate by name on the client-side to ensure only one entry per unique store name is returned
-      // This is a safety layer against any lingering data issues after database cleanup.
+      // Deduplicate by name on the client-side as a safety measure
       const uniqueStores = Array.from(new Map(data?.map((store: any) => [store.name, store])).values());
 
       return uniqueStores || [];
