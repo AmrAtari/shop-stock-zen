@@ -45,7 +45,7 @@ interface ItemWithDetails {
   gender_id?: string | null;
   origin_id?: string | null;
   // ** NEW FIELD **
-  stock_quantity: number | null; // Tracks the current stock level
+  stock_quantity: number; // Tracks the current total stock level
 }
 
 // --- Fetch Inventory Data ---
@@ -84,7 +84,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
         id,
         name
       ),
-      inventory_stock ( 
+      // *** FIX: Using the correct table name 'stock_on_hand' ***
+      stock_on_hand ( 
         quantity
       ) 
     `);
@@ -123,9 +124,10 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       category_id: variant.products?.category_id || null,
       gender_id: variant.products?.gender_id || null,
       origin_id: variant.products?.origin_id || null,
-      // ** NEW MAPPING: Getting the stock quantity **
-      // Assumes inventory_stock returns an array, take the first quantity or 0 if null/undefined
-      stock_quantity: variant.inventory_stock?.[0]?.quantity || 0, 
+      
+      // *** FIX: Map and SUM the quantity data from 'stock_on_hand' ***
+      // We use reduce to sum quantities from all stores/rows associated with this variant.
+      stock_quantity: (variant.stock_on_hand as { quantity: number }[] | null)?.reduce((sum, stock) => sum + (stock.quantity || 0), 0) || 0,
     })) || []
   );
 };
@@ -323,7 +325,7 @@ const InventoryPage: React.FC = () => {
                 <TableCell className="text-right">{item.sellingPrice ? item.sellingPrice.toFixed(2) : "N/A"}</TableCell>
                 {/* ** NEW CELL: Stock Quantity with Low Stock Alert (threshold: 5) ** */}
                 <TableCell className="text-right">
-                  {item.stock_quantity !== null && item.stock_quantity <= 5 ? (
+                  {item.stock_quantity <= 5 ? (
                     <Badge variant="destructive" className="justify-center">
                       {item.stock_quantity} (Low)
                     </Badge>
