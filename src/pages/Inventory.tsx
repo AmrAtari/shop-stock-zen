@@ -50,9 +50,7 @@ interface ItemWithDetails {
 
 // --- Fetch Inventory Data ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  const { data, error } = await supabase
-    .from("variants")
-    .select(`
+  const { data, error } = await supabase.from("variants").select(`
       variant_id,
       sku,
       selling_price,
@@ -84,7 +82,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
         id,
         name
       ),
-      // *** FIX: Using the correct table name 'stock_on_hand' ***
       stock_on_hand ( 
         quantity
       ) 
@@ -124,10 +121,14 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       category_id: variant.products?.category_id || null,
       gender_id: variant.products?.gender_id || null,
       origin_id: variant.products?.origin_id || null,
-      
-      // *** FIX: Map and SUM the quantity data from 'stock_on_hand' ***
+
+      // *** MAPPING: Sum the quantity data from 'stock_on_hand' ***
       // We use reduce to sum quantities from all stores/rows associated with this variant.
-      stock_quantity: (variant.stock_on_hand as { quantity: number }[] | null)?.reduce((sum, stock) => sum + (stock.quantity || 0), 0) || 0,
+      stock_quantity:
+        (variant.stock_on_hand as { quantity: number }[] | null)?.reduce(
+          (sum, stock) => sum + (stock.quantity || 0),
+          0,
+        ) || 0,
     })) || []
   );
 };
@@ -164,15 +165,15 @@ const InventoryPage: React.FC = () => {
   // --- Filter Options ---
   const seasonOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.season).filter(Boolean))).sort(),
-    [inventory]
+    [inventory],
   );
   const colorOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.color).filter(Boolean))).sort(),
-    [inventory]
+    [inventory],
   );
   const sizeOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.size).filter(Boolean))).sort(),
-    [inventory]
+    [inventory],
   );
 
   // --- Filtered Data ---
@@ -197,14 +198,12 @@ const InventoryPage: React.FC = () => {
   });
   const displayInventory: ItemWithDetails[] = useMemo(
     () => filteredInventory.slice(pagination.startIndex, pagination.endIndex),
-    [filteredInventory, pagination.startIndex, pagination.endIndex]
+    [filteredInventory, pagination.startIndex, pagination.endIndex],
   );
   // --- Selection logic ---
   const toggleSelectItem = (item: ItemWithDetails) => {
     setSelectedItems((prev) =>
-      prev.some((i) => i.id === item.id)
-        ? prev.filter((i) => i.id !== item.id)
-        : [...prev, item]
+      prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item],
     );
   };
 
@@ -238,7 +237,12 @@ const InventoryPage: React.FC = () => {
           <Button onClick={() => setImportOpen(true)}>
             <Upload className="w-4 h-4 mr-2" /> Import / Export
           </Button>
-          <Button onClick={() => { setEditingItem(null); setDialogOpen(true); }}>
+          <Button
+            onClick={() => {
+              setEditingItem(null);
+              setDialogOpen(true);
+            }}
+          >
             <Plus className="w-4 h-4 mr-2" /> New Item
           </Button>
         </div>
@@ -259,24 +263,42 @@ const InventoryPage: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
-            <SelectTrigger><SelectValue placeholder="Season" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Season" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Seasons</SelectItem>
-              {seasonOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {seasonOptions.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
-            <SelectTrigger><SelectValue placeholder="Color" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Color" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Colors</SelectItem>
-              {colorOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              {colorOptions.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
-            <SelectTrigger><SelectValue placeholder="Size" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Size" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Sizes</SelectItem>
-              {sizeOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {sizeOptions.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -337,23 +359,24 @@ const InventoryPage: React.FC = () => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => { setSelectedItemForHistory(item); setPriceHistoryOpen(true); }}
+                    onClick={() => {
+                      setSelectedItemForHistory(item);
+                      setPriceHistoryOpen(true);
+                    }}
                   >
                     <History className="w-4 h-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => { setEditingItem(item); setDialogOpen(true); }}
+                    onClick={() => {
+                      setEditingItem(item);
+                      setDialogOpen(true);
+                    }}
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-red-500"
-                    onClick={() => handleDelete(item.id)}
-                  >
+                  <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(item.id)}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </TableCell>
@@ -379,20 +402,24 @@ const InventoryPage: React.FC = () => {
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        item={editingItem ? { 
-          ...editingItem,
-          product_id: editingItem.product_id || editingItem.id,
-          item_number: editingItem.item_number || '',
-          pos_description: editingItem.pos_description || null,
-          description: editingItem.description || null,
-          theme: editingItem.theme || null,
-          tax_rate: editingItem.tax_rate || null,
-          wholesale_price: editingItem.wholesale_price || null,
-          brand_id: editingItem.brand_id || null,
-          category_id: editingItem.category_id || null,
-          gender_id: editingItem.gender_id || null,
-          origin_id: editingItem.origin_id || null
-        } : undefined}
+        item={
+          editingItem
+            ? {
+                ...editingItem,
+                product_id: editingItem.product_id || editingItem.id,
+                item_number: editingItem.item_number || "",
+                pos_description: editingItem.pos_description || null,
+                description: editingItem.description || null,
+                theme: editingItem.theme || null,
+                tax_rate: editingItem.tax_rate || null,
+                wholesale_price: editingItem.wholesale_price || null,
+                brand_id: editingItem.brand_id || null,
+                category_id: editingItem.category_id || null,
+                gender_id: editingItem.gender_id || null,
+                origin_id: editingItem.origin_id || null,
+              }
+            : undefined
+        }
         onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
       />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
