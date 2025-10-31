@@ -164,106 +164,105 @@ const PurchaseOrderDetail = () => {
       const notFoundSkus: string[] = [];
 
       for (const item of items) {
-        let targetItemId: string | null = null;
+        let targetVariantId: string | null = null; // Renamed for clarity
 
         console.log(`Processing item: ${item.sku}`);
 
-        // 1. Find the Item ID
+        // 1. Find the Variant ID (Using 'variants' table as per Inventory page structure)
         if (item.item_id) {
+          // Assuming PO item ID is actually the variant ID
           const { data: byId, error: byIdErr } = await supabase
-            .from("items")
-            .select("id")
-            .eq("id", item.item_id)
+            .from("variants") // <-- CORRECTED TABLE
+            .select("variant_id")
+            .eq("variant_id", item.item_id) // Match on variant_id
             .maybeSingle();
 
           if (byIdErr) throw byIdErr;
           if (byId) {
-            targetItemId = byId.id as string;
+            targetVariantId = byId.variant_id as string;
           }
         } else if (item.sku) {
           const { data: bySku, error: bySkuErr } = await supabase
-            .from("items")
-            .select("id")
+            .from("variants") // <-- CORRECTED TABLE
+            .select("variant_id")
             .eq("sku", item.sku)
             .maybeSingle();
 
           if (bySkuErr) throw bySkuErr;
           if (bySku) {
-            targetItemId = bySku.id as string;
+            targetVariantId = bySku.variant_id as string;
           }
         }
 
-        if (targetItemId) {
-          // 2. Update Store Inventory
+        if (targetVariantId) {
+          // 2. Update Stock-on-Hand Inventory
           if (po.store_id) {
             const previousQty = await (async () => {
-              const { data: existingStoreInv, error: fetchErr } = await supabase
-                .from("store_inventory")
-                .select("id, quantity")
-                .eq("item_id", targetItemId)
+              const { data: existingStock, error: fetchErr } = await supabase
+                .from("stock_on_hand") // <-- CORRECTED TABLE
+                .select("id, quantity") // Assuming stock_on_hand has an ID column
+                .eq("variant_id", targetVariantId) // <-- Using variant_id (FK to variants)
                 .eq("store_id", po.store_id)
                 .maybeSingle();
 
               if (fetchErr) {
-                console.error("Error fetching store inventory:", fetchErr);
+                console.error("Error fetching stock on hand:", fetchErr);
                 throw fetchErr;
               }
 
-              return existingStoreInv;
+              return existingStock;
             })();
 
             const prevQty = previousQty?.quantity || 0;
             const newQty = prevQty + item.quantity;
 
-            console.log(`Store inventory - Previous: ${prevQty}, Adding: ${item.quantity}, New: ${newQty}`);
+            console.log(`Stock on hand - Previous: ${prevQty}, Adding: ${item.quantity}, New: ${newQty}`);
 
             if (previousQty) {
               // Update existing record
               const { error: updateErr } = await supabase
-                .from("store_inventory")
+                .from("stock_on_hand") // <-- CORRECTED TABLE
                 .update({
                   quantity: newQty,
                   last_restocked: new Date().toISOString(),
                 })
-                .eq("id", previousQty.id);
-              
+                .eq("id", previousQty.id); // Update by ID of the stock row
+
               if (updateErr) {
-                console.error("Error updating store_inventory:", updateErr);
+                console.error("Error updating stock_on_hand:", updateErr);
                 throw updateErr;
               }
-              console.log("Successfully updated store_inventory");
+              console.log("Successfully updated stock_on_hand");
             } else {
               // Insert new record
               const { error: insertErr } = await supabase
-                .from("store_inventory")
+                .from("stock_on_hand") // <-- CORRECTED TABLE
                 .insert({
-                  item_id: targetItemId,
+                  variant_id: targetVariantId, // <-- Using variant_id
                   store_id: po.store_id,
                   quantity: item.quantity,
                   min_stock: 0,
                   last_restocked: new Date().toISOString(),
                 });
-              
+
               if (insertErr) {
-                console.error("Error inserting store_inventory:", insertErr);
+                console.error("Error inserting stock_on_hand:", insertErr);
                 throw insertErr;
               }
-              console.log("Successfully inserted store_inventory");
+              console.log("Successfully inserted stock_on_hand");
             }
 
             // Create stock adjustment record
-            const { error: adjustmentErr } = await supabase
-              .from("stock_adjustments")
-              .insert({
-                item_id: targetItemId,
-                store_id: po.store_id,
-                previous_quantity: prevQty,
-                new_quantity: newQty,
-                adjustment: item.quantity,
-                reason: `PO Receipt: ${po.po_number}`,
-                reference_number: po.po_number,
-              });
-            
+            const { error: adjustmentErr } = await supabase.from("stock_adjustments").insert({
+              variant_id: targetVariantId, // <-- Using variant_id
+              store_id: po.store_id,
+              previous_quantity: prevQty,
+              new_quantity: newQty,
+              adjustment: item.quantity,
+              reason: `PO Receipt: ${po.po_number}`,
+              reference_number: po.po_number,
+            });
+
             if (adjustmentErr) {
               console.error("Error creating stock adjustment:", adjustmentErr);
               throw adjustmentErr;
@@ -292,12 +291,12 @@ const PurchaseOrderDetail = () => {
         toast({
           title: "PO Received",
           description: notFoundSkus.length
-            ? `Inventory updated. Missing SKUs not linked to items: ${notFoundSkus.join(", ")}`
+            ? `Inventory updated. Missing SKUs not linked to variants: ${notFoundSkus.join(", ")}`
             : "Purchase order has been received and inventory updated.",
         });
       } else {
         toast({
-          title: "No Items Updated",
+          title: "No Variants Updated",
           description: "Could not match any PO items to inventory by Item ID or SKU.",
           variant: "destructive",
         });
