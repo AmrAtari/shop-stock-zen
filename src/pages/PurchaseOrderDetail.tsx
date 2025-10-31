@@ -34,6 +34,7 @@ const PurchaseOrderDetail = () => {
       if (error) throw error;
     },
     onSuccess: () => {
+      // Invalidate both detail and list views to ensure the list updates the status
       queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
     },
@@ -347,9 +348,10 @@ const PurchaseOrderDetail = () => {
           </Button>
           {po.status === "draft" && (
             <>
-              <Button onClick={() => navigate(`/purchase-orders/${id}/edit`)}>
+              {/* Added Edit button */}
+              <Button onClick={() => navigate(`/purchase-orders/${id}/edit`)} variant="outline">
                 <Edit className="mr-2 h-4 w-4" />
-                Edit
+                Edit PO
               </Button>
               <Button onClick={handleSubmit}>
                 <Send className="mr-2 h-4 w-4" />
