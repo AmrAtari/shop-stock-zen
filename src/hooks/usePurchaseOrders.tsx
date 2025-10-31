@@ -6,10 +6,7 @@ export const usePurchaseOrders = (searchTerm?: string, statusFilter?: string, da
   return useQuery({
     queryKey: [...queryKeys.purchaseOrders.all, searchTerm, statusFilter, dateRange],
     queryFn: async () => {
-      let query = supabase
-        .from("purchase_orders")
-        .select("*")
-        .order("created_at", { ascending: false });
+      let query = supabase.from("purchase_orders").select("*").order("created_at", { ascending: false });
 
       if (searchTerm) {
         query = query.ilike("po_number", `%${searchTerm}%`);
@@ -20,9 +17,7 @@ export const usePurchaseOrders = (searchTerm?: string, statusFilter?: string, da
       }
 
       if (dateRange) {
-        query = query
-          .gte("order_date", dateRange.from.toISOString())
-          .lte("order_date", dateRange.to.toISOString());
+        query = query.gte("order_date", dateRange.from.toISOString()).lte("order_date", dateRange.to.toISOString());
       }
 
       const { data, error } = await query;
@@ -36,10 +31,7 @@ export const useSuppliers = () => {
   return useQuery({
     queryKey: queryKeys.suppliers.all,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("suppliers")
-        .select("*")
-        .order("name");
+      const { data, error } = await supabase.from("suppliers").select("*").order("name");
       if (error) throw error;
       return data || [];
     },
@@ -48,14 +40,18 @@ export const useSuppliers = () => {
 
 export const useStores = () => {
   return useQuery({
-    queryKey: ['stores'],
+    queryKey: ["stores"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stores")
-        .select("*")
-        .order("name");
+      // FIX: Explicitly select ID and Name and add client-side deduplication as a safeguard
+      const { data, error } = await supabase.from("stores").select("id, name").order("name");
+
       if (error) throw error;
-      return data || [];
+
+      // Deduplicate by name on the client-side to ensure only one entry per unique store name is returned
+      // This is a safety layer against any lingering data issues after database cleanup.
+      const uniqueStores = Array.from(new Map(data?.map((store: any) => [store.name, store])).values());
+
+      return uniqueStores || [];
     },
   });
 };
