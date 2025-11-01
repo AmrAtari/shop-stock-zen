@@ -46,12 +46,12 @@ export const useReportsData = () => {
         .eq("is_current", true);
       if (pricesError) throw pricesError;
 
-      // Map the prices and apply the brand FIX
+      // Map the prices and apply the original brand FIX
       return items?.map((item) => {
         const price = prices?.find((p) => p.item_id === item.id);
         return {
           ...item,
-          // FIX 1: Resolve "column items.brand does not exist"
+          // FIX 1 (Original): Map the database column 'item_brand' to the expected property 'brand'
           brand: item.item_brand,
           cost_price: price?.cost_price || 0,
           selling_price: price?.selling_price || 0,
@@ -61,9 +61,9 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // FIX 2: Corrected the query key to use the existing `categoryValue` key
+  // FIX 2: Using 'categoryValue' query key, which is assumed to exist in your queryKeys.reports
   const categoryValueQuery = useQuery({
-    queryKey: queryKeys.reports.categoryValue, // Changed from inventoryValuation
+    queryKey: queryKeys.reports.categoryValue,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_valuation_view") // Assuming a view or materialized view
@@ -79,11 +79,11 @@ export const useReportsData = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("items")
-        .select("name, sku, quantity, min_stock, location, category, item_brand") // Ensure item_brand is selected for consistency
+        .select("name, sku, quantity, min_stock, location, category, item_brand")
         .lt("quantity", "min_stock")
         .neq("min_stock", 0);
       if (error) throw error;
-      // Also apply the brand mapping here for any low stock data that gets rendered separately
+      // Also apply the brand mapping here
       return (
         data?.map((item) => ({
           ...item,
@@ -151,13 +151,13 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 10,
   });
 
-  // --- Start of Unique Value Queries (Fixing distinct() syntax) ---
+  // --- Unique Value Queries (Fixing distinct() syntax) ---
 
   const storesQuery = useQuery({
     queryKey: queryKeys.reports.stores,
     queryFn: async () => {
-      // FIX 3: Move .distinct() before .select()
-      const { data, error } = await supabase.from("items").select("location").distinct();
+      // FIX 3: Correct distinct() syntax
+      const { data, error } = await supabase.from("items").select("location", { count: "exact" }).distinct();
       if (error) throw error;
       return data?.map((row) => row.location).filter((loc) => loc) || [];
     },
@@ -167,8 +167,8 @@ export const useReportsData = () => {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: async () => {
-      // FIX 4: Move .distinct() before .select()
-      const { data, error } = await supabase.from("items").select("category").distinct();
+      // FIX 4: Correct distinct() syntax
+      const { data, error } = await supabase.from("items").select("category", { count: "exact" }).distinct();
       if (error) throw error;
       return data?.map((row) => row.category).filter((cat) => cat) || [];
     },
@@ -178,10 +178,9 @@ export const useReportsData = () => {
   const brandsQuery = useQuery({
     queryKey: queryKeys.reports.brands,
     queryFn: async () => {
-      // FIX 5: Move .distinct() before .select() (AND selecting 'item_brand')
-      const { data, error } = await supabase.from("items").select("item_brand").distinct();
+      // FIX 5: Correct distinct() syntax AND selecting 'item_brand'
+      const { data, error } = await supabase.from("items").select("item_brand", { count: "exact" }).distinct();
       if (error) throw error;
-      // Map the resulting array of objects [{ item_brand: 'BrandX' }] to strings ['BrandX']
       return data?.map((row) => row.item_brand).filter((brand) => brand) || [];
     },
     staleTime: 1000 * 60 * 60 * 24,
@@ -191,7 +190,7 @@ export const useReportsData = () => {
 
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
-    inventoryValuation: categoryValueQuery.data || [], // This property name is now correct
+    inventoryValuation: categoryValueQuery.data || [], // Now maps to categoryValueQuery.data
     lowStock: lowStockQuery.data || [],
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
