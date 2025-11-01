@@ -27,7 +27,7 @@ import {
   BadgeCheck,
   Ban,
   Eye,
-  Database, // Keep Database icon for the tab
+  Database, // Keep Database icon for the new tab
   RotateCcw, // Icon for refreshing user list
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -51,8 +51,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { Pagination } from "@/components/ui/pagination"; // Assuming you have a Pagination component
 
-// Import the new DatabaseAdmin component
-import { DatabaseAdmin } from "@/components/admin/DatabaseAdmin";
+// *** CORRECTED IMPORT PATH ***
+// Configuration.tsx is in src/pages/, and DatabaseAdminPanel.tsx is also in src/pages/.
+// Therefore, we use a local import:
+import DatabaseAdminPanel from "./DatabaseAdminPanel";
 
 // --- TYPE DEFINITIONS ---
 interface UserWithRole {
@@ -699,8 +701,8 @@ const Configuration = () => {
 
         {/* -------------------- 4. Direct DB Access Tab -------------------- */}
         <TabsContent value="db-access">
-          {/* INTEGRATE THE NEW COMPONENT HERE */}
-          <DatabaseAdmin />
+          {/* Use the correctly imported component */}
+          <DatabaseAdminPanel />
         </TabsContent>
       </Tabs>
 
