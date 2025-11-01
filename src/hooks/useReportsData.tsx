@@ -46,12 +46,11 @@ export const useReportsData = () => {
         .eq("is_current", true);
       if (pricesError) throw pricesError;
 
-      // Map the prices and apply the original brand FIX
+      // Map the prices and apply the original brand FIX (item_brand -> brand)
       return items?.map((item) => {
         const price = prices?.find((p) => p.item_id === item.id);
         return {
           ...item,
-          // FIX 1 (Original): Map the database column 'item_brand' to the expected property 'brand'
           brand: item.item_brand,
           cost_price: price?.cost_price || 0,
           selling_price: price?.selling_price || 0,
@@ -65,7 +64,7 @@ export const useReportsData = () => {
     queryKey: queryKeys.reports.categoryValue,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("inventory_valuation_view") // Assuming a view or materialized view
+        .from("inventory_valuation_view")
         .select("category, total_value, total_items");
       if (error) throw error;
       return data as CategoryValue[];
@@ -128,7 +127,7 @@ export const useReportsData = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_adjustments")
-        .select("*, item:items!inner(name)") // Joins to get item name
+        .select("*, item:items!inner(name)")
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
@@ -150,14 +149,15 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 10,
   });
 
-  // --- Unique Value Queries (Fixing distinct() property error) ---
+  // --- Unique Value Queries (Fixing distinct() TS2353 errors) ---
 
   const storesQuery = useQuery({
     queryKey: queryKeys.reports.stores,
     queryFn: async () => {
-      // FIX 2: Correct distinct() syntax for TypeScript by passing it as an option
-      const { data, error } = await supabase.from("items").select("location", { distinct: true });
+      // FIX: Use 'distinct column' string syntax to avoid TS error
+      const { data, error } = await supabase.from("items").select("distinct location");
       if (error) throw error;
+      // Result is [{ location: 'StoreA' }, ...]
       return data?.map((row) => row.location).filter((loc) => loc) || [];
     },
     staleTime: 1000 * 60 * 60 * 24,
@@ -166,9 +166,10 @@ export const useReportsData = () => {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: async () => {
-      // FIX 3: Correct distinct() syntax for TypeScript by passing it as an option
-      const { data, error } = await supabase.from("items").select("category", { distinct: true });
+      // FIX: Use 'distinct column' string syntax to avoid TS error
+      const { data, error } = await supabase.from("items").select("distinct category");
       if (error) throw error;
+      // Result is [{ category: 'CatA' }, ...]
       return data?.map((row) => row.category).filter((cat) => cat) || [];
     },
     staleTime: 1000 * 60 * 60 * 24,
@@ -177,9 +178,10 @@ export const useReportsData = () => {
   const brandsQuery = useQuery({
     queryKey: queryKeys.reports.brands,
     queryFn: async () => {
-      // FIX 4: Correct distinct() syntax for TypeScript (AND selecting 'item_brand')
-      const { data, error } = await supabase.from("items").select("item_brand", { distinct: true });
+      // FIX: Use 'distinct column' string syntax (and use correct DB column item_brand)
+      const { data, error } = await supabase.from("items").select("distinct item_brand");
       if (error) throw error;
+      // Result is [{ item_brand: 'BrandX' }, ...]
       return data?.map((row) => row.item_brand).filter((brand) => brand) || [];
     },
     staleTime: 1000 * 60 * 60 * 24,
@@ -196,8 +198,8 @@ export const useReportsData = () => {
     abcAnalysis: abcAnalysisQuery.data || [],
     recentAdjustments: recentAdjustmentsQuery.data || [],
     stockMovementTransaction: stockMovementTransactionQuery.data || [],
-    salesPerformance: [], // Placeholder - requires sales tracking
-    cogs: [], // Placeholder - requires sales tracking
+    salesPerformance: [],
+    cogs: [],
     stores: storesQuery.data || [],
     categories: categoriesQuery.data || [],
     brands: brandsQuery.data || [],
