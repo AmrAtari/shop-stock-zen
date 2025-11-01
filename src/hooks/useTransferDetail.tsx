@@ -199,18 +199,6 @@ export const useReceiveTransfer = () => {
                 .eq("id", fromInv.id);
 
               if (updateFromErr) throw updateFromErr;
-
-              // Create stock adjustment for from_store
-              await supabase.from("stock_adjustments").insert({
-                item_id: itemId,
-                store_id: fromStoreId,
-                previous_quantity: fromInv.quantity,
-                new_quantity: newFromQty,
-                adjustment: -transferQty,
-                reason: "Transfer sent",
-                reference_number: transferNumber,
-                notes: `Transfer ${transferNumber}: Sent ${transferQty} units to ${toStoreName}`,
-              });
             }
           }
 
@@ -236,17 +224,6 @@ export const useReceiveTransfer = () => {
                 .eq("id", toInv.id);
 
               if (updateToErr) throw updateToErr;
-
-              await supabase.from("stock_adjustments").insert({
-                item_id: itemId,
-                store_id: toStoreId,
-                previous_quantity: toInv.quantity,
-                new_quantity: newToQty,
-                adjustment: transferQty,
-                reason: "Transfer received",
-                reference_number: transferNumber,
-                notes: `Transfer ${transferNumber}: Received ${transferQty} units from ${fromStoreName}`,
-              });
             } else {
               // Insert new record
               const { error: insertToErr } = await supabase
@@ -259,17 +236,6 @@ export const useReceiveTransfer = () => {
                 });
 
               if (insertToErr) throw insertToErr;
-
-              await supabase.from("stock_adjustments").insert({
-                item_id: itemId,
-                store_id: toStoreId,
-                previous_quantity: 0,
-                new_quantity: transferQty,
-                adjustment: transferQty,
-                reason: "Transfer received",
-                reference_number: transferNumber,
-                notes: `Transfer ${transferNumber}: Received ${transferQty} units from ${fromStoreName}`,
-              });
             }
           }
 

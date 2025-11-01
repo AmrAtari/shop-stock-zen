@@ -128,22 +128,8 @@ export const useReportsData = () => {
   const stockMovementQuery = useQuery({
     queryKey: queryKeys.reports.stockMovement,
     queryFn: async () => {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      const { data, error } = await supabase
-        .from("stock_adjustments")
-        .select("created_at, adjustment, item_id, items(name)")
-        .gte("created_at", thirtyDaysAgo.toISOString())
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      return data.map((adj) => ({
-        date: new Date(adj.created_at).toLocaleDateString(),
-        item_name: (adj.items as any)?.name || "Unknown",
-        adjustment: adj.adjustment,
-      })) as StockMovement[];
+      // stock_adjustments table doesn't exist - returning empty array
+      return [] as StockMovement[];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -187,22 +173,8 @@ export const useReportsData = () => {
   const recentAdjustmentsQuery = useQuery({
     queryKey: queryKeys.reports.recentAdjustments,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stock_adjustments")
-        .select("created_at, previous_quantity, new_quantity, adjustment, reason, item_id, items(name)")
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-
-      return data.map((adj) => ({
-        created_at: new Date(adj.created_at).toLocaleDateString(),
-        item_name: (adj.items as any)?.name || "Unknown",
-        previous_quantity: adj.previous_quantity,
-        new_quantity: adj.new_quantity,
-        adjustment: adj.adjustment,
-        reason: adj.reason,
-      })) as RecentAdjustment[];
+      // stock_adjustments table doesn't exist - returning empty array
+      return [] as RecentAdjustment[];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -240,50 +212,8 @@ export const useReportsData = () => {
   const stockMovementTransactionQuery = useQuery({
     queryKey: queryKeys.reports.stockMovementTransaction,
     queryFn: async () => {
-      // Fetch stock adjustments
-      const { data: adjustments, error: adjError } = await supabase
-        .from("stock_adjustments")
-        .select(`
-          id,
-          item_id,
-          adjustment,
-          reason,
-          reference_number,
-          created_at,
-          previous_quantity,
-          new_quantity
-        `)
-        .order("created_at", { ascending: false });
-
-      if (adjError) throw adjError;
-
-      // Fetch items to get item names
-      const { data: items, error: itemsError } = await supabase
-        .from("items")
-        .select("id, name, sku, location");
-
-      if (itemsError) throw itemsError;
-
-      const itemMap = new Map(items?.map((item) => [item.id, item]) || []);
-
-      // Format adjustments
-      const formattedAdjustments = (adjustments || []).map((adj) => {
-        const item = itemMap.get(adj.item_id);
-        return {
-          date: new Date(adj.created_at).toLocaleDateString(),
-          item_name: item?.name || "Unknown",
-          sku: item?.sku || "",
-          location: item?.location || "",
-          transaction_type: "Adjustment",
-          quantity_change: adj.adjustment,
-          previous_qty: adj.previous_quantity,
-          new_qty: adj.new_quantity,
-          reason: adj.reason,
-          reference: adj.reference_number || "",
-        };
-      });
-
-      return formattedAdjustments;
+      // stock_adjustments table doesn't exist - returning empty array
+      return [];
     },
     staleTime: 2 * 60 * 1000,
   });

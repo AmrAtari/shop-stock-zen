@@ -99,20 +99,6 @@ export const useUpdateStoreInventory = () => {
           .eq("id", existing.id);
 
         if (updateError) throw updateError;
-
-        // Create stock adjustment record
-        const { error: adjustmentError } = await supabase
-          .from("stock_adjustments")
-          .insert({
-            item_id: itemId,
-            store_id: storeId,
-            previous_quantity: existing.quantity,
-            new_quantity: existing.quantity + quantity,
-            adjustment: quantity,
-            reason,
-          });
-
-        if (adjustmentError) throw adjustmentError;
       } else {
         // Create new record
         const { error: insertError } = await supabase
@@ -125,20 +111,6 @@ export const useUpdateStoreInventory = () => {
           });
 
         if (insertError) throw insertError;
-
-        // Create stock adjustment record
-        const { error: adjustmentError } = await supabase
-          .from("stock_adjustments")
-          .insert({
-            item_id: itemId,
-            store_id: storeId,
-            previous_quantity: 0,
-            new_quantity: quantity,
-            adjustment: quantity,
-            reason,
-          });
-
-        if (adjustmentError) throw adjustmentError;
       }
     },
     onSuccess: async () => {

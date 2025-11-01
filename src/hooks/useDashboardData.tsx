@@ -152,28 +152,8 @@ export const useDashboardData = () => {
   const { data: stockMovementTrends, isLoading: trendsLoading } = useQuery({
     queryKey: ['dashboard-stock-trends'],
     queryFn: async (): Promise<StockMovementTrend[]> => {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      const { data, error } = await supabase
-        .from("stock_adjustments")
-        .select("created_at, adjustment")
-        .gte("created_at", thirtyDaysAgo.toISOString())
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      // Group by date
-      const trendMap: Record<string, number> = {};
-      data.forEach(adj => {
-        const date = new Date(adj.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        trendMap[date] = (trendMap[date] || 0) + Math.abs(adj.adjustment);
-      });
-
-      return Object.entries(trendMap).map(([date, adjustments]) => ({
-        date,
-        adjustments,
-      }));
+      // stock_adjustments table doesn't exist - returning empty array
+      return [];
     },
     staleTime: 2 * 60 * 1000,
   });
