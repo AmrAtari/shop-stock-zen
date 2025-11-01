@@ -166,108 +166,56 @@ const PurchaseOrderDetail = () => {
       const notFoundSkus: string[] = [];
 
       for (const item of items) {
-        let targetItemId: string | null = null;
-
         console.log(`Processing item: ${item.sku}`);
 
-        // 1. Find the Item ID
-        // NOTE: The 'items' table refers to the product master list.
-        if (item.item_id) {
-          const { data: byId, error: byIdErr } = await supabase
-            .from("items")
-            .select("id")
-            .eq("id", item.item_id)
+        // 1. Find the variant by SKU
+        const { data: variant, error: variantErr } = await supabase
+          .from("variants")
+          .select("variant_id")
+          .eq("sku", item.sku)
+          .maybeSingle();
+
+        if (variantErr) throw variantErr;
+
+        if (variant) {
+          // 2. Update stock_on_hand table
+          const { data: existingStock, error: fetchErr } = await supabase
+            .from("stock_on_hand")
+            .select("quantity")
+            .eq("variant_id", variant.variant_id)
+            .eq("store_id", po.store_id)
             .maybeSingle();
 
-          if (byIdErr) throw byIdErr;
-          if (byId) {
-            targetItemId = byId.id as string;
-          }
-        } else if (item.sku) {
-          const { data: bySku, error: bySkuErr } = await supabase
-            .from("items")
-            .select("id")
-            .eq("sku", item.sku)
-            .maybeSingle();
+          if (fetchErr) throw fetchErr;
 
-          if (bySkuErr) throw bySkuErr;
-          if (bySku) {
-            targetItemId = bySku.id as string;
-          }
-        }
+          const prevQty = existingStock?.quantity || 0;
+          const newQty = prevQty + item.quantity;
 
-        if (targetItemId) {
-          // 2. Update Store Inventory
-          if (po.store_id) {
-            const previousQty = await (async () => {
-              const { data: existingStoreInv, error: fetchErr } = await supabase
-                .from("store_inventory")
-                .select("id, quantity")
-                .eq("item_id", targetItemId)
-                .eq("store_id", po.store_id)
-                .maybeSingle();
+          console.log(`Stock - Previous: ${prevQty}, Adding: ${item.quantity}, New: ${newQty}`);
 
-              if (fetchErr) {
-                console.error("Error fetching store inventory:", fetchErr);
-                throw fetchErr;
-              }
+          if (existingStock) {
+            // Update existing record
+            const { error: updateErr } = await supabase
+              .from("stock_on_hand")
+              .update({
+                quantity: newQty,
+                last_updated: new Date().toISOString(),
+              })
+              .eq("variant_id", variant.variant_id)
+              .eq("store_id", po.store_id);
 
-              return existingStoreInv;
-            })();
-
-            const prevQty = previousQty?.quantity || 0;
-            const newQty = prevQty + item.quantity;
-
-            console.log(`Store inventory - Previous: ${prevQty}, Adding: ${item.quantity}, New: ${newQty}`);
-
-            if (previousQty) {
-              // Update existing record
-              const { error: updateErr } = await supabase
-                .from("store_inventory")
-                .update({
-                  quantity: newQty,
-                  last_restocked: new Date().toISOString(),
-                })
-                .eq("id", previousQty.id);
-
-              if (updateErr) {
-                console.error("Error updating store_inventory:", updateErr);
-                throw updateErr;
-              }
-              console.log("Successfully updated store_inventory");
-            } else {
-              // Insert new record
-              const { error: insertErr } = await supabase.from("store_inventory").insert({
-                item_id: targetItemId,
-                store_id: po.store_id,
-                quantity: item.quantity,
-                min_stock: 0,
-                last_restocked: new Date().toISOString(),
-              });
-
-              if (insertErr) {
-                console.error("Error inserting store_inventory:", insertErr);
-                throw insertErr;
-              }
-              console.log("Successfully inserted store_inventory");
-            }
-
-            // Create stock adjustment record
-            const { error: adjustmentErr } = await supabase.from("stock_adjustments").insert({
-              item_id: targetItemId,
+            if (updateErr) throw updateErr;
+          } else {
+            // Insert new record
+            const { error: insertErr } = await supabase.from("stock_on_hand").insert({
+              variant_id: variant.variant_id,
               store_id: po.store_id,
-              previous_quantity: prevQty,
-              new_quantity: newQty,
-              adjustment: item.quantity,
-              reason: `PO Receipt: ${po.po_number}`,
-              reference_number: po.po_number,
+              quantity: item.quantity,
+              min_stock: 0,
+              last_updated: new Date().toISOString(),
             });
 
-            if (adjustmentErr) {
-              console.error("Error creating stock adjustment:", adjustmentErr);
-              throw adjustmentErr;
-            }
-            console.log("Successfully created stock adjustment");
+            if (insertErr) throw insertErr;
           }
 
           updatedCount += 1;
@@ -285,19 +233,18 @@ const PurchaseOrderDetail = () => {
 
       if (updatedCount > 0) {
         await updateStatusMutation.mutateAsync("completed");
-        // Refresh all related caches
         await invalidateInventoryData(queryClient);
 
         toast({
           title: "PO Received",
           description: notFoundSkus.length
-            ? `Inventory updated. Missing SKUs not linked to items: ${notFoundSkus.join(", ")}`
+            ? `Inventory updated. Missing SKUs not found in variants: ${notFoundSkus.join(", ")}`
             : "Purchase order has been received and inventory updated.",
         });
       } else {
         toast({
           title: "No Items Updated",
-          description: "Could not match any PO items to inventory by Item ID or SKU.",
+          description: "Could not match any PO items to inventory variants by SKU.",
           variant: "destructive",
         });
       }
