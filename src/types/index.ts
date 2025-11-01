@@ -1,80 +1,81 @@
 /**
  * src/types/index.ts
  *
- * Defines shared TypeScript interfaces used across the application
- * to ensure type safety, particularly when interacting with Supabase data.
+ * Defines shared TypeScript interfaces used across the application.
+ * Updated to include missing properties for PurchaseOrder and PurchaseOrderItem
+ * to satisfy component usage (e.g., sku, item_name, cost_price, notes).
  */
 
 // --- Base Entity Type ---
-// Assuming all primary entities have a string or number ID
 export interface BaseEntity {
-  id: string; // Using string as the primary ID type for consistency
+  id: string; // The bigint ID from Supabase, used for routing
 }
 
 // --- Store Type ---
-// Used by useStores
 export interface Store extends BaseEntity {
   name: string;
 }
 
-// --- Supplier Type ---
-// The error in PurchaseOrderNew.tsx required this to be fully defined.
+// --- Supplier Type (Fixes PurchaseOrderNew.tsx type error) ---
 export interface Supplier extends BaseEntity {
-  // Fields included to satisfy type-checking requirements in PurchaseOrderNew.tsx
   name: string;
   address: string;
   contact_person: string | null;
   phone: string | null;
   email: string | null;
-  created_at: string; 
-  // Add other required fields if necessary
+  created_at: string;
 }
 
-// --- Purchase Order Type (Based on 'Column Structure purchase_orders' CSV) ---
-// Used by usePurchaseOrders
-export interface PurchaseOrder extends BaseEntity {
-  // Note: 'id' (bigint) is used as the primary identifier in the UI components
-  // 'po_id' (integer) is present as PK in the schema but often shadowed by 'id' in RLS-enabled Supabase views.
-  po_id: number;
+// --- Purchase Order Item Type (Fixes most PurchaseOrderDetail.tsx errors) ---
+export interface PurchaseOrderItem extends BaseEntity {
+  po_id: number; // Foreign key linking to PurchaseOrder.po_id (integer PK)
+  item_id: string; // Foreign key to the actual inventory item
 
-  supplier_id: string; // Foreign Key to Supplier
-  store_id: string | null; // Foreign Key to Store
+  // Properties accessed by the component (based on your errors)
+  sku: string;
+  item_name: string;
+  description: string; // Assuming 'description' is the correct column (instead of item_description)
+  // If your column is indeed item_description, change 'description' here to 'item_description'.
+  color: string | null;
+  size: string | null;
+  unit: string | null;
+  cost_price: number; // The individual item cost
+
+  quantity: number;
+}
+
+// --- Purchase Order Type ---
+export interface PurchaseOrder extends BaseEntity {
+  po_id: number;
+  supplier_id: string;
+  store_id: string | null;
   currency_id: string | null;
-  
-  order_date: string; // Date string (e.g., 'YYYY-MM-DD')
+  order_date: string;
   expected_delivery_date: string | null;
-  
-  status: 'draft' | 'pending' | 'approved' | 'completed' | 'cancelled' | string; // character varying
-  po_number: string | null; // Unique PO Identifier
-  
-  authorized_by: string | null; 
-  
+  status: "draft" | "pending" | "approved" | "completed" | "cancelled" | string;
+  po_number: string | null;
+  authorized_by: string | null;
   billing_address: string | null;
   shipping_address: string | null;
-  
-  // Buyer Details
   buyer_address: string | null;
   buyer_contact: string | null;
   buyer_company_name: string | null;
-  
-  // Cost/Item Summary
-  total_items: number | null; // integer
-  total_cost: number; // numeric (using 'number' for TypeScript, assuming it's not nullable for display)
+  total_items: number | null;
+  total_cost: number;
   shipping_charges: number | null;
   tax_amount: number | null;
   subtotal: number | null;
-  
-  // Terms & Instructions
   special_instructions: string | null;
   fob_terms: string | null;
   shipping_method: string | null;
   payment_terms: string | null;
-
   supplier_contact_person: string | null;
   currency: string | null;
-  expected_delivery: string | null; // timestamp
-  supplier: string | null; // Denormalized supplier name for listing
-  
+  expected_delivery: string | null;
+  supplier: string | null;
   created_by: string | null;
   updated_by: string | null;
+
+  // FIX for TS2339: Property 'notes' does not exist
+  notes: string | null;
 }
