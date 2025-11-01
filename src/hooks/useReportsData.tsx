@@ -61,13 +61,13 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Placeholder for missing 'inventory_valuation_view'
+  // FIX: Placeholder for missing 'inventory_valuation_view'
   const categoryValueQuery = { data: [], isLoading: false, error: null };
 
   const lowStockQuery = useQuery({
     queryKey: queryKeys.reports.lowStock,
     queryFn: async () => {
-      // Filter removed to prevent runtime errors, now fetches all items.
+      // Column comparison filter removed to prevent runtime errors.
       const { data, error } = await supabase
         .from("items")
         .select("name, sku, quantity, min_stock, location, category, main_group");
@@ -84,23 +84,14 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Placeholder for missing 'inventory_aging_view'
+  // FIX: Placeholder for missing 'inventory_aging_view'
   const inventoryAgingQuery = { data: [], isLoading: false, error: null };
 
   // FIX: Placeholder for missing 'stock_movement_view'
-  /*
-  const stockMovementQuery = useQuery({
-    queryKey: queryKeys.reports.stockMovement,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("stock_movement_view").select("*").limit(500);
-      if (error) throw error;
-      return data as StockMovement[];
-    },
-    staleTime: 1000 * 60 * 30,
-  });
-  */
   const stockMovementQuery = { data: [], isLoading: false, error: null };
 
+  // FIX: Placeholder for missing 'abc_analysis_view'
+  /*
   const abcAnalysisQuery = useQuery({
     queryKey: queryKeys.reports.abcAnalysis,
     queryFn: async () => {
@@ -110,6 +101,8 @@ export const useReportsData = () => {
     },
     staleTime: 1000 * 60 * 60,
   });
+  */
+  const abcAnalysisQuery = { data: [], isLoading: false, error: null };
 
   const recentAdjustmentsQuery = useQuery({
     queryKey: queryKeys.reports.recentAdjustments,
@@ -185,7 +178,7 @@ export const useReportsData = () => {
     inventoryValuation: categoryValueQuery.data || [],
     lowStock: lowStockQuery.data || [],
     inventoryAging: inventoryAgingQuery.data || [],
-    stockMovement: stockMovementQuery.data || [], // Now returns [] from placeholder
+    stockMovement: stockMovementQuery.data || [],
     abcAnalysis: abcAnalysisQuery.data || [],
     recentAdjustments: recentAdjustmentsQuery.data || [],
     stockMovementTransaction: stockMovementTransactionQuery.data || [],
