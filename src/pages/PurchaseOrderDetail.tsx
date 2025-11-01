@@ -28,7 +28,7 @@ const PurchaseOrderDetail = () => {
     mutationFn: async (newStatus: string) => {
       const { error } = await supabase
         .from("purchase_orders")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .update({ status: newStatus })
         .eq("id", id);
 
       if (error) throw error;
