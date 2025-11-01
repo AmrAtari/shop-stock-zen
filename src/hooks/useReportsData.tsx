@@ -46,7 +46,7 @@ export const useReportsData = () => {
         .eq("is_current", true);
       if (pricesError) throw pricesError;
 
-      // Map the prices and apply the original brand FIX (item_brand -> brand)
+      // FIX 1: Map the database column 'item_brand' to the expected property 'brand'
       return items?.map((item) => {
         const price = prices?.find((p) => p.item_id === item.id);
         return {
@@ -149,16 +149,17 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 10,
   });
 
-  // --- Unique Value Queries (Fixing distinct() TS2353 errors) ---
+  // --- Unique Value Queries (Fixing all TS/Runtime errors with Set) ---
 
   const storesQuery = useQuery({
     queryKey: queryKeys.reports.stores,
     queryFn: async () => {
-      // FIX: Use 'distinct column' string syntax to avoid TS error
-      const { data, error } = await supabase.from("items").select("distinct location");
+      // FIX 2: Fetch all locations and use a Set to ensure uniqueness, bypassing client type issues.
+      const { data, error } = await supabase.from("items").select("location");
       if (error) throw error;
-      // Result is [{ location: 'StoreA' }, ...]
-      return data?.map((row) => row.location).filter((loc) => loc) || [];
+
+      const locations = data?.map((row) => row.location).filter((loc) => loc) || [];
+      return Array.from(new Set(locations));
     },
     staleTime: 1000 * 60 * 60 * 24,
   });
@@ -166,11 +167,12 @@ export const useReportsData = () => {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: async () => {
-      // FIX: Use 'distinct column' string syntax to avoid TS error
-      const { data, error } = await supabase.from("items").select("distinct category");
+      // FIX 3: Fetch all categories and use a Set to ensure uniqueness.
+      const { data, error } = await supabase.from("items").select("category");
       if (error) throw error;
-      // Result is [{ category: 'CatA' }, ...]
-      return data?.map((row) => row.category).filter((cat) => cat) || [];
+
+      const categories = data?.map((row) => row.category).filter((cat) => cat) || [];
+      return Array.from(new Set(categories));
     },
     staleTime: 1000 * 60 * 60 * 24,
   });
@@ -178,11 +180,12 @@ export const useReportsData = () => {
   const brandsQuery = useQuery({
     queryKey: queryKeys.reports.brands,
     queryFn: async () => {
-      // FIX: Use 'distinct column' string syntax (and use correct DB column item_brand)
-      const { data, error } = await supabase.from("items").select("distinct item_brand");
+      // FIX 4: Fetch all item_brands and use a Set to ensure uniqueness.
+      const { data, error } = await supabase.from("items").select("item_brand");
       if (error) throw error;
-      // Result is [{ item_brand: 'BrandX' }, ...]
-      return data?.map((row) => row.item_brand).filter((brand) => brand) || [];
+
+      const brands = data?.map((row) => row.item_brand).filter((brand) => brand) || [];
+      return Array.from(new Set(brands));
     },
     staleTime: 1000 * 60 * 60 * 24,
   });
