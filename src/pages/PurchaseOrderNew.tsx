@@ -127,20 +127,49 @@ const PurchaseOrderNew = () => {
     }
   }, [sameShippingAddress, watchBuyerAddress, setValue]);
 
-  const handleAddItemsFromSelector = (items: Array<{ item: Item; quantity: number; price: number }>) => {
-    const newItems: POItem[] = items.map(({ item, quantity, price }) => ({
-      sku: item.sku,
-      itemName: item.name,
-      itemDescription: item.description || undefined,
-      color: item.color || undefined,
-      size: item.size || undefined,
-      modelNumber: item.item_number || undefined,
-      unit: item.unit,
-      quantity,
-      costPrice: price,
-    }));
-    setPOItems([...poItems, ...newItems]);
-    toast.success(`Added ${newItems.length} items`);
+  const handleAddItemsFromSelector = async (items: Array<{ item: Item; quantity: number; price: number }>) => {
+    // Resolve UUIDs to names for color and size
+    const resolvedItems = await Promise.all(
+      items.map(async ({ item, quantity, price }) => {
+        let colorName = item.color;
+        let sizeName = item.size;
+
+        // Resolve color UUID to name if it's a UUID
+        if (item.color && typeof item.color === 'string' && item.color.length === 36 && item.color.includes('-')) {
+          const { data: colorData } = await supabase
+            .from("colors")
+            .select("name")
+            .eq("id", item.color)
+            .maybeSingle();
+          if (colorData) colorName = colorData.name;
+        }
+
+        // Resolve size UUID to name if it's a UUID
+        if (item.size && typeof item.size === 'string' && item.size.length === 36 && item.size.includes('-')) {
+          const { data: sizeData } = await supabase
+            .from("sizes")
+            .select("name")
+            .eq("id", item.size)
+            .maybeSingle();
+          if (sizeData) sizeName = sizeData.name;
+        }
+
+        return {
+          sku: item.sku,
+          itemName: item.name,
+          itemDescription: item.description || undefined,
+          color: colorName || undefined,
+          size: sizeName || undefined,
+          modelNumber: item.item_number || undefined,
+          unit: item.unit,
+          quantity,
+          costPrice: price,
+        };
+      })
+    );
+
+    setPOItems([...poItems, ...resolvedItems]);
+    toast.success(`Added ${resolvedItems.length} items`);
   };
 
   const handleImportItems = (items: any[]) => {

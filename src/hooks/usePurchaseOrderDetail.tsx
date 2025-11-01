@@ -32,17 +32,51 @@ export const usePurchaseOrderDetail = (id: string) => {
       // Cast the result to the full PurchaseOrder type to access po_id
       const purchaseOrder = po as PurchaseOrder;
 
-      // 2. Fetch the Purchase Order Items using the URL id (which is the foreign key in po_id column)
-      const { data: items, error: itemsError } = await supabase
+      // 2. Fetch the Purchase Order Items with resolved color and size names
+      const { data: rawItems, error: itemsError } = await supabase
         .from("purchase_order_items")
         .select("*")
-        .eq("po_id", id) // Use the URL id parameter as the foreign key
+        .eq("po_id", id)
         .order("created_at", { ascending: true });
 
       if (itemsError) {
         console.error("Error fetching PO items:", itemsError);
         throw itemsError;
       }
+
+      // Resolve color and size UUIDs to names
+      const items = await Promise.all(
+        (rawItems || []).map(async (item) => {
+          let colorName = item.color;
+          let sizeName = item.size;
+
+          // Check if color is a UUID and resolve it
+          if (item.color && item.color.length === 36 && item.color.includes('-')) {
+            const { data: colorData } = await supabase
+              .from("colors")
+              .select("name")
+              .eq("id", item.color)
+              .maybeSingle();
+            if (colorData) colorName = colorData.name;
+          }
+
+          // Check if size is a UUID and resolve it
+          if (item.size && item.size.length === 36 && item.size.includes('-')) {
+            const { data: sizeData } = await supabase
+              .from("sizes")
+              .select("name")
+              .eq("id", item.size)
+              .maybeSingle();
+            if (sizeData) sizeName = sizeData.name;
+          }
+
+          return {
+            ...item,
+            color: colorName,
+            size: sizeName,
+          };
+        })
+      );
 
       // Return the PO object along with its items list
       return {
