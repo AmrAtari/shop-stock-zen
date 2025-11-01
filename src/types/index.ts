@@ -2,7 +2,8 @@
  * src/types/index.ts
  *
  * Defines shared TypeScript interfaces used across the application.
- * FIX: Cleaned up syntax and ensured all required fields for components are present.
+ * FIX: Renamed 'description' to 'item_description' to match component usage
+ * and cleaned up syntax to resolve TS1443, TS1005, and TS1160 errors.
  */
 
 // --- Base Entity Type ---
@@ -25,19 +26,20 @@ export interface Supplier extends BaseEntity {
   created_at: string;
 }
 
-// --- Purchase Order Item Type (Fixes item_description errors) ---
+// --- Purchase Order Item Type (Resolves most PurchaseOrderDetail.tsx errors) ---
 export interface PurchaseOrderItem extends BaseEntity {
-  po_id: number;
-  item_id: string;
+  po_id: number; // Foreign key linking to PurchaseOrder.po_id (integer PK)
+  item_id: string; // Foreign key to the actual inventory item
 
+  // Properties accessed by the component (based on your errors)
   sku: string;
   item_name: string;
-  // FIX: Using 'item_description' to resolve TS2551 error
+  // FIX: Renamed to item_description to resolve TS2551 error
   item_description: string;
   color: string | null;
   size: string | null;
   unit: string | null;
-  cost_price: number;
+  cost_price: number; // The individual item cost
 
   quantity: number;
 }
@@ -73,6 +75,7 @@ export interface PurchaseOrder extends BaseEntity {
   supplier: string | null;
   created_by: string | null;
   updated_by: string | null;
-  // Included 'notes' property
+
+  // Property 'notes'
   notes: string | null;
 }
