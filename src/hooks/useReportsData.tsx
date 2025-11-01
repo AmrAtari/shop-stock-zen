@@ -43,10 +43,11 @@ export const useReportsData = () => {
       const { data: prices, error: pricesError } = await supabase
         .from("price_levels")
         .select("item_id, cost_price, selling_price")
-        .eq("is_current", true);
+        // FIX 1: Change .eq("is_current", true) to the explicit .filter("is_current", "eq", true)
+        .filter("is_current", "eq", true);
       if (pricesError) throw pricesError;
 
-      // FIX 1: Map 'main_group' (stand-in for brand) to the expected property 'brand'
+      // Map the prices and apply the brand FIX
       return items?.map((item) => {
         const price = prices?.find((p) => p.item_id === item.id);
         return {
@@ -60,7 +61,7 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // FIX 2: Placeholder for missing 'inventory_valuation_view'
+  // Placeholder for missing 'inventory_valuation_view'
   const categoryValueQuery = { data: [], isLoading: false, error: null };
 
   const lowStockQuery = useQuery({
@@ -69,7 +70,7 @@ export const useReportsData = () => {
       const { data, error } = await supabase
         .from("items")
         .select("name, sku, quantity, min_stock, location, category, main_group")
-        // FIX 3: Correct syntax for column-to-column comparison (quantity < min_stock)
+        // Correct syntax for column-to-column comparison (quantity < min_stock)
         .filter("quantity.lt", "min_stock")
         .neq("min_stock", 0);
       if (error) throw error;
