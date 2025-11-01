@@ -71,8 +71,8 @@ export const useReportsData = () => {
         .from("items")
         .select("name, sku, quantity, min_stock, location, category, main_group")
         // FIX 1: Column-to-column comparison: quantity < min_stock
-        // This syntax is the correct PostgREST method to compare two columns.
-        .filter("quantity", "lt.min_stock")
+        // Use the chaining method with the { column: true } option, which explicitly tells PostgREST that the value is another column name.
+        .lt("quantity", "min_stock", { column: true })
         // FIX 2: Column-to-value comparison: min_stock != 0
         .filter("min_stock", "neq", 0);
       if (error) throw error;
