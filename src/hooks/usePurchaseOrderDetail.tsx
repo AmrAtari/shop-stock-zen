@@ -1,22 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { queryKeys } from "./queryKeys";
-import { PurchaseOrder } from "@/types"; // Import the PO type
-
-// Define a type for purchase order items if not already defined (assuming minimal structure)
-interface PurchaseOrderItem {
-  id: string;
-  po_id: number; // Linked to po_id (integer PK) on the PO table
-  description: string;
-  quantity: number;
-  unit_cost: number;
-  // ... other item fields
-}
+import { PurchaseOrder, PurchaseOrderItem } from "@/types"; // Import new types
 
 /**
  * Custom hook to fetch a single purchase order and its associated items.
  * The ID passed is the 'id' (bigint) from the URL, used to fetch the parent PO record.
- * Items are then fetched using the PO's primary key, 'po_id'.
+ * Items are then fetched using the PO's primary key, 'po_id', resolving the missing items issue.
  */
 export const usePurchaseOrderDetail = (id: string) => {
   return useQuery({
@@ -38,9 +28,9 @@ export const usePurchaseOrderDetail = (id: string) => {
       // 2. Fetch the Purchase Order Items using the po_id (integer PK)
       const { data: items, error: itemsError } = await supabase
         .from("purchase_order_items")
-        .select("*, po_id") // Ensure po_id is selected if needed, but the important part is the filter
+        .select("*") // Select all columns defined in PurchaseOrderItem
         .eq("po_id", poPrimaryId) // FIX: Use the fetched PO's internal po_id (integer) for the item foreign key
-        .order("created_at", { ascending: true }); // Ensure ascending is set for order
+        .order("created_at", { ascending: true });
 
       if (itemsError) throw itemsError;
 
