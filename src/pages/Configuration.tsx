@@ -51,9 +51,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { Pagination } from "@/components/ui/pagination"; // Assuming you have a Pagination component
 
-// *** CORRECTED IMPORT PATH ***
-// Assuming DatabaseAdminPanel.tsx is in the same directory (src/pages/)
-import DatabaseAdminPanel from "./DatabaseAdminPanel.tsx";
+// *** CORRECTED IMPORT: Changed to NAMED IMPORT ***
+import { DatabaseAdminPanel } from "./DatabaseAdminPanel";
+
 // --- TYPE DEFINITIONS ---
 interface UserWithRole {
   id: string;
@@ -241,7 +241,7 @@ const AddUserDialog: React.FC<{
       toast({
         title: "Success",
         description: `User ${email} created successfully.`,
-        variant: "default", // FIXED: Changed "success" to "default"
+        variant: "default", // FIXED
       });
       onUserAdded();
       onOpenChange(false);
@@ -391,7 +391,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Role for user ${userId.slice(0, 8)}... updated to ${newRole}.`,
-        variant: "default", // FIXED: Changed "success" to "default"
+        variant: "default", // FIXED
       });
       loadUsers(); // Refresh the list
     } catch (error: any) {
@@ -415,7 +415,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Role for user ${userId.slice(0, 8)}... has been removed.`,
-        variant: "default", // FIXED: Changed "success" to "default"
+        variant: "default", // FIXED
       });
       loadUsers(); // Refresh the list
     } catch (error: any) {
@@ -469,7 +469,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Attribute type '${newAttrLabel}' created.`,
-        variant: "default", // FIXED: Changed "success" to "default"
+        variant: "default", // FIXED
       });
       setOpenAttributeDialog(false);
       setNewAttrName("");
@@ -533,7 +533,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Added '${newValue}' to ${activeCatalog.label}.`,
-        variant: "default", // FIXED: Changed "success" to "default"
+        variant: "default", // FIXED
       });
       setNewValue("");
       loadData(activeCatalog.table_name, page, searchTerm);
@@ -554,7 +554,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Item deleted.`,
-        variant: "default", // FIXED: Changed "success" to "default"
+        variant: "default", // FIXED
       });
       loadData(activeCatalog.table_name, page, searchTerm);
     }
