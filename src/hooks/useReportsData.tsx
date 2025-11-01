@@ -46,12 +46,11 @@ export const useReportsData = () => {
         .eq("is_current", true);
       if (pricesError) throw pricesError;
 
-      // Map the prices and apply the brand FIX
+      // FIX 1: Map 'main_group' (stand-in for brand) to the expected property 'brand'
       return items?.map((item) => {
         const price = prices?.find((p) => p.item_id === item.id);
         return {
           ...item,
-          // FIX 1: Map the database column 'main_group' (stand-in for brand) to the expected property 'brand'
           brand: item.main_group,
           cost_price: price?.cost_price || 0,
           selling_price: price?.selling_price || 0,
@@ -61,21 +60,7 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // FIX 2: Commented out the query that crashes due to missing 'inventory_valuation_view'
-  /*
-  const categoryValueQuery = useQuery({
-    queryKey: queryKeys.reports.categoryValue,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("inventory_valuation_view")
-        .select("category, total_value, total_items");
-      if (error) throw error;
-      return data as CategoryValue[];
-    },
-    staleTime: 1000 * 60 * 30,
-  });
-  */
-  // Placeholder query for stability
+  // FIX 2: Placeholder for missing 'inventory_valuation_view'
   const categoryValueQuery = { data: [], isLoading: false, error: null };
 
   const lowStockQuery = useQuery({
@@ -83,8 +68,9 @@ export const useReportsData = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("items")
-        .select("name, sku, quantity, min_stock, location, category, main_group") // Select 'main_group' for consistency
-        .lt("quantity", "min_stock")
+        .select("name, sku, quantity, min_stock, location, category, main_group")
+        // FIX 3: Correct syntax for column-to-column comparison (quantity < min_stock)
+        .filter("quantity.lt", "min_stock")
         .neq("min_stock", 0);
       if (error) throw error;
       // Also apply the brand mapping here
@@ -172,7 +158,7 @@ export const useReportsData = () => {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: async () => {
-      // Note: The 'category' column is a UUID foreign key, you may need to join with the 'categories' table to get the name/string value.
+      // Fetches UUIDs from the category foreign key
       const { data, error } = await supabase.from("items").select("category");
       if (error) throw error;
 
@@ -185,7 +171,7 @@ export const useReportsData = () => {
   const brandsQuery = useQuery({
     queryKey: queryKeys.reports.brands,
     queryFn: async () => {
-      // FIX 3: Using 'main_group' as a stand-in for brand, as 'item_brand' does not exist.
+      // Using 'main_group' as a stand-in for brand
       const { data, error } = await supabase.from("items").select("main_group");
       if (error) throw error;
 
@@ -199,7 +185,7 @@ export const useReportsData = () => {
 
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
-    inventoryValuation: categoryValueQuery.data || [], // Returns [] from the placeholder query
+    inventoryValuation: categoryValueQuery.data || [],
     lowStock: lowStockQuery.data || [],
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
@@ -213,7 +199,7 @@ export const useReportsData = () => {
     brands: brandsQuery.data || [],
     isLoading:
       inventoryOnHandQuery.isLoading ||
-      categoryValueQuery.isLoading || // Will be false now
+      categoryValueQuery.isLoading ||
       lowStockQuery.isLoading ||
       inventoryAgingQuery.isLoading ||
       stockMovementQuery.isLoading ||
@@ -225,7 +211,7 @@ export const useReportsData = () => {
       brandsQuery.isLoading,
     error:
       inventoryOnHandQuery.error ||
-      categoryValueQuery.error || // Will be null now
+      categoryValueQuery.error ||
       lowStockQuery.error ||
       inventoryAgingQuery.error ||
       stockMovementQuery.error ||
