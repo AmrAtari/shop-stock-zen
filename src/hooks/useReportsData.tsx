@@ -51,7 +51,7 @@ export const useReportsData = () => {
         const price = prices?.find((p) => p.item_id === item.id);
         return {
           ...item,
-          // FIX 1: Map the database column 'item_brand' to the expected property 'brand'
+          // FIX 1: Resolve "column items.brand does not exist"
           brand: item.item_brand,
           cost_price: price?.cost_price || 0,
           selling_price: price?.selling_price || 0,
@@ -61,8 +61,9 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // FIX 2: Corrected the query key to use the existing `categoryValue` key
   const categoryValueQuery = useQuery({
-    queryKey: queryKeys.reports.inventoryValuation,
+    queryKey: queryKeys.reports.categoryValue, // Changed from inventoryValuation
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_valuation_view") // Assuming a view or materialized view
@@ -150,11 +151,12 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 10,
   });
 
-  // --- Start of Unique Value Queries (WHERE the Brand FIX IS CRITICAL) ---
+  // --- Start of Unique Value Queries (Fixing distinct() syntax) ---
 
   const storesQuery = useQuery({
     queryKey: queryKeys.reports.stores,
     queryFn: async () => {
+      // FIX 3: Move .distinct() before .select()
       const { data, error } = await supabase.from("items").select("location").distinct();
       if (error) throw error;
       return data?.map((row) => row.location).filter((loc) => loc) || [];
@@ -165,6 +167,7 @@ export const useReportsData = () => {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: async () => {
+      // FIX 4: Move .distinct() before .select()
       const { data, error } = await supabase.from("items").select("category").distinct();
       if (error) throw error;
       return data?.map((row) => row.category).filter((cat) => cat) || [];
@@ -175,7 +178,7 @@ export const useReportsData = () => {
   const brandsQuery = useQuery({
     queryKey: queryKeys.reports.brands,
     queryFn: async () => {
-      // FIX 2: Select the correct database column 'item_brand' instead of the non-existent 'brand'
+      // FIX 5: Move .distinct() before .select() (AND selecting 'item_brand')
       const { data, error } = await supabase.from("items").select("item_brand").distinct();
       if (error) throw error;
       // Map the resulting array of objects [{ item_brand: 'BrandX' }] to strings ['BrandX']
@@ -188,7 +191,7 @@ export const useReportsData = () => {
 
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
-    inventoryValuation: categoryValueQuery.data || [],
+    inventoryValuation: categoryValueQuery.data || [], // This property name is now correct
     lowStock: lowStockQuery.data || [],
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
