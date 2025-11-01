@@ -93,27 +93,11 @@ export const useReportsData = () => {
   // Placeholder for missing 'abc_analysis_view'
   const abcAnalysisQuery = { data: [], isLoading: false, error: null };
 
-  // FIX: Placeholder for missing 'inventory_adjustments' table
-  /*
-  const recentAdjustmentsQuery = useQuery({
-    queryKey: queryKeys.reports.recentAdjustments,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("inventory_adjustments")
-        .select("*, item:items!inner(name)")
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      return data?.map((adj) => ({
-        ...adj,
-        item_name: (adj.item as any).name,
-      })) as RecentAdjustment[];
-    },
-    staleTime: 1000 * 60 * 10,
-  });
-  */
+  // Placeholder for missing 'inventory_adjustments' table
   const recentAdjustmentsQuery = { data: [], isLoading: false, error: null };
 
+  // FIX: Placeholder for missing 'stock_transactions' table
+  /*
   const stockMovementTransactionQuery = useQuery({
     queryKey: queryKeys.reports.stockMovementTransaction,
     queryFn: async () => {
@@ -123,6 +107,8 @@ export const useReportsData = () => {
     },
     staleTime: 1000 * 60 * 10,
   });
+  */
+  const stockMovementTransactionQuery = { data: [], isLoading: false, error: null };
 
   // --- Unique Value Queries ---
 
@@ -173,8 +159,8 @@ export const useReportsData = () => {
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
     abcAnalysis: abcAnalysisQuery.data || [],
-    recentAdjustments: recentAdjustmentsQuery.data || [], // Now returns [] from placeholder
-    stockMovementTransaction: stockMovementTransactionQuery.data || [],
+    recentAdjustments: recentAdjustmentsQuery.data || [],
+    stockMovementTransaction: stockMovementTransactionQuery.data || [], // Now returns [] from placeholder
     salesPerformance: [],
     cogs: [],
     stores: storesQuery.data || [],
