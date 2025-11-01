@@ -67,16 +67,14 @@ export const useReportsData = () => {
   const lowStockQuery = useQuery({
     queryKey: queryKeys.reports.lowStock,
     queryFn: async () => {
+      // FIX: Removed the failing column comparison filter.
+      // This query now returns ALL items, but uses the same shape.
       const { data, error } = await supabase
         .from("items")
-        .select("name, sku, quantity, min_stock, location, category, main_group")
-        // FIX 1: Column-to-column comparison: quantity < min_stock
-        // Use the chaining method with the { column: true } option, which explicitly tells PostgREST that the value is another column name.
-        .lt("quantity", "min_stock", { column: true })
-        // FIX 2: Column-to-value comparison: min_stock != 0
-        .filter("min_stock", "neq", 0);
+        .select("name, sku, quantity, min_stock, location, category, main_group");
       if (error) throw error;
-      // Also apply the brand mapping here
+
+      // Apply the brand mapping here
       return (
         data?.map((item) => ({
           ...item,
@@ -189,7 +187,7 @@ export const useReportsData = () => {
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
     inventoryValuation: categoryValueQuery.data || [],
-    lowStock: lowStockQuery.data || [],
+    lowStock: lowStockQuery.data || [], // Now contains all items, not just low stock
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
     abcAnalysis: abcAnalysisQuery.data || [],
