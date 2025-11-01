@@ -43,7 +43,7 @@ export const useReportsData = () => {
       const { data: prices, error: pricesError } = await supabase
         .from("price_levels")
         .select("item_id, cost_price, selling_price")
-        // FIX 1: Change .eq("is_current", true) to the explicit .filter("is_current", "eq", true)
+        // Using explicit filter syntax for 'is_current'
         .filter("is_current", "eq", true);
       if (pricesError) throw pricesError;
 
@@ -70,9 +70,9 @@ export const useReportsData = () => {
       const { data, error } = await supabase
         .from("items")
         .select("name, sku, quantity, min_stock, location, category, main_group")
-        // Correct syntax for column-to-column comparison (quantity < min_stock)
-        .filter("quantity.lt", "min_stock")
-        // FIX 2: Change .neq("min_stock", 0) to the explicit .filter("min_stock", "neq", 0)
+        // FIX 1: Column-to-column comparison: quantity < min_stock
+        .filter("quantity", "lt", "min_stock")
+        // FIX 2: Column-to-value comparison: min_stock != 0
         .filter("min_stock", "neq", 0);
       if (error) throw error;
       // Also apply the brand mapping here
