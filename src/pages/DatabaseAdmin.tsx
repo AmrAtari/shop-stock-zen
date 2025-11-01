@@ -64,11 +64,11 @@ const DatabaseAdminPanel: React.FC = () => {
   // --- Column metadata ---
   const [columnMetadata, setColumnMetadata] = useState<ColumnMetadata[]>([]);
   const [loadingColumns, setLoadingColumns] = useState(false);
-  
+
   // --- Column rename state ---
   const [renamingColumn, setRenamingColumn] = useState<string | null>(null);
   const [newColumnName, setNewColumnName] = useState("");
-  
+
   // --- Foreign key state ---
   const [addingFKColumn, setAddingFKColumn] = useState<string | null>(null);
   const [fkTargetTable, setFkTargetTable] = useState("");
@@ -181,7 +181,7 @@ const DatabaseAdminPanel: React.FC = () => {
   // --- Add column to selected table ---
   const addColumn = async () => {
     if (!selectedTable || !addColumnName || !addColumnType) return;
-    
+
     // Validate column name (only lowercase letters, numbers, and underscores)
     if (!/^[a-z_][a-z0-9_]*$/.test(addColumnName)) {
       toast.error("Invalid column name. Use only lowercase letters, numbers, and underscores.");
@@ -234,7 +234,7 @@ const DatabaseAdminPanel: React.FC = () => {
         .from(selectedTable)
         .update({ [colKey]: newValue })
         .eq(primaryKey, primaryValue);
-      
+
       if (error) throw error;
       toast.success("Cell updated!");
       fetchRows(selectedTable);
@@ -256,11 +256,8 @@ const DatabaseAdminPanel: React.FC = () => {
 
     try {
       // Use Supabase client methods to prevent SQL injection
-      const { error } = await supabase
-        .from(selectedTable)
-        .delete()
-        .eq(primaryKey, primaryValue);
-      
+      const { error } = await supabase.from(selectedTable).delete().eq(primaryKey, primaryValue);
+
       if (error) throw error;
       toast.success("Row deleted!");
       fetchRows(selectedTable);
@@ -659,9 +656,7 @@ const DatabaseAdminPanel: React.FC = () => {
                         </td>
                         <td className="border px-2 py-1">{col.data_type}</td>
                         <td className="border px-2 py-1">{col.is_nullable}</td>
-                        <td className="border px-2 py-1 text-xs max-w-[150px] truncate">
-                          {col.column_default || "-"}
-                        </td>
+                        <td className="border px-2 py-1 text-xs max-w-[150px] truncate">{col.column_default || "-"}</td>
                         <td className="border px-2 py-1">
                           <div className="flex gap-1">
                             {col.is_primary_key && (
@@ -836,4 +831,5 @@ const DatabaseAdminPanel: React.FC = () => {
   );
 };
 
-export default DatabaseAdminPanel;
+// *** CORRECTED EXPORT: Changed from default to NAMED EXPORT ***
+export { DatabaseAdminPanel };
