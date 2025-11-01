@@ -53,8 +53,7 @@ import { Pagination } from "@/components/ui/pagination"; // Assuming you have a 
 
 // *** CORRECTED IMPORT PATH ***
 // Assuming DatabaseAdminPanel.tsx is in the same directory (src/pages/)
-import DatabaseAdminPanel from "./DatabaseAdminPanel";
-
+import DatabaseAdminPanel from "./DatabaseAdminPanel.tsx
 // --- TYPE DEFINITIONS ---
 interface UserWithRole {
   id: string;
