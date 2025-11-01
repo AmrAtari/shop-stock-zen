@@ -52,8 +52,7 @@ import { toast } from "@/components/ui/use-toast";
 import { Pagination } from "@/components/ui/pagination"; // Assuming you have a Pagination component
 
 // *** CORRECTED IMPORT PATH ***
-// Configuration.tsx is in src/pages/, and DatabaseAdminPanel.tsx is also in src/pages/.
-// Therefore, we use a local import:
+// Assuming DatabaseAdminPanel.tsx is in the same directory (src/pages/)
 import DatabaseAdminPanel from "./DatabaseAdminPanel";
 
 // --- TYPE DEFINITIONS ---
@@ -240,7 +239,11 @@ const AddUserDialog: React.FC<{
 
       if (error) throw error;
 
-      toast({ title: "Success", description: `User ${email} created successfully.`, variant: "success" });
+      toast({
+        title: "Success",
+        description: `User ${email} created successfully.`,
+        variant: "default", // FIXED: Changed "success" to "default"
+      });
       onUserAdded();
       onOpenChange(false);
     } catch (error: any) {
@@ -389,7 +392,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Role for user ${userId.slice(0, 8)}... updated to ${newRole}.`,
-        variant: "success",
+        variant: "default", // FIXED: Changed "success" to "default"
       });
       loadUsers(); // Refresh the list
     } catch (error: any) {
@@ -413,7 +416,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Role for user ${userId.slice(0, 8)}... has been removed.`,
-        variant: "success",
+        variant: "default", // FIXED: Changed "success" to "default"
       });
       loadUsers(); // Refresh the list
     } catch (error: any) {
@@ -464,7 +467,11 @@ const Configuration = () => {
 
       if (error) throw error;
 
-      toast({ title: "Success", description: `Attribute type '${newAttrLabel}' created.`, variant: "success" });
+      toast({
+        title: "Success",
+        description: `Attribute type '${newAttrLabel}' created.`,
+        variant: "default", // FIXED: Changed "success" to "default"
+      });
       setOpenAttributeDialog(false);
       setNewAttrName("");
       setNewAttrLabel("");
@@ -524,7 +531,11 @@ const Configuration = () => {
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Success", description: `Added '${newValue}' to ${activeCatalog.label}.`, variant: "success" });
+      toast({
+        title: "Success",
+        description: `Added '${newValue}' to ${activeCatalog.label}.`,
+        variant: "default", // FIXED: Changed "success" to "default"
+      });
       setNewValue("");
       loadData(activeCatalog.table_name, page, searchTerm);
     }
@@ -541,7 +552,11 @@ const Configuration = () => {
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Success", description: `Item deleted.`, variant: "success" });
+      toast({
+        title: "Success",
+        description: `Item deleted.`,
+        variant: "default", // FIXED: Changed "success" to "default"
+      });
       loadData(activeCatalog.table_name, page, searchTerm);
     }
   };
@@ -701,7 +716,6 @@ const Configuration = () => {
 
         {/* -------------------- 4. Direct DB Access Tab -------------------- */}
         <TabsContent value="db-access">
-          {/* Use the correctly imported component */}
           <DatabaseAdminPanel />
         </TabsContent>
       </Tabs>
