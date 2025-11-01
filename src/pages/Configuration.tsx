@@ -51,8 +51,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { Pagination } from "@/components/ui/pagination";
 
-// *** DEFINITIVE FIX: Use Default Import with explicit .tsx extension ***
-import DatabaseAdminPanel from "./DatabaseAdminPanel.tsx";
+// *** DEFINITIVE FIX: New File Name (DatabaseAdminComponent.tsx) ***
+import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
 
 // --- TYPE DEFINITIONS ---
 interface UserWithRole {
