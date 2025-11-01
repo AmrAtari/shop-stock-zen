@@ -830,6 +830,4 @@ const DatabaseAdminPanel: React.FC = () => {
     </div>
   );
 };
-
-// *** CORRECTED EXPORT: Changed from default to NAMED EXPORT ***
-export { DatabaseAdminPanel };
+export default DatabaseAdminPanel;
