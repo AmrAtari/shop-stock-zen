@@ -61,7 +61,7 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // FIX: Placeholder for missing 'inventory_valuation_view'
+  // Placeholder for missing 'inventory_valuation_view'
   const categoryValueQuery = { data: [], isLoading: false, error: null };
 
   const lowStockQuery = useQuery({
@@ -84,26 +84,17 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // FIX: Placeholder for missing 'inventory_aging_view'
+  // Placeholder for missing 'inventory_aging_view'
   const inventoryAgingQuery = { data: [], isLoading: false, error: null };
 
-  // FIX: Placeholder for missing 'stock_movement_view'
+  // Placeholder for missing 'stock_movement_view'
   const stockMovementQuery = { data: [], isLoading: false, error: null };
 
-  // FIX: Placeholder for missing 'abc_analysis_view'
-  /*
-  const abcAnalysisQuery = useQuery({
-    queryKey: queryKeys.reports.abcAnalysis,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("abc_analysis_view").select("*");
-      if (error) throw error;
-      return data;
-    },
-    staleTime: 1000 * 60 * 60,
-  });
-  */
+  // Placeholder for missing 'abc_analysis_view'
   const abcAnalysisQuery = { data: [], isLoading: false, error: null };
 
+  // FIX: Placeholder for missing 'inventory_adjustments' table
+  /*
   const recentAdjustmentsQuery = useQuery({
     queryKey: queryKeys.reports.recentAdjustments,
     queryFn: async () => {
@@ -120,6 +111,8 @@ export const useReportsData = () => {
     },
     staleTime: 1000 * 60 * 10,
   });
+  */
+  const recentAdjustmentsQuery = { data: [], isLoading: false, error: null };
 
   const stockMovementTransactionQuery = useQuery({
     queryKey: queryKeys.reports.stockMovementTransaction,
@@ -180,7 +173,7 @@ export const useReportsData = () => {
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
     abcAnalysis: abcAnalysisQuery.data || [],
-    recentAdjustments: recentAdjustmentsQuery.data || [],
+    recentAdjustments: recentAdjustmentsQuery.data || [], // Now returns [] from placeholder
     stockMovementTransaction: stockMovementTransactionQuery.data || [],
     salesPerformance: [],
     cogs: [],
