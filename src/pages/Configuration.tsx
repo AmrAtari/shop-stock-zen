@@ -27,8 +27,8 @@ import {
   BadgeCheck,
   Ban,
   Eye,
-  Database, // Keep Database icon for the new tab
-  RotateCcw, // Icon for refreshing user list
+  Database,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,10 +49,10 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
-import { Pagination } from "@/components/ui/pagination"; // Assuming you have a Pagination component
+import { Pagination } from "@/components/ui/pagination";
 
-// *** CORRECTED IMPORT: Changed to NAMED IMPORT ***
-import { DatabaseAdminPanel } from "./DatabaseAdminPanel";
+// *** DEFINITIVE FIX: Use Default Import with explicit .tsx extension ***
+import DatabaseAdminPanel from "./DatabaseAdminPanel.tsx";
 
 // --- TYPE DEFINITIONS ---
 interface UserWithRole {
@@ -241,7 +241,7 @@ const AddUserDialog: React.FC<{
       toast({
         title: "Success",
         description: `User ${email} created successfully.`,
-        variant: "default", // FIXED
+        variant: "default",
       });
       onUserAdded();
       onOpenChange(false);
@@ -391,7 +391,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Role for user ${userId.slice(0, 8)}... updated to ${newRole}.`,
-        variant: "default", // FIXED
+        variant: "default",
       });
       loadUsers(); // Refresh the list
     } catch (error: any) {
@@ -415,7 +415,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Role for user ${userId.slice(0, 8)}... has been removed.`,
-        variant: "default", // FIXED
+        variant: "default",
       });
       loadUsers(); // Refresh the list
     } catch (error: any) {
@@ -469,7 +469,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Attribute type '${newAttrLabel}' created.`,
-        variant: "default", // FIXED
+        variant: "default",
       });
       setOpenAttributeDialog(false);
       setNewAttrName("");
@@ -533,7 +533,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Added '${newValue}' to ${activeCatalog.label}.`,
-        variant: "default", // FIXED
+        variant: "default",
       });
       setNewValue("");
       loadData(activeCatalog.table_name, page, searchTerm);
@@ -554,7 +554,7 @@ const Configuration = () => {
       toast({
         title: "Success",
         description: `Item deleted.`,
-        variant: "default", // FIXED
+        variant: "default",
       });
       loadData(activeCatalog.table_name, page, searchTerm);
     }
