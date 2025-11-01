@@ -61,7 +61,6 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // FIX 2: Using 'categoryValue' query key, which is assumed to exist in your queryKeys.reports
   const categoryValueQuery = useQuery({
     queryKey: queryKeys.reports.categoryValue,
     queryFn: async () => {
@@ -151,13 +150,13 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 10,
   });
 
-  // --- Unique Value Queries (Fixing distinct() syntax) ---
+  // --- Unique Value Queries (Fixing distinct() property error) ---
 
   const storesQuery = useQuery({
     queryKey: queryKeys.reports.stores,
     queryFn: async () => {
-      // FIX 3: Correct distinct() syntax
-      const { data, error } = await supabase.from("items").select("location", { count: "exact" }).distinct();
+      // FIX 2: Correct distinct() syntax for TypeScript by passing it as an option
+      const { data, error } = await supabase.from("items").select("location", { distinct: true });
       if (error) throw error;
       return data?.map((row) => row.location).filter((loc) => loc) || [];
     },
@@ -167,8 +166,8 @@ export const useReportsData = () => {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: async () => {
-      // FIX 4: Correct distinct() syntax
-      const { data, error } = await supabase.from("items").select("category", { count: "exact" }).distinct();
+      // FIX 3: Correct distinct() syntax for TypeScript by passing it as an option
+      const { data, error } = await supabase.from("items").select("category", { distinct: true });
       if (error) throw error;
       return data?.map((row) => row.category).filter((cat) => cat) || [];
     },
@@ -178,8 +177,8 @@ export const useReportsData = () => {
   const brandsQuery = useQuery({
     queryKey: queryKeys.reports.brands,
     queryFn: async () => {
-      // FIX 5: Correct distinct() syntax AND selecting 'item_brand'
-      const { data, error } = await supabase.from("items").select("item_brand", { count: "exact" }).distinct();
+      // FIX 4: Correct distinct() syntax for TypeScript (AND selecting 'item_brand')
+      const { data, error } = await supabase.from("items").select("item_brand", { distinct: true });
       if (error) throw error;
       return data?.map((row) => row.item_brand).filter((brand) => brand) || [];
     },
@@ -190,7 +189,7 @@ export const useReportsData = () => {
 
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
-    inventoryValuation: categoryValueQuery.data || [], // Now maps to categoryValueQuery.data
+    inventoryValuation: categoryValueQuery.data || [],
     lowStock: lowStockQuery.data || [],
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
