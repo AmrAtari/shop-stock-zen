@@ -32,34 +32,16 @@ export const usePurchaseOrderDetail = (id: string) => {
       // Cast the result to the full PurchaseOrder type to access po_id
       const purchaseOrder = po as PurchaseOrder;
 
-      // 2. Attempt to Fetch the Purchase Order Items using the common foreign key name: po_id
-      let { data: items, error: itemsError } = await supabase
+      // 2. Fetch the Purchase Order Items using the URL id (which is the foreign key in po_id column)
+      const { data: items, error: itemsError } = await supabase
         .from("purchase_order_items")
         .select("*")
-        .eq("po_id", purchaseOrder.po_id) // Primary attempt using po_id
+        .eq("po_id", id) // Use the URL id parameter as the foreign key
         .order("created_at", { ascending: true });
 
       if (itemsError) {
-        // Log the error but continue to the fallback check
-        console.warn("Primary item query failed (po_id):", itemsError.message);
-      }
-
-      // 3. Fallback: If no items found via po_id, try the alternative foreign key name: purchase_order_id
-      if (!items || items.length === 0) {
-        console.log("No items found with po_id. Trying fallback: purchase_order_id.");
-
-        const fallbackResult = await supabase
-          .from("purchase_order_items")
-          .select("*")
-          .eq("purchase_order_id", purchaseOrder.po_id) // Fallback attempt
-          .order("created_at", { ascending: true });
-
-        if (fallbackResult.error) {
-          console.error("Fallback item query failed (purchase_order_id):", fallbackResult.error);
-          throw fallbackResult.error;
-        }
-
-        items = fallbackResult.data;
+        console.error("Error fetching PO items:", itemsError);
+        throw itemsError;
       }
 
       // Return the PO object along with its items list
