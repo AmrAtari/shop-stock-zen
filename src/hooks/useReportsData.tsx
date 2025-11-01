@@ -72,7 +72,8 @@ export const useReportsData = () => {
         .select("name, sku, quantity, min_stock, location, category, main_group")
         // Correct syntax for column-to-column comparison (quantity < min_stock)
         .filter("quantity.lt", "min_stock")
-        .neq("min_stock", 0);
+        // FIX 2: Change .neq("min_stock", 0) to the explicit .filter("min_stock", "neq", 0)
+        .filter("min_stock", "neq", 0);
       if (error) throw error;
       // Also apply the brand mapping here
       return (
