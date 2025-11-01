@@ -70,9 +70,10 @@ export const useReportsData = () => {
       const { data, error } = await supabase
         .from("items")
         .select("name, sku, quantity, min_stock, location, category, main_group")
-        // FINAL FIX FOR COLUMN COMPARISON: Use PostgREST dot notation string syntax to correctly compare columns
-        .filter("quantity.lt", "min_stock")
-        // Use explicit filter for value comparison (min_stock != 0)
+        // FIX 1: Column-to-column comparison: quantity < min_stock
+        // This syntax is the correct PostgREST method to compare two columns.
+        .filter("quantity", "lt.min_stock")
+        // FIX 2: Column-to-value comparison: min_stock != 0
         .filter("min_stock", "neq", 0);
       if (error) throw error;
       // Also apply the brand mapping here
