@@ -1,5 +1,7 @@
 // src/pages/Reports.tsx
 
+// src/pages/Reports.tsx
+
 import React, { useState, useMemo, useEffect } from "react";
 import { useReportsData } from "@/hooks/useReportsData";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -807,6 +809,7 @@ export default function Reports() {
   }
 
   if (error) {
+    // The error message comes from the useReportsData hook
     return (
       <div className="p-8">
         <div className="text-destructive">Error loading reports: {(error as Error).message}</div>
