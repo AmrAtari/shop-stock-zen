@@ -84,20 +84,11 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // FIX: Placeholder for missing 'inventory_aging_view'
-  /*
-  const inventoryAgingQuery = useQuery({
-    queryKey: queryKeys.reports.inventoryAging,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("inventory_aging_view").select("*");
-      if (error) throw error;
-      return data;
-    },
-    staleTime: 1000 * 60 * 60,
-  });
-  */
+  // Placeholder for missing 'inventory_aging_view'
   const inventoryAgingQuery = { data: [], isLoading: false, error: null };
 
+  // FIX: Placeholder for missing 'stock_movement_view'
+  /*
   const stockMovementQuery = useQuery({
     queryKey: queryKeys.reports.stockMovement,
     queryFn: async () => {
@@ -107,6 +98,8 @@ export const useReportsData = () => {
     },
     staleTime: 1000 * 60 * 30,
   });
+  */
+  const stockMovementQuery = { data: [], isLoading: false, error: null };
 
   const abcAnalysisQuery = useQuery({
     queryKey: queryKeys.reports.abcAnalysis,
@@ -191,8 +184,8 @@ export const useReportsData = () => {
     inventoryOnHand: inventoryOnHandQuery.data || [],
     inventoryValuation: categoryValueQuery.data || [],
     lowStock: lowStockQuery.data || [],
-    inventoryAging: inventoryAgingQuery.data || [], // Now returns [] from placeholder
-    stockMovement: stockMovementQuery.data || [],
+    inventoryAging: inventoryAgingQuery.data || [],
+    stockMovement: stockMovementQuery.data || [], // Now returns [] from placeholder
     abcAnalysis: abcAnalysisQuery.data || [],
     recentAdjustments: recentAdjustmentsQuery.data || [],
     stockMovementTransaction: stockMovementTransactionQuery.data || [],
