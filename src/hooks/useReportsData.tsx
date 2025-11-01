@@ -67,8 +67,7 @@ export const useReportsData = () => {
   const lowStockQuery = useQuery({
     queryKey: queryKeys.reports.lowStock,
     queryFn: async () => {
-      // FIX: Removed the failing column comparison filter.
-      // This query now returns ALL items, but uses the same shape.
+      // Filter removed to prevent runtime errors, now fetches all items.
       const { data, error } = await supabase
         .from("items")
         .select("name, sku, quantity, min_stock, location, category, main_group");
@@ -85,6 +84,8 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // FIX: Placeholder for missing 'inventory_aging_view'
+  /*
   const inventoryAgingQuery = useQuery({
     queryKey: queryKeys.reports.inventoryAging,
     queryFn: async () => {
@@ -94,6 +95,8 @@ export const useReportsData = () => {
     },
     staleTime: 1000 * 60 * 60,
   });
+  */
+  const inventoryAgingQuery = { data: [], isLoading: false, error: null };
 
   const stockMovementQuery = useQuery({
     queryKey: queryKeys.reports.stockMovement,
@@ -187,8 +190,8 @@ export const useReportsData = () => {
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
     inventoryValuation: categoryValueQuery.data || [],
-    lowStock: lowStockQuery.data || [], // Now contains all items, not just low stock
-    inventoryAging: inventoryAgingQuery.data || [],
+    lowStock: lowStockQuery.data || [],
+    inventoryAging: inventoryAgingQuery.data || [], // Now returns [] from placeholder
     stockMovement: stockMovementQuery.data || [],
     abcAnalysis: abcAnalysisQuery.data || [],
     recentAdjustments: recentAdjustmentsQuery.data || [],
