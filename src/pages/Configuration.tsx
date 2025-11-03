@@ -29,10 +29,11 @@ import {
   Eye,
   Database,
   RotateCcw,
-  // NEW ICONS ADDED FOR PROFESSIONAL SETTINGS TAB
   DollarSign,
   Lock,
   Save,
+  Wrench, // New icon for Developer/Advanced
+  Briefcase, // New icon for Inventory Data Models
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,7 +102,7 @@ const ATTRIBUTE_ICONS = [
   { value: "CloudSun", icon: CloudSun },
   { value: "MapPin", icon: MapPin },
   { value: "Warehouse", icon: Warehouse },
-  { value: "DollarSign", icon: DollarSign }, // Added for Currency
+  { value: "DollarSign", icon: DollarSign },
   // ... more icons as needed
 ];
 
@@ -375,7 +376,6 @@ const Configuration = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   // --- DYNAMIC SETTINGS FETCHERS ---
-  // Refactored to fetch and return data, to be used synchronously in loadGeneralSettings
   const fetchDynamicOptions = useCallback(async (tableName: string): Promise<CatalogItem[]> => {
     try {
       const { data, error } = await supabase
@@ -440,19 +440,14 @@ const Configuration = () => {
         };
       }
 
-      // *** FIX: VALIDATE AND FALLBACK TO FIRST AVAILABLE ITEM ***
-      // If the currency stored in the DB (or the initial "USD") is not in the fetched list,
-      // use the first item in the fetched list as a fallback.
+      // FIX: VALIDATE AND FALLBACK TO FIRST AVAILABLE ITEM
       if (!currencyNames.includes(initialSettings.currency) && currencies.length > 0) {
         initialSettings.currency = currencies[0].name;
       }
 
-      // If the unit stored in the DB (or the initial "kg") is not in the fetched list,
-      // use the first item in the fetched list as a fallback.
       if (!unitNames.includes(initialSettings.defaultUnit) && units.length > 0) {
         initialSettings.defaultUnit = units[0].name;
       }
-      // *** END FIX ***
 
       setGeneralSettings(initialSettings);
     } catch (error: any) {
@@ -463,15 +458,16 @@ const Configuration = () => {
         variant: "destructive",
       });
     }
-  }, [fetchDynamicOptions]); // Dependency updated
+  }, [fetchDynamicOptions]);
 
   useEffect(() => {
     loadGeneralSettings();
   }, [loadGeneralSettings]);
 
-  const handleSettingsChange = (key: keyof GeneralSettings, value: any) => {
+  // TYPE-SAFE SETTINGS HANDLER
+  const handleSettingsChange = useCallback(<K extends keyof GeneralSettings>(key: K, value: GeneralSettings[K]) => {
     setGeneralSettings((prev) => ({ ...prev, [key]: value }));
-  };
+  }, []);
 
   const handleSaveGeneralSettings = async () => {
     setIsSavingSettings(true);
@@ -670,7 +666,6 @@ const Configuration = () => {
 
   const loadData = useCallback(
     async (tableName: string, pageNum: number, search: string) => {
-      // FIX for TS2345: Select 'created_at' to satisfy the CatalogItem interface
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
@@ -699,12 +694,11 @@ const Configuration = () => {
       } else if (tableName === "unit_types") {
         const units = await fetchDynamicOptions("unit_types");
         setDynamicUnits(units);
-        // Important: Re-validate General Settings to ensure the unit is up-to-date
-        loadGeneralSettings();
+        loadGeneralSettings(); // Re-validate General Settings
       }
     },
     [fetchDynamicOptions, loadGeneralSettings],
-  ); // Dependencies updated
+  );
 
   const handleOpenCatalog = (attr: AttributeType) => {
     setActiveCatalog(attr);
@@ -717,7 +711,6 @@ const Configuration = () => {
   const handleAdd = async () => {
     if (!newValue || !activeCatalog) return;
 
-    // This part should also be protected by RLS or a secure Edge Function
     const { error } = await supabase.from(activeCatalog.table_name).insert({ name: newValue.trim() });
 
     if (error) {
@@ -739,7 +732,6 @@ const Configuration = () => {
   };
   const handleDelete = async (itemId: string) => {
     if (!activeCatalog) return;
-    // Secure delete using RLS or another Edge Function
     const { error } = await supabase.from(activeCatalog.table_name).delete().eq("id", itemId);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -754,33 +746,33 @@ const Configuration = () => {
   };
 
   const handleExport = () => {
-    // Logic to export catalog data
     toast({ title: "Exporting...", description: "Preparing data for Excel download.", variant: "default" });
   };
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold">System Configuration</h1>
-      <p className="text-gray-500">Manage users, permissions, and core inventory attributes.</p>
+      <p className="text-gray-500">Manage users, core inventory data models, and global application settings.</p>
 
-      <Tabs defaultValue="user-roles" className="w-full">
+      {/* --- RETHINK TAB GROUPING --- */}
+      <Tabs defaultValue="user-access" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="user-roles">
-            <Shield className="w-4 h-4 mr-2" /> User Roles
+          <TabsTrigger value="user-access">
+            <Shield className="w-4 h-4 mr-2" /> User & Access
           </TabsTrigger>
-          <TabsTrigger value="attributes">
-            <Tags className="w-4 h-4 mr-2" /> Stock Attributes
+          <TabsTrigger value="data-models">
+            <Briefcase className="w-4 h-4 mr-2" /> Inventory Data Models
           </TabsTrigger>
-          <TabsTrigger value="general">
-            <Building className="w-4 h-4 mr-2" /> General Settings
+          <TabsTrigger value="system-defaults">
+            <Building className="w-4 h-4 mr-2" /> System Defaults
           </TabsTrigger>
-          <TabsTrigger value="db-access">
-            <Database className="w-4 h-4 mr-2" /> Direct DB Access
+          <TabsTrigger value="developer">
+            <Wrench className="w-4 h-4 mr-2" /> Developer/Advanced
           </TabsTrigger>
         </TabsList>
 
-        {/* -------------------- 1. User Roles Tab -------------------- */}
-        <TabsContent value="user-roles">
+        {/* -------------------- 1. User & Access Tab -------------------- */}
+        <TabsContent value="user-access">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -849,18 +841,18 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* -------------------- 2. Stock Attributes Tab -------------------- */}
-        <TabsContent value="attributes">
+        {/* -------------------- 2. Inventory Data Models Tab -------------------- */}
+        <TabsContent value="data-models">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Stock Attributes</CardTitle>
+                <CardTitle>Inventory Data Models</CardTitle>
                 <CardDescription>
-                  Manage dynamic inventory categories (e.g., Color, Size, Brand, **Currency**).
+                  Define dynamic categories and values for your inventory (e.g., **Units**, **Brands**, **Currencies**).
                 </CardDescription>
               </div>
               <Button onClick={() => setOpenAttributeDialog(true)}>
-                <Plus className="w-4 h-4 mr-2" /> Add New Type
+                <Plus className="w-4 h-4 mr-2" /> Add New Model
               </Button>
             </CardHeader>
             <CardContent>
@@ -887,17 +879,19 @@ const Configuration = () => {
                 })}
               </div>
               {attributeTypes.length === 0 && (
-                <p className="text-center text-gray-500">No attribute types defined. Add one to get started.</p>
+                <p className="text-center text-gray-500">
+                  No data models defined. Add one to get started (e.g., units, colors).
+                </p>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* -------------------- 3. General Settings Tab (DYNAMIC OPTIONS) -------------------- */}
-        <TabsContent value="general">
+        {/* -------------------- 3. System Defaults Tab -------------------- */}
+        <TabsContent value="system-defaults">
           <Card>
             <CardHeader>
-              <CardTitle>General System Settings</CardTitle>
+              <CardTitle>System Defaults</CardTitle>
               <CardDescription>
                 Configure global system parameters for currency, units, and inventory tracking.
               </CardDescription>
@@ -928,8 +922,9 @@ const Configuration = () => {
                           </SelectItem>
                         ))}
                         {dynamicCurrencies.length === 0 && (
+                          // REMAINS AS A HINT
                           <SelectItem value="USD" disabled>
-                            USD (Add currencies in Stock Attributes)
+                            USD (Add currencies in Data Models)
                           </SelectItem>
                         )}
                       </SelectContent>
@@ -976,12 +971,16 @@ const Configuration = () => {
                           </SelectItem>
                         ))}
                         {dynamicUnits.length === 0 && (
+                          // REMAINS AS A HINT
                           <SelectItem value="kg" disabled>
-                            kg (Add units in Stock Attributes)
+                            kg (Add units in Data Models)
                           </SelectItem>
                         )}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-gray-500">
+                      This will auto-select for new items. The list comes from **Inventory Data Models**.
+                    </p>
                   </div>
 
                   {/* Low Stock Threshold */}
@@ -1040,16 +1039,30 @@ const Configuration = () => {
               <div className="pt-4 flex justify-end">
                 <Button onClick={handleSaveGeneralSettings} disabled={isSavingSettings}>
                   <Save className="w-4 h-4 mr-2" />
-                  {isSavingSettings ? "Saving..." : "Save General Settings"}
+                  {isSavingSettings ? "Saving..." : "Save System Defaults"}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* -------------------- 4. Direct DB Access Tab -------------------- */}
-        <TabsContent value="db-access">
-          <DatabaseAdminPanel />
+        {/* -------------------- 4. Developer/Advanced Tab -------------------- */}
+        <TabsContent value="developer">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-red-600 flex items-center">
+                <Wrench className="w-5 h-5 mr-2" /> Developer/Advanced Access
+              </CardTitle>
+              <CardDescription>
+                **Caution:** This panel provides direct, low-level access to the database. Only authorized
+                administrators should use this feature. Incorrect operations can lead to data loss or corruption.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* The DatabaseAdminPanel component is placed here */}
+              <DatabaseAdminPanel />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
@@ -1059,7 +1072,7 @@ const Configuration = () => {
       <Dialog open={openAttributeDialog} onOpenChange={setOpenAttributeDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New Attribute Type</DialogTitle>
+            <DialogTitle>Add New Inventory Data Model</DialogTitle>
             <DialogDescription>
               Create a new category for stock items (e.g., Brand, Material, Supplier).
             </DialogDescription>
@@ -1113,7 +1126,7 @@ const Configuration = () => {
               Cancel
             </Button>
             <Button onClick={handleAddAttributeType} disabled={loadingAttribute}>
-              {loadingAttribute ? "Creating..." : "Create Type"}
+              {loadingAttribute ? "Creating..." : "Create Model"}
             </Button>
           </DialogFooter>
         </DialogContent>
