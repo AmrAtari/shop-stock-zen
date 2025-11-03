@@ -403,6 +403,10 @@ const Configuration = () => {
     setDynamicCurrencies(currencies);
     setDynamicUnits(units);
 
+    // Get arrays of names for validation
+    const currencyNames = currencies.map((c) => c.name);
+    const unitNames = units.map((u) => u.name);
+
     // 2. Load System Settings
     try {
       const { data, error } = await supabase.from("system_settings").select("*").limit(1).single();
@@ -412,24 +416,45 @@ const Configuration = () => {
         throw error;
       }
 
+      let initialSettings: GeneralSettings;
+
       if (data) {
-        setGeneralSettings({
+        // Use database settings
+        initialSettings = {
           currency: data.currency,
           defaultTaxRate: String(data.default_tax_rate),
           defaultUnit: data.default_unit,
           lowStockThreshold: data.low_stock_threshold,
           enableAuditLog: data.enable_audit_log,
           require2FA: data.require_2fa,
-        });
+        };
       } else {
-        // FIX: If no settings are found, initialize with the first dynamic option
-        // if available, overriding the hardcoded initial state.
-        setGeneralSettings((prev) => ({
-          ...prev,
-          currency: currencies.length > 0 ? currencies[0].name : prev.currency,
-          defaultUnit: units.length > 0 ? units[0].name : prev.defaultUnit,
-        }));
+        // Use default hardcoded values
+        initialSettings = {
+          currency: "USD",
+          defaultTaxRate: "5.0",
+          defaultUnit: "kg",
+          lowStockThreshold: 5,
+          enableAuditLog: true,
+          require2FA: false,
+        };
       }
+
+      // *** FIX: VALIDATE AND FALLBACK TO FIRST AVAILABLE ITEM ***
+      // If the currency stored in the DB (or the initial "USD") is not in the fetched list,
+      // use the first item in the fetched list as a fallback.
+      if (!currencyNames.includes(initialSettings.currency) && currencies.length > 0) {
+        initialSettings.currency = currencies[0].name;
+      }
+
+      // If the unit stored in the DB (or the initial "kg") is not in the fetched list,
+      // use the first item in the fetched list as a fallback.
+      if (!unitNames.includes(initialSettings.defaultUnit) && units.length > 0) {
+        initialSettings.defaultUnit = units[0].name;
+      }
+      // *** END FIX ***
+
+      setGeneralSettings(initialSettings);
     } catch (error: any) {
       console.error("Error loading settings:", error);
       toast({
@@ -674,10 +699,12 @@ const Configuration = () => {
       } else if (tableName === "unit_types") {
         const units = await fetchDynamicOptions("unit_types");
         setDynamicUnits(units);
+        // Important: Re-validate General Settings to ensure the unit is up-to-date
+        loadGeneralSettings();
       }
     },
-    [fetchDynamicOptions],
-  ); // Dependency updated
+    [fetchDynamicOptions, loadGeneralSettings],
+  ); // Dependencies updated
 
   const handleOpenCatalog = (attr: AttributeType) => {
     setActiveCatalog(attr);
@@ -943,7 +970,6 @@ const Configuration = () => {
                         <SelectValue placeholder="Select default unit" />
                       </SelectTrigger>
                       <SelectContent>
-                        {/* FIX: Only show the fallback if dynamicUnits is empty */}
                         {dynamicUnits.map((u) => (
                           <SelectItem key={u.id} value={u.name}>
                             {u.name}
