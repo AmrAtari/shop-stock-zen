@@ -1,151 +1,197 @@
-import React, { useEffect, useState } from "react";
+// src/pages/Inventory.tsx
+import { useState, useEffect } from "react";
+import { Package, DollarSign, AlertTriangle, Plus, Download, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Download, Package, AlertTriangle, Warehouse } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-interface InventoryItem {
-  item_name: string;
+interface Item {
+  variant_id: number;
   sku: string;
+  product_name: string;
+  store_id: string;
+  store_name: string;
   quantity: number;
   min_stock: number;
-  store_name: string;
-  selling_price: number;
   cost: number;
+  selling_price: number;
+  color?: string;
+  size?: string;
+  season?: string;
 }
 
-interface StoreMetrics {
-  storeName: string;
-  totalItems: number;
-  inventoryValue: number;
-  lowStockCount: number;
-}
+const Inventory = () => {
+  const [items, setItems] = useState<Item[]>([]);
+  const [filteredItems, setFilteredItems] = useState<Item[]>([]);
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
+  const [selectedStore, setSelectedStore] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
 
-const InventoryPage = () => {
-  const [inventoryMetrics, setInventoryMetrics] = useState<StoreMetrics[]>([]);
-  const [unassignedItemsData, setUnassignedItemsData] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [currentEditItem, setCurrentEditItem] = useState<Item | null>(null);
 
-  // Fetch inventory
-  const fetchInventoryData = async () => {
-    try {
-      setLoading(true);
-
-      const { data: inventoryData, error } = await supabase
-        .from("stock_on_hand")
-        .select(
-          `
-          quantity,
-          min_stock,
-          store_id,
-          stores(name),
-          variants(
-            variant_id,
-            sku,
-            selling_price,
-            cost,
-            products(name)
-          )
-        `,
-        )
-        .limit(5000);
-
-      if (error) {
-        console.error("Error fetching inventory:", error);
-        toast.error("Failed to load inventory data");
-        return;
-      }
-
-      const storeMap = new Map<string, StoreMetrics>();
-      const unassignedItems: InventoryItem[] = [];
-
-      inventoryData.forEach((item: any) => {
-        const storeId = item.store_id || "unspecified";
-        const storeName = item.stores?.name || "(Non-Specified Store)";
-
-        const variant = item.variants;
-
-        const mappedItem: InventoryItem = {
-          item_name: variant?.products?.name || "N/A",
-          sku: variant?.sku || "N/A",
-          quantity: item.quantity,
-          min_stock: item.min_stock,
-          store_name: storeName,
-          selling_price: variant?.selling_price,
-          cost: variant?.cost,
-        };
-
-        if (storeId === "unspecified") unassignedItems.push(mappedItem);
-
-        if (!storeMap.has(storeId)) {
-          storeMap.set(storeId, { totalItems: 0, inventoryValue: 0, lowStockCount: 0, storeName });
-        }
-
-        const metrics = storeMap.get(storeId)!;
-        const quantity = Number(item.quantity) || 0;
-        const minStock = Number(item.min_stock) || 0;
-        const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
-
-        metrics.totalItems += quantity;
-        metrics.inventoryValue += quantity * price;
-        if (quantity > 0 && quantity <= minStock) metrics.lowStockCount += 1;
-      });
-
-      const finalStoreMetrics = Array.from(storeMap.values());
-
-      setInventoryMetrics(finalStoreMetrics);
-      setUnassignedItemsData(unassignedItems);
-    } catch (err) {
-      console.error("Fetch inventory error:", err);
-      toast.error("Failed to load inventory");
-    } finally {
-      setLoading(false);
+  // Fetch all stores
+  const fetchStores = async () => {
+    const { data, error } = await supabase.from("stores").select("id, name");
+    if (error) {
+      console.error(error);
+      return;
     }
+    setStores(data || []);
   };
 
-  // CSV Export
-  const exportToCsv = (data: InventoryItem[], filename: string) => {
-    if (!data || data.length === 0) {
-      toast.error("No data to export.");
+  // Fetch inventory items
+  const fetchItems = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("stock_on_hand")
+      .select(
+        `
+        quantity,
+        min_stock,
+        store_id,
+        stores(name),
+        variants(
+          variant_id,
+          sku,
+          selling_price,
+          cost,
+          color,
+          size,
+          season,
+          products(name)
+        )
+      `,
+      )
+      .limit(5000);
+
+    if (error) {
+      console.error(error);
+      toast.error("Failed to fetch items");
+      setLoading(false);
       return;
     }
 
-    const headers = Object.keys(data[0]);
-    const csv = [
+    const mappedItems: Item[] = (data || []).map((item: any) => ({
+      variant_id: item.variants.variant_id,
+      sku: item.variants.sku,
+      product_name: item.variants.products.name,
+      store_id: item.store_id,
+      store_name: item.stores?.name || "(Non-Specified Store)",
+      quantity: item.quantity,
+      min_stock: item.min_stock,
+      cost: item.variants.cost || 0,
+      selling_price: item.variants.selling_price || 0,
+      color: item.variants.color,
+      size: item.variants.size,
+      season: item.variants.season,
+    }));
+
+    setItems(mappedItems);
+    setFilteredItems(mappedItems);
+    setLoading(false);
+  };
+
+  // Search & filter
+  useEffect(() => {
+    let temp = [...items];
+    if (selectedStore) temp = temp.filter((i) => i.store_id === selectedStore);
+    if (searchTerm)
+      temp = temp.filter(
+        (i) =>
+          i.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          i.sku.toLowerCase().includes(searchTerm.toLowerCase()),
+      );
+    setFilteredItems(temp);
+  }, [items, selectedStore, searchTerm]);
+
+  // Export to CSV
+  const exportCSV = (data: Item[]) => {
+    if (!data.length) {
+      toast.error("No data to export");
+      return;
+    }
+
+    const headers = [
+      "Product Name",
+      "SKU",
+      "Store Name",
+      "Quantity",
+      "Min Stock",
+      "Cost",
+      "Selling Price",
+      "Color",
+      "Size",
+      "Season",
+    ];
+
+    const csvContent = [
       headers.join(","),
-      ...data.map((row) =>
-        headers
-          .map((fieldName) => {
-            const cell = row[fieldName as keyof InventoryItem] ?? "";
-            return `"${String(cell).replace(/"/g, '""')}"`;
-          })
+      ...data.map((item) =>
+        [
+          item.product_name,
+          item.sku,
+          item.store_name,
+          item.quantity,
+          item.min_stock,
+          item.cost,
+          item.selling_price,
+          item.color || "",
+          item.size || "",
+          item.season || "",
+        ]
+          .map((v) => `"${v}"`)
           .join(","),
       ),
     ].join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", filename);
+    link.setAttribute("download", "Inventory.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success("CSV exported successfully");
+  };
 
-    toast.success(`Exported ${data.length} items to ${filename}`);
+  // Add/Edit handlers (simplified)
+  const handleEditItem = (item: Item) => {
+    setCurrentEditItem(item);
+    setIsEditOpen(true);
+  };
+
+  const handleAddItem = () => {
+    setCurrentEditItem(null);
+    setIsAddOpen(true);
+  };
+
+  const handleDeleteItem = async (variant_id: number) => {
+    const confirm = window.confirm("Are you sure you want to delete this item?");
+    if (!confirm) return;
+    const { error } = await supabase.from("stock_on_hand").delete().eq("variant_id", variant_id);
+    if (error) {
+      toast.error("Failed to delete item");
+      return;
+    }
+    toast.success("Item deleted successfully");
+    fetchItems();
   };
 
   useEffect(() => {
-    fetchInventoryData();
+    fetchStores();
+    fetchItems();
 
-    // Optional: Realtime updates
     const subscription = supabase
       .channel("inventory-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_on_hand" }, () => {
-        fetchInventoryData();
+        fetchItems();
       })
       .subscribe();
 
@@ -154,83 +200,151 @@ const InventoryPage = () => {
     };
   }, []);
 
-  // Filtered data by search
-  const filteredStores = inventoryMetrics.map((store) => ({
-    ...store,
-    items: unassignedItemsData
-      .filter((item) => item.store_name === store.storeName)
-      .filter(
-        (item) =>
-          item.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.sku.toLowerCase().includes(searchTerm.toLowerCase()),
-      ),
-  }));
+  // Summary metrics
+  const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalValue = items.reduce((sum, i) => sum + i.quantity * (i.selling_price || i.cost || 50), 0);
+  const lowStockCount = items.filter((i) => i.quantity <= i.min_stock && i.quantity > 0).length;
 
   return (
-    <div className="p-8 space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Inventory</h1>
-        {unassignedItemsData.length > 0 && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => exportToCsv(unassignedItemsData, "Unassigned_Inventory.csv")}
-            className="bg-red-500/10 text-red-500 hover:bg-red-500/20"
-          >
-            <Download className="w-4 h-4 mr-1" />
-            Export Unassigned Items
-          </Button>
-        )}
+    <div className="p-8 space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Total Items
+            </CardTitle>
+          </CardHeader>
+          <CardContent>{totalItems.toLocaleString()}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5" />
+              Total Inventory Value
+            </CardTitle>
+          </CardHeader>
+          <CardContent>${totalValue.toLocaleString()}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Low Stock Alerts
+            </CardTitle>
+          </CardHeader>
+          <CardContent>{lowStockCount}</CardContent>
+        </Card>
       </div>
 
-      <Input
-        placeholder="Search by item name or SKU"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className="mb-4 max-w-md"
-      />
+      {/* Filters */}
+      <div className="flex gap-4 items-center">
+        <Input
+          placeholder="Search by SKU or Product Name"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <Select value={selectedStore} onValueChange={setSelectedStore}>
+          <SelectTrigger>
+            <SelectValue placeholder="Filter by Store" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">All Stores</SelectItem>
+            {stores.map((store) => (
+              <SelectItem key={store.id} value={store.id}>
+                {store.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button onClick={() => exportCSV(filteredItems)}>
+          <Download className="w-4 h-4 mr-1" />
+          Export CSV
+        </Button>
+        <Button onClick={handleAddItem}>
+          <Plus className="w-4 h-4 mr-1" />
+          Add Item
+        </Button>
+      </div>
 
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {inventoryMetrics.map((store, idx) => (
-            <Card key={idx}>
-              <CardHeader>
-                <CardTitle>
-                  {store.storeName}
-                  <Warehouse className="w-4 h-4 ml-2 inline-block" />
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Items:</span>
-                    <span>{store.totalItems.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Value:</span>
-                    <span>${store.inventoryValue.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Low Stock:</span>
-                    <span className={store.lowStockCount > 0 ? "text-warning" : "text-success"}>
-                      {store.lowStockCount.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Items Table */}
+      <div className="overflow-x-auto">
+        <table className="table-auto w-full border-collapse border border-gray-200 mt-4">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="p-2 border">Product Name</th>
+              <th className="p-2 border">SKU</th>
+              <th className="p-2 border">Store</th>
+              <th className="p-2 border">Quantity</th>
+              <th className="p-2 border">Min Stock</th>
+              <th className="p-2 border">Cost</th>
+              <th className="p-2 border">Selling Price</th>
+              <th className="p-2 border">Color</th>
+              <th className="p-2 border">Size</th>
+              <th className="p-2 border">Season</th>
+              <th className="p-2 border">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={11} className="text-center p-4">
+                  Loading...
+                </td>
+              </tr>
+            ) : filteredItems.length === 0 ? (
+              <tr>
+                <td colSpan={11} className="text-center p-4">
+                  No items found
+                </td>
+              </tr>
+            ) : (
+              filteredItems.map((item) => (
+                <tr key={item.variant_id}>
+                  <td className="p-2 border">{item.product_name}</td>
+                  <td className="p-2 border">{item.sku}</td>
+                  <td className="p-2 border">{item.store_name}</td>
+                  <td className="p-2 border">{item.quantity}</td>
+                  <td className="p-2 border">{item.min_stock}</td>
+                  <td className="p-2 border">${item.cost}</td>
+                  <td className="p-2 border">${item.selling_price}</td>
+                  <td className="p-2 border">{item.color || "-"}</td>
+                  <td className="p-2 border">{item.size || "-"}</td>
+                  <td className="p-2 border">{item.season || "-"}</td>
+                  <td className="p-2 border flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleEditItem(item)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDeleteItem(item.variant_id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add/Edit Dialog */}
+      <Dialog
+        open={isAddOpen || isEditOpen}
+        onOpenChange={(open) => {
+          setIsAddOpen(open);
+          setIsEditOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{currentEditItem ? "Edit Item" : "Add New Item"}</DialogTitle>
+          </DialogHeader>
+          {/* Form content goes here */}
+          {/* You can add inputs for product, SKU, store, quantity, prices, etc. */}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-export default InventoryPage;
+export default Inventory;
