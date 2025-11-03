@@ -23,8 +23,8 @@ import {
   LocateIcon,
   Factory, // New for Org Structure
   GitPullRequest, // New for Workflow
-  Bell, // New for Notifications
-  CalendarClock,
+  Eye,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
-// Database Admin Panel is still imported
+// MOCK: Replace with your actual implementation
 import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
 
 // --- TYPE DEFINITIONS ---
@@ -58,7 +58,7 @@ interface UserWithRole {
   role: UserRole;
   created_at: string;
   last_sign_in_at: string | null;
-  email_confirmed_at: string | null;
+  email_confirmed_at: string | null; // FIX: Added required property
 }
 
 interface AttributeType {
@@ -83,7 +83,7 @@ interface GeneralSettings {
   require2FA: boolean;
 }
 
-// --- NEW: Organizational Structure Types ---
+// --- Organizational Structure Types ---
 interface CompanyCode {
   id: string;
   code: string;
@@ -96,11 +96,11 @@ interface Warehouse {
   id: string;
   code: string;
   name: string;
-  company_code: string; // Foreign key linking to CompanyCode
+  company_code: string;
   location_type: string;
 }
 
-// --- NEW: Workflow Rule Types ---
+// --- Workflow Rule Types ---
 interface WorkflowRule {
   id: string;
   name: string;
@@ -121,23 +121,290 @@ const ATTRIBUTE_ICONS = [
   { value: "DollarSign", icon: DollarSign },
 ];
 
-// --- MOCK AUTH HOOK (Unchanged) ---
+// --- MOCK AUTH HOOK for Role-Based UI (SECURITY UX) ---
 const useAuth = () => {
-  // Set to "admin" to view all functionality, "supervisor" to test role-based restrictions.
   const [userRole, setUserRole] = useState<UserRole>("admin");
   return { userRole };
 };
 
-// --- CUSTOM HOOKS (useSystemSettings and other logic remain the same for brevity) ---
-// ... (omitted useSystemSettings, loadUsers, etc., for brevity, assuming they are in the final file) ...
-// The full logic for useSystemSettings and UserPermissionsDialog/AddUserDialog should be included here.
+// --- CUSTOM HOOK: useSystemSettings (MOCK FOR THIS STEP) ---
+const useSystemSettings = () => {
+  // FIX: Mocked state and handlers to avoid Supabase errors when compiling
+  const [dynamicCurrencies, setDynamicCurrencies] = useState<CatalogItem[]>([
+    { id: "usd", name: "USD", created_at: "" },
+    { id: "aed", name: "AED", created_at: "" },
+  ]);
+  const [dynamicUnits, setDynamicUnits] = useState<CatalogItem[]>([
+    { id: "kg", name: "kg", created_at: "" },
+    { id: "pc", name: "pcs", created_at: "" },
+  ]);
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
+    currency: "USD",
+    defaultTaxRate: "5.0",
+    defaultUnit: "kg",
+    lowStockThreshold: 5,
+    enableAuditLog: true,
+    require2FA: false,
+  });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-// --- NEW COMPONENT: OrganizationalStructure ---
+  // Mock handlers
+  const handleSettingsChange = useCallback(<K extends keyof GeneralSettings>(key: K, value: GeneralSettings[K]) => {
+    setGeneralSettings((prev) => ({ ...prev, [key]: value }));
+  }, []);
+  const handleSaveGeneralSettings = async () =>
+    toast({ title: "Save Mock", description: "Settings saved to mock state.", variant: "default" });
+  const reloadDynamicLists = useCallback(() => {
+    toast({ title: "Data Reload", description: "Dynamic lists reloaded (Mock).", variant: "default" });
+  }, []);
+
+  return useMemo(
+    () => ({
+      generalSettings,
+      dynamicCurrencies,
+      dynamicUnits,
+      handleSettingsChange,
+      handleSaveGeneralSettings,
+      isSavingSettings,
+      reloadDynamicLists,
+    }),
+    [
+      generalSettings,
+      dynamicCurrencies,
+      dynamicUnits,
+      handleSettingsChange,
+      handleSaveGeneralSettings,
+      isSavingSettings,
+      reloadDynamicLists,
+    ],
+  );
+};
+
+// ---------------------------------------------------------------------
+// 1. User Permissions Dialog (FIX: Re-included definition)
+// ---------------------------------------------------------------------
+interface UserPermissionsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  user: UserWithRole | null;
+  onSave: (userId: string, newRole: UserWithRole["role"]) => Promise<void>;
+  onDelete: (userId: string) => Promise<void>;
+}
+
+const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
+  open,
+  onOpenChange,
+  user,
+  onSave,
+  onDelete,
+}) => {
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "admin";
+  const [currentRole, setCurrentRole] = useState<UserWithRole["role"]>(user?.role || null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const availableRoles = ["admin", "inventory_man", "supervisor", "user"];
+
+  useEffect(() => {
+    setCurrentRole(user?.role || null);
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!user || !currentRole) return;
+    setIsSaving(true);
+    await onSave(user.id, currentRole);
+    setIsSaving(false);
+    onOpenChange(false);
+  };
+
+  const handleDelete = async () => {
+    if (!user) return;
+    setIsDeleting(true);
+    await onDelete(user.id);
+    setIsDeleting(false);
+    onOpenChange(false);
+  };
+
+  if (!user) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage Permissions for {user.email}</DialogTitle>
+          <DialogDescription>Update the system role for this user and view account details.</DialogDescription>
+        </DialogHeader>
+
+        {isAdmin ? (
+          <div className="grid gap-4 py-4">
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="role" className="w-[100px]">
+                System Role
+              </Label>
+              <Select
+                value={currentRole || ""}
+                onValueChange={(value) => setCurrentRole(value as UserWithRole["role"])}
+                disabled={isSaving || isDeleting}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableRoles.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role.charAt(0).toUpperCase() + role.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        ) : (
+          <Card className="p-4 bg-yellow-50 border-yellow-200 text-yellow-800">
+            <p className="flex items-center font-medium">
+              <MonitorOff className="w-4 h-4 mr-2" /> View Only
+            </p>
+            <p className="text-sm">You do not have permission to modify this user's role.</p>
+          </Card>
+        )}
+
+        <DialogFooter className="flex justify-between">
+          {isAdmin ? (
+            <>
+              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || isSaving}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                {isDeleting ? "Removing Role..." : "Remove Role"}
+              </Button>
+              <div className="space-x-2">
+                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isDeleting}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={isSaving || isDeleting || currentRole === user.role}>
+                  <Check className="w-4 h-4 mr-2" />
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ---------------------------------------------------------------------
+// 2. Add User Dialog (FIX: Re-included definition)
+// ---------------------------------------------------------------------
+const AddUserDialog: React.FC<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUserAdded: () => void;
+}> = ({ open, onOpenChange, onUserAdded }) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserWithRole["role"]>("user");
+  const [loading, setLoading] = useState(false);
+
+  const handleAddUser = async () => {
+    if (!email || !password || !role) {
+      toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+
+    try {
+      // Mock Supabase call
+      toast({
+        title: "Success",
+        description: `User ${email} created successfully (Mock).`,
+        variant: "default",
+      });
+      onUserAdded();
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: "User Creation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <User className="w-5 h-5 mr-2" /> Add New User
+          </DialogTitle>
+          <DialogDescription>
+            Create a new user account with a temporary password and assign a starting role.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          <Input
+            placeholder="Email (used as username)"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+          />
+          <Input
+            type="password"
+            placeholder="Temporary Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+          />
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="new-user-role" className="w-[100px]">
+              Initial Role
+            </Label>
+            <Select
+              value={role || "user"}
+              onValueChange={(value) => setRole(value as UserWithRole["role"])}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select Role" />
+              </SelectTrigger>
+              <SelectContent>
+                {["admin", "inventory_man", "supervisor", "user"].map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleAddUser} disabled={loading}>
+            {loading ? "Creating..." : "Create User"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ---------------------------------------------------------------------
+// 3. Organizational Structure Component (FIX: Re-included definition)
+// ---------------------------------------------------------------------
 const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = ({ dynamicCurrencies }) => {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
 
-  // Mock State for two tables
   const [companyCodes, setCompanyCodes] = useState<CompanyCode[]>([
     { id: "1", code: "US01", legal_name: "Acme Corp US", base_currency: "USD", default_language: "en-US" },
     { id: "2", code: "AE02", legal_name: "Acme Corp FZCO", base_currency: "AED", default_language: "ar-AE" },
@@ -153,7 +420,6 @@ const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = 
     { id: "w2", code: "WH-DXB", name: "Dubai Free Zone Hub", company_code: "AE02", location_type: "Returns Hub" },
   ]);
 
-  // Mock CRUD functions (replace with actual Supabase calls)
   const handleAddCompanyCode = () =>
     toast({ title: "Feature Added", description: "Company Code creation modal would open here.", variant: "default" });
   const handleAddWarehouse = () =>
@@ -169,9 +435,6 @@ const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = 
     if (type === "warehouse") setWarehouses((whs) => whs.filter((w) => w.id !== id));
     toast({ title: "Deleted", description: `${type} unit deleted (Mock).`, variant: "default" });
   };
-
-  const languages = ["en-US", "ar-AE", "fr-FR"];
-  const locationTypes = ["Retail Store", "Distribution Center", "Returns Hub", "Manufacturing Site"];
 
   return (
     <div className="space-y-6">
@@ -270,13 +533,14 @@ const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = 
   );
 };
 
-// --- NEW COMPONENT: WorkflowRules ---
+// ---------------------------------------------------------------------
+// 4. Workflow Rules Component (FIX: Re-included definition)
+// ---------------------------------------------------------------------
 const WorkflowRules: React.FC = () => {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
   const availableRoles: UserRole[] = ["admin", "supervisor", "inventory_man", "user"];
 
-  // Mock State
   const [rules, setRules] = useState<WorkflowRule[]>([
     {
       id: "r1",
@@ -333,7 +597,7 @@ const WorkflowRules: React.FC = () => {
 
     const ruleToAdd: WorkflowRule = {
       ...(newRule as WorkflowRule),
-      id: Date.now().toString(), // Simple ID generation
+      id: Date.now().toString(),
       is_active: true,
     };
 
@@ -410,7 +674,6 @@ const WorkflowRules: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {/* Name */}
             <div className="space-y-1">
               <Label htmlFor="rule-name">Rule Name</Label>
               <Input
@@ -420,7 +683,6 @@ const WorkflowRules: React.FC = () => {
                 placeholder="e.g., High Value PO Approval"
               />
             </div>
-            {/* Trigger Document */}
             <div className="space-y-1">
               <Label htmlFor="trigger-doc">Triggers On</Label>
               <Select
@@ -439,7 +701,6 @@ const WorkflowRules: React.FC = () => {
                 </SelectContent>
               </Select>
             </div>
-            {/* Condition Type */}
             <div className="space-y-1">
               <Label htmlFor="trigger-condition">Condition Type</Label>
               <Select
@@ -457,7 +718,6 @@ const WorkflowRules: React.FC = () => {
                 </SelectContent>
               </Select>
             </div>
-            {/* Threshold Value (Conditional) */}
             {newRule.trigger_condition === "value_threshold" && (
               <div className="space-y-1">
                 <Label htmlFor="threshold">Value Threshold (e.g., 10000)</Label>
@@ -469,7 +729,6 @@ const WorkflowRules: React.FC = () => {
                 />
               </div>
             )}
-            {/* Required Role */}
             <div className="space-y-1">
               <Label htmlFor="required-role">Required Approver Role</Label>
               <Select
@@ -505,61 +764,220 @@ const WorkflowRules: React.FC = () => {
   );
 };
 
-// --- MAIN CONFIGURATION COMPONENT (Modified TabsList) ---
-const Configuration = () => {
-  // --- CONSUME HOOKS ---
-  // Assuming useSystemSettings hook is fully included here.
-  const useSystemSettings = () => {
-    const [dynamicCurrencies, setDynamicCurrencies] = useState<CatalogItem[]>([
-      { id: "usd", name: "USD", created_at: "" },
-      { id: "aed", name: "AED", created_at: "" },
-    ]);
-    const [dynamicUnits, setDynamicUnits] = useState<CatalogItem[]>([
-      { id: "kg", name: "kg", created_at: "" },
-      { id: "pc", name: "pcs", created_at: "" },
-    ]);
-    const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
-      currency: "USD",
-      defaultTaxRate: "5.0",
-      defaultUnit: "kg",
-      lowStockThreshold: 5,
-      enableAuditLog: true,
-      require2FA: false,
-    });
-    const [isSavingSettings, setIsSavingSettings] = useState(false);
+// ---------------------------------------------------------------------
+// 5. Add Attribute Dialog (FIX: Re-included definition for call)
+// ---------------------------------------------------------------------
+const AddAttributeDialog: React.FC<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (name: string, label: string, icon: string) => Promise<void>;
+}> = ({ open, onOpenChange, onSave }) => {
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "admin";
+  const [newAttrName, setNewAttrName] = useState("");
+  const [newAttrLabel, setNewAttrLabel] = useState("");
+  const [newAttrIcon, setNewAttrIcon] = useState<string>("Tags");
+  const [loadingAttribute, setLoadingAttribute] = useState(false);
 
-    // Mock handlers to prevent errors
-    const handleSettingsChange = useCallback(<K extends keyof GeneralSettings>(key: K, value: GeneralSettings[K]) => {
-      setGeneralSettings((prev) => ({ ...prev, [key]: value }));
-    }, []);
-    const handleSaveGeneralSettings = async () =>
-      toast({ title: "Save Mock", description: "Settings saved to mock state.", variant: "default" });
-    const reloadDynamicLists = useCallback(() => {
-      toast({ title: "Data Reload", description: "Dynamic lists reloaded.", variant: "default" });
-    }, []);
-
-    return useMemo(
-      () => ({
-        generalSettings,
-        dynamicCurrencies,
-        dynamicUnits,
-        handleSettingsChange,
-        handleSaveGeneralSettings,
-        isSavingSettings,
-        reloadDynamicLists,
-      }),
-      [
-        generalSettings,
-        dynamicCurrencies,
-        dynamicUnits,
-        handleSettingsChange,
-        handleSaveGeneralSettings,
-        isSavingSettings,
-        reloadDynamicLists,
-      ],
-    );
+  const handleAddAttributeType = async () => {
+    if (!newAttrName || !newAttrLabel) {
+      toast({ title: "Error", description: "Name and Label are required.", variant: "destructive" });
+      return;
+    }
+    if (!isAdmin) {
+      toast({
+        title: "Permission Denied",
+        description: "Only admins can add new attribute types.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setLoadingAttribute(true);
+    await onSave(newAttrName, newAttrLabel, newAttrIcon);
+    setLoadingAttribute(false);
+    onOpenChange(false);
+    setNewAttrName("");
+    setNewAttrLabel("");
   };
 
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add New Attribute Type</DialogTitle>
+          <DialogDescription>
+            Create a new category for stock items (e.g., Brand, Material, Supplier).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          <div className="space-y-1">
+            <Label htmlFor="attr-label">Display Label (e.g., Color)</Label>
+            <Input
+              id="attr-label"
+              placeholder="Enter display label"
+              value={newAttrLabel}
+              onChange={(e) => setNewAttrLabel(e.target.value)}
+              disabled={loadingAttribute}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="attr-name">Table Name (e.g., colors)</Label>
+            <Input
+              id="attr-name"
+              placeholder="Enter unique table name (lowercase, no spaces)"
+              value={newAttrName}
+              onChange={(e) => setNewAttrName(e.target.value)}
+              disabled={loadingAttribute}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="attr-icon">Icon</Label>
+            <Select value={newAttrIcon} onValueChange={setNewAttrIcon} disabled={loadingAttribute}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select Icon" />
+              </SelectTrigger>
+              <SelectContent>
+                {ATTRIBUTE_ICONS.map((i) => {
+                  const Icon = i.icon;
+                  return (
+                    <SelectItem key={i.value} value={i.value}>
+                      <span className="flex items-center">
+                        <Icon className="w-4 h-4 mr-2" /> {i.value}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loadingAttribute}>
+            Cancel
+          </Button>
+          <Button onClick={handleAddAttributeType} disabled={loadingAttribute || !isAdmin}>
+            {loadingAttribute ? "Creating..." : "Create Type"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ---------------------------------------------------------------------
+// 6. Catalog Management Dialog (FIX: Re-included definition for call)
+// ---------------------------------------------------------------------
+
+const CatalogManagementDialog: React.FC<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  activeCatalog: AttributeType | null;
+  isAdmin: boolean;
+}> = ({ open, onOpenChange, activeCatalog, isAdmin }) => {
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([
+    { id: "c1", name: "Red", created_at: "" },
+    { id: "c2", name: "Blue", created_at: "" },
+  ]);
+  const [newValue, setNewValue] = useState("");
+
+  const handleAdd = () => {
+    if (!newValue) return;
+    if (!isAdmin)
+      return toast({
+        title: "Permission Denied",
+        description: "Only admins can add catalog items.",
+        variant: "destructive",
+      });
+    setCatalogItems([
+      ...catalogItems,
+      { id: Date.now().toString(), name: newValue, created_at: new Date().toISOString() },
+    ]);
+    setNewValue("");
+    toast({ title: "Success", description: `Added '${newValue}'.`, variant: "default" });
+  };
+
+  const handleDelete = (itemId: string) => {
+    if (!isAdmin)
+      return toast({
+        title: "Permission Denied",
+        description: "Only admins can delete catalog items.",
+        variant: "destructive",
+      });
+    setCatalogItems(catalogItems.filter((item) => item.id !== itemId));
+    toast({ title: "Success", description: `Item deleted (Mock).`, variant: "default" });
+  };
+
+  const handleExport = () => {
+    toast({ title: "Exporting...", description: "Preparing data for Excel download.", variant: "default" });
+  };
+
+  if (!activeCatalog) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px] md:max-w-[700px]">
+        <DialogHeader>
+          <DialogTitle>Manage {activeCatalog?.label}</DialogTitle>
+          <DialogDescription>
+            Add, edit, or remove entries for the {activeCatalog?.label.toLowerCase()} category.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[300px] overflow-y-auto border rounded-md">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {catalogItems.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>{item.name}</TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id)} disabled={!isAdmin}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex gap-2 mt-4">
+          <Input
+            placeholder={`Add new ${activeCatalog?.label?.toLowerCase()}...`}
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            disabled={!isAdmin}
+          />
+          <Button onClick={handleAdd} disabled={!isAdmin}>
+            <Plus className="w-4 h-4 mr-1" /> Add
+          </Button>
+        </div>
+
+        <DialogFooter className="flex justify-between mt-6">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          <Button onClick={handleExport}>
+            <Download className="w-4 h-4 mr-2" /> Export as Excel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ---------------------------------------------------------------------
+// MAIN COMPONENT
+// ---------------------------------------------------------------------
+const Configuration = () => {
   const {
     generalSettings,
     dynamicCurrencies,
@@ -573,47 +991,71 @@ const Configuration = () => {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
 
-  // --- STATE (omitted for brevity, assume user/attribute state exists) ---
+  // --- STATE ---
+  // FIX: Added required email_confirmed_at to mock user
+  const [users, setUsers] = useState<UserWithRole[]>([
+    {
+      id: "u1",
+      email: "admin@erp.com",
+      role: "admin",
+      created_at: new Date().toISOString(),
+      last_sign_in_at: new Date().toISOString(),
+      email_confirmed_at: new Date().toISOString(),
+    },
+    {
+      id: "u2",
+      email: "supervisor@erp.com",
+      role: "supervisor",
+      created_at: new Date().toISOString(),
+      last_sign_in_at: null,
+      email_confirmed_at: new Date().toISOString(),
+    },
+  ]);
+  const [attributeTypes, setAttributeTypes] = useState<AttributeType[]>([
+    { id: "t1", table_name: "currency_types", label: "Currency", icon: "DollarSign" },
+    { id: "t2", table_name: "color_types", label: "Color", icon: "Tags" },
+  ]);
+  const [loading, setLoading] = useState(false); // Mock loading state
+
   const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
-  const [openAttributeDialog, setOpenAttributeDialog] = useState(false);
-  // ... and other states for the original tabs
 
-  // Mock functions for original tabs (replace with full logic from previous step)
+  const [openAttributeDialog, setOpenAttributeDialog] = useState(false);
+  const [openCatalogDialog, setOpenCatalogDialog] = useState(false);
+  const [activeCatalog, setActiveCatalog] = useState<AttributeType | null>(null);
+
+  // --- USER MANAGEMENT LOGIC (MOCK) ---
   const loadUsers = useCallback(() => {
     /* mock */
   }, []);
-  const users: UserWithRole[] = [
-    { id: "u1", email: "admin@erp.com", role: "admin", created_at: new Date().toISOString(), last_sign_in_at: null },
-  ];
-  const updateAttributeTypes = () => {
-    /* mock */
-  };
-  const updateCatalog = () => {
-    /* mock */
-  };
-  const attributeTypes: AttributeType[] = [
-    { id: "t1", table_name: "currency_types", label: "Currency", icon: "DollarSign" },
-  ];
-
   const handleEditPermissions = (user: UserWithRole) => {
     setSelectedUser(user);
     setShowPermissionsDialog(true);
   };
   const updateUserRole = async (userId: string, newRole: UserWithRole["role"]) => {
-    /* mock */
+    setUsers(users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+    toast({
+      title: "Success",
+      description: `Role for user ${userId} updated to ${newRole}. (Mock)`,
+      variant: "default",
+    });
   };
   const deleteUserRole = async (userId: string) => {
-    /* mock */
+    setUsers(users.map((u) => (u.id === userId ? { ...u, role: null } : u)));
+    toast({ title: "Success", description: `Role for user ${userId} removed. (Mock)`, variant: "default" });
   };
-  const handleAddAttributeType = async () => {
-    /* mock */
+  const handleAttributeTypeSave = async (name: string, label: string, icon: string) => {
+    setAttributeTypes([...attributeTypes, { id: Date.now().toString(), table_name: name, label: label, icon: icon }]);
+    reloadDynamicLists();
+    toast({ title: "Success", description: `Attribute type '${label}' created. (Mock)`, variant: "default" });
   };
+
+  // --- ATTRIBUTE CATALOG LOGIC ---
   const handleOpenCatalog = (attr: AttributeType) => {
-    /* mock */
+    setActiveCatalog(attr);
+    setOpenCatalogDialog(true);
   };
-  // ... (end of mock function declarations)
 
   return (
     <div className="p-6 space-y-6">
@@ -621,8 +1063,7 @@ const Configuration = () => {
       <p className="text-gray-500">Manage users, core inventory data models, and global application settings.</p>
 
       <Tabs defaultValue="organizational-structure" className="w-full">
-        {/* UPDATED: Added Organizational Structure and Workflow Rules tabs */}
-        <TabsList className="grid w-full grid-cols-5 h-full">
+        <TabsList className="grid w-full grid-cols-6 h-full">
           <TabsTrigger value="organizational-structure" className="h-full">
             <Factory className="w-4 h-4 mr-2" /> Org Structure
           </TabsTrigger>
@@ -638,24 +1079,24 @@ const Configuration = () => {
           <TabsTrigger value="attributes" className="h-full">
             <Briefcase className="w-4 h-4 mr-2" /> Stock Attributes
           </TabsTrigger>
+          <TabsTrigger value="db-access" disabled={!isAdmin}>
+            <Wrench className="w-4 h-4 mr-2" /> Direct DB Access
+          </TabsTrigger>
         </TabsList>
 
-        {/* -------------------- NEW 1. Organizational Structure Tab -------------------- */}
+        {/* 1. Organizational Structure Tab */}
         <TabsContent value="organizational-structure">
           <OrganizationalStructure dynamicCurrencies={dynamicCurrencies} />
         </TabsContent>
 
-        {/* -------------------- 2. System Defaults Tab (ERP IMPLEMENTATION) -------------------- */}
+        {/* 2. System Defaults Tab (ERP IMPLEMENTATION) */}
         <TabsContent value="general">
           <Card>
             <CardHeader>
               <CardTitle>System Defaults (ERP Basis)</CardTitle>
-              <CardDescription>
-                Configure global system parameters for currency, units, and inventory tracking.
-              </CardDescription>
+              <CardDescription>Configure global system parameters.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* --- Financial Settings --- */}
               <div className="space-y-4 border-b pb-4">
                 <h3 className="text-lg font-semibold flex items-center">
                   <DollarSign className="w-5 h-5 mr-2 text-green-600" /> Financial Settings
@@ -677,16 +1118,8 @@ const Configuration = () => {
                             {c.name}
                           </SelectItem>
                         ))}
-                        {dynamicCurrencies.length === 0 && (
-                          <SelectItem value="N/A" disabled>
-                            No currencies defined
-                          </SelectItem>
-                        )}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-gray-500">
-                      This should be the Company Code's primary operating currency.
-                    </p>
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="tax-rate">Default Sales Tax (%)</Label>
@@ -698,14 +1131,9 @@ const Configuration = () => {
                       step="0.1"
                       disabled={isSavingSettings || !isAdmin}
                     />
-                    <p className="text-xs text-gray-500">
-                      This value will eventually be replaced by a configurable Tax Jurisdiction table.
-                    </p>
                   </div>
                 </div>
               </div>
-
-              {/* --- Inventory & Units --- */}
               <div className="space-y-4 border-b pb-4">
                 <h3 className="text-lg font-semibold flex items-center">
                   <Package className="w-5 h-5 mr-2 text-blue-600" /> Inventory & Units
@@ -727,11 +1155,6 @@ const Configuration = () => {
                             {u.name}
                           </SelectItem>
                         ))}
-                        {dynamicUnits.length === 0 && (
-                          <SelectItem value="N/A" disabled>
-                            No units defined
-                          </SelectItem>
-                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -745,12 +1168,9 @@ const Configuration = () => {
                       min="1"
                       disabled={isSavingSettings || !isAdmin}
                     />
-                    <p className="text-xs text-gray-500">Global minimum quantity for low stock alerts.</p>
                   </div>
                 </div>
               </div>
-
-              {/* --- Security & Audit --- */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold flex items-center">
                   <Lock className="w-5 h-5 mr-2 text-red-600" /> Security & Audit
@@ -760,7 +1180,6 @@ const Configuration = () => {
                     <Label htmlFor="audit-log" className="text-base">
                       Enable Audit Logging
                     </Label>
-                    <p className="text-sm text-gray-500">Tracks all significant user actions for compliance.</p>
                   </div>
                   <Switch
                     id="audit-log"
@@ -774,7 +1193,6 @@ const Configuration = () => {
                     <Label htmlFor="require-2fa" className="text-base">
                       Require Two-Factor Authentication (2FA)
                     </Label>
-                    <p className="text-sm text-gray-500">Enforce 2FA for all users upon next sign-in.</p>
                   </div>
                   <Switch
                     id="require-2fa"
@@ -784,66 +1202,66 @@ const Configuration = () => {
                   />
                 </div>
               </div>
-
               <div className="pt-4 flex justify-end">
                 <Button onClick={handleSaveGeneralSettings} disabled={isSavingSettings || !isAdmin}>
-                  <Save className="w-4 h-4 mr-2" />
-                  {isSavingSettings ? "Saving..." : "Save System Defaults"}
+                  <Save className="w-4 h-4 mr-2" /> {isSavingSettings ? "Saving..." : "Save System Defaults"}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* -------------------- NEW 3. Workflow and Business Rules Tab -------------------- */}
+        {/* 3. Workflow and Business Rules Tab */}
         <TabsContent value="workflow">
           <WorkflowRules />
         </TabsContent>
 
-        {/* -------------------- 4. User Roles Tab (Simplified for space) -------------------- */}
+        {/* 4. User Roles Tab */}
         <TabsContent value="user-roles">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>System Users</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-2 mb-4">
-                <Button variant="outline" onClick={loadUsers}>
-                  <RotateCcw className="w-4 h-4 mr-2" /> Refresh
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={loadUsers} disabled={loading}>
+                  <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Refresh
                 </Button>
                 <Button onClick={() => setShowAddUserDialog(true)} disabled={!isAdmin}>
                   <Plus className="w-4 h-4 mr-2" /> Add User
                 </Button>
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>System Role</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.email}</TableCell>
-                      <TableCell>
-                        <Badge variant={user.role === "admin" ? "default" : "secondary"}>{user.role || "None"}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => handleEditPermissions(user)}>
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>System Role</TableHead>
+                      <TableHead className="text-right">{isAdmin ? "Actions" : "View"}</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-medium">{user.email}</TableCell>
+                        <TableCell>
+                          <Badge variant={user.role === "admin" ? "default" : "secondary"}>{user.role || "None"}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => handleEditPermissions(user)}>
+                            {isAdmin ? <Edit2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* -------------------- 5. Stock Attributes Tab (Simplified for space) -------------------- */}
+        {/* 5. Stock Attributes Tab */}
         <TabsContent value="attributes">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -870,7 +1288,7 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* -------------------- 6. Direct DB Access Tab -------------------- */}
+        {/* 6. Direct DB Access Tab */}
         <TabsContent value="db-access">
           {isAdmin ? (
             <DatabaseAdminPanel />
@@ -887,7 +1305,7 @@ const Configuration = () => {
         </TabsContent>
       </Tabs>
 
-      {/* MODALS: UserPermissionsDialog, AddUserDialog, AddAttributeDialog, CatalogDialog (Assumed to be here) */}
+      {/* MODALS */}
       <UserPermissionsDialog
         open={showPermissionsDialog}
         onOpenChange={setShowPermissionsDialog}
@@ -895,11 +1313,22 @@ const Configuration = () => {
         onSave={updateUserRole}
         onDelete={deleteUserRole}
       />
-      {/* ... (Other Modals) ... */}
+      <AddUserDialog open={showAddUserDialog} onOpenChange={setShowAddUserDialog} onUserAdded={loadUsers} />
+
+      <AddAttributeDialog
+        open={openAttributeDialog}
+        onOpenChange={setOpenAttributeDialog}
+        onSave={handleAttributeTypeSave}
+      />
+
+      <CatalogManagementDialog
+        open={openCatalogDialog}
+        onOpenChange={setOpenCatalogDialog}
+        activeCatalog={activeCatalog}
+        isAdmin={isAdmin}
+      />
     </div>
   );
 };
-
-// ... (UserPermissionsDialog, AddUserDialog, and other modals should be included in the final compilation) ...
 
 export default Configuration;
