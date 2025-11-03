@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import PaginationControls from "@/components/PaginationControls";
-import { Loader2, Search } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import PaginationControls from "@/components/PaginationControls";
+import { ProductDialogNew } from "@/components/ProductDialogNew";
+import { Loader2, PackageSearch } from "lucide-react";
 
 interface InventoryItem {
   id: string;
@@ -23,20 +23,15 @@ interface InventoryItem {
   } | null;
 }
 
-const Inventory: React.FC = () => {
+export const Inventory: React.FC = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [searchTerm, setSearchTerm] = useState<string>("");
   const [filteredData, setFilteredData] = useState<InventoryItem[]>([]);
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  useEffect(() => {
-    fetchInventory();
-  }, []);
-
+  // ✅ Fixed fetchInventory function
   const fetchInventory = async () => {
     try {
       setLoading(true);
@@ -60,8 +55,17 @@ const Inventory: React.FC = () => {
 
       if (error) throw error;
 
-      setInventory(data || []);
-      setFilteredData(data || []);
+      const normalizedData =
+        (data || []).map((row: any) => ({
+          id: row.id,
+          quantity: row.quantity,
+          created_at: row.created_at,
+          items: Array.isArray(row.items) ? row.items[0] || null : row.items,
+          stores: Array.isArray(row.stores) ? row.stores[0] || null : row.stores,
+        })) ?? [];
+
+      setInventory(normalizedData);
+      setFilteredData(normalizedData);
     } catch (err: any) {
       console.error("Error loading inventory:", err.message);
       toast({
@@ -74,91 +78,102 @@ const Inventory: React.FC = () => {
     }
   };
 
-  // 🔍 Search filtering
   useEffect(() => {
+    fetchInventory();
+  }, []);
+
+  // 🔍 Search filter
+  useEffect(() => {
+    const term = searchTerm.toLowerCase();
     const filtered = inventory.filter(
       (item) =>
-        item.items?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.items?.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.stores?.name?.toLowerCase().includes(searchTerm.toLowerCase()),
+        item.items?.name?.toLowerCase().includes(term) ||
+        item.items?.sku?.toLowerCase().includes(term) ||
+        item.stores?.name?.toLowerCase().includes(term),
     );
     setFilteredData(filtered);
-    setCurrentPage(1);
   }, [searchTerm, inventory]);
 
-  // Pagination logic
-  const totalItems = filteredData.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  // 🧮 Pagination
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, endIndex);
+  const currentData = filteredData.slice(startIndex, endIndex);
 
   return (
-    <div className="p-6 space-y-6">
-      <Card>
-        <CardHeader className="flex justify-between items-center">
-          <CardTitle>Store Inventory</CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 text-gray-400" size={16} />
-              <Input
-                placeholder="Search items or stores..."
-                className="pl-8 w-64"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+    <div className="p-6 space-y-4">
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <PackageSearch className="h-6 w-6 text-primary" />
+          Inventory
+        </h1>
+
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Search by item or store..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-64"
+          />
+          <Button onClick={fetchInventory} variant="outline">
+            Refresh
+          </Button>
+          <ProductDialogNew onAdd={fetchInventory} />
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : filteredData.length === 0 ? (
+        <Card className="text-center p-10">
+          <p className="text-gray-500">No inventory items found.</p>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Inventory List</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-left">
+                    <th className="p-3 border-b">#</th>
+                    <th className="p-3 border-b">Item Name</th>
+                    <th className="p-3 border-b">SKU</th>
+                    <th className="p-3 border-b">Store</th>
+                    <th className="p-3 border-b text-right">Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentData.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="p-3 border-b">{startIndex + index + 1}</td>
+                      <td className="p-3 border-b">{item.items?.name || "—"}</td>
+                      <td className="p-3 border-b">{item.items?.sku || "—"}</td>
+                      <td className="p-3 border-b">{item.stores?.name || "—"}</td>
+                      <td className="p-3 border-b text-right">{item.quantity ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <Button variant="outline" onClick={fetchInventory} disabled={loading}>
-              {loading ? <Loader2 className="animate-spin" size={16} /> : "Refresh"}
-            </Button>
-          </div>
-        </CardHeader>
 
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-6 text-gray-500">Loading inventory...</div>
-          ) : paginatedData.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">No inventory items found.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item Name</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Store</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Date Added</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedData.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.items?.name || "—"}</TableCell>
-                    <TableCell>{item.items?.sku || "—"}</TableCell>
-                    <TableCell>{item.stores?.name || "—"}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>{new Date(item.created_at).toLocaleDateString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Pagination Controls */}
-      <PaginationControls
-        currentPage={currentPage}
-        totalPages={totalPages}
-        canGoPrev={currentPage > 1}
-        canGoNext={currentPage < totalPages}
-        startIndex={startIndex}
-        endIndex={endIndex > totalItems ? totalItems : endIndex}
-        totalItems={totalItems}
-        onPageChange={setCurrentPage}
-      />
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              canGoPrev={currentPage > 1}
+              canGoNext={currentPage < totalPages}
+              totalItems={filteredData.length}
+              startIndex={startIndex + 1}
+              endIndex={Math.min(endIndex, filteredData.length)}
+            />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
-
-export default Inventory;
