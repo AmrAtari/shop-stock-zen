@@ -53,7 +53,7 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory data with manual join for store names ---
+// --- Fetch inventory data with PO and transactions ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
@@ -72,10 +72,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     `,
     )
     .order("name");
-
   if (itemsError) throw itemsError;
 
-  // Fetch store inventory and stores separately (avoid join errors)
   const { data: storeInventory, error: storeError } = await supabase
     .from("store_inventory")
     .select("item_id, store_id, quantity");
@@ -84,19 +82,38 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
   if (storesError) throw storesError;
 
+  const { data: poItems, error: poError } = await supabase
+    .from("purchase_order_items")
+    .select("item_id, quantity_received");
+  if (poError) throw poError;
+
+  let stockTransactions: { item_id: string; quantity: number }[] = [];
+  const { data: txData, error: txError } = await supabase.from("stock_transactions").select("item_id, quantity");
+  if (!txError && txData) stockTransactions = txData.map((t) => ({ item_id: t.item_id, quantity: Number(t.quantity) }));
+
   const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
 
-  const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
-    const itemId = record.item_id;
-    if (!acc[itemId]) {
-      acc[itemId] = { total_quantity: 0, stores: [] };
-    }
-    acc[itemId].total_quantity += Number(record.quantity) || 0;
-    acc[itemId].stores.push({
-      store_id: record.store_id,
-      store_name: storeMap[record.store_id] || "Unknown",
-      quantity: Number(record.quantity) || 0,
-    });
+  const stockMap = (itemsData || []).reduce((acc: any, item: any) => {
+    const storeQty =
+      storeInventory?.filter((s) => s.item_id === item.id).reduce((sum, s) => sum + Number(s.quantity || 0), 0) || 0;
+
+    const poQty =
+      poItems?.filter((p) => p.item_id === item.id).reduce((sum, p) => sum + Number(p.quantity_received || 0), 0) || 0;
+
+    const txQty =
+      stockTransactions?.filter((t) => t.item_id === item.id).reduce((sum, t) => sum + Number(t.quantity || 0), 0) || 0;
+
+    const totalQuantity = storeQty + poQty + txQty;
+
+    const storesList = (storeInventory || [])
+      .filter((s) => s.item_id === item.id)
+      .map((s) => ({
+        store_id: s.store_id,
+        store_name: storeMap[s.store_id] || "Unknown",
+        quantity: Number(s.quantity || 0),
+      }));
+
+    acc[item.id] = { total_quantity: totalQuantity, stores: storesList };
     return acc;
   }, {});
 
@@ -406,7 +423,7 @@ const InventoryPage: React.FC = () => {
                       </PopoverContent>
                     </Popover>
                   ) : (
-                    <span className="text-muted-foreground">0</span>
+                    <span className="text-muted-foreground">{item.quantity}</span>
                   )}
                 </TableCell>
                 <TableCell className="text-right">
