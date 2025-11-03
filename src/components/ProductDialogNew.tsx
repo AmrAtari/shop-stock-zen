@@ -1,46 +1,34 @@
-// File: src/components/ProductDialogNew.tsx
-import React from "react";
-import { Dialog } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import React, { useState, useEffect } from "react";
+import { ProductDialogNewProps, ItemWithDetails } from "@/types";
 
-interface ItemWithDetails {
-  sku: string;
-  name: string;
-  supplier: string;
-  main_group: string;
-  category: string;
-  price: number;
-  cost: number;
-  quantity: number;
-}
+export const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange, editingItem }) => {
+  const [item, setItem] = useState<ItemWithDetails | null>(null);
 
-interface ProductDialogNewProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  editingItem?: ItemWithDetails;
-}
+  useEffect(() => {
+    if (editingItem) setItem(editingItem);
+    else setItem(null);
+  }, [editingItem]);
 
-const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange, editingItem }) => {
-  if (!editingItem) return null;
+  if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <div className="p-4">
-        <h2 className="text-lg font-bold mb-2">Edit Item</h2>
-        <p>SKU: {editingItem.sku}</p>
-        <p>Name: {editingItem.name}</p>
-        <p>Supplier: {editingItem.supplier}</p>
-        <p>Main Group: {editingItem.main_group}</p>
-        <p>Category: {editingItem.category}</p>
-        <p>Price: {editingItem.price}</p>
-        <p>Cost: {editingItem.cost}</p>
-        <p>Quantity: {editingItem.quantity}</p>
-        <div className="mt-4 flex justify-end">
-          <Button onClick={() => onOpenChange(false)}>Close</Button>
-        </div>
+    <div className="dialog-backdrop">
+      <div className="dialog">
+        <h2>{editingItem ? "Edit Product" : "New Product"}</h2>
+        <input
+          type="text"
+          placeholder="Name"
+          value={item?.name || ""}
+          onChange={(e) => setItem({ ...item!, name: e.target.value })}
+        />
+        <input
+          type="number"
+          placeholder="Quantity"
+          value={item?.quantity || 0}
+          onChange={(e) => setItem({ ...item!, quantity: Number(e.target.value) })}
+        />
+        <button onClick={() => onOpenChange(false)}>Close</button>
       </div>
-    </Dialog>
+    </div>
   );
 };
-
-export default ProductDialogNew;
