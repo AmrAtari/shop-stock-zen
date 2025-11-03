@@ -55,8 +55,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { Pagination } from "@/components/ui/pagination";
 
-// *** FIX: Import name changed to match user's provided file ***
-import DatabaseAdminPanel from "./DatabaseAdminPanel.tsx";
+// *** IMPORT FIX: Changed path to match the actual file name "DatabaseAdminComponent.tsx" ***
+import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
 
 // --- TYPE DEFINITIONS ---
 interface UserWithRole {
@@ -78,7 +78,7 @@ interface AttributeType {
 interface CatalogItem {
   id: string;
   name: string;
-  created_at: string; // <-- This was the missing required field!
+  created_at: string;
 }
 
 // NEW TYPE: Global Settings (Matches front-end state keys)
@@ -377,7 +377,7 @@ const Configuration = () => {
   // --- DYNAMIC SETTINGS LOADERS ---
   const loadDynamicOptions = useCallback(async (tableName: string, setter: (items: CatalogItem[]) => void) => {
     try {
-      // *** FIX: Select 'created_at' to satisfy the CatalogItem interface ***
+      // FIX for TS2345: Select 'created_at' to satisfy the CatalogItem interface
       const { data, error } = await supabase
         .from(tableName)
         .select("id, name, created_at")
@@ -631,11 +631,11 @@ const Configuration = () => {
 
   const loadData = useCallback(
     async (tableName: string, pageNum: number, search: string) => {
-      // This part should also use RLS or a secure endpoint if required, but is simplified here.
+      // FIX for TS2345: Select 'created_at' to satisfy the CatalogItem interface
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      let query = supabase.from(tableName).select("id, name, created_at", { count: "exact" }); // *** FIX: Added 'created_at' here too ***
+      let query = supabase.from(tableName).select("id, name, created_at", { count: "exact" });
 
       if (search) {
         query = query.ilike("name", `%${search}%`);
