@@ -15,6 +15,32 @@ export interface BaseEntity {
 export interface Store extends BaseEntity {
   name: string;
 }
+export interface ItemWithDetails {
+  id: string; // match your DB type
+  name: string;
+  sku?: string;
+  category?: string;
+  quantity: number;
+  price?: number;
+}
+
+export interface FileImportProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onImportComplete: () => void;
+}
+
+export interface ProductDialogNewProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  editingItem?: ItemWithDetails;
+}
+
+export interface PaginationControlsProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}
 
 // --- Supplier Type (Fixes PurchaseOrderNew.tsx type error) ---
 export interface Supplier extends BaseEntity {
