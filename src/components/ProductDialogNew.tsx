@@ -1,33 +1,21 @@
-import React, { useState, useEffect } from "react";
-import { ProductDialogNewProps, ItemWithDetails } from "@/types";
+import React from "react";
+import { ProductDialogNewProps } from "@/types";
 
 export const ProductDialogNew: React.FC<ProductDialogNewProps> = ({ open, onOpenChange, editingItem }) => {
-  const [item, setItem] = useState<ItemWithDetails | null>(null);
-
-  useEffect(() => {
-    if (editingItem) setItem(editingItem);
-    else setItem(null);
-  }, [editingItem]);
-
   if (!open) return null;
 
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog">
-        <h2>{editingItem ? "Edit Product" : "New Product"}</h2>
-        <input
-          type="text"
-          placeholder="Name"
-          value={item?.name || ""}
-          onChange={(e) => setItem({ ...item!, name: e.target.value })}
-        />
-        <input
-          type="number"
-          placeholder="Quantity"
-          value={item?.quantity || 0}
-          onChange={(e) => setItem({ ...item!, quantity: Number(e.target.value) })}
-        />
-        <button onClick={() => onOpenChange(false)}>Close</button>
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50">
+      <div className="bg-white p-4 rounded w-96">
+        <h2 className="text-lg font-bold">{editingItem ? "Edit Product" : "New Product"}</h2>
+        <p>Name: {editingItem?.name || ""}</p>
+        <p>SKU: {editingItem?.sku || ""}</p>
+        <p>Category: {editingItem?.category || ""}</p>
+        <p>Quantity: {editingItem?.quantity || 0}</p>
+        <p>Price: {editingItem?.price || 0}</p>
+        <button className="mt-4 px-4 py-2 bg-blue-500 text-white rounded" onClick={() => onOpenChange(false)}>
+          Close
+        </button>
       </div>
     </div>
   );
