@@ -1,31 +1,24 @@
 import React from "react";
+import { PaginationControlsProps } from "@/types";
 
-interface PaginationControlsProps {
-  currentPage: number;
-  totalPages: number;
-  onChange: (page: number) => void;
-  totalItems: number;
-  startIndex: number;
-  endIndex: number;
-}
-
-export const PaginationControls: React.FC<PaginationControlsProps> = ({
-  currentPage,
-  totalPages,
-  onChange,
-  totalItems,
-  startIndex,
-  endIndex,
-}) => {
+export const PaginationControls: React.FC<PaginationControlsProps> = ({ currentPage, totalPages, onPageChange }) => {
   return (
-    <div className="pagination">
-      <button onClick={() => onChange(currentPage - 1)} disabled={currentPage <= 1}>
+    <div className="flex items-center gap-2 mt-4">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage <= 1}
+        className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+      >
         Prev
       </button>
       <span>
-        {startIndex + 1} - {endIndex} of {totalItems}
+        Page {currentPage} of {totalPages}
       </span>
-      <button onClick={() => onChange(currentPage + 1)} disabled={currentPage >= totalPages}>
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage >= totalPages}
+        className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+      >
         Next
       </button>
     </div>
