@@ -55,9 +55,9 @@ interface ItemWithDetails {
 
 // --- Fetch inventory data including PO, transfers, and transactions ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Fetch items with joins
+  // Items with joins
   const { data: itemsData, error: itemsError } = await supabase
-    .from("items")
+    .from<any, any>("items")
     .select(
       `
       *,
@@ -75,19 +75,18 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     .order("name");
   if (itemsError) throw itemsError;
 
-  // Fetch store inventory
+  // Store inventory
   const { data: storeInventory, error: storeError } = await supabase
-    .from("store_inventory")
+    .from<any, any>("store_inventory")
     .select("item_id, store_id, quantity");
   if (storeError) throw storeError;
 
-  // Fetch stores
-  const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
+  // Stores
+  const { data: stores, error: storesError } = await supabase.from<any, any>("stores").select("id, name");
   if (storesError) throw storesError;
 
   const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
 
-  // Map stock per item per store
   const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
     const itemId = record.item_id;
     if (!acc[itemId]) acc[itemId] = { total_quantity: 0, stores: [] };
@@ -100,10 +99,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     return acc;
   }, {});
 
-  // Fetch Purchase Orders quantities
-  const { data: poItems } = await supabase
-    .from<{ sku: string; received_quantity: number }>("purchase_order_items")
-    .select("sku, received_quantity");
+  // Purchase Orders quantities
+  const { data: poItems } = await supabase.from<any, any>("purchase_order_items").select("sku, received_quantity");
   const poMap = (poItems || []).reduce(
     (acc, po) => {
       acc[po.sku] = (acc[po.sku] || 0) + Number(po.received_quantity || 0);
@@ -112,10 +109,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     {} as Record<string, number>,
   );
 
-  // Fetch Transactions (sales minus refunds)
-  const { data: transactions } = await supabase
-    .from<{ item_id: string; quantity: number; is_refund: boolean }>("transactions")
-    .select("item_id, quantity, is_refund");
+  // Transactions (sales and refunds)
+  const { data: transactions } = await supabase.from<any, any>("transactions").select("item_id, quantity, is_refund");
   const transMap = (transactions || []).reduce(
     (acc, t) => {
       const change = t.is_refund ? Number(t.quantity) : -Number(t.quantity);
@@ -125,10 +120,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     {} as Record<string, number>,
   );
 
-  // Fetch Transfer Items (received to stores)
-  const { data: transferItems } = await supabase
-    .from<{ variant_id: string; quantity: number }>("transfer_items")
-    .select("variant_id, quantity");
+  // Transfer Items
+  const { data: transferItems } = await supabase.from<any, any>("transfer_items").select("variant_id, quantity");
   const transferMap = (transferItems || []).reduce(
     (acc, t) => {
       acc[t.variant_id] = (acc[t.variant_id] || 0) + Number(t.quantity);
@@ -141,7 +134,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     const storeQty = stockMap[item.id]?.total_quantity || 0;
     const poQty = poMap[item.sku] || 0;
     const transQty = transMap[item.id] || 0;
-    const transferQty = transferMap[item.id] || 0; // Assuming variant_id = item.id
+    const transferQty = transferMap[item.id] || 0;
 
     const totalQuantity = storeQty + poQty + transferQty + transQty;
 
@@ -209,7 +202,7 @@ const InventoryPage: React.FC = () => {
   const { data: stores = [] } = useQuery({
     queryKey: ["stores-for-filter"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("id, name").order("name");
+      const { data, error } = await supabase.from<any, any>("stores").select("id, name").order("name");
       if (error) throw error;
       return data;
     },
@@ -300,7 +293,7 @@ const InventoryPage: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
-    const { error: delError } = await supabase.from("items").delete().eq("id", id);
+    const { error: delError } = await supabase.from<any, any>("items").delete().eq("id", id);
     if (delError) toast.error(delError.message);
     else {
       toast.success("Item deleted successfully");
@@ -313,6 +306,7 @@ const InventoryPage: React.FC = () => {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Header */}
       <header className="flex justify-between items-center border-b pb-4">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Layers className="w-6 h-6" /> Inventory Management
@@ -439,45 +433,35 @@ const InventoryPage: React.FC = () => {
                           <div className="space-y-1">
                             {item.stores.map((store) => (
                               <div key={store.store_id} className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">{store.store_name}</span>
-                                <Badge variant="secondary">{store.quantity}</Badge>
+                                <span className="font-medium">{store.store_name}</span>
+                                <span>{store.quantity}</span>
                               </div>
                             ))}
-                          </div>
-                          <div className="border-t pt-2 flex justify-between font-semibold text-sm">
-                            <span>Total</span>
-                            <span>{item.quantity}</span>
                           </div>
                         </div>
                       </PopoverContent>
                     </Popover>
                   ) : (
-                    <span className="text-muted-foreground">{item.quantity}</span>
+                    <span>{item.quantity}</span>
                   )}
                 </TableCell>
-                <TableCell className="text-right">
-                  <Badge variant={item.quantity <= item.min_stock ? "destructive" : "secondary"}>
-                    {item.min_stock}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "-"}</TableCell>
-                <TableCell className="text-right font-semibold">{item.price ? item.price.toFixed(2) : "-"}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setEditingItem(item);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(item.id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
+                <TableCell className="text-right">{item.min_stock}</TableCell>
+                <TableCell className="text-right">{item.cost}</TableCell>
+                <TableCell className="text-right">{item.price}</TableCell>
+                <TableCell className="text-right space-x-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingItem(item);
+                      setDialogOpen(true);
+                    }}
+                  >
+                    <Edit className="w-3 h-3" />
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleDelete(item.id)}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -485,39 +469,12 @@ const InventoryPage: React.FC = () => {
         </Table>
       </div>
 
-      <PaginationControls
-        currentPage={pagination.currentPage}
-        totalPages={pagination.totalPages}
-        goToPage={pagination.goToPage}
-        canGoPrev={pagination.canGoPrev}
-        canGoNext={pagination.canGoNext}
-        totalItems={filteredInventory.length}
-        startIndex={pagination.startIndex}
-        endIndex={pagination.endIndex}
-      />
+      {/* Pagination */}
+      <PaginationControls page={pagination.page} totalPages={pagination.totalPages} onPageChange={pagination.setPage} />
 
-      <ProductDialogNew
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        item={
-          editingItem
-            ? {
-                ...editingItem,
-                sellingPrice: editingItem.price,
-                supplier_id: null,
-                product_id: editingItem.id,
-                tax_rate: null,
-                wholesale_price: null,
-                brand_id: null,
-                category_id: null,
-                gender_id: null,
-                origin_id: null,
-              }
-            : undefined
-        }
-        onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
-      />
-      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
+      {/* Dialogs */}
+      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} editingItem={editingItem} />
+      <FileImport open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 };
