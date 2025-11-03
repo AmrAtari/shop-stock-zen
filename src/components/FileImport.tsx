@@ -1,52 +1,26 @@
-// File: src/components/FileImport.tsx
-import React, { useState } from "react";
-import { Dialog } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import React from "react";
+import { FileImportProps } from "@/types";
 
-interface FileImportProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onImportComplete: () => void;
-}
+export const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportComplete }) => {
+  if (!open) return null;
 
-const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportComplete }) => {
-  const [file, setFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
-    }
-  };
-
-  const handleImport = async () => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    setIsLoading(true);
 
-    // TODO: Add your file processing logic
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    setIsLoading(false);
+    // Simulate import
+    console.log("File imported:", file.name);
     onImportComplete();
     onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <div className="p-4">
-        <h2 className="text-lg font-bold mb-2">Import File</h2>
-        <input type="file" onChange={handleFileChange} />
-        <div className="mt-4 flex justify-end space-x-2">
-          <Button onClick={() => onOpenChange(false)} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button onClick={handleImport} disabled={!file || isLoading}>
-            {isLoading ? "Importing..." : "Import"}
-          </Button>
-        </div>
+    <div className="dialog-backdrop">
+      <div className="dialog">
+        <h2>Import File</h2>
+        <input type="file" onChange={handleFileUpload} />
+        <button onClick={() => onOpenChange(false)}>Cancel</button>
       </div>
-    </Dialog>
+    </div>
   );
 };
-
-export default FileImport;
