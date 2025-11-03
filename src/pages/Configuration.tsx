@@ -21,10 +21,20 @@ import {
   Briefcase,
   Wrench,
   LocateIcon,
-  Factory, // New for Org Structure
-  GitPullRequest, // New for Workflow
+  Factory,
+  GitPullRequest,
   Eye,
   Download,
+  CloudSun,
+  MapPin,
+  Warehouse,
+  Key,
+  Mail,
+  Phone,
+  Calendar,
+  BadgeCheck,
+  Ban,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +56,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
-// MOCK: Replace with your actual implementation
+// *** DatabaseAdminComponent is imported here. ***
 import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
 
 // --- TYPE DEFINITIONS ---
@@ -58,7 +68,7 @@ interface UserWithRole {
   role: UserRole;
   created_at: string;
   last_sign_in_at: string | null;
-  email_confirmed_at: string | null; // FIX: Added required property
+  email_confirmed_at: string | null;
 }
 
 interface AttributeType {
@@ -74,6 +84,7 @@ interface CatalogItem {
   created_at: string;
 }
 
+// --- ERP Settings Types ---
 interface GeneralSettings {
   currency: string;
   defaultTaxRate: string;
@@ -83,7 +94,6 @@ interface GeneralSettings {
   require2FA: boolean;
 }
 
-// --- Organizational Structure Types ---
 interface CompanyCode {
   id: string;
   code: string;
@@ -100,7 +110,6 @@ interface Warehouse {
   location_type: string;
 }
 
-// --- Workflow Rule Types ---
 interface WorkflowRule {
   id: string;
   name: string;
@@ -119,25 +128,23 @@ const ATTRIBUTE_ICONS = [
   { value: "Building", icon: Building },
   { value: "Package", icon: Package },
   { value: "DollarSign", icon: DollarSign },
+  { value: "CloudSun", icon: CloudSun },
+  { value: "MapPin", icon: MapPin },
+  { value: "Warehouse", icon: Warehouse },
 ];
 
-// --- MOCK AUTH HOOK for Role-Based UI (SECURITY UX) ---
+// --- AUTH & SETTINGS HOOKS (Database-Aware) ---
+
+// Mocking the auth hook for admin check, replace with your actual auth context
 const useAuth = () => {
+  // NOTE: This should be dynamically fetched from your user context/Supabase session
   const [userRole, setUserRole] = useState<UserRole>("admin");
   return { userRole };
 };
 
-// --- CUSTOM HOOK: useSystemSettings (MOCK FOR THIS STEP) ---
 const useSystemSettings = () => {
-  // FIX: Mocked state and handlers to avoid Supabase errors when compiling
-  const [dynamicCurrencies, setDynamicCurrencies] = useState<CatalogItem[]>([
-    { id: "usd", name: "USD", created_at: "" },
-    { id: "aed", name: "AED", created_at: "" },
-  ]);
-  const [dynamicUnits, setDynamicUnits] = useState<CatalogItem[]>([
-    { id: "kg", name: "kg", created_at: "" },
-    { id: "pc", name: "pcs", created_at: "" },
-  ]);
+  const [dynamicCurrencies, setDynamicCurrencies] = useState<CatalogItem[]>([]);
+  const [dynamicUnits, setDynamicUnits] = useState<CatalogItem[]>([]);
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
     currency: "USD",
     defaultTaxRate: "5.0",
@@ -148,15 +155,84 @@ const useSystemSettings = () => {
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  // Mock handlers
+  // Fetch dynamic lists from pre-defined Supabase tables
+  const reloadDynamicLists = useCallback(async () => {
+    try {
+      const { data: currencies, error: currError } = await supabase.from("currencies").select("id, name, created_at");
+      const { data: units, error: unitError } = await supabase.from("units").select("id, name, created_at");
+
+      if (currError || unitError) throw new Error("Failed to load dynamic lists.");
+
+      setDynamicCurrencies(currencies || []);
+      setDynamicUnits(units || []);
+    } catch (e) {
+      toast({
+        title: "DB Error",
+        description: "Failed to load Currencies/Units. Check if tables exist.",
+        variant: "destructive",
+      });
+    }
+  }, []);
+
+  // Fetch general settings from a single row configuration table
+  const loadGeneralSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("system_settings").select("*").single();
+      if (error && error.code !== "PGRST116") throw error; // PGRST116 is "No rows found"
+
+      if (data) {
+        setGeneralSettings({
+          currency: data.default_currency || "USD",
+          defaultTaxRate: data.default_tax_rate?.toString() || "5.0",
+          defaultUnit: data.default_unit || "kg",
+          lowStockThreshold: data.low_stock_threshold || 5,
+          enableAuditLog: data.enable_audit_log || false,
+          require2FA: data.require_2fa || false,
+        });
+      }
+    } catch (e) {
+      toast({
+        title: "DB Error",
+        description: "Failed to load System Settings. (system_settings table)",
+        variant: "destructive",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGeneralSettings();
+    reloadDynamicLists();
+  }, [loadGeneralSettings, reloadDynamicLists]);
+
   const handleSettingsChange = useCallback(<K extends keyof GeneralSettings>(key: K, value: GeneralSettings[K]) => {
     setGeneralSettings((prev) => ({ ...prev, [key]: value }));
   }, []);
-  const handleSaveGeneralSettings = async () =>
-    toast({ title: "Save Mock", description: "Settings saved to mock state.", variant: "default" });
-  const reloadDynamicLists = useCallback(() => {
-    toast({ title: "Data Reload", description: "Dynamic lists reloaded (Mock).", variant: "default" });
-  }, []);
+
+  const handleSaveGeneralSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      // Upsert (insert or update) the single row
+      const { error } = await supabase.from("system_settings").upsert(
+        {
+          id: 1, // Assuming a single config row with ID 1
+          default_currency: generalSettings.currency,
+          default_tax_rate: parseFloat(generalSettings.defaultTaxRate),
+          default_unit: generalSettings.defaultUnit,
+          low_stock_threshold: generalSettings.lowStockThreshold,
+          enable_audit_log: generalSettings.enableAuditLog,
+          require_2fa: generalSettings.require2FA,
+        },
+        { onConflict: "id" },
+      );
+
+      if (error) throw error;
+      toast({ title: "Success", description: "System Defaults saved to database.", variant: "default" });
+    } catch (error: any) {
+      toast({ title: "Save Failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   return useMemo(
     () => ({
@@ -181,263 +257,79 @@ const useSystemSettings = () => {
 };
 
 // ---------------------------------------------------------------------
-// 1. User Permissions Dialog (FIX: Re-included definition)
-// ---------------------------------------------------------------------
-interface UserPermissionsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  user: UserWithRole | null;
-  onSave: (userId: string, newRole: UserWithRole["role"]) => Promise<void>;
-  onDelete: (userId: string) => Promise<void>;
-}
-
-const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
-  open,
-  onOpenChange,
-  user,
-  onSave,
-  onDelete,
-}) => {
-  const { userRole } = useAuth();
-  const isAdmin = userRole === "admin";
-  const [currentRole, setCurrentRole] = useState<UserWithRole["role"]>(user?.role || null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const availableRoles = ["admin", "inventory_man", "supervisor", "user"];
-
-  useEffect(() => {
-    setCurrentRole(user?.role || null);
-  }, [user]);
-
-  const handleSave = async () => {
-    if (!user || !currentRole) return;
-    setIsSaving(true);
-    await onSave(user.id, currentRole);
-    setIsSaving(false);
-    onOpenChange(false);
-  };
-
-  const handleDelete = async () => {
-    if (!user) return;
-    setIsDeleting(true);
-    await onDelete(user.id);
-    setIsDeleting(false);
-    onOpenChange(false);
-  };
-
-  if (!user) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Manage Permissions for {user.email}</DialogTitle>
-          <DialogDescription>Update the system role for this user and view account details.</DialogDescription>
-        </DialogHeader>
-
-        {isAdmin ? (
-          <div className="grid gap-4 py-4">
-            <div className="flex items-center space-x-2">
-              <Label htmlFor="role" className="w-[100px]">
-                System Role
-              </Label>
-              <Select
-                value={currentRole || ""}
-                onValueChange={(value) => setCurrentRole(value as UserWithRole["role"])}
-                disabled={isSaving || isDeleting}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableRoles.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {role.charAt(0).toUpperCase() + role.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        ) : (
-          <Card className="p-4 bg-yellow-50 border-yellow-200 text-yellow-800">
-            <p className="flex items-center font-medium">
-              <MonitorOff className="w-4 h-4 mr-2" /> View Only
-            </p>
-            <p className="text-sm">You do not have permission to modify this user's role.</p>
-          </Card>
-        )}
-
-        <DialogFooter className="flex justify-between">
-          {isAdmin ? (
-            <>
-              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || isSaving}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                {isDeleting ? "Removing Role..." : "Remove Role"}
-              </Button>
-              <div className="space-x-2">
-                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isDeleting}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSave} disabled={isSaving || isDeleting || currentRole === user.role}>
-                  <Check className="w-4 h-4 mr-2" />
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// ---------------------------------------------------------------------
-// 2. Add User Dialog (FIX: Re-included definition)
-// ---------------------------------------------------------------------
-const AddUserDialog: React.FC<{
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onUserAdded: () => void;
-}> = ({ open, onOpenChange, onUserAdded }) => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserWithRole["role"]>("user");
-  const [loading, setLoading] = useState(false);
-
-  const handleAddUser = async () => {
-    if (!email || !password || !role) {
-      toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
-      return;
-    }
-    setLoading(true);
-
-    try {
-      // Mock Supabase call
-      toast({
-        title: "Success",
-        description: `User ${email} created successfully (Mock).`,
-        variant: "default",
-      });
-      onUserAdded();
-      onOpenChange(false);
-    } catch (error: any) {
-      toast({
-        title: "User Creation Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center">
-            <User className="w-5 h-5 mr-2" /> Add New User
-          </DialogTitle>
-          <DialogDescription>
-            Create a new user account with a temporary password and assign a starting role.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4">
-          <Input
-            placeholder="Email (used as username)"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
-          />
-          <Input
-            type="password"
-            placeholder="Temporary Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-          />
-          <div className="flex items-center space-x-2">
-            <Label htmlFor="new-user-role" className="w-[100px]">
-              Initial Role
-            </Label>
-            <Select
-              value={role || "user"}
-              onValueChange={(value) => setRole(value as UserWithRole["role"])}
-              disabled={loading}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Role" />
-              </SelectTrigger>
-              <SelectContent>
-                {["admin", "inventory_man", "supervisor", "user"].map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleAddUser} disabled={loading}>
-            {loading ? "Creating..." : "Create User"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// ---------------------------------------------------------------------
-// 3. Organizational Structure Component (FIX: Re-included definition)
+// 1. Organizational Structure Component (Database-Aware)
 // ---------------------------------------------------------------------
 const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = ({ dynamicCurrencies }) => {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
 
-  const [companyCodes, setCompanyCodes] = useState<CompanyCode[]>([
-    { id: "1", code: "US01", legal_name: "Acme Corp US", base_currency: "USD", default_language: "en-US" },
-    { id: "2", code: "AE02", legal_name: "Acme Corp FZCO", base_currency: "AED", default_language: "ar-AE" },
-  ]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([
-    {
-      id: "w1",
-      code: "WH-CHI",
-      name: "Chicago Main Distro",
-      company_code: "US01",
-      location_type: "Distribution Center",
-    },
-    { id: "w2", code: "WH-DXB", name: "Dubai Free Zone Hub", company_code: "AE02", location_type: "Returns Hub" },
-  ]);
+  const [companyCodes, setCompanyCodes] = useState<CompanyCode[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [loadingOrg, setLoadingOrg] = useState(true);
+
+  const loadOrgStructure = useCallback(async () => {
+    setLoadingOrg(true);
+    try {
+      const { data: codes, error: codeError } = await supabase.from("company_codes").select("*");
+      const { data: whs, error: whsError } = await supabase.from("warehouses").select("*");
+
+      if (codeError || whsError) throw new Error("Failed to load org structure.");
+
+      setCompanyCodes(codes || []);
+      setWarehouses(whs || []);
+    } catch (e) {
+      toast({
+        title: "DB Error",
+        description: "Failed to load Org Structure. (company_codes/warehouses tables)",
+        variant: "destructive",
+      });
+      setCompanyCodes([]);
+      setWarehouses([]);
+    } finally {
+      setLoadingOrg(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrgStructure();
+  }, [loadOrgStructure]);
 
   const handleAddCompanyCode = () =>
-    toast({ title: "Feature Added", description: "Company Code creation modal would open here.", variant: "default" });
+    toast({
+      title: "Feature Added",
+      description: "Company Code creation modal would open here to INSERT into 'company_codes' table.",
+      variant: "default",
+    });
   const handleAddWarehouse = () =>
-    toast({ title: "Feature Added", description: "Warehouse creation modal would open here.", variant: "default" });
-  const handleDelete = (type: string, id: string) => {
+    toast({
+      title: "Feature Added",
+      description: "Warehouse creation modal would open here to INSERT into 'warehouses' table.",
+      variant: "default",
+    });
+  const handleDelete = async (type: string, id: string) => {
     if (!isAdmin)
       return toast({
         title: "Permission Denied",
         description: "Only admins can delete organizational units.",
         variant: "destructive",
       });
-    if (type === "company") setCompanyCodes((codes) => codes.filter((c) => c.id !== id));
-    if (type === "warehouse") setWarehouses((whs) => whs.filter((w) => w.id !== id));
-    toast({ title: "Deleted", description: `${type} unit deleted (Mock).`, variant: "default" });
+
+    const tableName = type === "company" ? "company_codes" : "warehouses";
+    const { error } = await supabase.from(tableName).delete().eq("id", id);
+
+    if (error) {
+      toast({ title: "Delete Failed", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Deleted", description: `${type} unit deleted.`, variant: "default" });
+      loadOrgStructure();
+    }
   };
+
+  if (loadingOrg) return <p className="p-4 text-center">Loading Organizational Structure...</p>;
 
   return (
     <div className="space-y-6">
+      {/* Company Codes */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center">
@@ -459,31 +351,40 @@ const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {companyCodes.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.code}</TableCell>
-                  <TableCell>{c.legal_name}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{c.base_currency}</Badge>
-                  </TableCell>
-                  <TableCell>{c.default_language}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleDelete("company", c.id)}
-                      disabled={!isAdmin}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+              {companyCodes.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    No Company Codes found. Please add them in the database.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                companyCodes.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.code}</TableCell>
+                    <TableCell>{c.legal_name}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{c.base_currency}</Badge>
+                    </TableCell>
+                    <TableCell>{c.default_language}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDelete("company", c.id)}
+                        disabled={!isAdmin}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
+      {/* Warehouses */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center">
@@ -505,26 +406,34 @@ const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {warehouses.map((w) => (
-                <TableRow key={w.id}>
-                  <TableCell className="font-medium">{w.code}</TableCell>
-                  <TableCell>{w.name}</TableCell>
-                  <TableCell>{w.company_code}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{w.location_type}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleDelete("warehouse", w.id)}
-                      disabled={!isAdmin}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+              {warehouses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    No Warehouses found. Please add them in the database.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                warehouses.map((w) => (
+                  <TableRow key={w.id}>
+                    <TableCell className="font-medium">{w.code}</TableCell>
+                    <TableCell>{w.name}</TableCell>
+                    <TableCell>{w.company_code}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{w.location_type}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDelete("warehouse", w.id)}
+                        disabled={!isAdmin}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -534,33 +443,15 @@ const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = 
 };
 
 // ---------------------------------------------------------------------
-// 4. Workflow Rules Component (FIX: Re-included definition)
+// 2. Workflow Rules Component (Database-Aware)
 // ---------------------------------------------------------------------
 const WorkflowRules: React.FC = () => {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
   const availableRoles: UserRole[] = ["admin", "supervisor", "inventory_man", "user"];
 
-  const [rules, setRules] = useState<WorkflowRule[]>([
-    {
-      id: "r1",
-      name: "High-Value PO Approval",
-      trigger_document: "PO",
-      trigger_condition: "value_threshold",
-      threshold_value: 10000,
-      required_role: "supervisor",
-      is_active: true,
-    },
-    {
-      id: "r2",
-      name: "High-Risk SO Category",
-      trigger_document: "Sales Order",
-      trigger_condition: "category_match",
-      threshold_value: undefined,
-      required_role: "admin",
-      is_active: false,
-    },
-  ]);
+  const [rules, setRules] = useState<WorkflowRule[]>([]);
+  const [loadingRules, setLoadingRules] = useState(true);
   const [openAddRule, setOpenAddRule] = useState(false);
   const [newRule, setNewRule] = useState<Omit<WorkflowRule, "id" | "is_active">>({
     name: "",
@@ -570,18 +461,47 @@ const WorkflowRules: React.FC = () => {
     required_role: "supervisor",
   });
 
-  const handleToggleRule = (id: string) => {
+  const loadWorkflowRules = useCallback(async () => {
+    setLoadingRules(true);
+    try {
+      const { data, error } = await supabase.from("workflow_rules").select("*").order("name", { ascending: true });
+      if (error) throw error;
+      setRules((data as WorkflowRule[]) || []);
+    } catch (e) {
+      toast({
+        title: "DB Error",
+        description: "Failed to load Workflow Rules. (workflow_rules table)",
+        variant: "destructive",
+      });
+      setRules([]);
+    } finally {
+      setLoadingRules(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWorkflowRules();
+  }, [loadWorkflowRules]);
+
+  const handleToggleRule = async (rule: WorkflowRule) => {
     if (!isAdmin)
       return toast({
         title: "Permission Denied",
         description: "Only admins can change workflow activation.",
         variant: "destructive",
       });
-    setRules(rules.map((r) => (r.id === id ? { ...r, is_active: !r.is_active } : r)));
-    toast({ title: "Status Changed", description: "Rule activation toggled (Mock).", variant: "default" });
+
+    const { error } = await supabase.from("workflow_rules").update({ is_active: !rule.is_active }).eq("id", rule.id);
+
+    if (error) {
+      toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Status Changed", description: "Rule activation toggled.", variant: "default" });
+      loadWorkflowRules();
+    }
   };
 
-  const handleSaveNewRule = () => {
+  const handleSaveNewRule = async () => {
     if (!isAdmin) return;
     if (
       !newRule.name ||
@@ -595,23 +515,33 @@ const WorkflowRules: React.FC = () => {
       });
     }
 
-    const ruleToAdd: WorkflowRule = {
-      ...(newRule as WorkflowRule),
-      id: Date.now().toString(),
-      is_active: true,
-    };
+    try {
+      const ruleToInsert = {
+        ...newRule,
+        threshold_value: newRule.trigger_condition === "value_threshold" ? newRule.threshold_value : null,
+        is_active: true, // Always start active
+      };
 
-    setRules([...rules, ruleToAdd]);
-    setOpenAddRule(false);
-    setNewRule({
-      name: "",
-      trigger_document: "PO",
-      trigger_condition: "value_threshold",
-      threshold_value: 0,
-      required_role: "supervisor",
-    });
-    toast({ title: "Rule Created", description: `Workflow rule '${ruleToAdd.name}' added.`, variant: "default" });
+      const { error } = await supabase.from("workflow_rules").insert([ruleToInsert]);
+
+      if (error) throw error;
+
+      toast({ title: "Rule Created", description: `Workflow rule '${newRule.name}' added.`, variant: "default" });
+      setOpenAddRule(false);
+      setNewRule({
+        name: "",
+        trigger_document: "PO",
+        trigger_condition: "value_threshold",
+        threshold_value: 0,
+        required_role: "supervisor",
+      });
+      loadWorkflowRules();
+    } catch (e: any) {
+      toast({ title: "Creation Failed", description: e.message, variant: "destructive" });
+    }
   };
+
+  if (loadingRules) return <p className="p-4 text-center">Loading Workflow Rules...</p>;
 
   return (
     <Card>
@@ -636,36 +566,46 @@ const WorkflowRules: React.FC = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rules.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="font-medium">{r.name}</TableCell>
-                <TableCell>
-                  <Badge variant="outline">{r.trigger_document}</Badge>
-                </TableCell>
-                <TableCell>
-                  {r.trigger_condition === "value_threshold"
-                    ? `Value > ${r.threshold_value?.toLocaleString()} ${r.trigger_document === "PO" ? "USD" : ""}`
-                    : "Specific Category Match"}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{r.required_role}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Switch checked={r.is_active} onCheckedChange={() => handleToggleRule(r.id)} disabled={!isAdmin} />
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button size="sm" variant="destructive" disabled={!isAdmin}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+            {rules.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  No Workflow Rules found. Please add a rule.
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              rules.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-medium">{r.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{r.trigger_document}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {r.trigger_condition === "value_threshold"
+                      ? `Value > ${r.threshold_value?.toLocaleString()}`
+                      : "Specific Category Match"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{r.required_role}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Switch checked={r.is_active} onCheckedChange={() => handleToggleRule(r)} disabled={!isAdmin} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {/* Delete logic simplified */}
+                    <Button size="sm" variant="destructive" disabled={!isAdmin}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </CardContent>
 
-      {/* Modal for adding a new Workflow Rule */}
+      {/* Modal for adding a new Workflow Rule - Code omitted for brevity, but matches previous robust version */}
       <Dialog open={openAddRule} onOpenChange={setOpenAddRule}>
+        {/* ... DialogContent for adding rule ... */}
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Define New Approval Rule</DialogTitle>
@@ -765,15 +705,256 @@ const WorkflowRules: React.FC = () => {
 };
 
 // ---------------------------------------------------------------------
-// 5. Add Attribute Dialog (FIX: Re-included definition for call)
+// 3. User & Attribute Dialogs (Imported from user's Configuration (10).tsx)
 // ---------------------------------------------------------------------
+
+// NOTE: UserPermissionsDialog, AddUserDialog, AddAttributeDialog, CatalogManagementDialog
+// The implementation of these components from the user's uploaded file is used directly
+// as it contains the correct Edge Function and RPC calls.
+
+// ---------------------------------------------------------------------
+// 4. User Permissions Dialog (from Configuration (10).tsx)
+// ---------------------------------------------------------------------
+interface UserPermissionsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  user: UserWithRole | null;
+  onSave: (userId: string, newRole: UserWithRole["role"]) => Promise<void>;
+  onDelete: (userId: string) => Promise<void>;
+}
+
+const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
+  open,
+  onOpenChange,
+  user,
+  onSave,
+  onDelete,
+}) => {
+  const { userRole: currentUserRole } = useAuth();
+  const isAdmin = currentUserRole === "admin";
+
+  const [currentRole, setCurrentRole] = useState<UserWithRole["role"]>(user?.role || null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const availableRoles = ["admin", "inventory_man", "supervisor", "user"];
+
+  useEffect(() => {
+    setCurrentRole(user?.role || null);
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!user || !currentRole || !isAdmin) return;
+    setIsSaving(true);
+    await onSave(user.id, currentRole);
+    setIsSaving(false);
+    onOpenChange(false);
+  };
+
+  const handleDelete = async () => {
+    if (!user || !isAdmin) return;
+    setIsDeleting(true);
+    await onDelete(user.id);
+    setIsDeleting(false);
+    onOpenChange(false);
+  };
+
+  if (!user) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage Permissions for {user.email}</DialogTitle>
+          <DialogDescription>Update the system role for this user and view account details.</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          {/* Role Management */}
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="role" className="w-[100px]">
+              System Role
+            </Label>
+            <Select
+              value={currentRole || ""}
+              onValueChange={(value) => setCurrentRole(value as UserWithRole["role"])}
+              disabled={isSaving || isDeleting || !isAdmin}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select Role" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRoles.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {role.charAt(0).toUpperCase() + role.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Account Details */}
+          <Card className="mt-2">
+            <CardHeader className="py-2">
+              <CardTitle className="text-sm">Account Info</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm space-y-1">
+              <p className="flex justify-between">
+                <span className="text-gray-500">User ID:</span> <span>{user.id.slice(0, 8)}...</span>
+              </p>
+              <p className="flex justify-between">
+                <span className="text-gray-500">Created:</span>{" "}
+                <span>{new Date(user.created_at).toLocaleDateString()}</span>
+              </p>
+              <p className="flex justify-between">
+                <span className="text-gray-500">Last Sign-in:</span>{" "}
+                <span>{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "Never"}</span>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <DialogFooter className="flex justify-between">
+          <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || isSaving || !isAdmin}>
+            <Trash2 className="w-4 h-4 mr-2" />
+            {isDeleting ? "Removing Role..." : "Remove Role"}
+          </Button>
+          <div className="space-x-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isDeleting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving || isDeleting || currentRole === user.role || !isAdmin}>
+              <Check className="w-4 h-4 mr-2" />
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ---------------------------------------------------------------------
+// 5. Add User Dialog (from Configuration (10).tsx)
+// ---------------------------------------------------------------------
+const AddUserDialog: React.FC<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUserAdded: () => void;
+}> = ({ open, onOpenChange, onUserAdded }) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserWithRole["role"]>("user");
+  const [loading, setLoading] = useState(false);
+
+  const handleAddUser = async () => {
+    if (!email || !password || !role) {
+      toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+
+    try {
+      // Use the secure Edge Function to create the user and assign the role
+      const { error } = await supabase.functions.invoke("admin-create-user-password", {
+        body: {
+          userId: email, // userId is used as email in the Edge Function
+          password: password,
+          role: role,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `User ${email} created successfully.`,
+        variant: "default",
+      });
+      onUserAdded();
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: "User Creation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <User className="w-5 h-5 mr-2" /> Add New User
+          </DialogTitle>
+          <DialogDescription>
+            Create a new user account with a temporary password and assign a starting role.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          <Input
+            placeholder="Email (used as username)"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+          />
+          <Input
+            type="password"
+            placeholder="Temporary Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+          />
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="new-user-role" className="w-[100px]">
+              Initial Role
+            </Label>
+            <Select
+              value={role || "user"}
+              onValueChange={(value) => setRole(value as UserWithRole["role"])}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select Role" />
+              </SelectTrigger>
+              <SelectContent>
+                {["admin", "inventory_man", "supervisor", "user"].map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleAddUser} disabled={loading}>
+            {loading ? "Creating..." : "Create User"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ---------------------------------------------------------------------
+// 6. Add Attribute Dialog (from Configuration (10).tsx)
+// ---------------------------------------------------------------------
+
 const AddAttributeDialog: React.FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (name: string, label: string, icon: string) => Promise<void>;
-}> = ({ open, onOpenChange, onSave }) => {
-  const { userRole } = useAuth();
-  const isAdmin = userRole === "admin";
+  isAdmin: boolean;
+}> = ({ open, onOpenChange, onSave, isAdmin }) => {
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrLabel, setNewAttrLabel] = useState("");
   const [newAttrIcon, setNewAttrIcon] = useState<string>("Tags");
@@ -818,7 +999,7 @@ const AddAttributeDialog: React.FC<{
               placeholder="Enter display label"
               value={newAttrLabel}
               onChange={(e) => setNewAttrLabel(e.target.value)}
-              disabled={loadingAttribute}
+              disabled={loadingAttribute || !isAdmin}
             />
           </div>
           <div className="space-y-1">
@@ -828,12 +1009,12 @@ const AddAttributeDialog: React.FC<{
               placeholder="Enter unique table name (lowercase, no spaces)"
               value={newAttrName}
               onChange={(e) => setNewAttrName(e.target.value)}
-              disabled={loadingAttribute}
+              disabled={loadingAttribute || !isAdmin}
             />
           </div>
           <div className="space-y-1">
             <Label htmlFor="attr-icon">Icon</Label>
-            <Select value={newAttrIcon} onValueChange={setNewAttrIcon} disabled={loadingAttribute}>
+            <Select value={newAttrIcon} onValueChange={setNewAttrIcon} disabled={loadingAttribute || !isAdmin}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Icon" />
               </SelectTrigger>
@@ -867,7 +1048,7 @@ const AddAttributeDialog: React.FC<{
 };
 
 // ---------------------------------------------------------------------
-// 6. Catalog Management Dialog (FIX: Re-included definition for call)
+// 7. Catalog Management Dialog (from Configuration (10).tsx)
 // ---------------------------------------------------------------------
 
 const CatalogManagementDialog: React.FC<{
@@ -875,43 +1056,39 @@ const CatalogManagementDialog: React.FC<{
   onOpenChange: (open: boolean) => void;
   activeCatalog: AttributeType | null;
   isAdmin: boolean;
-}> = ({ open, onOpenChange, activeCatalog, isAdmin }) => {
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([
-    { id: "c1", name: "Red", created_at: "" },
-    { id: "c2", name: "Blue", created_at: "" },
-  ]);
-  const [newValue, setNewValue] = useState("");
-
-  const handleAdd = () => {
-    if (!newValue) return;
-    if (!isAdmin)
-      return toast({
-        title: "Permission Denied",
-        description: "Only admins can add catalog items.",
-        variant: "destructive",
-      });
-    setCatalogItems([
-      ...catalogItems,
-      { id: Date.now().toString(), name: newValue, created_at: new Date().toISOString() },
-    ]);
-    setNewValue("");
-    toast({ title: "Success", description: `Added '${newValue}'.`, variant: "default" });
-  };
-
-  const handleDelete = (itemId: string) => {
-    if (!isAdmin)
-      return toast({
-        title: "Permission Denied",
-        description: "Only admins can delete catalog items.",
-        variant: "destructive",
-      });
-    setCatalogItems(catalogItems.filter((item) => item.id !== itemId));
-    toast({ title: "Success", description: `Item deleted (Mock).`, variant: "default" });
-  };
-
-  const handleExport = () => {
-    toast({ title: "Exporting...", description: "Preparing data for Excel download.", variant: "default" });
-  };
+  loadData: (tableName: string, pageNum: number, search: string) => Promise<void>;
+  catalogItems: CatalogItem[];
+  page: number;
+  totalPages: number;
+  searchTerm: string;
+  setSearchTerm: (s: string) => void;
+  setPage: (p: number) => void;
+  handleExport: () => void;
+  handleAdd: () => void;
+  handleDelete: (itemId: string) => void;
+  handleEdit: (item: CatalogItem) => void;
+  newValue: string;
+  setNewValue: (s: string) => void;
+}> = ({
+  open,
+  onOpenChange,
+  activeCatalog,
+  isAdmin,
+  loadData,
+  catalogItems,
+  page,
+  totalPages,
+  searchTerm,
+  setSearchTerm,
+  setPage,
+  handleExport,
+  handleAdd,
+  handleDelete,
+  handleEdit,
+  newValue,
+  setNewValue,
+}) => {
+  // Re-implemented fully from Configuration (10).tsx
 
   if (!activeCatalog) return null;
 
@@ -924,6 +1101,20 @@ const CatalogManagementDialog: React.FC<{
             Add, edit, or remove entries for the {activeCatalog?.label.toLowerCase()} category.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex w-full max-w-sm items-center space-x-2">
+            <Input
+              placeholder={`Search ${activeCatalog?.label?.toLowerCase()}...`}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && loadData(activeCatalog!.table_name, 1, searchTerm)}
+            />
+            <Button onClick={() => loadData(activeCatalog!.table_name, 1, searchTerm)}>
+              <Search className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
 
         <div className="max-h-[300px] overflow-y-auto border rounded-md">
           <Table>
@@ -938,15 +1129,54 @@ const CatalogManagementDialog: React.FC<{
                 <TableRow key={item.id}>
                   <TableCell>{item.name}</TableCell>
                   <TableCell className="text-right space-x-2">
+                    <Button variant="outline" size="sm" onClick={() => handleEdit(item)} disabled={!isAdmin}>
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
                     <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id)} disabled={!isAdmin}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </TableCell>
                 </TableRow>
               ))}
+              {catalogItems.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={2} className="text-center text-gray-500">
+                    No items found.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-between items-center mt-4">
+            <Button
+              variant="outline"
+              disabled={page <= 1}
+              onClick={() => {
+                setPage(page - 1);
+                loadData(activeCatalog!.table_name, page - 1, searchTerm);
+              }}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-500">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              disabled={page >= totalPages}
+              onClick={() => {
+                setPage(page + 1);
+                loadData(activeCatalog!.table_name, page + 1, searchTerm);
+              }}
+            >
+              Next
+            </Button>
+          </div>
+        )}
 
         <div className="flex gap-2 mt-4">
           <Input
@@ -991,70 +1221,202 @@ const Configuration = () => {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
 
-  // --- STATE ---
-  // FIX: Added required email_confirmed_at to mock user
-  const [users, setUsers] = useState<UserWithRole[]>([
-    {
-      id: "u1",
-      email: "admin@erp.com",
-      role: "admin",
-      created_at: new Date().toISOString(),
-      last_sign_in_at: new Date().toISOString(),
-      email_confirmed_at: new Date().toISOString(),
-    },
-    {
-      id: "u2",
-      email: "supervisor@erp.com",
-      role: "supervisor",
-      created_at: new Date().toISOString(),
-      last_sign_in_at: null,
-      email_confirmed_at: new Date().toISOString(),
-    },
-  ]);
-  const [attributeTypes, setAttributeTypes] = useState<AttributeType[]>([
-    { id: "t1", table_name: "currency_types", label: "Currency", icon: "DollarSign" },
-    { id: "t2", table_name: "color_types", label: "Color", icon: "Tags" },
-  ]);
-  const [loading, setLoading] = useState(false); // Mock loading state
-
+  // --- USER MANAGEMENT STATE & LOGIC (from Configuration (10).tsx) ---
+  const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [errorUsers, setErrorUsers] = useState<string | null>(null);
   const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
 
-  const [openAttributeDialog, setOpenAttributeDialog] = useState(false);
-  const [openCatalogDialog, setOpenCatalogDialog] = useState(false);
-  const [activeCatalog, setActiveCatalog] = useState<AttributeType | null>(null);
+  const loadUsers = useCallback(async () => {
+    setLoadingUsers(true);
+    setErrorUsers(null);
+    try {
+      const { data, error: edgeError } = await supabase.functions.invoke("admin-list-users");
+      if (edgeError) throw edgeError;
 
-  // --- USER MANAGEMENT LOGIC (MOCK) ---
-  const loadUsers = useCallback(() => {
-    /* mock */
+      const { users: fetchedUsers } = data;
+      setUsers(fetchedUsers || []);
+    } catch (err: any) {
+      console.error("Error loading users:", err);
+      setErrorUsers("Failed to load user list. Check Edge Function logs.");
+    } finally {
+      setLoadingUsers(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
   const handleEditPermissions = (user: UserWithRole) => {
     setSelectedUser(user);
     setShowPermissionsDialog(true);
   };
+
   const updateUserRole = async (userId: string, newRole: UserWithRole["role"]) => {
-    setUsers(users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
-    toast({
-      title: "Success",
-      description: `Role for user ${userId} updated to ${newRole}. (Mock)`,
-      variant: "default",
-    });
-  };
-  const deleteUserRole = async (userId: string) => {
-    setUsers(users.map((u) => (u.id === userId ? { ...u, role: null } : u)));
-    toast({ title: "Success", description: `Role for user ${userId} removed. (Mock)`, variant: "default" });
-  };
-  const handleAttributeTypeSave = async (name: string, label: string, icon: string) => {
-    setAttributeTypes([...attributeTypes, { id: Date.now().toString(), table_name: name, label: label, icon: icon }]);
-    reloadDynamicLists();
-    toast({ title: "Success", description: `Attribute type '${label}' created. (Mock)`, variant: "default" });
+    try {
+      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
+        body: { userId, role: newRole, action: "update" },
+      });
+
+      if (error) throw error;
+      toast({
+        title: "Success",
+        description: `Role for user ${userId.slice(0, 8)}... updated to ${newRole}.`,
+        variant: "default",
+      });
+      loadUsers();
+    } catch (error: any) {
+      toast({ title: "Role Update Failed", description: error.message, variant: "destructive" });
+    }
   };
 
-  // --- ATTRIBUTE CATALOG LOGIC ---
+  const deleteUserRole = async (userId: string) => {
+    try {
+      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
+        body: { userId, action: "delete" },
+      });
+
+      if (error) throw error;
+      toast({
+        title: "Success",
+        description: `Role for user ${userId.slice(0, 8)}... has been removed.`,
+        variant: "default",
+      });
+      loadUsers();
+    } catch (error: any) {
+      toast({ title: "Role Removal Failed", description: error.message, variant: "destructive" });
+    }
+  };
+
+  // --- ATTRIBUTE MANAGEMENT STATE & LOGIC (from Configuration (10).tsx) ---
+  const [attributeTypes, setAttributeTypes] = useState<AttributeType[]>([]);
+  const [openAttributeDialog, setOpenAttributeDialog] = useState(false);
+  const [openCatalogDialog, setOpenCatalogDialog] = useState(false);
+  const [activeCatalog, setActiveCatalog] = useState<AttributeType | null>(null);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [newValue, setNewValue] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const ITEMS_PER_PAGE = 10;
+
+  const loadAttributeTypes = useCallback(async () => {
+    const { data, error } = await supabase.from("attribute_types").select("*").order("label", { ascending: true });
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to load attribute types.", variant: "destructive" });
+      return;
+    }
+    setAttributeTypes(data || []);
+  }, []);
+
+  useEffect(() => {
+    loadAttributeTypes();
+  }, [loadAttributeTypes]);
+
+  const handleAttributeTypeSave = async (name: string, label: string, icon: string) => {
+    try {
+      const tableName = name.toLowerCase().replace(/[^a-z0-9_]/g, "");
+      const { error } = await supabase.rpc("create_attribute_table", {
+        p_table_name: tableName,
+        p_label: label.trim(),
+        p_icon: icon || "Tags",
+      });
+
+      if (error) throw error;
+      toast({ title: "Success", description: `Attribute type '${label}' created.`, variant: "default" });
+      loadAttributeTypes();
+      reloadDynamicLists(); // Refresh units/currencies if they were added
+    } catch (error: any) {
+      toast({ title: "Creation Failed", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const loadCatalogData = useCallback(
+    async (tableName: string, pageNum: number, search: string) => {
+      const from = (pageNum - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      let query = supabase.from(tableName).select("*", { count: "exact" });
+
+      if (search) {
+        query = query.ilike("name", `%${search}%`);
+      }
+
+      const { data, error, count } = await query.order("name", { ascending: true }).range(from, to);
+
+      if (error) {
+        setCatalogItems([]);
+        setTotalPages(1);
+        toast({ title: "DB Error", description: `Failed to load catalog for ${tableName}.`, variant: "destructive" });
+        return;
+      }
+
+      setCatalogItems(data || []);
+      setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+    },
+    [ITEMS_PER_PAGE],
+  );
+
   const handleOpenCatalog = (attr: AttributeType) => {
     setActiveCatalog(attr);
     setOpenCatalogDialog(true);
+    setPage(1);
+    setSearchTerm("");
+    loadCatalogData(attr.table_name, 1, "");
+  };
+
+  const handleAddCatalogItem = async () => {
+    if (!newValue || !activeCatalog) return;
+    if (!isAdmin)
+      return toast({
+        title: "Permission Denied",
+        description: "Only admins can add catalog items.",
+        variant: "destructive",
+      });
+
+    const { error } = await supabase.from(activeCatalog.table_name).insert({ name: newValue.trim() });
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: `Added '${newValue}' to ${activeCatalog.label}.`, variant: "default" });
+      setNewValue("");
+      loadCatalogData(activeCatalog.table_name, page, searchTerm);
+    }
+  };
+
+  const handleDeleteCatalogItem = async (itemId: string) => {
+    if (!activeCatalog) return;
+    if (!isAdmin)
+      return toast({
+        title: "Permission Denied",
+        description: "Only admins can delete catalog items.",
+        variant: "destructive",
+      });
+
+    const { error } = await supabase.from(activeCatalog.table_name).delete().eq("id", itemId);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: `Item deleted.`, variant: "default" });
+      loadCatalogData(activeCatalog.table_name, page, searchTerm);
+    }
+  };
+
+  const handleEditCatalogItem = (item: CatalogItem) => {
+    toast({
+      title: "Feature Incomplete",
+      description: `Editing '${item.name}' requires a dedicated modal.`,
+      variant: "default",
+    });
+  };
+
+  const handleExportCatalog = () => {
+    toast({ title: "Exporting...", description: "Preparing data for Excel download.", variant: "default" });
   };
 
   return (
@@ -1067,11 +1429,11 @@ const Configuration = () => {
           <TabsTrigger value="organizational-structure" className="h-full">
             <Factory className="w-4 h-4 mr-2" /> Org Structure
           </TabsTrigger>
-          <TabsTrigger value="general" className="h-full">
-            <Building className="w-4 h-4 mr-2" /> System Defaults
-          </TabsTrigger>
           <TabsTrigger value="workflow" className="h-full">
             <GitPullRequest className="w-4 h-4 mr-2" /> Workflow Rules
+          </TabsTrigger>
+          <TabsTrigger value="general" className="h-full">
+            <Building className="w-4 h-4 mr-2" /> System Defaults
           </TabsTrigger>
           <TabsTrigger value="user-roles" className="h-full">
             <Shield className="w-4 h-4 mr-2" /> User Roles
@@ -1089,12 +1451,19 @@ const Configuration = () => {
           <OrganizationalStructure dynamicCurrencies={dynamicCurrencies} />
         </TabsContent>
 
-        {/* 2. System Defaults Tab (ERP IMPLEMENTATION) */}
+        {/* 2. Workflow and Business Rules Tab */}
+        <TabsContent value="workflow">
+          <WorkflowRules />
+        </TabsContent>
+
+        {/* 3. System Defaults Tab (ERP IMPLEMENTATION) */}
         <TabsContent value="general">
           <Card>
             <CardHeader>
               <CardTitle>System Defaults (ERP Basis)</CardTitle>
-              <CardDescription>Configure global system parameters.</CardDescription>
+              <CardDescription>
+                Configure global system parameters by modifying the `system_settings` table.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4 border-b pb-4">
@@ -1120,6 +1489,9 @@ const Configuration = () => {
                         ))}
                       </SelectContent>
                     </Select>
+                    {dynamicCurrencies.length === 0 && (
+                      <p className="text-xs text-red-500">Currency list is empty. Add items to 'currencies' table.</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="tax-rate">Default Sales Tax (%)</Label>
@@ -1157,6 +1529,9 @@ const Configuration = () => {
                         ))}
                       </SelectContent>
                     </Select>
+                    {dynamicUnits.length === 0 && (
+                      <p className="text-xs text-red-500">Unit list is empty. Add items to 'units' table.</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="low-stock-threshold">Low Stock Alert Threshold</Label>
@@ -1211,19 +1586,17 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* 3. Workflow and Business Rules Tab */}
-        <TabsContent value="workflow">
-          <WorkflowRules />
-        </TabsContent>
-
         {/* 4. User Roles Tab */}
         <TabsContent value="user-roles">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>System Users</CardTitle>
+              <div>
+                <CardTitle>System Users</CardTitle>
+                <CardDescription>View and manage user accounts and their assigned system roles.</CardDescription>
+              </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={loadUsers} disabled={loading}>
-                  <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Refresh
+                <Button variant="outline" onClick={loadUsers} disabled={loadingUsers}>
+                  <RotateCcw className={`w-4 h-4 mr-2 ${loadingUsers ? "animate-spin" : ""}`} /> Refresh
                 </Button>
                 <Button onClick={() => setShowAddUserDialog(true)} disabled={!isAdmin}>
                   <Plus className="w-4 h-4 mr-2" /> Add User
@@ -1231,32 +1604,59 @@ const Configuration = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>System Role</TableHead>
-                      <TableHead className="text-right">{isAdmin ? "Actions" : "View"}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.email}</TableCell>
-                        <TableCell>
-                          <Badge variant={user.role === "admin" ? "default" : "secondary"}>{user.role || "None"}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => handleEditPermissions(user)}>
-                            {isAdmin ? <Edit2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </Button>
-                        </TableCell>
+              {loadingUsers ? (
+                <p>Loading users...</p>
+              ) : errorUsers ? (
+                <p className="text-red-500">{errorUsers}</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>System Role</TableHead>
+                        <TableHead>Created At</TableHead>
+                        <TableHead>Last Sign-in</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">{user.email}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                user.role === "admin"
+                                  ? "default"
+                                  : user.role === "inventory_man"
+                                    ? "secondary"
+                                    : "outline"
+                              }
+                            >
+                              {user.role || "None"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                            {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "N/A"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditPermissions(user)}
+                              disabled={!isAdmin}
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1265,7 +1665,13 @@ const Configuration = () => {
         <TabsContent value="attributes">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Stock Attributes</CardTitle>
+              <div>
+                <CardTitle>Stock Attributes</CardTitle>
+                <CardDescription>
+                  Manage dynamic inventory categories (e.g., Color, Size, Brand) by manipulating the `attribute_types`
+                  table.
+                </CardDescription>
+              </div>
               <Button onClick={() => setOpenAttributeDialog(true)} disabled={!isAdmin}>
                 <Plus className="w-4 h-4 mr-2" /> Add New Type
               </Button>
@@ -1275,15 +1681,27 @@ const Configuration = () => {
                 {attributeTypes.map((attr) => {
                   const Icon = ATTRIBUTE_ICONS.find((i) => i.value === attr.icon)?.icon || Tags;
                   return (
-                    <Card key={attr.id} className="cursor-pointer" onClick={() => handleOpenCatalog(attr)}>
+                    <Card
+                      key={attr.id}
+                      className="cursor-pointer hover:shadow-lg transition-shadow"
+                      onClick={() => handleOpenCatalog(attr)}
+                    >
                       <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">{attr.label}</CardTitle>
                         <Icon className="h-5 w-5 text-gray-400" />
                       </CardHeader>
+                      <CardContent className="p-4 pt-0">
+                        <div className="text-xs text-gray-500">
+                          Table: <code className="bg-gray-100 p-0.5 rounded text-xs">{attr.table_name}</code>
+                        </div>
+                      </CardContent>
                     </Card>
                   );
                 })}
               </div>
+              {attributeTypes.length === 0 && (
+                <p className="text-center text-gray-500 mt-4">No attribute types defined. Add one to get started.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1305,7 +1723,7 @@ const Configuration = () => {
         </TabsContent>
       </Tabs>
 
-      {/* MODALS */}
+      {/* MODALS (from Configuration (10).tsx) */}
       <UserPermissionsDialog
         open={showPermissionsDialog}
         onOpenChange={setShowPermissionsDialog}
@@ -1319,6 +1737,7 @@ const Configuration = () => {
         open={openAttributeDialog}
         onOpenChange={setOpenAttributeDialog}
         onSave={handleAttributeTypeSave}
+        isAdmin={isAdmin}
       />
 
       <CatalogManagementDialog
@@ -1326,6 +1745,19 @@ const Configuration = () => {
         onOpenChange={setOpenCatalogDialog}
         activeCatalog={activeCatalog}
         isAdmin={isAdmin}
+        loadData={loadCatalogData}
+        catalogItems={catalogItems}
+        page={page}
+        totalPages={totalPages}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        setPage={setPage}
+        handleExport={handleExportCatalog}
+        handleAdd={handleAddCatalogItem}
+        handleDelete={handleDeleteCatalogItem}
+        handleEdit={handleEditCatalogItem}
+        newValue={newValue}
+        setNewValue={setNewValue}
       />
     </div>
   );
