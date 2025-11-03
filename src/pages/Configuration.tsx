@@ -30,7 +30,7 @@ import {
   Database,
   RotateCcw,
   // NEW ICONS ADDED FOR PROFESSIONAL SETTINGS TAB
-  DollarSign, 
+  DollarSign,
   Lock,
   Save,
 } from "lucide-react";
@@ -81,14 +81,14 @@ interface CatalogItem {
   created_at: string;
 }
 
-// NEW TYPE: Global Settings
+// NEW TYPE: Global Settings (Matches front-end state keys)
 interface GeneralSettings {
-    currency: string;
-    defaultTaxRate: string;
-    defaultUnit: string;
-    lowStockThreshold: number;
-    enableAuditLog: boolean;
-    require2FA: boolean;
+  currency: string;
+  defaultTaxRate: string; // Stored as string to handle input type="number" value
+  defaultUnit: string;
+  lowStockThreshold: number;
+  enableAuditLog: boolean;
+  require2FA: boolean;
 }
 
 const ATTRIBUTE_ICONS = [
@@ -341,11 +341,11 @@ const Configuration = () => {
   const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
-  
+
   // *** NEW STATE: General Settings ***
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
     currency: "USD",
-    defaultTaxRate: "5.0",
+    defaultTaxRate: "5.0", // Default value
     defaultUnit: "kg",
     lowStockThreshold: 5,
     enableAuditLog: true,
@@ -369,25 +369,84 @@ const Configuration = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // --- GENERAL SETTINGS LOGIC (Placeholder for real API) ---
+  // --- GENERAL SETTINGS LOGIC (Real API Implementation) ---
+
+  const loadGeneralSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("system_settings").select("*").limit(1).single();
+
+      if (error && error.code !== "PGRST116") {
+        throw error;
+      }
+
+      if (data) {
+        setGeneralSettings({
+          currency: data.currency,
+          defaultTaxRate: String(data.default_tax_rate), // Convert numeric to string for Input field
+          defaultUnit: data.default_unit,
+          lowStockThreshold: data.low_stock_threshold,
+          enableAuditLog: data.enable_audit_log,
+          require2FA: data.require_2fa,
+        });
+      }
+    } catch (error: any) {
+      console.error("Error loading settings:", error);
+      toast({
+        title: "Database Error",
+        description: "Failed to load system settings.",
+        variant: "destructive",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGeneralSettings();
+  }, [loadGeneralSettings]);
+
   const handleSettingsChange = (key: keyof GeneralSettings, value: any) => {
     setGeneralSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSaveGeneralSettings = async () => {
     setIsSavingSettings(true);
-    // In a real application, you would save generalSettings to the database here.
-    console.log("Saving settings:", generalSettings);
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API call delay
 
-    toast({
+    // Convert types back for database insertion
+    const settingsToSave = {
+      currency: generalSettings.currency,
+      default_tax_rate: parseFloat(generalSettings.defaultTaxRate) || 0,
+      default_unit: generalSettings.defaultUnit,
+      low_stock_threshold: generalSettings.lowStockThreshold,
+      enable_audit_log: generalSettings.enableAuditLog,
+      require_2fa: generalSettings.require2FA,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { error } = await supabase
+        .from("system_settings")
+        .update(settingsToSave)
+        .eq("id", "YOUR_COPIED_UUID") // <--- REMEMBER TO REPLACE THIS WITH YOUR ACTUAL SETTINGS ROW UUID
+        .single();
+
+      if (error) throw error;
+
+      toast({
         title: "Settings Saved",
         description: "General system configurations updated successfully.",
         variant: "default",
-    });
-    setIsSavingSettings(false);
+      });
+    } catch (error: any) {
+      console.error("Error saving settings:", error);
+      toast({
+        title: "Saving Failed",
+        description: `Could not save settings: ${error.message}. Check your UUID.`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
-  
+
   // --- USER MANAGEMENT LOGIC ---
 
   const loadUsers = useCallback(async () => {
@@ -752,131 +811,134 @@ const Configuration = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                
-                {/* --- Financial Settings --- */}
-                <div className="space-y-4 border-b pb-4">
-                    <h3 className="text-lg font-semibold flex items-center">
-                        <DollarSign className="w-5 h-5 mr-2 text-green-600" /> Financial Settings
-                    </h3>
-                    
-                    <div className="grid md:grid-cols-2 gap-6">
-                        {/* Currency */}
-                        <div className="space-y-1">
-                            <Label htmlFor="currency">Default Currency</Label>
-                            <Select 
-                                value={generalSettings.currency} 
-                                onValueChange={(value) => handleSettingsChange("currency", value)}
-                                disabled={isSavingSettings}
-                            >
-                                <SelectTrigger id="currency">
-                                    <SelectValue placeholder="Select a currency" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
-                                    <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
-                                    <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
-                                    <SelectItem value="AED">🇦🇪 AED - UAE Dirham</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        
-                        {/* Tax Rate */}
-                        <div className="space-y-1">
-                            <Label htmlFor="tax-rate">Default Sales Tax (%)</Label>
-                            <Input 
-                                id="tax-rate" 
-                                value={generalSettings.defaultTaxRate} 
-                                onChange={(e) => handleSettingsChange("defaultTaxRate", e.target.value)}
-                                type="number" 
-                                step="0.1" 
-                                disabled={isSavingSettings}
-                            />
-                        </div>
-                    </div>
+              {/* --- Financial Settings --- */}
+              <div className="space-y-4 border-b pb-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2 text-green-600" /> Financial Settings
+                </h3>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Currency */}
+                  <div className="space-y-1">
+                    <Label htmlFor="currency">Default Currency</Label>
+                    <Select
+                      value={generalSettings.currency}
+                      onValueChange={(value) => handleSettingsChange("currency", value)}
+                      disabled={isSavingSettings}
+                    >
+                      <SelectTrigger id="currency">
+                        <SelectValue placeholder="Select a currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
+                        <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
+                        <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
+                        <SelectItem value="AED">🇦🇪 AED - UAE Dirham</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Tax Rate */}
+                  <div className="space-y-1">
+                    <Label htmlFor="tax-rate">Default Sales Tax (%)</Label>
+                    <Input
+                      id="tax-rate"
+                      value={generalSettings.defaultTaxRate}
+                      onChange={(e) => handleSettingsChange("defaultTaxRate", e.target.value)}
+                      type="number"
+                      step="0.1"
+                      disabled={isSavingSettings}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* --- Inventory & Units --- */}
+              <div className="space-y-4 border-b pb-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <Package className="w-5 h-5 mr-2 text-blue-600" /> Inventory & Units
+                </h3>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Default Unit */}
+                  <div className="space-y-1">
+                    <Label htmlFor="default-unit">Default Weight/Length Unit</Label>
+                    <Select
+                      value={generalSettings.defaultUnit}
+                      onValueChange={(value) => handleSettingsChange("defaultUnit", value)}
+                      disabled={isSavingSettings}
+                    >
+                      <SelectTrigger id="default-unit">
+                        <SelectValue placeholder="Select default unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kg">Kilograms (kg)</SelectItem>
+                        <SelectItem value="lbs">Pounds (lbs)</SelectItem>
+                        <SelectItem value="meters">Meters (m)</SelectItem>
+                        <SelectItem value="feet">Feet (ft)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Low Stock Threshold */}
+                  <div className="space-y-1">
+                    <Label htmlFor="low-stock-threshold">Low Stock Alert Threshold</Label>
+                    <Input
+                      id="low-stock-threshold"
+                      value={generalSettings.lowStockThreshold}
+                      onChange={(e) => handleSettingsChange("lowStockThreshold", parseInt(e.target.value) || 0)}
+                      type="number"
+                      min="1"
+                      disabled={isSavingSettings}
+                    />
+                    <p className="text-xs text-gray-500">Global minimum quantity for low stock alerts.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* --- Security & Audit --- */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <Lock className="w-5 h-5 mr-2 text-red-600" /> Security & Audit
+                </h3>
+
+                <div className="flex items-center justify-between space-x-4 p-3 rounded-md border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="audit-log" className="text-base">
+                      Enable Audit Logging
+                    </Label>
+                    <p className="text-sm text-gray-500">Tracks all significant user actions for compliance.</p>
+                  </div>
+                  <Switch
+                    id="audit-log"
+                    checked={generalSettings.enableAuditLog}
+                    onCheckedChange={(checked) => handleSettingsChange("enableAuditLog", checked)}
+                    disabled={isSavingSettings}
+                  />
                 </div>
 
-                {/* --- Inventory & Units --- */}
-                <div className="space-y-4 border-b pb-4">
-                    <h3 className="text-lg font-semibold flex items-center">
-                        <Package className="w-5 h-5 mr-2 text-blue-600" /> Inventory & Units
-                    </h3>
-                    
-                    <div className="grid md:grid-cols-2 gap-6">
-                        {/* Default Unit */}
-                        <div className="space-y-1">
-                            <Label htmlFor="default-unit">Default Weight/Length Unit</Label>
-                            <Select 
-                                value={generalSettings.defaultUnit}
-                                onValueChange={(value) => handleSettingsChange("defaultUnit", value)}
-                                disabled={isSavingSettings}
-                            >
-                                <SelectTrigger id="default-unit">
-                                    <SelectValue placeholder="Select default unit" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="kg">Kilograms (kg)</SelectItem>
-                                    <SelectItem value="lbs">Pounds (lbs)</SelectItem>
-                                    <SelectItem value="meters">Meters (m)</SelectItem>
-                                    <SelectItem value="feet">Feet (ft)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                <div className="flex items-center justify-between space-x-4 p-3 rounded-md border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="require-2fa" className="text-base">
+                      Require Two-Factor Authentication (2FA)
+                    </Label>
+                    <p className="text-sm text-gray-500">Enforce 2FA for all users upon next sign-in.</p>
+                  </div>
+                  <Switch
+                    id="require-2fa"
+                    checked={generalSettings.require2FA}
+                    onCheckedChange={(checked) => handleSettingsChange("require2FA", checked)}
+                    disabled={isSavingSettings}
+                  />
+                </div>
+              </div>
 
-                        {/* Low Stock Threshold */}
-                        <div className="space-y-1">
-                            <Label htmlFor="low-stock-threshold">Low Stock Alert Threshold</Label>
-                            <Input 
-                                id="low-stock-threshold" 
-                                value={generalSettings.lowStockThreshold} 
-                                onChange={(e) => handleSettingsChange("lowStockThreshold", parseInt(e.target.value) || 0)}
-                                type="number" 
-                                min="1" 
-                                disabled={isSavingSettings}
-                            />
-                            <p className="text-xs text-gray-500">Global minimum quantity for low stock alerts.</p>
-                        </div>
-                    </div>
-                </div>
-                
-                {/* --- Security & Audit --- */}
-                <div className="space-y-4">
-                    <h3 className="text-lg font-semibold flex items-center">
-                        <Lock className="w-5 h-5 mr-2 text-red-600" /> Security & Audit
-                    </h3>
-                    
-                    <div className="flex items-center justify-between space-x-4 p-3 rounded-md border">
-                        <div className="space-y-0.5">
-                            <Label htmlFor="audit-log" className="text-base">Enable Audit Logging</Label>
-                            <p className="text-sm text-gray-500">Tracks all significant user actions for compliance.</p>
-                        </div>
-                        <Switch 
-                            id="audit-log" 
-                            checked={generalSettings.enableAuditLog}
-                            onCheckedChange={(checked) => handleSettingsChange("enableAuditLog", checked)}
-                            disabled={isSavingSettings}
-                        />
-                    </div>
-                    
-                    <div className="flex items-center justify-between space-x-4 p-3 rounded-md border">
-                        <div className="space-y-0.5">
-                            <Label htmlFor="require-2fa" className="text-base">Require Two-Factor Authentication (2FA)</Label>
-                            <p className="text-sm text-gray-500">Enforce 2FA for all users upon next sign-in.</p>
-                        </div>
-                        <Switch 
-                            id="require-2fa" 
-                            checked={generalSettings.require2FA}
-                            onCheckedChange={(checked) => handleSettingsChange("require2FA", checked)}
-                            disabled={isSavingSettings}
-                        />
-                    </div>
-                </div>
-
-                <div className="pt-4 flex justify-end">
-                    <Button onClick={handleSaveGeneralSettings} disabled={isSavingSettings}>
-                        <Save className="w-4 h-4 mr-2" /> 
-                        {isSavingSettings ? "Saving..." : "Save General Settings"}
-                    </Button>
-                </div>
+              <div className="pt-4 flex justify-end">
+                <Button onClick={handleSaveGeneralSettings} disabled={isSavingSettings}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSavingSettings ? "Saving..." : "Save General Settings"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
