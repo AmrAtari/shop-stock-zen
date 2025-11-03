@@ -3,43 +3,41 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import PaginationControls from "@/components/PaginationControls";
+import { PaginationControls } from "@/components/PaginationControls";
 import FileImport from "@/components/FileImport";
 import ProductDialogNew from "@/components/ProductDialogNew";
-import { ItemWithDetails } from "@/types";
 
-interface UsePaginationReturn {
-  pageIndex: number;
-  pageCount: number;
-  setPage: (index: number) => void;
+// Local type for inventory items
+interface ItemWithDetails {
+  sku: string;
+  name: string;
+  supplier: string;
+  main_group: string;
+  category: string;
+  price: number;
+  cost: number;
+  quantity: number;
 }
 
 const Inventory: React.FC = () => {
   const [fileImportOpen, setFileImportOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemWithDetails | undefined>(undefined);
+  const [pageIndex, setPageIndex] = useState(0);
 
-  // --- Pagination state ---
-  const [pagination, setPagination] = useState<UsePaginationReturn>({
-    pageIndex: 0,
-    pageCount: 1,
-    setPage: (index: number) => setPagination((p) => ({ ...p, pageIndex: index })),
+  const { data: items = [], refetch } = useQuery<ItemWithDetails[], Error>({
+    queryKey: ["inventory", pageIndex],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from<ItemWithDetails>("store_inventory")
+        .select("*")
+        .range(pageIndex * 20, (pageIndex + 1) * 20 - 1);
+      if (error) throw error;
+      return data || [];
+    },
   });
 
-  // --- Fetch inventory items ---
-  const { data: items, refetch } = useQuery(["inventory", pagination.pageIndex], async () => {
-    const { data, error } = await supabase
-      .from<ItemWithDetails>("store_inventory")
-      .select("*")
-      .range(pagination.pageIndex * 20, (pagination.pageIndex + 1) * 20 - 1);
-    if (error) throw error;
-    return data || [];
-  });
-
-  const handleImportComplete = () => {
-    refetch();
-  };
-
+  const handleImportComplete = () => refetch();
   const handleEditItem = (item: ItemWithDetails) => {
     setSelectedItem(item);
     setDialogOpen(true);
@@ -67,7 +65,7 @@ const Inventory: React.FC = () => {
           </tr>
         </thead>
         <tbody>
-          {items?.map((item) => (
+          {items.map((item) => (
             <tr key={item.sku} className="hover:bg-gray-50">
               <td>{item.sku}</td>
               <td>{item.name}</td>
@@ -87,16 +85,14 @@ const Inventory: React.FC = () => {
 
       <div className="mt-4">
         <PaginationControls
-          currentPage={pagination.pageIndex + 1}
-          totalPages={pagination.pageCount}
-          onChange={(page) => pagination.setPage(page - 1)}
+          currentPage={pageIndex + 1}
+          totalPages={10} // Adjust based on your total items / page size
+          onChange={(page) => setPageIndex(page - 1)}
         />
       </div>
 
-      {/* --- File Import Dialog --- */}
       <FileImport open={fileImportOpen} onOpenChange={setFileImportOpen} onImportComplete={handleImportComplete} />
 
-      {/* --- Product Edit Dialog --- */}
       <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} editingItem={selectedItem} />
     </div>
   );
