@@ -55,8 +55,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { Pagination } from "@/components/ui/pagination";
 
-// *** DEFINITIVE FIX: New File Name (DatabaseAdminComponent.tsx) ***
-import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
+// *** FIX: Import name changed to match user's provided file ***
+import DatabaseAdminPanel from "./DatabaseAdminPanel.tsx";
 
 // --- TYPE DEFINITIONS ---
 interface UserWithRole {
@@ -78,7 +78,7 @@ interface AttributeType {
 interface CatalogItem {
   id: string;
   name: string;
-  created_at: string;
+  created_at: string; // <-- This was the missing required field!
 }
 
 // NEW TYPE: Global Settings (Matches front-end state keys)
@@ -377,7 +377,11 @@ const Configuration = () => {
   // --- DYNAMIC SETTINGS LOADERS ---
   const loadDynamicOptions = useCallback(async (tableName: string, setter: (items: CatalogItem[]) => void) => {
     try {
-      const { data, error } = await supabase.from(tableName).select("id, name").order("name", { ascending: true });
+      // *** FIX: Select 'created_at' to satisfy the CatalogItem interface ***
+      const { data, error } = await supabase
+        .from(tableName)
+        .select("id, name, created_at")
+        .order("name", { ascending: true });
 
       if (error) throw error;
       setter(data || []);
@@ -631,7 +635,7 @@ const Configuration = () => {
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      let query = supabase.from(tableName).select("*", { count: "exact" });
+      let query = supabase.from(tableName).select("id, name, created_at", { count: "exact" }); // *** FIX: Added 'created_at' here too ***
 
       if (search) {
         query = query.ilike("name", `%${search}%`);
@@ -1000,7 +1004,6 @@ const Configuration = () => {
 
         {/* -------------------- 4. Direct DB Access Tab -------------------- */}
         <TabsContent value="db-access">
-          {/* This panel is rendered from the separate file you provided */}
           <DatabaseAdminPanel />
         </TabsContent>
       </Tabs>
