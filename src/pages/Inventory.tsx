@@ -1,9 +1,13 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Layers, Package } from "lucide-react";
+import {
+  Plus, Search, Edit, Trash2, Upload, Layers, Package
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import ProductDialogNew from "@/components/ProductDialogNew";
@@ -14,10 +18,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-// --- Data Interface ---
 interface StoreStock {
   store_id: string;
   store_name: string;
@@ -54,9 +59,8 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch Inventory Data with Store Stock ---
+// --- Fetch inventory data with manual join for store names ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Fetch all items with attribute names
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
     .select(`
@@ -73,45 +77,35 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     `)
     .order("name");
 
-  if (itemsError) {
-    console.error("Error fetching items:", itemsError);
-    throw itemsError;
-  }
+  if (itemsError) throw itemsError;
 
-  // Fetch store inventory
+  // Fetch store inventory and stores separately (avoid join errors)
   const { data: storeInventory, error: storeError } = await supabase
     .from("store_inventory")
-    .select(`
-      item_id,
-      store_id,
-      quantity,
-      stores!inner(name)
-    `);
+    .select("item_id, store_id, quantity");
+  if (storeError) throw storeError;
 
-  if (storeError) {
-    console.error("Error fetching store inventory:", storeError);
-    throw storeError;
-  }
+  const { data: stores, error: storesError } = await supabase
+    .from("stores")
+    .select("id, name");
+  if (storesError) throw storesError;
 
-  // Create store stock map
+  const storeMap = Object.fromEntries((stores || []).map(s => [s.id, s.name]));
+
   const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
     const itemId = record.item_id;
     if (!acc[itemId]) {
-      acc[itemId] = {
-        total_quantity: 0,
-        stores: [],
-      };
+      acc[itemId] = { total_quantity: 0, stores: [] };
     }
-    acc[itemId].total_quantity += record.quantity || 0;
+    acc[itemId].total_quantity += Number(record.quantity) || 0;
     acc[itemId].stores.push({
       store_id: record.store_id,
-      store_name: record.stores.name,
-      quantity: record.quantity || 0,
+      store_name: storeMap[record.store_id] || "Unknown",
+      quantity: Number(record.quantity) || 0
     });
     return acc;
   }, {});
 
-  // Combine data
   return (itemsData || []).map((item: any) => ({
     id: item.id,
     sku: item.sku || "N/A",
@@ -139,7 +133,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     min_stock: item.min_stock || 0,
     last_restocked: item.last_restocked,
     created_at: item.created_at,
-    stores: stockMap[item.id]?.stores || [],
+    stores: stockMap[item.id]?.stores || []
   }));
 };
 
@@ -157,12 +151,9 @@ const InventoryPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
-
-  // Selection & filters
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterSupplier, setFilterSupplier] = useState("");
@@ -175,43 +166,43 @@ const InventoryPage: React.FC = () => {
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  // Fetch stores for filter
   const { data: stores = [] } = useQuery({
     queryKey: ["stores-for-filter"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("id, name").order("name");
+      const { data, error } = await supabase
+        .from("stores")
+        .select("id, name")
+        .order("name");
       if (error) throw error;
       return data;
     },
   });
 
-  // --- Filter Options ---
   const supplierOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.supplier).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
   const categoryOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.category).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
   const mainGroupOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.main_group).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
   const seasonOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.season).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
   const colorOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.color).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
   const sizeOptions = useMemo(
     () => Array.from(new Set(inventory.map((i) => i.size).filter(Boolean))).sort(),
-    [inventory],
+    [inventory]
   );
 
-  // --- Filtered Data ---
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const matchesSearch =
@@ -249,19 +240,21 @@ const InventoryPage: React.FC = () => {
     filterSize,
   ]);
 
-  // --- Pagination ---
   const pagination = usePagination({
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   });
-  const displayInventory: ItemWithDetails[] = useMemo(
+
+  const displayInventory = useMemo(
     () => filteredInventory.slice(pagination.startIndex, pagination.endIndex),
-    [filteredInventory, pagination.startIndex, pagination.endIndex],
+    [filteredInventory, pagination.startIndex, pagination.endIndex]
   );
-  // --- Selection logic ---
+
   const toggleSelectItem = (item: ItemWithDetails) => {
     setSelectedItems((prev) =>
-      prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item],
+      prev.some((i) => i.id === item.id)
+        ? prev.filter((i) => i.id !== item.id)
+        : [...prev, item]
     );
   };
 
@@ -270,7 +263,6 @@ const InventoryPage: React.FC = () => {
     else setSelectedItems(displayInventory);
   };
 
-  // --- Delete handler ---
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
     const { error: delError } = await supabase.from("items").delete().eq("id", id);
@@ -281,7 +273,6 @@ const InventoryPage: React.FC = () => {
     }
   };
 
-  // --- UI States ---
   if (isLoading) return <div className="p-8">Loading inventory...</div>;
   if (error) return <div className="p-8 text-red-500">Error: {error.message}</div>;
 
@@ -316,107 +307,35 @@ const InventoryPage: React.FC = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="max-w-sm"
           />
-          <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
+          <div className="text-sm text-muted-foreground">
+            {filteredInventory.length} item(s) found
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          <Select value={filterSupplier} onValueChange={(v) => setFilterSupplier(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Supplier" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="all">All Suppliers</SelectItem>
-              {supplierOptions.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="all">All Categories</SelectItem>
-              {categoryOptions.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterMainGroup} onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Main Group" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="all">All Main Groups</SelectItem>
-              {mainGroupOptions.map((m) => (
-                <SelectItem key={m} value={m}>
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterStore} onValueChange={(v) => setFilterStore(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Store" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="all">All Stores</SelectItem>
-              {stores.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Season" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="all">All Seasons</SelectItem>
-              {seasonOptions.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Color" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="all">All Colors</SelectItem>
-              {colorOptions.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Size" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="all">All Sizes</SelectItem>
-              {sizeOptions.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {[
+            { label: "Supplier", value: filterSupplier, setter: setFilterSupplier, options: supplierOptions },
+            { label: "Category", value: filterCategory, setter: setFilterCategory, options: categoryOptions },
+            { label: "Main Group", value: filterMainGroup, setter: setFilterMainGroup, options: mainGroupOptions },
+            { label: "Store", value: filterStore, setter: setFilterStore, options: stores.map((s) => s.name) },
+            { label: "Season", value: filterSeason, setter: setFilterSeason, options: seasonOptions },
+            { label: "Color", value: filterColor, setter: setFilterColor, options: colorOptions },
+            { label: "Size", value: filterSize, setter: setFilterSize, options: sizeOptions },
+          ].map(({ label, value, setter, options }) => (
+            <Select key={label} value={value} onValueChange={(v) => setter(v === "all" ? "" : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={label} />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                <SelectItem value="all">All {label}s</SelectItem>
+                {options.map((o: any) => (
+                  <SelectItem key={o} value={o}>
+                    {o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ))}
         </div>
       </div>
 
@@ -427,7 +346,10 @@ const InventoryPage: React.FC = () => {
             <TableRow>
               <TableHead className="w-[50px] text-center">
                 <Checkbox
-                  checked={selectedItems.length > 0 && selectedItems.length === displayInventory.length}
+                  checked={
+                    selectedItems.length > 0 &&
+                    selectedItems.length === displayInventory.length
+                  }
                   onCheckedChange={toggleSelectAll}
                 />
               </TableHead>
@@ -504,10 +426,20 @@ const InventoryPage: React.FC = () => {
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Badge variant={item.quantity <= item.min_stock ? "destructive" : "secondary"}>{item.min_stock}</Badge>
+                  <Badge
+                    variant={
+                      item.quantity <= item.min_stock ? "destructive" : "secondary"
+                    }
+                  >
+                    {item.min_stock}
+                  </Badge>
                 </TableCell>
-                <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "-"}</TableCell>
-                <TableCell className="text-right font-semibold">{item.price ? item.price.toFixed(2) : "-"}</TableCell>
+                <TableCell className="text-right">
+                  {item.cost ? item.cost.toFixed(2) : "-"}
+                </TableCell>
+                <TableCell className="text-right font-semibold">
+                  {item.price ? item.price.toFixed(2) : "-"}
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     <Button
@@ -520,7 +452,12 @@ const InventoryPage: React.FC = () => {
                     >
                       <Edit className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(item.id)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-red-500"
+                      onClick={() => handleDelete(item.id)}
+                    >
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -531,7 +468,6 @@ const InventoryPage: React.FC = () => {
         </Table>
       </div>
 
-      {/* Pagination */}
       <PaginationControls
         currentPage={pagination.currentPage}
         totalPages={pagination.totalPages}
@@ -543,7 +479,6 @@ const InventoryPage: React.FC = () => {
         endIndex={pagination.endIndex}
       />
 
-      {/* Dialogs */}
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
