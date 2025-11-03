@@ -53,9 +53,9 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory data with POs, Transfers, Transactions ---
+// --- Fetch inventory data with PO quantities ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Fetch main items with related tables
+  // 1️⃣ Fetch items with joins
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
     .select(
@@ -73,9 +73,10 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     `,
     )
     .order("name");
+
   if (itemsError) throw itemsError;
 
-  // --- Fetch store inventory ---
+  // 2️⃣ Fetch store inventory
   const { data: storeInventory, error: storeError } = await supabase
     .from("store_inventory")
     .select("item_id, store_id, quantity");
@@ -100,9 +101,9 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     return acc;
   }, {});
 
-  // --- Fetch Purchase Order Items ---
+  // 3️⃣ Fetch PO quantities (received_quantity)
   const { data: poItems, error: poError } = await supabase
-    .from("purchase_order_items")
+    .from<{ sku: string; received_quantity: number }>("purchase_order_items")
     .select("sku, received_quantity");
   if (poError) throw poError;
 
@@ -114,48 +115,10 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     poMap[sku] += qty;
   });
 
-  // --- Fetch Transfer Items ---
-  const { data: transferItems, error: transferError } = await supabase
-    .from("transfer_items")
-    .select(
-      "variant_id, quantity, transfer:transfers(to_store_id,from_store_id,status), variant:variants(sku,item_id)",
-    );
-  if (transferError) throw transferError;
-
-  const transferMap: Record<string, number> = {};
-  (transferItems || []).forEach((t) => {
-    const sku = t.variant?.sku;
-    if (!sku) return;
-    // Only count completed or accepted transfers
-    const qty = Number(t.quantity || 0);
-    if (!transferMap[sku]) transferMap[sku] = 0;
-    transferMap[sku] += qty;
-  });
-
-  // --- Fetch Transactions (sales/out) ---
-  const { data: transactions, error: transError } = await supabase
-    .from("transactions")
-    .select("sku, quantity, is_refund");
-  if (transError) throw transError;
-
-  const transMap: Record<string, number> = {};
-  (transactions || []).forEach((t) => {
-    const sku = t.sku;
-    let qty = Number(t.quantity || 0);
-    if (t.is_refund) qty = -qty;
-    if (!transMap[sku]) transMap[sku] = 0;
-    transMap[sku] += qty;
-  });
-
-  // --- Build final inventory with aggregated quantity ---
+  // 4️⃣ Map items with total quantity = store inventory + PO
   return (itemsData || []).map((item: any) => {
-    const stockQty = stockMap[item.id]?.total_quantity || 0;
     const poQty = poMap[item.sku] || 0;
-    const transferQty = transferMap[item.sku] || 0;
-    const transQty = transMap[item.sku] || 0;
-
-    const totalQty = stockQty + poQty + transferQty - transQty;
-
+    const storeQty = stockMap[item.id]?.total_quantity || 0;
     return {
       id: item.id,
       sku: item.sku || "N/A",
@@ -179,7 +142,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
       item_color_code: item.item_color_code || "",
       color_id_code: item.color_id_code || "",
       location: item.location || "",
-      quantity: totalQty,
+      quantity: storeQty + poQty,
       min_stock: item.min_stock || 0,
       last_restocked: item.last_restocked,
       created_at: item.created_at,
@@ -188,7 +151,6 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   });
 };
 
-// --- React Query ---
 const useInventoryQuery = () => {
   return useQuery<ItemWithDetails[]>({
     queryKey: queryKeys.inventory.all,
@@ -325,9 +287,8 @@ const InventoryPage: React.FC = () => {
 
   return (
     <div className="space-y-6 p-6">
-      {/* HEADER, FILTERS, TABLE */}
-      {/* ... keep all existing JSX from your previous inventory page ... */}
-      {/* Quantity now comes from aggregated stockMap + poMap + transferMap - transMap */}
+      {/* ... Keep all UI code same as before ... */}
+      {/* Table, filters, pagination, dialogs, etc. */}
     </div>
   );
 };
