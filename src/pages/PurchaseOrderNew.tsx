@@ -71,10 +71,36 @@ const PurchaseOrderNew = () => {
   const { data: inventory = [] } = useQuery<Item[]>({
     queryKey: queryKeys.inventory.all,
     queryFn: async () => {
-      // NOTE: This uses the deprecated 'items' table for lookup.
-      const { data, error } = await supabase.from("items").select("*").order("name");
+      const { data, error } = await supabase
+        .from("items")
+        .select(`
+          *,
+          supplier:suppliers(name),
+          gender:genders(name),
+          main_group:main_groups(name),
+          category:categories(name),
+          origin:origins(name),
+          season:seasons(name),
+          size:sizes(name),
+          color:colors(name),
+          theme:themes(name)
+        `)
+        .order("name");
       if (error) throw error;
-      return data || [];
+      
+      // Resolve attribute names
+      return (data || []).map((item: any) => ({
+        ...item,
+        supplier: item.supplier?.name || '',
+        gender: item.gender?.name || '',
+        main_group: item.main_group?.name || '',
+        category: item.category?.name || '',
+        origin: item.origin?.name || '',
+        season: item.season?.name || '',
+        size: item.size?.name || '',
+        color: item.color?.name || '',
+        theme: item.theme?.name || '',
+      }));
     },
   });
 

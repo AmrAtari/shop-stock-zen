@@ -72,7 +72,10 @@ export const useDashboardData = () => {
     queryFn: async () => {
       const { data: items, error: itemsError } = await supabase
         .from("items")
-        .select("category, quantity");
+        .select(`
+          quantity,
+          category:categories(name)
+        `);
 
       if (itemsError) throw itemsError;
 
@@ -85,37 +88,42 @@ export const useDashboardData = () => {
 
       const { data: allItems, error: allItemsError } = await supabase
         .from("items")
-        .select("id, category, quantity");
+        .select(`
+          id, quantity,
+          category:categories(name)
+        `);
 
       if (allItemsError) throw allItemsError;
 
       const priceMap = new Map(priceLevels.map(pl => [pl.item_id, pl.cost_price]));
 
       // Group by category for quantity
-      const quantityByCategory = allItems.reduce((acc, item) => {
-        if (!acc[item.category]) {
-          acc[item.category] = 0;
+      const quantityByCategory = (allItems || []).reduce((acc: any, item: any) => {
+        const categoryName = item.category?.name || 'Uncategorized';
+        if (!acc[categoryName]) {
+          acc[categoryName] = 0;
         }
-        acc[item.category] += item.quantity;
+        acc[categoryName] += item.quantity;
         return acc;
       }, {} as Record<string, number>);
 
       const categoryQuantity: CategoryDistribution[] = Object.entries(quantityByCategory).map(
-        ([name, value]) => ({ name, value })
+        ([name, value]) => ({ name, value: value as number })
       );
 
       // Group by category for value
-      const valueByCategory = allItems.reduce((acc, item) => {
+      const valueByCategory = (allItems || []).reduce((acc: any, item: any) => {
+        const categoryName = item.category?.name || 'Uncategorized';
         const costPrice = priceMap.get(item.id) || 0;
-        if (!acc[item.category]) {
-          acc[item.category] = 0;
+        if (!acc[categoryName]) {
+          acc[categoryName] = 0;
         }
-        acc[item.category] += item.quantity * costPrice;
+        acc[categoryName] += item.quantity * costPrice;
         return acc;
       }, {} as Record<string, number>);
 
       const categoryValue: CategoryDistribution[] = Object.entries(valueByCategory).map(
-        ([name, value]) => ({ name, value: Math.round(value) })
+        ([name, value]) => ({ name, value: Math.round(value as number) })
       );
 
       return { categoryQuantity, categoryValue };

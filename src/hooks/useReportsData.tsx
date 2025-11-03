@@ -35,24 +35,45 @@ export const useReportsData = () => {
   const inventoryOnHandQuery = useQuery({
     queryKey: queryKeys.reports.inventoryOnHand,
     queryFn: async () => {
-      // Fetch all items data from the DB
-      const { data: items, error: itemsError } = await supabase.from("items").select("*");
+      // Fetch all items with joined attribute names
+      const { data: items, error: itemsError } = await supabase
+        .from("items")
+        .select(`
+          *,
+          supplier:suppliers(name),
+          gender:genders(name),
+          main_group:main_groups(name),
+          category:categories(name),
+          origin:origins(name),
+          season:seasons(name),
+          size:sizes(name),
+          color:colors(name),
+          theme:themes(name)
+        `);
       if (itemsError) throw itemsError;
 
       // Fetch current price levels
       const { data: prices, error: pricesError } = await supabase
         .from("price_levels")
         .select("item_id, cost_price, selling_price")
-        // Using explicit filter syntax for 'is_current'
         .filter("is_current", "eq", true);
       if (pricesError) throw pricesError;
 
-      // Map the prices and apply the brand FIX
-      return items?.map((item) => {
+      // Map the prices and resolve attribute names
+      return items?.map((item: any) => {
         const price = prices?.find((p) => p.item_id === item.id);
         return {
           ...item,
-          brand: item.main_group,
+          supplier: item.supplier?.name || '',
+          gender: item.gender?.name || '',
+          main_group: item.main_group?.name || '',
+          category: item.category?.name || '',
+          origin: item.origin?.name || '',
+          season: item.season?.name || '',
+          size: item.size?.name || '',
+          color: item.color?.name || '',
+          theme: item.theme?.name || '',
+          brand: item.main_group?.name || '',
           cost_price: price?.cost_price || 0,
           selling_price: price?.selling_price || 0,
         };
@@ -67,17 +88,22 @@ export const useReportsData = () => {
   const lowStockQuery = useQuery({
     queryKey: queryKeys.reports.lowStock,
     queryFn: async () => {
-      // Column comparison filter removed to prevent runtime errors.
       const { data, error } = await supabase
         .from("items")
-        .select("name, sku, quantity, min_stock, location, category, main_group");
+        .select(`
+          name, sku, quantity, min_stock, location,
+          category:categories(name),
+          main_group:main_groups(name)
+        `);
       if (error) throw error;
 
-      // Apply the brand mapping here
+      // Resolve attribute names
       return (
-        data?.map((item) => ({
+        data?.map((item: any) => ({
           ...item,
-          brand: item.main_group,
+          category: item.category?.name || '',
+          main_group: item.main_group?.name || '',
+          brand: item.main_group?.name || '',
         })) || []
       );
     },
@@ -127,12 +153,10 @@ export const useReportsData = () => {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: async () => {
-      // Fetches UUIDs from the category foreign key
-      const { data, error } = await supabase.from("items").select("category");
+      const { data, error } = await supabase.from("categories").select("name").order("name");
       if (error) throw error;
 
-      const categories = data?.map((row) => row.category).filter((cat) => cat) || [];
-      return Array.from(new Set(categories));
+      return data?.map((row) => row.name) || [];
     },
     staleTime: 1000 * 60 * 60 * 24,
   });
@@ -140,12 +164,10 @@ export const useReportsData = () => {
   const brandsQuery = useQuery({
     queryKey: queryKeys.reports.brands,
     queryFn: async () => {
-      // Using 'main_group' as a stand-in for brand
-      const { data, error } = await supabase.from("items").select("main_group");
+      const { data, error } = await supabase.from("main_groups").select("name").order("name");
       if (error) throw error;
 
-      const brands = data?.map((row) => row.main_group).filter((brand) => brand) || [];
-      return Array.from(new Set(brands));
+      return data?.map((row) => row.name) || [];
     },
     staleTime: 1000 * 60 * 60 * 24,
   });

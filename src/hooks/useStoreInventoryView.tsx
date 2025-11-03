@@ -61,8 +61,22 @@ export const useAggregatedInventory = () => {
     queryFn: async (): Promise<Item[]> => {
       console.log("Fetching aggregated inventory...");
 
-      // First, fetch all items to get their complete data
-      const { data: itemsData, error: itemsError } = await supabase.from("items").select("*").order("name");
+      // First, fetch all items with joined attribute names
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("items")
+        .select(`
+          *,
+          supplier:suppliers(name),
+          gender:genders(name),
+          main_group:main_groups(name),
+          category:categories(name),
+          origin:origins(name),
+          season:seasons(name),
+          size:sizes(name),
+          color:colors(name),
+          theme:themes(name)
+        `)
+        .order("name");
 
       if (itemsError) {
         console.error("Error fetching items:", itemsError);
@@ -101,9 +115,18 @@ export const useAggregatedInventory = () => {
         return acc;
       }, {});
 
-      // Combine item data with aggregated stock information
-      const result = (itemsData || []).map((item: Item) => ({
+      // Combine item data with aggregated stock information and resolve attribute names
+      const result = (itemsData || []).map((item: any) => ({
         ...item,
+        supplier: item.supplier?.name || '',
+        gender: item.gender?.name || '',
+        main_group: item.main_group?.name || '',
+        category: item.category?.name || '',
+        origin: item.origin?.name || '',
+        season: item.season?.name || '',
+        size: item.size?.name || '',
+        color: item.color?.name || '',
+        theme: item.theme?.name || '',
         quantity: stockMap[item.id]?.total_quantity || 0,
         total_quantity: stockMap[item.id]?.total_quantity || 0,
         stores: stockMap[item.id]?.stores || [],

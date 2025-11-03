@@ -32,18 +32,22 @@ export const useAlertsData = () => {
     queryFn: async (): Promise<AlertItem[]> => {
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, sku, category, location, supplier, quantity, unit, min_stock")
+        .select(`
+          id, name, sku, quantity, unit, min_stock, location,
+          category:categories(name),
+          supplier:suppliers(name)
+        `)
         .eq("quantity", 0);
 
       if (error) throw error;
 
-      return data.map(item => ({
+      return data.map((item: any) => ({
         id: item.id,
         name: item.name,
         sku: item.sku,
-        category: item.category,
+        category: item.category?.name || '',
         location: item.location,
-        supplier: item.supplier,
+        supplier: item.supplier?.name || '',
         quantity: item.quantity,
         unit: item.unit,
         minStock: item.min_stock,
@@ -58,20 +62,24 @@ export const useAlertsData = () => {
     queryFn: async (): Promise<AlertItem[]> => {
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, sku, category, location, supplier, quantity, unit, min_stock")
+        .select(`
+          id, name, sku, quantity, unit, min_stock, location,
+          category:categories(name),
+          supplier:suppliers(name)
+        `)
         .gt("quantity", 0);
 
       if (error) throw error;
 
       return data
-        .filter(item => item.quantity <= item.min_stock)
-        .map(item => ({
+        .filter((item: any) => item.quantity <= item.min_stock)
+        .map((item: any) => ({
           id: item.id,
           name: item.name,
           sku: item.sku,
-          category: item.category,
+          category: item.category?.name || '',
           location: item.location,
-          supplier: item.supplier,
+          supplier: item.supplier?.name || '',
           quantity: item.quantity,
           unit: item.unit,
           minStock: item.min_stock,
