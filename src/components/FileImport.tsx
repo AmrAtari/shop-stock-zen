@@ -14,30 +14,55 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Upload, FileSpreadsheet, Download, AlertCircle, CheckCircle, XCircle } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "sonner"; // Make sure 'sonner' is installed
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
-import { Item, DuplicateComparison } from "@/types/database";
 import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 import { Progress } from "@/components/ui/progress";
 
+// --- Types ---
 interface FileImportProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImportComplete: () => void;
 }
 
-type ImportType = "full" | "quantity_only";
+interface AttributeToConfirm {
+  column: string;
+  value: string;
+}
 
-// --- Header Mapping ---
-const HEADER_MAP: { [key: string]: keyof ImportData | undefined } = {
+export interface ImportData {
+  sku: string;
+  name: string;
+  pos_description?: string;
+  item_number?: string;
+  supplier: string;
+  gender?: string;
+  main_group: string;
+  category: string;
+  origin?: string;
+  season?: string;
+  size?: string;
+  color?: string;
+  color_id?: string;
+  item_color_code?: string;
+  color_id_code?: string;
+  theme?: string;
+  quantity?: number;
+  price: number;
+  cost: number;
+  tax?: number;
+}
+
+// --- HEADER MAP ---
+const HEADER_MAP: { [key: string]: keyof ImportData } = {
   SKU: "sku",
   Name: "name",
-  "Pos Description": "pos_description",
   "POS Description": "pos_description",
   "Item Number": "item_number",
   Supplier: "supplier",
@@ -60,33 +85,7 @@ const HEADER_MAP: { [key: string]: keyof ImportData | undefined } = {
   Tax: "tax",
 };
 
-// --- Zod schema ---
-const itemSchema = z.object({
-  sku: z.string().trim().min(1),
-  name: z.string().trim().min(1),
-  pos_description: z.string().trim().optional(),
-  item_number: z.string().trim().optional(),
-  supplier: z.string().trim().min(1),
-  gender: z.string().trim().optional(),
-  main_group: z.string().trim().min(1),
-  category: z.string().trim().min(1),
-  origin: z.string().trim().optional(),
-  season: z.string().trim().optional(),
-  size: z.string().trim().optional(),
-  color: z.string().trim().optional(),
-  color_id: z.string().trim().optional(),
-  item_color_code: z.string().trim().optional(),
-  color_id_code: z.string().trim().optional(),
-  theme: z.string().trim().optional(),
-  quantity: z.number().min(0).optional(),
-  price: z.number().min(0),
-  cost: z.number().min(0),
-  tax: z.number().min(0).optional(),
-});
-
-type ImportData = z.infer<typeof itemSchema>;
-
-// --- Attribute mapping ---
+// --- ATTRIBUTE COLUMNS ---
 const ATTRIBUTE_COLUMNS = [
   { header: "Supplier", table: "suppliers", column: "name" },
   { header: "Gender", table: "genders", column: "name" },
@@ -99,12 +98,31 @@ const ATTRIBUTE_COLUMNS = [
   { header: "Theme", table: "themes", column: "name" },
 ] as const;
 
-type AttributeToConfirm = {
-  column: (typeof ATTRIBUTE_COLUMNS)[number]["header"];
-  value: string;
-};
+// --- Zod Schema ---
+const itemSchema = z.object({
+  sku: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  pos_description: z.string().optional(),
+  item_number: z.string().optional(),
+  supplier: z.string().trim().min(1),
+  gender: z.string().optional(),
+  main_group: z.string().trim().min(1),
+  category: z.string().trim().min(1),
+  origin: z.string().optional(),
+  season: z.string().optional(),
+  size: z.string().optional(),
+  color: z.string().optional(),
+  color_id: z.string().optional(),
+  item_color_code: z.string().optional(),
+  color_id_code: z.string().optional(),
+  theme: z.string().optional(),
+  quantity: z.number().min(0).optional(),
+  price: z.number().min(0),
+  cost: z.number().min(0),
+  tax: z.number().min(0).optional(),
+});
 
-// --- Transform row ---
+// --- Utility: Transform row ---
 const transformDataRow = (row: any): Partial<ImportData> => {
   const newRow: Partial<ImportData> = {};
   for (const key in row) {
@@ -124,229 +142,79 @@ const transformDataRow = (row: any): Partial<ImportData> => {
   return newRow;
 };
 
+// --- FileImport Component ---
 const FileImport: React.FC<FileImportProps> = ({ open, onOpenChange, onImportComplete }) => {
   const queryClient = useQueryClient();
-
   const [file, setFile] = useState<File | null>(null);
-  const [importType, setImportType] = useState<ImportType>("full");
+  const [importType, setImportType] = useState<"full" | "quantity_only">("full");
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [importResults, setImportResults] = useState<{
-    total: number;
-    success: number;
-    failed: number;
-    duplicates: number;
-  } | null>(null);
-  const [errorDetails, setErrorDetails] = useState<string[]>([]);
-  const [duplicateErrors, setDuplicateErrors] = useState<DuplicateComparison[]>([]);
-  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
-
   const [newAttributesToConfirm, setNewAttributesToConfirm] = useState<AttributeToConfirm[]>([]);
   const [isConfirmationDialogOpen, setIsConfirmationDialogOpen] = useState(false);
   const [dataToProcess, setDataToProcess] = useState<ImportData[]>([]);
 
-  const resetState = () => {
-    setFile(null);
-    setIsLoading(false);
-    setProgress(0);
-    setImportResults(null);
-    setErrorDetails([]);
-    setDuplicateErrors([]);
-    setNewAttributesToConfirm([]);
-    setIsConfirmationDialogOpen(false);
-    setDataToProcess([]);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) setFile(e.target.files[0]);
   };
 
-  // --- File parsing ---
-  const parseFile = (file: File): Promise<any[]> => {
-    return new Promise((resolve, reject) => {
+  const parseFile = (file: File) =>
+    new Promise<any[]>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
           const data = e.target?.result;
-          let json: any[] = [];
           if (file.name.endsWith(".csv")) {
             Papa.parse(data as string, {
               header: true,
               skipEmptyLines: true,
-              transformHeader: (header) => header.trim(),
-              complete: (results) => {
-                json = results.data.filter((d) => Object.values(d).some((v) => v !== null && v !== ""));
-                resolve(json);
-              },
-              error: (err) => reject(err.message),
+              complete: (results) => resolve(results.data),
+              error: (err) => reject(err),
             });
           } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
             const workbook = XLSX.read(data, { type: "binary" });
             const sheetName = workbook.SheetNames[0];
-            json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-            resolve(json);
-          } else {
-            reject("Unsupported file type. Use CSV or Excel.");
-          }
-        } catch (err: any) {
-          reject(err.message || "Failed to parse file.");
+            resolve(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]));
+          } else reject("Unsupported file type.");
+        } catch (err) {
+          reject(err);
         }
       };
-      reader.onerror = () => reject("Error reading file.");
+      reader.onerror = () => reject("File read error");
       reader.readAsBinaryString(file);
     });
-  };
 
-  // --- Attribute helpers ---
-  const checkAttributeExistence = useCallback(
-    async (table: string, column: string, value: string): Promise<boolean> => {
-      if (!value) return true;
-      const normalizedValue = value.trim();
-      const { count, error } = await supabase.from(table).select(column, { count: "exact", head: true }).ilike(column, normalizedValue);
-      if (error) {
-        console.error(`Error checking ${table}:`, error);
-        return false;
-      }
-      return (count || 0) > 0;
-    },
-    []
-  );
-
-  const createAttribute = useCallback(
-    async (table: string, column: string, value: string): Promise<string | null> => {
-      const normalizedValue = value.trim();
-      const exists = await checkAttributeExistence(table, column, normalizedValue);
-      if (exists) {
-        const { data, error } = await supabase.from(table).select("id").ilike(column, normalizedValue).limit(1).single();
-        if (error) throw new Error(`Failed to fetch ${table}: ${error.message}`);
-        return data?.id || null;
-      }
-      const { data, error } = await supabase.from(table).insert({ [column]: normalizedValue }).select("id").single();
-      if (error) throw new Error(`Supabase error creating ${table}: ${error.message}`);
-      return data?.id || null;
-    },
-    [checkAttributeExistence]
-  );
-
-  // --- Handle import ---
   const handleFileImport = async () => {
-    if (!file) return toast.error("Select a file first.");
+    if (!file) return toast.error("Please select a file");
+    setIsLoading(true);
     try {
-      setIsLoading(true);
       const parsed = await parseFile(file);
       const transformed = parsed.map(transformDataRow);
-      setDataToProcess(transformed);
-
-      // Check missing attributes
-      const missingAttributes: AttributeToConfirm[] = [];
-      for (const row of transformed) {
-        for (const attr of ATTRIBUTE_COLUMNS) {
-          const value = row[HEADER_MAP[attr.header] as keyof ImportData];
-          if (value && typeof value === "string") {
-            const exists = await checkAttributeExistence(attr.table, attr.column, value);
-            if (!exists) missingAttributes.push({ column: attr.header, value }));
-          }
-        }
-      }
-
-      if (missingAttributes.length > 0) {
-        setNewAttributesToConfirm(missingAttributes);
-        setIsConfirmationDialogOpen(true);
-        return;
-      }
-
-      await processData(transformed);
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Import failed.");
-    } finally {
+      setDataToProcess(transformed as ImportData[]);
       setIsLoading(false);
-    }
-  };
-
-  const processData = async (data: ImportData[]) => {
-    try {
-      const total = data.length;
-      let success = 0;
-      let failed = 0;
-      let duplicates: DuplicateComparison[] = [];
-
-      for (let i = 0; i < data.length; i++) {
-        setProgress(Math.round((i / total) * 100));
-        const row = data[i];
-
-        // Duplicate check
-        const { data: existing, error } = await supabase
-          .from<Item>("store_inventory")
-          .select("*")
-          .eq("sku", row.sku)
-          .single();
-        if (existing) {
-          duplicates.push({ newRow: row, existing });
-          continue;
-        }
-
-        const { error: insertError } = await supabase.from("store_inventory").insert(row);
-        if (insertError) {
-          failed++;
-        } else {
-          success++;
-        }
-      }
-
-      setProgress(100);
-      setImportResults({ total, success, failed, duplicates: duplicates.length });
-      if (duplicates.length > 0) setDuplicateDialogOpen(true);
-      toast.success("Import completed!");
-      invalidateInventoryData(queryClient);
-      onImportComplete();
+      toast.success("File parsed successfully!");
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Error processing data.");
-    } finally {
+      toast.error(err.message || "Parsing failed");
       setIsLoading(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Import Inventory</DialogTitle>
-          <DialogDescription>Upload Excel or CSV file to import inventory items.</DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="file">
-          <TabsList>
-            <TabsTrigger value="file">File Upload</TabsTrigger>
-            <TabsTrigger value="google">Google Sheets</TabsTrigger>
-          </TabsList>
+        <div className="mt-4">
+          <Label>Select File</Label>
+          <Input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} />
+          {file && <p>Selected: {file.name}</p>}
+          <Button className="mt-2" onClick={handleFileImport} disabled={isLoading || !file}>
+            <Upload className="w-4 h-4 mr-2" /> Start Import
+          </Button>
+        </div>
 
-          <TabsContent value="file">
-            <div className="flex flex-col gap-4">
-              <Input type="file" onChange={(e) => e.target.files && setFile(e.target.files[0])} />
-              <Select onValueChange={(value: ImportType) => setImportType(value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select import type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="full">Full Import</SelectItem>
-                  <SelectItem value="quantity_only">Quantity Only</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={handleFileImport} disabled={isLoading}>
-                {isLoading ? "Importing..." : "Start Import"}
-              </Button>
-              {isLoading && <Progress value={progress} />}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="google">
-            <GoogleSheetsInput
-              importType={importType}
-              onImportComplete={onImportComplete}
-              setIsLoading={setIsLoading}
-              setProgress={setProgress}
-              setErrorDetails={setErrorDetails}
-            />
-          </TabsContent>
-        </Tabs>
+        {isLoading && <Progress value={progress} className="mt-2" />}
       </DialogContent>
     </Dialog>
   );
