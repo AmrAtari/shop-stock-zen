@@ -53,7 +53,7 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory including POs, transfers, and adjustments ---
+// --- Fetch inventory data including PO, transfers, transactions ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
@@ -75,126 +75,84 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   if (itemsError) throw itemsError;
 
-  // --- Store inventory ---
-  const { data: storeInventory, error: storeError } = await supabase
-    .from("store_inventory")
-    .select("item_id, store_id, quantity");
-  if (storeError) throw storeError;
-
-  const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
-  if (storesError) throw storesError;
-
-  const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
-
-  const stockMap: Record<string, { total_quantity: number; stores: StoreStock[] }> = {};
-
-  // Add store_inventory
-  (storeInventory || []).forEach((record: any) => {
-    const itemId = record.item_id;
-    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
-    stockMap[itemId].total_quantity += Number(record.quantity) || 0;
-    stockMap[itemId].stores.push({
-      store_id: record.store_id,
-      store_name: storeMap[record.store_id] || "Unknown",
-      quantity: Number(record.quantity) || 0,
-    });
-  });
-
-  // --- Purchase Orders ---
+  // Fetch purchase orders
   const { data: poItems, error: poError } = await supabase
     .from("purchase_order_items")
     .select("item_id, received_quantity");
   if (poError) throw poError;
 
-  (poItems || []).forEach((po: any) => {
-    const itemId = po.item_id;
-    const received = Number(po.received_quantity) || 0;
-    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
-    stockMap[itemId].total_quantity += received;
+  const poMap = (poItems || []).reduce((acc: any, po: any) => {
+    acc[po.item_id] = (acc[po.item_id] || 0) + Number(po.received_quantity || 0);
+    return acc;
+  }, {});
+
+  // Fetch transfers
+  const { data: transfersData, error: transfersError } = await supabase.from("transfers").select(`
+      transfer_id,
+      from_store_id,
+      to_store_id,
+      transfer_items:transfer_items(variant_id, quantity)
+    `);
+  if (transfersError) throw transfersError;
+
+  const transferMap: Record<string, number> = {};
+  (transfersData || []).forEach((t: any) => {
+    t.transfer_items.forEach((ti: any) => {
+      // Subtract from from_store
+      transferMap[ti.variant_id] = (transferMap[ti.variant_id] || 0) - Number(ti.quantity || 0);
+      // Add to to_store
+      transferMap[ti.variant_id] += Number(ti.quantity || 0);
+    });
   });
 
-  // --- Stock Transfers ---
-  const { data: transfers, error: transferError } = await supabase
-    .from("stock_transfers")
-    .select("item_id, from_store_id, to_store_id, quantity");
-  if (transferError) throw transferError;
+  // Fetch transactions (sales and refunds)
+  const { data: transactionsData, error: transError } = await supabase
+    .from("transactions")
+    .select("item_id, quantity, is_refund, is_refunded");
+  if (transError) throw transError;
 
-  (transfers || []).forEach((t: any) => {
-    const itemId = t.item_id;
-    const qty = Number(t.quantity) || 0;
-    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
-    // Remove from source store
-    if (t.from_store_id) {
-      const storeEntry = stockMap[itemId].stores.find((s) => s.store_id === t.from_store_id);
-      if (storeEntry) storeEntry.quantity -= qty;
-      stockMap[itemId].total_quantity -= qty;
-    }
-    // Add to destination store
-    if (t.to_store_id) {
-      const storeEntry = stockMap[itemId].stores.find((s) => s.store_id === t.to_store_id);
-      if (storeEntry) storeEntry.quantity += qty;
-      else
-        stockMap[itemId].stores.push({
-          store_id: t.to_store_id,
-          store_name: storeMap[t.to_store_id] || "Unknown",
-          quantity: qty,
-        });
-      stockMap[itemId].total_quantity += qty;
-    }
+  const transMap = (transactionsData || []).reduce((acc: any, t: any) => {
+    let qty = Number(t.quantity || 0);
+    if (t.is_refund || t.is_refunded)
+      qty = qty; // refund adds back
+    else qty = -qty; // sold decreases stock
+    acc[t.item_id] = (acc[t.item_id] || 0) + qty;
+    return acc;
+  }, {});
+
+  return (itemsData || []).map((item: any) => {
+    const quantity = (poMap[item.id] || 0) + (transferMap[item.id] || 0) + (transMap[item.id] || 0);
+
+    return {
+      id: item.id,
+      sku: item.sku || "N/A",
+      name: item.name || "N/A",
+      supplier: item.supplier?.name || "",
+      gender: item.gender?.name || "",
+      main_group: item.main_group?.name || "",
+      category: item.category?.name || "",
+      origin: item.origin?.name || "",
+      season: item.season?.name || "",
+      size: item.size?.name || "",
+      color: item.color?.name || "",
+      theme: item.theme?.name || "",
+      unit: item.unit || "",
+      price: item.price || 0,
+      cost: item.cost || 0,
+      item_number: item.item_number || "",
+      pos_description: item.pos_description || "",
+      description: item.description || "",
+      color_id: item.color_id || "",
+      item_color_code: item.item_color_code || "",
+      color_id_code: item.color_id_code || "",
+      location: item.location || "",
+      quantity,
+      min_stock: item.min_stock || 0,
+      last_restocked: item.last_restocked,
+      created_at: item.created_at,
+      stores: [], // Can be added later when physical inventory is used
+    };
   });
-
-  // --- Stock Adjustments ---
-  const { data: adjustments, error: adjError } = await supabase
-    .from("stock_adjustments")
-    .select("item_id, store_id, quantity");
-  if (adjError) throw adjError;
-
-  (adjustments || []).forEach((adj: any) => {
-    const itemId = adj.item_id;
-    const qty = Number(adj.quantity) || 0;
-    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
-    stockMap[itemId].total_quantity += qty;
-    if (adj.store_id) {
-      const storeEntry = stockMap[itemId].stores.find((s) => s.store_id === adj.store_id);
-      if (storeEntry) storeEntry.quantity += qty;
-      else
-        stockMap[itemId].stores.push({
-          store_id: adj.store_id,
-          store_name: storeMap[adj.store_id] || "Unknown",
-          quantity: qty,
-        });
-    }
-  });
-
-  return (itemsData || []).map((item: any) => ({
-    id: item.id,
-    sku: item.sku || "N/A",
-    name: item.name || "N/A",
-    supplier: item.supplier?.name || "",
-    gender: item.gender?.name || "",
-    main_group: item.main_group?.name || "",
-    category: item.category?.name || "",
-    origin: item.origin?.name || "",
-    season: item.season?.name || "",
-    size: item.size?.name || "",
-    color: item.color?.name || "",
-    theme: item.theme?.name || "",
-    unit: item.unit || "",
-    price: item.price || 0,
-    cost: item.cost || 0,
-    item_number: item.item_number || "",
-    pos_description: item.pos_description || "",
-    description: item.description || "",
-    color_id: item.color_id || "",
-    item_color_code: item.item_color_code || "",
-    color_id_code: item.color_id_code || "",
-    location: item.location || "",
-    quantity: stockMap[item.id]?.total_quantity || 0,
-    min_stock: item.min_stock || 0,
-    last_restocked: item.last_restocked,
-    created_at: item.created_at,
-    stores: stockMap[item.id]?.stores || [],
-  }));
 };
 
 const useInventoryQuery = () => {
@@ -333,8 +291,183 @@ const InventoryPage: React.FC = () => {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header, Filters, Table and Dialogs remain exactly as your original code */}
-      {/* ...use the original code here (unchanged) */}
+      <header className="flex justify-between items-center border-b pb-4">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <Layers className="w-6 h-6" /> Inventory Management
+        </h1>
+        <div className="flex gap-2">
+          <Button onClick={() => setImportOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" /> Import / Export
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingItem(null);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="w-4 h-4 mr-2" /> New Item
+          </Button>
+        </div>
+      </header>
+
+      {/* Filters */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <Search className="w-5 h-5 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, SKU, or item number..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+          <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          {[
+            { label: "Supplier", value: filterSupplier, setter: setFilterSupplier, options: supplierOptions },
+            { label: "Category", value: filterCategory, setter: setFilterCategory, options: categoryOptions },
+            { label: "Main Group", value: filterMainGroup, setter: setFilterMainGroup, options: mainGroupOptions },
+            { label: "Store", value: filterStore, setter: setFilterStore, options: stores.map((s) => s.name) },
+            { label: "Season", value: filterSeason, setter: setFilterSeason, options: seasonOptions },
+            { label: "Color", value: filterColor, setter: setFilterColor, options: colorOptions },
+            { label: "Size", value: filterSize, setter: setFilterSize, options: sizeOptions },
+          ].map(({ label, value, setter, options }) => (
+            <Select key={label} value={value} onValueChange={(v) => setter(v === "all" ? "" : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={label} />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                <SelectItem value="all">All {label}s</SelectItem>
+                {options.map((o: any) => (
+                  <SelectItem key={o} value={o}>
+                    {o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="border rounded-lg overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[50px] text-center">
+                <Checkbox
+                  checked={selectedItems.length > 0 && selectedItems.length === displayInventory.length}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
+              <TableHead>SKU</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Supplier</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Main Group</TableHead>
+              <TableHead>Gender</TableHead>
+              <TableHead>Origin</TableHead>
+              <TableHead>Season</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Color</TableHead>
+              <TableHead>Theme</TableHead>
+              <TableHead>Unit</TableHead>
+              <TableHead className="text-right">Stock Qty</TableHead>
+              <TableHead className="text-right">Min Stock</TableHead>
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
+            {displayInventory.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell className="text-center">
+                  <Checkbox
+                    checked={selectedItems.some((i) => i.id === item.id)}
+                    onCheckedChange={() => toggleSelectItem(item)}
+                  />
+                </TableCell>
+                <TableCell className="font-mono text-sm">{item.sku}</TableCell>
+                <TableCell className="font-medium">{item.name}</TableCell>
+                <TableCell>{item.supplier || "-"}</TableCell>
+                <TableCell>{item.category || "-"}</TableCell>
+                <TableCell>{item.main_group || "-"}</TableCell>
+                <TableCell>{item.gender || "-"}</TableCell>
+                <TableCell>{item.origin || "-"}</TableCell>
+                <TableCell>{item.season || "-"}</TableCell>
+                <TableCell>{item.size || "-"}</TableCell>
+                <TableCell>{item.color || "-"}</TableCell>
+                <TableCell>{item.theme || "-"}</TableCell>
+                <TableCell>{item.unit || "-"}</TableCell>
+                <TableCell className="text-right">
+                  <span className={item.quantity === 0 ? "text-muted-foreground" : ""}>{item.quantity}</span>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Badge variant={item.quantity <= item.min_stock ? "destructive" : "secondary"}>
+                    {item.min_stock}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "-"}</TableCell>
+                <TableCell className="text-right font-semibold">{item.price ? item.price.toFixed(2) : "-"}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setEditingItem(item);
+                        setDialogOpen(true);
+                      }}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(item.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <PaginationControls
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
+        goToPage={pagination.goToPage}
+        canGoPrev={pagination.canGoPrev}
+        canGoNext={pagination.canGoNext}
+        totalItems={filteredInventory.length}
+        startIndex={pagination.startIndex}
+        endIndex={pagination.endIndex}
+      />
+
+      <ProductDialogNew
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        item={
+          editingItem
+            ? {
+                ...editingItem,
+                sellingPrice: editingItem.price,
+                supplier_id: null,
+                product_id: editingItem.id,
+                tax_rate: null,
+                wholesale_price: null,
+                brand_id: null,
+                category_id: null,
+                gender_id: null,
+                origin_id: null,
+              }
+            : undefined
+        }
+        onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
+      />
+      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
     </div>
   );
 };
