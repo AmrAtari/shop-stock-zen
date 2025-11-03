@@ -55,7 +55,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { Pagination } from "@/components/ui/pagination";
 
-// *** IMPORT FIX: Changed path to match the actual file name "DatabaseAdminComponent.tsx" ***
+// IMPORT FIX: Changed path to match the actual file name "DatabaseAdminComponent.tsx"
 import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
 
 // --- TYPE DEFINITIONS ---
@@ -374,33 +374,34 @@ const Configuration = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // --- DYNAMIC SETTINGS LOADERS ---
-  const loadDynamicOptions = useCallback(async (tableName: string, setter: (items: CatalogItem[]) => void) => {
+  // --- DYNAMIC SETTINGS FETCHERS ---
+  // Refactored to fetch and return data, to be used synchronously in loadGeneralSettings
+  const fetchDynamicOptions = useCallback(async (tableName: string): Promise<CatalogItem[]> => {
     try {
-      // FIX for TS2345: Select 'created_at' to satisfy the CatalogItem interface
       const { data, error } = await supabase
         .from(tableName)
         .select("id, name, created_at")
         .order("name", { ascending: true });
 
       if (error) throw error;
-      setter(data || []);
+      return data || [];
     } catch (error) {
       console.error(`Error loading dynamic options for ${tableName}:`, error);
-      setter([]);
+      return [];
     }
   }, []);
-
-  const loadAllDynamicOptions = useCallback(() => {
-    loadDynamicOptions("currency_types", setDynamicCurrencies);
-    loadDynamicOptions("unit_types", setDynamicUnits);
-  }, [loadDynamicOptions]);
 
   // --- GENERAL SETTINGS LOGIC (Database Implemented) ---
 
   const loadGeneralSettings = useCallback(async () => {
-    // 1. Load Dynamic Lists
-    loadAllDynamicOptions();
+    // 1. Load Dynamic Lists synchronously
+    const [currencies, units] = await Promise.all([
+      fetchDynamicOptions("currency_types"),
+      fetchDynamicOptions("unit_types"),
+    ]);
+
+    setDynamicCurrencies(currencies);
+    setDynamicUnits(units);
 
     // 2. Load System Settings
     try {
@@ -420,6 +421,14 @@ const Configuration = () => {
           enableAuditLog: data.enable_audit_log,
           require2FA: data.require_2fa,
         });
+      } else {
+        // FIX: If no settings are found, initialize with the first dynamic option
+        // if available, overriding the hardcoded initial state.
+        setGeneralSettings((prev) => ({
+          ...prev,
+          currency: currencies.length > 0 ? currencies[0].name : prev.currency,
+          defaultUnit: units.length > 0 ? units[0].name : prev.defaultUnit,
+        }));
       }
     } catch (error: any) {
       console.error("Error loading settings:", error);
@@ -429,7 +438,7 @@ const Configuration = () => {
         variant: "destructive",
       });
     }
-  }, [loadAllDynamicOptions]);
+  }, [fetchDynamicOptions]); // Dependency updated
 
   useEffect(() => {
     loadGeneralSettings();
@@ -611,9 +620,14 @@ const Configuration = () => {
       setNewAttrName("");
       setNewAttrLabel("");
       loadAttributeTypes(); // Refresh the list
+
       // Refresh dynamic options if a relevant table was created
-      if (tableName === "currency_types" || tableName === "unit_types") {
-        loadAllDynamicOptions();
+      if (tableName === "currency_types") {
+        const currencies = await fetchDynamicOptions("currency_types");
+        setDynamicCurrencies(currencies);
+      } else if (tableName === "unit_types") {
+        const units = await fetchDynamicOptions("unit_types");
+        setDynamicUnits(units);
       }
     } catch (error: any) {
       toast({
@@ -654,12 +668,16 @@ const Configuration = () => {
       setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
 
       // Refresh dynamic options if a relevant table was modified
-      if (tableName === "currency_types" || tableName === "unit_types") {
-        loadAllDynamicOptions();
+      if (tableName === "currency_types") {
+        const currencies = await fetchDynamicOptions("currency_types");
+        setDynamicCurrencies(currencies);
+      } else if (tableName === "unit_types") {
+        const units = await fetchDynamicOptions("unit_types");
+        setDynamicUnits(units);
       }
     },
-    [loadAllDynamicOptions],
-  );
+    [fetchDynamicOptions],
+  ); // Dependency updated
 
   const handleOpenCatalog = (attr: AttributeType) => {
     setActiveCatalog(attr);
@@ -925,6 +943,7 @@ const Configuration = () => {
                         <SelectValue placeholder="Select default unit" />
                       </SelectTrigger>
                       <SelectContent>
+                        {/* FIX: Only show the fallback if dynamicUnits is empty */}
                         {dynamicUnits.map((u) => (
                           <SelectItem key={u.id} value={u.name}>
                             {u.name}
