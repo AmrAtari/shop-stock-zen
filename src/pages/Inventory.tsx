@@ -1,58 +1,62 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ItemWithDetails } from "@/types";
+import { ItemWithDetails, FileImportProps, ProductDialogNewProps } from "@/types";
 import { PaginationControls } from "@/components/PaginationControls";
 import { ProductDialogNew } from "@/components/ProductDialogNew";
 import { FileImport } from "@/components/FileImport";
 
-const ITEMS_PER_PAGE = 10;
-
 export const Inventory: React.FC = () => {
-  const [page, setPage] = useState(1);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ItemWithDetails | undefined>();
-  const [importOpen, setImportOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [editingItem, setEditingItem] = useState<ItemWithDetails | undefined>(undefined);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFileImportOpen, setIsFileImportOpen] = useState(false);
 
-  const fetchInventoryItems = async (): Promise<ItemWithDetails[]> => {
+  const { data: items = [], isLoading } = useQuery<ItemWithDetails[], Error>(["inventory-items"], async () => {
     const { data, error } = await supabase.from("store_inventory").select("*");
     if (error) throw error;
     return data as ItemWithDetails[];
-  };
+  });
 
-  const {
-    data: items = [],
-    isLoading,
-    isError,
-  } = useQuery<ItemWithDetails[], Error>(["inventory-items"], fetchInventoryItems);
-
-  const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE);
-  const pagedItems = items.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(items.length / pageSize);
+  const paginatedItems = items.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div>
-      <h1>Inventory</h1>
-      <button onClick={() => setImportOpen(true)}>Import File</button>
-
-      {isLoading && <div>Loading...</div>}
-      {isError && <div>Error loading inventory</div>}
-      {!isLoading && items.length === 0 && <div>No items found</div>}
-
-      {pagedItems.length > 0 && (
-        <table>
-          <thead>
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Inventory</h1>
+      <button className="mb-4 px-4 py-2 bg-green-500 text-white rounded" onClick={() => setIsFileImportOpen(true)}>
+        Import File
+      </button>
+      <table className="w-full border">
+        <thead>
+          <tr className="bg-gray-200">
+            <th>ID</th>
+            <th>Name</th>
+            <th>SKU</th>
+            <th>Category</th>
+            <th>Quantity</th>
+            <th>Price</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {isLoading ? (
             <tr>
-              <th>Name</th>
-              <th>SKU</th>
-              <th>Category</th>
-              <th>Quantity</th>
-              <th>Price</th>
-              <th>Actions</th>
+              <td colSpan={7} className="text-center p-4">
+                Loading...
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {pagedItems.map((item) => (
-              <tr key={item.id}>
+          ) : paginatedItems.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="text-center p-4">
+                No items found
+              </td>
+            </tr>
+          ) : (
+            paginatedItems.map((item) => (
+              <tr key={item.id} className="border-t">
+                <td>{item.id}</td>
                 <td>{item.name}</td>
                 <td>{item.sku}</td>
                 <td>{item.category}</td>
@@ -60,35 +64,28 @@ export const Inventory: React.FC = () => {
                 <td>{item.price}</td>
                 <td>
                   <button
+                    className="px-2 py-1 bg-blue-500 text-white rounded"
                     onClick={() => {
                       setEditingItem(item);
-                      setDialogOpen(true);
+                      setIsDialogOpen(true);
                     }}
                   >
                     Edit
                   </button>
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            ))
+          )}
+        </tbody>
+      </table>
+      <PaginationControls currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
 
-      <PaginationControls
-        currentPage={page}
-        totalPages={totalPages}
-        onChange={setPage}
-        totalItems={items.length}
-        startIndex={(page - 1) * ITEMS_PER_PAGE}
-        endIndex={Math.min(page * ITEMS_PER_PAGE, items.length)}
-      />
-
-      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} editingItem={editingItem} />
+      <ProductDialogNew open={isDialogOpen} onOpenChange={setIsDialogOpen} editingItem={editingItem} />
 
       <FileImport
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        onImportComplete={() => console.log("Import complete")}
+        open={isFileImportOpen}
+        onOpenChange={setIsFileImportOpen}
+        onImportComplete={() => console.log("File imported")}
       />
     </div>
   );
