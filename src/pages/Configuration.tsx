@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  // Added icons for new functionality
   Boxes,
   Ruler,
   Tags,
@@ -30,10 +29,12 @@ import {
   Eye,
   Database,
   RotateCcw,
-  DollarSign, // New ERP financial icon
-  Lock, // New ERP security icon
-  Save, // New ERP save icon
-  MonitorOff, // New icon for disabled UI
+  DollarSign, // NEW ICON
+  Lock, // NEW ICON
+  Save, // NEW ICON
+  MonitorOff, // NEW ICON
+  Briefcase,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +55,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
-import { Pagination } from "@/components/ui/pagination";
 
 // *** DEFINITIVE FIX: New File Name (DatabaseAdminComponent.tsx) ***
 import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
@@ -104,13 +104,14 @@ const ATTRIBUTE_ICONS = [
   { value: "CloudSun", icon: CloudSun },
   { value: "MapPin", icon: MapPin },
   { value: "Warehouse", icon: Warehouse },
-  { value: "DollarSign", icon: DollarSign },
+  { value: "DollarSign", icon: DollarSign }, // Added
 ];
 
 // --- MOCK AUTH HOOK for Role-Based UI (SECURITY UX) ---
 // *** IMPORTANT: Replace this with your actual useAuth hook ***
 const useAuth = () => {
   // Set to "admin" to view all functionality, "supervisor" to test role-based restrictions.
+  // Set this to "admin" to enable the Add User/Attribute buttons and Save Settings
   const [userRole, setUserRole] = useState<UserRole>("admin");
   return { userRole };
 };
@@ -148,7 +149,6 @@ const useSystemSettings = () => {
   }, []);
 
   const loadGeneralSettings = useCallback(async () => {
-    // Fetch dynamic lists first
     const [currencies, units] = await Promise.all([
       fetchDynamicOptions("currency_types"),
       fetchDynamicOptions("unit_types"),
@@ -161,10 +161,8 @@ const useSystemSettings = () => {
     const unitNames = units.map((u) => u.name);
 
     try {
-      // Fetch the single row of system settings
       const { data, error } = await supabase.from("system_settings").select("*").limit(1).single();
 
-      // PGRST116 means "no rows found" - handled as defaults
       if (error && error.code !== "PGRST116") throw error;
 
       let initialSettings: GeneralSettings = data
@@ -177,7 +175,6 @@ const useSystemSettings = () => {
             require2FA: data.require_2fa,
           }
         : {
-            // Default fallback settings
             currency: "USD",
             defaultTaxRate: "5.0",
             defaultUnit: "kg",
@@ -186,7 +183,6 @@ const useSystemSettings = () => {
             require2FA: false,
           };
 
-      // Validation: Ensure default values exist in the dynamic lists
       if (!currencyNames.includes(initialSettings.currency) && currencies.length > 0) {
         initialSettings.currency = currencies[0].name;
       }
@@ -209,7 +205,6 @@ const useSystemSettings = () => {
     loadGeneralSettings();
   }, [loadGeneralSettings]);
 
-  // Type-safe change handler
   const handleSettingsChange = useCallback(<K extends keyof GeneralSettings>(key: K, value: GeneralSettings[K]) => {
     setGeneralSettings((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -223,7 +218,6 @@ const useSystemSettings = () => {
     setIsSavingSettings(true);
     const settingsToSave = {
       currency: generalSettings.currency,
-      // Convert string inputs to proper types for Supabase
       default_tax_rate: parseFloat(generalSettings.defaultTaxRate) || 0,
       default_unit: generalSettings.defaultUnit,
       low_stock_threshold: generalSettings.lowStockThreshold,
@@ -233,11 +227,10 @@ const useSystemSettings = () => {
     };
 
     try {
-      // Upsert logic: if the row exists (eq), update. If not, insert.
       const { error } = await supabase
         .from("system_settings")
         .upsert(settingsToSave, { onConflict: "id" })
-        .eq("id", SYSTEM_SETTINGS_ID) // Only update the single config row
+        .eq("id", SYSTEM_SETTINGS_ID)
         .single();
 
       if (error) throw error;
@@ -259,7 +252,6 @@ const useSystemSettings = () => {
     }
   };
 
-  // Expose a function to reload dynamic lists after a catalog change
   const reloadDynamicLists = useCallback(() => {
     loadGeneralSettings();
   }, [loadGeneralSettings]);
@@ -286,7 +278,249 @@ const useSystemSettings = () => {
   );
 };
 
-// --- UserPermissionsDialog, AddUserDialog, and Catalog Management functions (Omitted for brevity, assumed to be here) ---
+// 1. User Permissions Dialog (Modified to use isAdmin check)
+interface UserPermissionsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  user: UserWithRole | null;
+  onSave: (userId: string, newRole: UserWithRole["role"]) => Promise<void>;
+  onDelete: (userId: string) => Promise<void>;
+}
+
+const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
+  open,
+  onOpenChange,
+  user,
+  onSave,
+  onDelete,
+}) => {
+  const { userRole } = useAuth(); // Check role for button visibility
+  const isAdmin = userRole === "admin";
+  const [currentRole, setCurrentRole] = useState<UserWithRole["role"]>(user?.role || null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const availableRoles = ["admin", "inventory_man", "supervisor", "user"];
+
+  useEffect(() => {
+    setCurrentRole(user?.role || null);
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!user || !currentRole) return;
+    setIsSaving(true);
+    await onSave(user.id, currentRole);
+    setIsSaving(false);
+    onOpenChange(false);
+  };
+
+  const handleDelete = async () => {
+    if (!user) return;
+    setIsDeleting(true);
+    await onDelete(user.id);
+    setIsDeleting(false);
+    onOpenChange(false);
+  };
+
+  if (!user) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage Permissions for {user.email}</DialogTitle>
+          <DialogDescription>Update the system role for this user and view account details.</DialogDescription>
+        </DialogHeader>
+
+        {isAdmin ? (
+          <div className="grid gap-4 py-4">
+            {/* Role Management */}
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="role" className="w-[100px]">
+                System Role
+              </Label>
+              <Select
+                value={currentRole || ""}
+                onValueChange={(value) => setCurrentRole(value as UserWithRole["role"])}
+                disabled={isSaving || isDeleting}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableRoles.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role.charAt(0).toUpperCase() + role.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Account Details */}
+            <Card className="mt-2">
+              <CardHeader className="py-2">
+                <CardTitle className="text-sm">Account Info</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <p className="flex justify-between">
+                  <span className="text-gray-500">User ID:</span> <span>{user.id.slice(0, 8)}...</span>
+                </p>
+                <p className="flex justify-between">
+                  <span className="text-gray-500">Created:</span>{" "}
+                  <span>{new Date(user.created_at).toLocaleDateString()}</span>
+                </p>
+                <p className="flex justify-between">
+                  <span className="text-gray-500">Last Sign-in:</span>{" "}
+                  <span>{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "Never"}</span>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <Card className="p-4 bg-yellow-50 border-yellow-200 text-yellow-800">
+            <p className="flex items-center font-medium">
+              <MonitorOff className="w-4 h-4 mr-2" /> View Only
+            </p>
+            <p className="text-sm">You do not have permission to modify this user's role.</p>
+          </Card>
+        )}
+
+        <DialogFooter className="flex justify-between">
+          {isAdmin ? (
+            <>
+              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || isSaving}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                {isDeleting ? "Removing Role..." : "Remove Role"}
+              </Button>
+              <div className="space-x-2">
+                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isDeleting}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={isSaving || isDeleting || currentRole === user.role}>
+                  <Check className="w-4 h-4 mr-2" />
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// 2. Add User Dialog (Unchanged logic, kept for completeness)
+const AddUserDialog: React.FC<{
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUserAdded: () => void;
+}> = ({ open, onOpenChange, onUserAdded }) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserWithRole["role"]>("user");
+  const [loading, setLoading] = useState(false);
+
+  const handleAddUser = async () => {
+    if (!email || !password || !role) {
+      toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.functions.invoke("admin-create-user-password", {
+        body: {
+          userId: email,
+          password: password,
+          role: role,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `User ${email} created successfully.`,
+        variant: "default",
+      });
+      onUserAdded();
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: "User Creation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <User className="w-5 h-5 mr-2" /> Add New User
+          </DialogTitle>
+          <DialogDescription>
+            Create a new user account with a temporary password and assign a starting role.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          <Input
+            placeholder="Email (used as username)"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+          />
+          <Input
+            type="password"
+            placeholder="Temporary Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+          />
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="new-user-role" className="w-[100px]">
+              Initial Role
+            </Label>
+            <Select
+              value={role || "user"}
+              onValueChange={(value) => setRole(value as UserWithRole["role"])}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select Role" />
+              </SelectTrigger>
+              <SelectContent>
+                {["admin", "inventory_man", "supervisor", "user"].map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleAddUser} disabled={loading}>
+            {loading ? "Creating..." : "Create User"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 // --- MAIN COMPONENT ---
 const Configuration = () => {
@@ -304,7 +538,7 @@ const Configuration = () => {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
 
-  // --- STATE (Unchanged) ---
+  // --- STATE ---
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [attributeTypes, setAttributeTypes] = useState<AttributeType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,31 +561,98 @@ const Configuration = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // --- USER MANAGEMENT LOGIC (Assumed Unchanged) ---
+  // --- USER MANAGEMENT LOGIC (Unchanged) ---
+
   const loadUsers = useCallback(async () => {
-    /* ... load users logic ... */
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: edgeError } = await supabase.functions.invoke("admin-list-users");
+
+      if (edgeError) throw edgeError;
+
+      const { users: fetchedUsers } = data;
+      setUsers(fetchedUsers || []);
+    } catch (err: any) {
+      console.error("Error loading users:", err);
+      setError("Failed to load user list. Check Edge Function logs.");
+      toast({
+        title: "User Load Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
   const handleEditPermissions = (user: UserWithRole) => {
-    /* ... */
-  };
-  const updateUserRole = async (userId: string, newRole: UserWithRole["role"]) => {
-    /* ... */
-  };
-  const deleteUserRole = async (userId: string) => {
-    /* ... */
+    setSelectedUser(user);
+    setShowPermissionsDialog(true);
   };
 
-  // --- ATTRIBUTE TYPE MANAGEMENT LOGIC (Modified to call reloadDynamicLists) ---
+  const updateUserRole = async (userId: string, newRole: UserWithRole["role"]) => {
+    try {
+      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
+        body: { userId, role: newRole, action: "update" },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Role for user ${userId.slice(0, 8)}... updated to ${newRole}.`,
+        variant: "default",
+      });
+      loadUsers();
+    } catch (error: any) {
+      toast({
+        title: "Role Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const deleteUserRole = async (userId: string) => {
+    try {
+      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
+        body: { userId, action: "delete" },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Role for user ${userId.slice(0, 8)}... has been removed.`,
+        variant: "default",
+      });
+      loadUsers();
+    } catch (error: any) {
+      toast({
+        title: "Role Removal Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // --- ATTRIBUTE TYPE MANAGEMENT LOGIC (Updated for ERP refresh) ---
 
   const loadAttributeTypes = useCallback(async () => {
     const { data, error } = await supabase.from("attribute_types").select("*").order("label", { ascending: true });
 
     if (error) {
       console.error("Error loading attribute types:", error);
-      toast({ title: "Error", description: "Failed to load attribute types.", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Failed to load attribute types.",
+        variant: "destructive",
+      });
       return;
     }
     setAttributeTypes(data || []);
@@ -366,6 +667,14 @@ const Configuration = () => {
       toast({ title: "Error", description: "Name and Label are required.", variant: "destructive" });
       return;
     }
+    if (!isAdmin) {
+      toast({
+        title: "Permission Denied",
+        description: "Only admins can add new attribute types.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLoadingAttribute(true);
 
     try {
@@ -378,29 +687,36 @@ const Configuration = () => {
 
       if (error) throw error;
 
-      toast({ title: "Success", description: `Attribute type '${newAttrLabel}' created.`, variant: "default" });
+      toast({
+        title: "Success",
+        description: `Attribute type '${newAttrLabel}' created.`,
+        variant: "default",
+      });
       setOpenAttributeDialog(false);
       setNewAttrName("");
       setNewAttrLabel("");
       loadAttributeTypes();
 
-      // ERP SCALABILITY: If a core list is updated, refresh the dynamic select options
+      // ERP SCALABILITY: Refresh dynamic lists if a core table is created
       if (tableName === "currency_types" || tableName === "unit_types") {
         reloadDynamicLists();
       }
     } catch (error: any) {
-      toast({ title: "Creation Failed", description: error.message, variant: "destructive" });
+      toast({
+        title: "Creation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
     } finally {
       setLoadingAttribute(false);
     }
   };
 
-  // --- CATALOG ITEM MANAGEMENT LOGIC (Modified to call reloadDynamicLists) ---
+  // --- CATALOG ITEM MANAGEMENT LOGIC (Updated for ERP refresh and isAdmin check) ---
   const ITEMS_PER_PAGE = 10;
 
   const loadData = useCallback(
     async (tableName: string, pageNum: number, search: string) => {
-      // ... (rest of the loadData logic remains) ...
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
@@ -440,8 +756,15 @@ const Configuration = () => {
 
   const handleAdd = async () => {
     if (!newValue || !activeCatalog) return;
+    if (!isAdmin) {
+      toast({
+        title: "Permission Denied",
+        description: "Only admins can add new catalog items.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    // Secure insert using RLS or another Edge Function
     const { error } = await supabase.from(activeCatalog.table_name).insert({ name: newValue.trim() });
 
     if (error) {
@@ -458,11 +781,25 @@ const Configuration = () => {
   };
 
   const handleEdit = (item: CatalogItem) => {
-    /* Logic to open edit modal */
+    // Logic to open edit modal
+    toast({
+      title: "Feature Pending",
+      description: "In-line editing or modal editing is the next step for this feature.",
+      variant: "default",
+    });
   };
 
   const handleDelete = async (itemId: string) => {
     if (!activeCatalog) return;
+    if (!isAdmin) {
+      toast({
+        title: "Permission Denied",
+        description: "Only admins can delete catalog items.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const { error } = await supabase.from(activeCatalog.table_name).delete().eq("id", itemId);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -477,13 +814,14 @@ const Configuration = () => {
   };
 
   const handleExport = () => {
-    /* Logic to export catalog data */
+    // Logic to export catalog data
+    toast({ title: "Exporting...", description: "Preparing data for Excel download.", variant: "default" });
   };
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold">System Configuration</h1>
-      <p className="text-gray-500">Manage users, permissions, and core inventory attributes.</p>
+      <p className="text-gray-500">Manage users, core inventory data models, and global application settings.</p>
 
       <Tabs defaultValue="user-roles" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
@@ -491,25 +829,18 @@ const Configuration = () => {
             <Shield className="w-4 h-4 mr-2" /> User Roles
           </TabsTrigger>
           <TabsTrigger value="attributes">
-            <Tags className="w-4 h-4 mr-2" /> Stock Attributes
+            <Briefcase className="w-4 h-4 mr-2" /> Stock Attributes
           </TabsTrigger>
           <TabsTrigger value="general">
             <Building className="w-4 h-4 mr-2" /> System Defaults
           </TabsTrigger>
           {/* SECURITY UX: Direct DB Access is only visible to Admins */}
-          {isAdmin && (
-            <TabsTrigger value="db-access">
-              <Database className="w-4 h-4 mr-2" /> Direct DB Access
-            </TabsTrigger>
-          )}
-          {!isAdmin && (
-            <TabsTrigger value="db-access" disabled>
-              <Lock className="w-4 h-4 mr-2" /> DB Access
-            </TabsTrigger>
-          )}
+          <TabsTrigger value="db-access" disabled={!isAdmin}>
+            <Wrench className="w-4 h-4 mr-2" /> Direct DB Access
+          </TabsTrigger>
         </TabsList>
 
-        {/* -------------------- 1. User Roles Tab (Only small change for admin check) -------------------- */}
+        {/* -------------------- 1. User Roles Tab -------------------- */}
         <TabsContent value="user-roles">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -521,7 +852,7 @@ const Configuration = () => {
                 <Button variant="outline" onClick={loadUsers} disabled={loading}>
                   <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Refresh
                 </Button>
-                {/* Only admins can add users */}
+                {/* SECURITY FIX: Only admins can add users */}
                 <Button onClick={() => setShowAddUserDialog(true)} disabled={!isAdmin}>
                   <Plus className="w-4 h-4 mr-2" /> Add User
                 </Button>
@@ -541,7 +872,7 @@ const Configuration = () => {
                         <TableHead>System Role</TableHead>
                         <TableHead>Created At</TableHead>
                         <TableHead>Last Sign-in</TableHead>
-                        {/* Only show the action column if the user can act */}
+                        {/* SECURITY FIX: Only show action column if the user can act */}
                         <TableHead className="text-right">{isAdmin ? "Actions" : "View"}</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -567,7 +898,7 @@ const Configuration = () => {
                             {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "N/A"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {/* Show Edit or Eye based on role */}
+                            {/* SECURITY FIX: Show Edit or Eye based on role */}
                             <Button variant="outline" size="sm" onClick={() => handleEditPermissions(user)}>
                               {isAdmin ? <Edit2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </Button>
@@ -582,7 +913,7 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* -------------------- 2. Stock Attributes Tab (Unchanged) -------------------- */}
+        {/* -------------------- 2. Stock Attributes Tab -------------------- */}
         <TabsContent value="attributes">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -590,6 +921,7 @@ const Configuration = () => {
                 <CardTitle>Stock Attributes</CardTitle>
                 <CardDescription>Manage dynamic inventory categories (e.g., Color, Size, Brand).</CardDescription>
               </div>
+              {/* SECURITY FIX: Only admins can add new attribute types */}
               <Button onClick={() => setOpenAttributeDialog(true)} disabled={!isAdmin}>
                 <Plus className="w-4 h-4 mr-2" /> Add New Type
               </Button>
@@ -624,7 +956,7 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* -------------------- 3. General Settings Tab (NEW ERP IMPLEMENTATION) -------------------- */}
+        {/* -------------------- 3. System Defaults Tab (ERP IMPLEMENTATION) -------------------- */}
         <TabsContent value="general">
           <Card>
             <CardHeader>
@@ -634,7 +966,7 @@ const Configuration = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* --- Financial Settings (ERP Pillar) --- */}
+              {/* --- Financial Settings --- */}
               <div className="space-y-4 border-b pb-4">
                 <h3 className="text-lg font-semibold flex items-center">
                   <DollarSign className="w-5 h-5 mr-2 text-green-600" /> Financial Settings
@@ -678,7 +1010,7 @@ const Configuration = () => {
                       disabled={isSavingSettings || !isAdmin}
                     />
                     <p className="text-xs text-gray-500">
-                      **ERP Note:** This value will eventually be replaced by a configurable Tax Jurisdiction table.
+                      This value will eventually be replaced by a configurable Tax Jurisdiction table.
                     </p>
                   </div>
                 </div>
@@ -765,6 +1097,7 @@ const Configuration = () => {
               </div>
 
               <div className="pt-4 flex justify-end">
+                {/* SECURITY FIX: Only admin can save settings */}
                 <Button onClick={handleSaveGeneralSettings} disabled={isSavingSettings || !isAdmin}>
                   <Save className="w-4 h-4 mr-2" />
                   {isSavingSettings ? "Saving..." : "Save System Defaults"}
@@ -776,7 +1109,7 @@ const Configuration = () => {
 
         {/* -------------------- 4. Direct DB Access Tab -------------------- */}
         <TabsContent value="db-access">
-          {/* SECURITY UX: Only render if Admin */}
+          {/* SECURITY FIX: Conditional Rendering for Admin Panel */}
           {isAdmin ? (
             <DatabaseAdminPanel />
           ) : (
@@ -792,17 +1125,196 @@ const Configuration = () => {
         </TabsContent>
       </Tabs>
 
-      {/* -------------------- MODALS (Assumed to be here) -------------------- */}
+      {/* -------------------- MODALS -------------------- */}
 
       {/* Add New Attribute Type Dialog */}
+      <Dialog open={openAttributeDialog} onOpenChange={setOpenAttributeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Attribute Type</DialogTitle>
+            <DialogDescription>
+              Create a new category for stock items (e.g., Brand, Material, Supplier).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="space-y-1">
+              <Label htmlFor="attr-label">Display Label (e.g., Color)</Label>
+              <Input
+                id="attr-label"
+                placeholder="Enter display label"
+                value={newAttrLabel}
+                onChange={(e) => setNewAttrLabel(e.target.value)}
+                disabled={loadingAttribute}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="attr-name">Table Name (e.g., colors)</Label>
+              <Input
+                id="attr-name"
+                placeholder="Enter unique table name (lowercase, no spaces)"
+                value={newAttrName}
+                onChange={(e) => setNewAttrName(e.target.value)}
+                disabled={loadingAttribute}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="attr-icon">Icon</Label>
+              <Select value={newAttrIcon} onValueChange={setNewAttrIcon} disabled={loadingAttribute}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Icon" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ATTRIBUTE_ICONS.map((i) => {
+                    const Icon = i.icon;
+                    return (
+                      <SelectItem key={i.value} value={i.value}>
+                        <span className="flex items-center">
+                          <Icon className="w-4 h-4 mr-2" /> {i.value}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenAttributeDialog(false)} disabled={loadingAttribute}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddAttributeType} disabled={loadingAttribute || !isAdmin}>
+              {loadingAttribute ? "Creating..." : "Create Type"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Catalog Item Management Dialog (e.g., Manage Colors) */}
+      <Dialog open={openCatalogDialog} onOpenChange={setOpenCatalogDialog}>
+        <DialogContent className="sm:max-w-[425px] md:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>Manage {activeCatalog?.label}</DialogTitle>
+            <DialogDescription>
+              Add, edit, or remove entries for the {activeCatalog?.label.toLowerCase()} category.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex w-full max-w-sm items-center space-x-2">
+              <Input
+                placeholder={`Search ${activeCatalog?.label?.toLowerCase()}...`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <Button onClick={() => loadData(activeCatalog!.table_name, 1, searchTerm)}>
+                <Search className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="max-h-[300px] overflow-y-auto border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {catalogItems.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(item)}>
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      {/* SECURITY FIX: Only admins can delete catalog items */}
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id)} disabled={!isAdmin}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {catalogItems.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center text-gray-500">
+                      No items found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-between items-center mt-4">
+              <Button
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => {
+                  setPage(page - 1);
+                  loadData(activeCatalog!.table_name, page - 1, searchTerm);
+                }}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-500">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                disabled={page >= totalPages}
+                onClick={() => {
+                  setPage(page + 1);
+                  loadData(activeCatalog!.table_name, page + 1, searchTerm);
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-4">
+            <Input
+              placeholder={`Add new ${activeCatalog?.label?.toLowerCase()}...`}
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              disabled={!isAdmin}
+            />
+            {/* SECURITY FIX: Only admins can add new catalog items */}
+            <Button onClick={handleAdd} disabled={!isAdmin}>
+              <Plus className="w-4 h-4 mr-1" /> Add
+            </Button>
+          </div>
+
+          <DialogFooter className="flex justify-between mt-6">
+            <Button variant="outline" onClick={() => setOpenCatalogDialog(false)}>
+              Close
+            </Button>
+            <Button onClick={handleExport}>
+              <Download className="w-4 h-4 mr-2" /> Export as Excel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* User Permissions Dialog */}
+      <UserPermissionsDialog
+        open={showPermissionsDialog}
+        onOpenChange={setShowPermissionsDialog}
+        user={selectedUser}
+        onSave={updateUserRole}
+        onDelete={deleteUserRole}
+      />
+
       {/* Add User Dialog */}
+      <AddUserDialog open={showAddUserDialog} onOpenChange={setShowAddUserDialog} onUserAdded={loadUsers} />
     </div>
   );
 };
-
-// Assuming UserPermissionsDialog and AddUserDialog are defined elsewhere or copied here.
-// The provided code already contains them, so they are omitted in this final block for brevity.
 
 export default Configuration;
