@@ -8,7 +8,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 // Pages
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import Inventory from "./pages/Inventory";
+import Inventory from "./pages/Inventory"; // ✅ Works with default export
 import Alerts from "./pages/Alerts";
 import Reports from "./pages/Reports";
 import PurchaseOrders from "./pages/PurchaseOrders";
@@ -47,7 +47,7 @@ const App: React.FC = () => {
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Public Auth */}
+            {/* Public Auth Route */}
             <Route path="/auth" element={<Auth />} />
 
             {/* POS Routes */}
@@ -57,7 +57,7 @@ const App: React.FC = () => {
                 <POSProvider>
                   <Routes>
                     <Route
-                      path=""
+                      index
                       element={
                         <ProtectedRoute>
                           <POSHome />
@@ -93,7 +93,7 @@ const App: React.FC = () => {
               }
             />
 
-            {/* Main App Routes with Layout */}
+            {/* Main App Routes */}
             <Route
               path="/"
               element={
@@ -104,6 +104,7 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/ai-reports"
               element={
@@ -114,6 +115,8 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+
+            {/* Inventory */}
             <Route
               path="/inventory"
               element={
@@ -155,7 +158,7 @@ const App: React.FC = () => {
               }
             />
 
-            {/* Purchases */}
+            {/* Purchase Orders */}
             <Route
               path="/purchase-orders"
               element={
@@ -219,7 +222,7 @@ const App: React.FC = () => {
               }
             />
 
-            {/* Notifications / Approvals */}
+            {/* Approvals / Notifications */}
             <Route
               path="/approvals"
               element={
