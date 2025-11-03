@@ -1,101 +1,95 @@
-// File: src/pages/Inventory.tsx
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { ItemWithDetails } from "@/types";
 import { PaginationControls } from "@/components/PaginationControls";
-import FileImport from "@/components/FileImport";
-import ProductDialogNew from "@/components/ProductDialogNew";
+import { ProductDialogNew } from "@/components/ProductDialogNew";
+import { FileImport } from "@/components/FileImport";
 
-// Local type for inventory items
-interface ItemWithDetails {
-  sku: string;
-  name: string;
-  supplier: string;
-  main_group: string;
-  category: string;
-  price: number;
-  cost: number;
-  quantity: number;
-}
+const ITEMS_PER_PAGE = 10;
 
-const Inventory: React.FC = () => {
-  const [fileImportOpen, setFileImportOpen] = useState(false);
+export const Inventory: React.FC = () => {
+  const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ItemWithDetails | undefined>(undefined);
-  const [pageIndex, setPageIndex] = useState(0);
+  const [editingItem, setEditingItem] = useState<ItemWithDetails | undefined>();
+  const [importOpen, setImportOpen] = useState(false);
 
-  const { data: items = [], refetch } = useQuery<ItemWithDetails[], Error>({
-    queryKey: ["inventory", pageIndex],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from<ItemWithDetails>("store_inventory")
-        .select("*")
-        .range(pageIndex * 20, (pageIndex + 1) * 20 - 1);
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const handleImportComplete = () => refetch();
-  const handleEditItem = (item: ItemWithDetails) => {
-    setSelectedItem(item);
-    setDialogOpen(true);
+  const fetchInventoryItems = async (): Promise<ItemWithDetails[]> => {
+    const { data, error } = await supabase.from("store_inventory").select("*");
+    if (error) throw error;
+    return data as ItemWithDetails[];
   };
 
+  const {
+    data: items = [],
+    isLoading,
+    isError,
+  } = useQuery<ItemWithDetails[], Error>(["inventory-items"], fetchInventoryItems);
+
+  const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE);
+  const pagedItems = items.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
   return (
-    <div className="p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-bold">Inventory</h1>
-        <Button onClick={() => setFileImportOpen(true)}>Import File</Button>
-      </div>
+    <div>
+      <h1>Inventory</h1>
+      <button onClick={() => setImportOpen(true)}>Import File</button>
 
-      <table className="w-full border">
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Name</th>
-            <th>Supplier</th>
-            <th>Main Group</th>
-            <th>Category</th>
-            <th>Price</th>
-            <th>Cost</th>
-            <th>Quantity</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.sku} className="hover:bg-gray-50">
-              <td>{item.sku}</td>
-              <td>{item.name}</td>
-              <td>{item.supplier}</td>
-              <td>{item.main_group}</td>
-              <td>{item.category}</td>
-              <td>{item.price}</td>
-              <td>{item.cost}</td>
-              <td>{item.quantity}</td>
-              <td>
-                <Button onClick={() => handleEditItem(item)}>Edit</Button>
-              </td>
+      {isLoading && <div>Loading...</div>}
+      {isError && <div>Error loading inventory</div>}
+      {!isLoading && items.length === 0 && <div>No items found</div>}
+
+      {pagedItems.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>SKU</th>
+              <th>Category</th>
+              <th>Quantity</th>
+              <th>Price</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {pagedItems.map((item) => (
+              <tr key={item.id}>
+                <td>{item.name}</td>
+                <td>{item.sku}</td>
+                <td>{item.category}</td>
+                <td>{item.quantity}</td>
+                <td>{item.price}</td>
+                <td>
+                  <button
+                    onClick={() => {
+                      setEditingItem(item);
+                      setDialogOpen(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
-      <div className="mt-4">
-        <PaginationControls
-          currentPage={pageIndex + 1}
-          totalPages={10} // Adjust based on your total items / page size
-          onChange={(page) => setPageIndex(page - 1)}
-        />
-      </div>
+      <PaginationControls
+        currentPage={page}
+        totalPages={totalPages}
+        onChange={setPage}
+        totalItems={items.length}
+        startIndex={(page - 1) * ITEMS_PER_PAGE}
+        endIndex={Math.min(page * ITEMS_PER_PAGE, items.length)}
+      />
 
-      <FileImport open={fileImportOpen} onOpenChange={setFileImportOpen} onImportComplete={handleImportComplete} />
+      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} editingItem={editingItem} />
 
-      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} editingItem={selectedItem} />
+      <FileImport
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImportComplete={() => console.log("Import complete")}
+      />
     </div>
   );
 };
-
-export default Inventory;
