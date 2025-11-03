@@ -53,7 +53,7 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory data including PO, transfers, transactions ---
+// --- Fetch inventory data including PO received quantities ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
@@ -75,84 +75,72 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   if (itemsError) throw itemsError;
 
-  // Fetch purchase orders
+  // Fetch store inventory (optional for later)
+  const { data: storeInventory, error: storeError } = await supabase
+    .from("store_inventory")
+    .select("item_id, store_id, quantity");
+  if (storeError) throw storeError;
+
+  const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
+  if (storesError) throw storesError;
+
+  const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
+
+  const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
+    const itemId = record.item_id;
+    if (!acc[itemId]) {
+      acc[itemId] = { total_quantity: 0, stores: [] };
+    }
+    acc[itemId].total_quantity += Number(record.quantity) || 0;
+    acc[itemId].stores.push({
+      store_id: record.store_id,
+      store_name: storeMap[record.store_id] || "Unknown",
+      quantity: Number(record.quantity) || 0,
+    });
+    return acc;
+  }, {});
+
+  // --- Fetch PO received quantities ---
   const { data: poItems, error: poError } = await supabase
     .from("purchase_order_items")
     .select("item_id, received_quantity");
   if (poError) throw poError;
 
   const poMap = (poItems || []).reduce((acc: any, po: any) => {
-    acc[po.item_id] = (acc[po.item_id] || 0) + Number(po.received_quantity || 0);
+    const qty = Number(po.received_quantity || 0);
+    acc[po.item_id] = (acc[po.item_id] || 0) + qty;
     return acc;
   }, {});
 
-  // Fetch transfers
-  const { data: transfersData, error: transfersError } = await supabase.from("transfers").select(`
-      transfer_id,
-      from_store_id,
-      to_store_id,
-      transfer_items:transfer_items(variant_id, quantity)
-    `);
-  if (transfersError) throw transfersError;
-
-  const transferMap: Record<string, number> = {};
-  (transfersData || []).forEach((t: any) => {
-    t.transfer_items.forEach((ti: any) => {
-      // Subtract from from_store
-      transferMap[ti.variant_id] = (transferMap[ti.variant_id] || 0) - Number(ti.quantity || 0);
-      // Add to to_store
-      transferMap[ti.variant_id] += Number(ti.quantity || 0);
-    });
-  });
-
-  // Fetch transactions (sales and refunds)
-  const { data: transactionsData, error: transError } = await supabase
-    .from("transactions")
-    .select("item_id, quantity, is_refund, is_refunded");
-  if (transError) throw transError;
-
-  const transMap = (transactionsData || []).reduce((acc: any, t: any) => {
-    let qty = Number(t.quantity || 0);
-    if (t.is_refund || t.is_refunded)
-      qty = qty; // refund adds back
-    else qty = -qty; // sold decreases stock
-    acc[t.item_id] = (acc[t.item_id] || 0) + qty;
-    return acc;
-  }, {});
-
-  return (itemsData || []).map((item: any) => {
-    const quantity = (poMap[item.id] || 0) + (transferMap[item.id] || 0) + (transMap[item.id] || 0);
-
-    return {
-      id: item.id,
-      sku: item.sku || "N/A",
-      name: item.name || "N/A",
-      supplier: item.supplier?.name || "",
-      gender: item.gender?.name || "",
-      main_group: item.main_group?.name || "",
-      category: item.category?.name || "",
-      origin: item.origin?.name || "",
-      season: item.season?.name || "",
-      size: item.size?.name || "",
-      color: item.color?.name || "",
-      theme: item.theme?.name || "",
-      unit: item.unit || "",
-      price: item.price || 0,
-      cost: item.cost || 0,
-      item_number: item.item_number || "",
-      pos_description: item.pos_description || "",
-      description: item.description || "",
-      color_id: item.color_id || "",
-      item_color_code: item.item_color_code || "",
-      color_id_code: item.color_id_code || "",
-      location: item.location || "",
-      quantity,
-      min_stock: item.min_stock || 0,
-      last_restocked: item.last_restocked,
-      created_at: item.created_at,
-      stores: [], // Can be added later when physical inventory is used
-    };
-  });
+  return (itemsData || []).map((item: any) => ({
+    id: item.id,
+    sku: item.sku || "N/A",
+    name: item.name || "N/A",
+    supplier: item.supplier?.name || "",
+    gender: item.gender?.name || "",
+    main_group: item.main_group?.name || "",
+    category: item.category?.name || "",
+    origin: item.origin?.name || "",
+    season: item.season?.name || "",
+    size: item.size?.name || "",
+    color: item.color?.name || "",
+    theme: item.theme?.name || "",
+    unit: item.unit || "",
+    price: item.price || 0,
+    cost: item.cost || 0,
+    item_number: item.item_number || "",
+    pos_description: item.pos_description || "",
+    description: item.description || "",
+    color_id: item.color_id || "",
+    item_color_code: item.item_color_code || "",
+    color_id_code: item.color_id_code || "",
+    location: item.location || "",
+    quantity: (poMap[item.id] || 0) + (stockMap[item.id]?.total_quantity || 0),
+    min_stock: item.min_stock || 0,
+    last_restocked: item.last_restocked,
+    created_at: item.created_at,
+    stores: stockMap[item.id]?.stores || [],
+  }));
 };
 
 const useInventoryQuery = () => {
@@ -403,7 +391,35 @@ const InventoryPage: React.FC = () => {
                 <TableCell>{item.theme || "-"}</TableCell>
                 <TableCell>{item.unit || "-"}</TableCell>
                 <TableCell className="text-right">
-                  <span className={item.quantity === 0 ? "text-muted-foreground" : ""}>{item.quantity}</span>
+                  {item.stores.length > 0 ? (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="link" size="sm" className="text-primary">
+                          <Package className="w-3 h-3 mr-1" />
+                          {item.quantity}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 bg-background border shadow-lg z-50">
+                        <div className="space-y-2">
+                          <h4 className="font-semibold text-sm">Stock by Store</h4>
+                          <div className="space-y-1">
+                            {item.stores.map((store) => (
+                              <div key={store.store_id} className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">{store.store_name}</span>
+                                <Badge variant="secondary">{store.quantity}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="border-t pt-2 flex justify-between font-semibold text-sm">
+                            <span>Total</span>
+                            <span>{item.quantity}</span>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <span className="text-muted-foreground">{item.quantity}</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right">
                   <Badge variant={item.quantity <= item.min_stock ? "destructive" : "secondary"}>
