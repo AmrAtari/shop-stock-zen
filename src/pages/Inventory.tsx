@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import ProductDialogNew from "@/components/ProductDialogNew";
 import FileImport from "@/components/FileImport";
@@ -55,7 +54,6 @@ interface ItemWithDetails {
 
 // --- Fetch inventory data including PO, transfers, and transactions ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Items with joins
   const { data: itemsData, error: itemsError } = await supabase
     .from<any, any>("items")
     .select(
@@ -75,13 +73,11 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     .order("name");
   if (itemsError) throw itemsError;
 
-  // Store inventory
   const { data: storeInventory, error: storeError } = await supabase
     .from<any, any>("store_inventory")
     .select("item_id, store_id, quantity");
   if (storeError) throw storeError;
 
-  // Stores
   const { data: stores, error: storesError } = await supabase.from<any, any>("stores").select("id, name");
   if (storesError) throw storesError;
 
@@ -99,7 +95,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     return acc;
   }, {});
 
-  // Purchase Orders quantities
+  // Fetch purchase orders quantities
   const { data: poItems } = await supabase.from<any, any>("purchase_order_items").select("sku, received_quantity");
   const poMap = (poItems || []).reduce(
     (acc, po) => {
@@ -109,7 +105,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     {} as Record<string, number>,
   );
 
-  // Transactions (sales and refunds)
+  // Transactions
   const { data: transactions } = await supabase.from<any, any>("transactions").select("item_id, quantity, is_refund");
   const transMap = (transactions || []).reduce(
     (acc, t) => {
@@ -120,7 +116,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     {} as Record<string, number>,
   );
 
-  // Transfer Items
+  // Transfers
   const { data: transferItems } = await supabase.from<any, any>("transfer_items").select("variant_id, quantity");
   const transferMap = (transferItems || []).reduce(
     (acc, t) => {
@@ -135,8 +131,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     const poQty = poMap[item.sku] || 0;
     const transQty = transMap[item.id] || 0;
     const transferQty = transferMap[item.id] || 0;
-
-    const totalQuantity = storeQty + poQty + transferQty + transQty;
+    const totalQuantity = storeQty + poQty + transQty + transferQty;
 
     return {
       id: item.id,
@@ -170,13 +165,12 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   });
 };
 
-const useInventoryQuery = () => {
-  return useQuery<ItemWithDetails[]>({
+const useInventoryQuery = () =>
+  useQuery<ItemWithDetails[]>({
     queryKey: queryKeys.inventory.all,
     queryFn: fetchInventory,
     staleTime: 2 * 60 * 1000,
   });
-};
 
 const ITEMS_PER_PAGE = 20;
 
@@ -189,96 +183,23 @@ const InventoryPage: React.FC = () => {
   const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterSupplier, setFilterSupplier] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterMainGroup, setFilterMainGroup] = useState("");
-  const [filterStore, setFilterStore] = useState("");
-  const [filterSeason, setFilterSeason] = useState("");
-  const [filterColor, setFilterColor] = useState("");
-  const [filterSize, setFilterSize] = useState("");
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
-  const { data: stores = [] } = useQuery({
-    queryKey: ["stores-for-filter"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from<any, any>("stores").select("id, name").order("name");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const supplierOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.supplier).filter(Boolean))).sort(),
-    [inventory],
-  );
-  const categoryOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.category).filter(Boolean))).sort(),
-    [inventory],
-  );
-  const mainGroupOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.main_group).filter(Boolean))).sort(),
-    [inventory],
-  );
-  const seasonOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.season).filter(Boolean))).sort(),
-    [inventory],
-  );
-  const colorOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.color).filter(Boolean))).sort(),
-    [inventory],
-  );
-  const sizeOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.size).filter(Boolean))).sort(),
-    [inventory],
-  );
-
   const filteredInventory = useMemo(() => {
-    return inventory.filter((item) => {
-      const matchesSearch =
-        (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
-        (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
-        (item.item_number?.toLowerCase() ?? "").includes(searchTerm.toLowerCase());
-      const matchesSupplier = !filterSupplier || item.supplier === filterSupplier;
-      const matchesCategory = !filterCategory || item.category === filterCategory;
-      const matchesMainGroup = !filterMainGroup || item.main_group === filterMainGroup;
-      const matchesStore = !filterStore || item.stores.some((s) => s.store_id === filterStore);
-      const matchesSeason = !filterSeason || item.season === filterSeason;
-      const matchesColor = !filterColor || item.color === filterColor;
-      const matchesSize = !filterSize || item.size === filterSize;
-
-      return (
-        matchesSearch &&
-        matchesSupplier &&
-        matchesCategory &&
-        matchesMainGroup &&
-        matchesStore &&
-        matchesSeason &&
-        matchesColor &&
-        matchesSize
-      );
-    });
-  }, [
-    inventory,
-    searchTerm,
-    filterSupplier,
-    filterCategory,
-    filterMainGroup,
-    filterStore,
-    filterSeason,
-    filterColor,
-    filterSize,
-  ]);
+    return inventory.filter(
+      (i) =>
+        i.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        i.sku.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+  }, [inventory, searchTerm]);
 
   const pagination = usePagination({
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   });
 
-  const displayInventory = useMemo(
-    () => filteredInventory.slice(pagination.startIndex, pagination.endIndex),
-    [filteredInventory, pagination.startIndex, pagination.endIndex],
-  );
+  const displayInventory = filteredInventory.slice(pagination.startIndex, pagination.endIndex);
 
   const toggleSelectItem = (item: ItemWithDetails) => {
     setSelectedItems((prev) =>
@@ -326,44 +247,16 @@ const InventoryPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-2">
-          <Search className="w-5 h-5 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, SKU, or item number..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
-          />
-          <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {[
-            { label: "Supplier", value: filterSupplier, setter: setFilterSupplier, options: supplierOptions },
-            { label: "Category", value: filterCategory, setter: setFilterCategory, options: categoryOptions },
-            { label: "Main Group", value: filterMainGroup, setter: setFilterMainGroup, options: mainGroupOptions },
-            { label: "Store", value: filterStore, setter: setFilterStore, options: stores.map((s) => s.name) },
-            { label: "Season", value: filterSeason, setter: setFilterSeason, options: seasonOptions },
-            { label: "Color", value: filterColor, setter: setFilterColor, options: colorOptions },
-            { label: "Size", value: filterSize, setter: setFilterSize, options: sizeOptions },
-          ].map(({ label, value, setter, options }) => (
-            <Select key={label} value={value} onValueChange={(v) => setter(v === "all" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder={label} />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-50">
-                <SelectItem value="all">All {label}s</SelectItem>
-                {options.map((o: any) => (
-                  <SelectItem key={o} value={o}>
-                    {o}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ))}
-        </div>
+      {/* Search */}
+      <div className="flex items-center gap-2">
+        <Search className="w-5 h-5 text-muted-foreground" />
+        <Input
+          placeholder="Search by name, SKU, or item number..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="max-w-sm"
+        />
+        <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
       </div>
 
       {/* Table */}
@@ -379,24 +272,10 @@ const InventoryPage: React.FC = () => {
               </TableHead>
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Main Group</TableHead>
-              <TableHead>Gender</TableHead>
-              <TableHead>Origin</TableHead>
-              <TableHead>Season</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Color</TableHead>
-              <TableHead>Theme</TableHead>
-              <TableHead>Unit</TableHead>
               <TableHead className="text-right">Stock Qty</TableHead>
-              <TableHead className="text-right">Min Stock</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
-              <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
-
           <TableBody>
             {displayInventory.map((item) => (
               <TableRow key={item.id}>
@@ -406,48 +285,9 @@ const InventoryPage: React.FC = () => {
                     onCheckedChange={() => toggleSelectItem(item)}
                   />
                 </TableCell>
-                <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                <TableCell className="font-medium">{item.name}</TableCell>
-                <TableCell>{item.supplier || "-"}</TableCell>
-                <TableCell>{item.category || "-"}</TableCell>
-                <TableCell>{item.main_group || "-"}</TableCell>
-                <TableCell>{item.gender || "-"}</TableCell>
-                <TableCell>{item.origin || "-"}</TableCell>
-                <TableCell>{item.season || "-"}</TableCell>
-                <TableCell>{item.size || "-"}</TableCell>
-                <TableCell>{item.color || "-"}</TableCell>
-                <TableCell>{item.theme || "-"}</TableCell>
-                <TableCell>{item.unit || "-"}</TableCell>
-                <TableCell className="text-right">
-                  {item.stores.length > 0 ? (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="link" size="sm" className="text-primary">
-                          <Package className="w-3 h-3 mr-1" />
-                          {item.quantity}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 bg-background border shadow-lg z-50">
-                        <div className="space-y-2">
-                          <h4 className="font-semibold text-sm">Stock by Store</h4>
-                          <div className="space-y-1">
-                            {item.stores.map((store) => (
-                              <div key={store.store_id} className="flex justify-between text-sm">
-                                <span className="font-medium">{store.store_name}</span>
-                                <span>{store.quantity}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  ) : (
-                    <span>{item.quantity}</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">{item.min_stock}</TableCell>
-                <TableCell className="text-right">{item.cost}</TableCell>
-                <TableCell className="text-right">{item.price}</TableCell>
+                <TableCell>{item.sku}</TableCell>
+                <TableCell>{item.name}</TableCell>
+                <TableCell className="text-right">{item.quantity}</TableCell>
                 <TableCell className="text-right space-x-1">
                   <Button
                     size="sm"
