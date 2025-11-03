@@ -53,7 +53,7 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory data including PO received quantities ---
+// --- Fetch inventory data with PO quantities and store inventory ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
@@ -72,10 +72,21 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     `,
     )
     .order("name");
-
   if (itemsError) throw itemsError;
 
-  // Fetch store inventory (optional for later)
+  // Fetch PO received quantities
+  const { data: poItems, error: poError } = await supabase
+    .from("purchase_order_items")
+    .select("item_id, received_quantity");
+  if (poError) throw poError;
+
+  const poMap: Record<string, number> = {};
+  (poItems || []).forEach((po) => {
+    const key = String(po.item_id);
+    poMap[key] = (poMap[key] || 0) + Number(po.received_quantity || 0);
+  });
+
+  // Fetch store inventory
   const { data: storeInventory, error: storeError } = await supabase
     .from("store_inventory")
     .select("item_id, store_id, quantity");
@@ -87,10 +98,8 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
 
   const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
-    const itemId = record.item_id;
-    if (!acc[itemId]) {
-      acc[itemId] = { total_quantity: 0, stores: [] };
-    }
+    const itemId = String(record.item_id);
+    if (!acc[itemId]) acc[itemId] = { total_quantity: 0, stores: [] };
     acc[itemId].total_quantity += Number(record.quantity) || 0;
     acc[itemId].stores.push({
       store_id: record.store_id,
@@ -100,47 +109,38 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     return acc;
   }, {});
 
-  // --- Fetch PO received quantities ---
-  const { data: poItems, error: poError } = await supabase
-    .from("purchase_order_items")
-    .select("item_id, received_quantity");
-  if (poError) throw poError;
-
-  const poMap = (poItems || []).reduce((acc: any, po: any) => {
-    const qty = Number(po.received_quantity || 0);
-    acc[po.item_id] = (acc[po.item_id] || 0) + qty;
-    return acc;
-  }, {});
-
-  return (itemsData || []).map((item: any) => ({
-    id: item.id,
-    sku: item.sku || "N/A",
-    name: item.name || "N/A",
-    supplier: item.supplier?.name || "",
-    gender: item.gender?.name || "",
-    main_group: item.main_group?.name || "",
-    category: item.category?.name || "",
-    origin: item.origin?.name || "",
-    season: item.season?.name || "",
-    size: item.size?.name || "",
-    color: item.color?.name || "",
-    theme: item.theme?.name || "",
-    unit: item.unit || "",
-    price: item.price || 0,
-    cost: item.cost || 0,
-    item_number: item.item_number || "",
-    pos_description: item.pos_description || "",
-    description: item.description || "",
-    color_id: item.color_id || "",
-    item_color_code: item.item_color_code || "",
-    color_id_code: item.color_id_code || "",
-    location: item.location || "",
-    quantity: (poMap[item.id] || 0) + (stockMap[item.id]?.total_quantity || 0),
-    min_stock: item.min_stock || 0,
-    last_restocked: item.last_restocked,
-    created_at: item.created_at,
-    stores: stockMap[item.id]?.stores || [],
-  }));
+  return (itemsData || []).map((item: any) => {
+    const itemId = String(item.id);
+    return {
+      id: itemId,
+      sku: item.sku || "N/A",
+      name: item.name || "N/A",
+      supplier: item.supplier?.name || "",
+      gender: item.gender?.name || "",
+      main_group: item.main_group?.name || "",
+      category: item.category?.name || "",
+      origin: item.origin?.name || "",
+      season: item.season?.name || "",
+      size: item.size?.name || "",
+      color: item.color?.name || "",
+      theme: item.theme?.name || "",
+      unit: item.unit || "",
+      price: item.price || 0,
+      cost: item.cost || 0,
+      item_number: item.item_number || "",
+      pos_description: item.pos_description || "",
+      description: item.description || "",
+      color_id: item.color_id || "",
+      item_color_code: item.item_color_code || "",
+      color_id_code: item.color_id_code || "",
+      location: item.location || "",
+      quantity: (poMap[itemId] || 0) + (stockMap[itemId]?.total_quantity || 0),
+      min_stock: item.min_stock || 0,
+      last_restocked: item.last_restocked,
+      created_at: item.created_at,
+      stores: stockMap[itemId]?.stores || [],
+    };
+  });
 };
 
 const useInventoryQuery = () => {
@@ -279,6 +279,7 @@ const InventoryPage: React.FC = () => {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Header */}
       <header className="flex justify-between items-center border-b pb-4">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Layers className="w-6 h-6" /> Inventory Management
