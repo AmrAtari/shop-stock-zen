@@ -101,6 +101,7 @@ const ATTRIBUTE_ICONS = [
   { value: "CloudSun", icon: CloudSun },
   { value: "MapPin", icon: MapPin },
   { value: "Warehouse", icon: Warehouse },
+  { value: "DollarSign", icon: DollarSign }, // Added for Currency
   // ... more icons as needed
 ];
 
@@ -342,10 +343,14 @@ const Configuration = () => {
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
 
-  // *** NEW STATE: General Settings ***
+  // *** DYNAMIC SETTINGS STATES ***
+  const [dynamicCurrencies, setDynamicCurrencies] = useState<CatalogItem[]>([]);
+  const [dynamicUnits, setDynamicUnits] = useState<CatalogItem[]>([]);
+
+  // *** GENERAL SETTINGS STATE ***
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
     currency: "USD",
-    defaultTaxRate: "5.0", // Default value
+    defaultTaxRate: "5.0",
     defaultUnit: "kg",
     lowStockThreshold: 5,
     enableAuditLog: true,
@@ -360,7 +365,7 @@ const Configuration = () => {
   const [newAttrIcon, setNewAttrIcon] = useState<string>("Tags");
   const [loadingAttribute, setLoadingAttribute] = useState(false);
 
-  // State for Catalog Management Dialog (Assumed Logic)
+  // State for Catalog Management Dialog
   const [openCatalogDialog, setOpenCatalogDialog] = useState(false);
   const [activeCatalog, setActiveCatalog] = useState<AttributeType | null>(null);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
@@ -369,12 +374,35 @@ const Configuration = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // --- GENERAL SETTINGS LOGIC (Real API Implementation) ---
+  // --- DYNAMIC SETTINGS LOADERS ---
+  const loadDynamicOptions = useCallback(async (tableName: string, setter: (items: CatalogItem[]) => void) => {
+    try {
+      const { data, error } = await supabase.from(tableName).select("id, name").order("name", { ascending: true });
+
+      if (error) throw error;
+      setter(data || []);
+    } catch (error) {
+      console.error(`Error loading dynamic options for ${tableName}:`, error);
+      setter([]);
+    }
+  }, []);
+
+  const loadAllDynamicOptions = useCallback(() => {
+    loadDynamicOptions("currency_types", setDynamicCurrencies);
+    loadDynamicOptions("unit_types", setDynamicUnits);
+  }, [loadDynamicOptions]);
+
+  // --- GENERAL SETTINGS LOGIC (Database Implemented) ---
 
   const loadGeneralSettings = useCallback(async () => {
+    // 1. Load Dynamic Lists
+    loadAllDynamicOptions();
+
+    // 2. Load System Settings
     try {
       const { data, error } = await supabase.from("system_settings").select("*").limit(1).single();
 
+      // PostgreSQL error code 'PGRST116' means 'no row found'
       if (error && error.code !== "PGRST116") {
         throw error;
       }
@@ -382,7 +410,7 @@ const Configuration = () => {
       if (data) {
         setGeneralSettings({
           currency: data.currency,
-          defaultTaxRate: String(data.default_tax_rate), // Convert numeric to string for Input field
+          defaultTaxRate: String(data.default_tax_rate),
           defaultUnit: data.default_unit,
           lowStockThreshold: data.low_stock_threshold,
           enableAuditLog: data.enable_audit_log,
@@ -397,7 +425,7 @@ const Configuration = () => {
         variant: "destructive",
       });
     }
-  }, []);
+  }, [loadAllDynamicOptions]);
 
   useEffect(() => {
     loadGeneralSettings();
@@ -425,7 +453,8 @@ const Configuration = () => {
       const { error } = await supabase
         .from("system_settings")
         .update(settingsToSave)
-        .eq("id", "YOUR_COPIED_UUID") // <--- REMEMBER TO REPLACE THIS WITH YOUR ACTUAL SETTINGS ROW UUID
+        // *** IMPORTANT: REPLACE WITH YOUR ACTUAL SETTINGS ROW UUID ***
+        .eq("id", "YOUR_COPIED_UUID")
         .single();
 
       if (error) throw error;
@@ -439,7 +468,7 @@ const Configuration = () => {
       console.error("Error saving settings:", error);
       toast({
         title: "Saving Failed",
-        description: `Could not save settings: ${error.message}. Check your UUID.`,
+        description: `Could not save settings: ${error.message}.`,
         variant: "destructive",
       });
     } finally {
@@ -578,6 +607,10 @@ const Configuration = () => {
       setNewAttrName("");
       setNewAttrLabel("");
       loadAttributeTypes(); // Refresh the list
+      // Refresh dynamic options if a relevant table was created
+      if (tableName === "currency_types" || tableName === "unit_types") {
+        loadAllDynamicOptions();
+      }
     } catch (error: any) {
       toast({
         title: "Creation Failed",
@@ -589,32 +622,40 @@ const Configuration = () => {
     }
   };
 
-  // --- CATALOG ITEM MANAGEMENT LOGIC (Placeholder for reference) ---
+  // --- CATALOG ITEM MANAGEMENT LOGIC ---
   const ITEMS_PER_PAGE = 10;
 
-  const loadData = useCallback(async (tableName: string, pageNum: number, search: string) => {
-    // This part should also use RLS or a secure endpoint if required, but is simplified here.
-    const from = (pageNum - 1) * ITEMS_PER_PAGE;
-    const to = from + ITEMS_PER_PAGE - 1;
+  const loadData = useCallback(
+    async (tableName: string, pageNum: number, search: string) => {
+      // This part should also use RLS or a secure endpoint if required, but is simplified here.
+      const from = (pageNum - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
 
-    let query = supabase.from(tableName).select("*", { count: "exact" });
+      let query = supabase.from(tableName).select("*", { count: "exact" });
 
-    if (search) {
-      query = query.ilike("name", `%${search}%`);
-    }
+      if (search) {
+        query = query.ilike("name", `%${search}%`);
+      }
 
-    const { data, error, count } = await query.order("name", { ascending: true }).range(from, to);
+      const { data, error, count } = await query.order("name", { ascending: true }).range(from, to);
 
-    if (error) {
-      console.error(`Error loading catalog ${tableName}:`, error);
-      setCatalogItems([]);
-      setTotalPages(1);
-      return;
-    }
+      if (error) {
+        console.error(`Error loading catalog ${tableName}:`, error);
+        setCatalogItems([]);
+        setTotalPages(1);
+        return;
+      }
 
-    setCatalogItems(data || []);
-    setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
-  }, []);
+      setCatalogItems(data || []);
+      setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+
+      // Refresh dynamic options if a relevant table was modified
+      if (tableName === "currency_types" || tableName === "unit_types") {
+        loadAllDynamicOptions();
+      }
+    },
+    [loadAllDynamicOptions],
+  );
 
   const handleOpenCatalog = (attr: AttributeType) => {
     setActiveCatalog(attr);
@@ -674,7 +715,7 @@ const Configuration = () => {
       <p className="text-gray-500">Manage users, permissions, and core inventory attributes.</p>
 
       <Tabs defaultValue="user-roles" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="user-roles">
             <Shield className="w-4 h-4 mr-2" /> User Roles
           </TabsTrigger>
@@ -765,7 +806,9 @@ const Configuration = () => {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Stock Attributes</CardTitle>
-                <CardDescription>Manage dynamic inventory categories (e.g., Color, Size, Brand).</CardDescription>
+                <CardDescription>
+                  Manage dynamic inventory categories (e.g., Color, Size, Brand, **Currency**).
+                </CardDescription>
               </div>
               <Button onClick={() => setOpenAttributeDialog(true)}>
                 <Plus className="w-4 h-4 mr-2" /> Add New Type
@@ -801,7 +844,7 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* -------------------- 3. General Settings Tab (NEW PROFESSIONAL ERP LAYOUT) -------------------- */}
+        {/* -------------------- 3. General Settings Tab (DYNAMIC OPTIONS) -------------------- */}
         <TabsContent value="general">
           <Card>
             <CardHeader>
@@ -818,7 +861,7 @@ const Configuration = () => {
                 </h3>
 
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Currency */}
+                  {/* Currency (NOW DYNAMIC) */}
                   <div className="space-y-1">
                     <Label htmlFor="currency">Default Currency</Label>
                     <Select
@@ -830,10 +873,16 @@ const Configuration = () => {
                         <SelectValue placeholder="Select a currency" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
-                        <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
-                        <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
-                        <SelectItem value="AED">🇦🇪 AED - UAE Dirham</SelectItem>
+                        {dynamicCurrencies.map((c) => (
+                          <SelectItem key={c.id} value={c.name}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                        {dynamicCurrencies.length === 0 && (
+                          <SelectItem value="USD" disabled>
+                            USD (Add currencies in Stock Attributes)
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -860,7 +909,7 @@ const Configuration = () => {
                 </h3>
 
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Default Unit */}
+                  {/* Default Unit (NOW DYNAMIC) */}
                   <div className="space-y-1">
                     <Label htmlFor="default-unit">Default Weight/Length Unit</Label>
                     <Select
@@ -872,10 +921,16 @@ const Configuration = () => {
                         <SelectValue placeholder="Select default unit" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="kg">Kilograms (kg)</SelectItem>
-                        <SelectItem value="lbs">Pounds (lbs)</SelectItem>
-                        <SelectItem value="meters">Meters (m)</SelectItem>
-                        <SelectItem value="feet">Feet (ft)</SelectItem>
+                        {dynamicUnits.map((u) => (
+                          <SelectItem key={u.id} value={u.name}>
+                            {u.name}
+                          </SelectItem>
+                        ))}
+                        {dynamicUnits.length === 0 && (
+                          <SelectItem value="kg" disabled>
+                            kg (Add units in Stock Attributes)
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -945,6 +1000,7 @@ const Configuration = () => {
 
         {/* -------------------- 4. Direct DB Access Tab -------------------- */}
         <TabsContent value="db-access">
+          {/* This panel is rendered from the separate file you provided */}
           <DatabaseAdminPanel />
         </TabsContent>
       </Tabs>
