@@ -53,7 +53,7 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory data with PO quantities included ---
+// --- Fetch inventory including POs, transfers, and adjustments ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
@@ -75,47 +75,95 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   if (itemsError) throw itemsError;
 
-  // Store inventory
+  // --- Store inventory ---
   const { data: storeInventory, error: storeError } = await supabase
     .from("store_inventory")
     .select("item_id, store_id, quantity");
   if (storeError) throw storeError;
 
-  // Stores info
   const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
   if (storesError) throw storesError;
 
   const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
 
-  // Map store inventory
-  const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
+  const stockMap: Record<string, { total_quantity: number; stores: StoreStock[] }> = {};
+
+  // Add store_inventory
+  (storeInventory || []).forEach((record: any) => {
     const itemId = record.item_id;
-    if (!acc[itemId]) {
-      acc[itemId] = { total_quantity: 0, stores: [] };
-    }
-    acc[itemId].total_quantity += Number(record.quantity) || 0;
-    acc[itemId].stores.push({
+    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
+    stockMap[itemId].total_quantity += Number(record.quantity) || 0;
+    stockMap[itemId].stores.push({
       store_id: record.store_id,
       store_name: storeMap[record.store_id] || "Unknown",
       quantity: Number(record.quantity) || 0,
     });
-    return acc;
-  }, {});
+  });
 
-  // Fetch PO received quantities
+  // --- Purchase Orders ---
   const { data: poItems, error: poError } = await supabase
     .from("purchase_order_items")
     .select("item_id, received_quantity");
   if (poError) throw poError;
 
-  // Add PO received quantities to stockMap
   (poItems || []).forEach((po: any) => {
     const itemId = po.item_id;
     const received = Number(po.received_quantity) || 0;
-    if (!stockMap[itemId]) {
-      stockMap[itemId] = { total_quantity: 0, stores: [] };
-    }
+    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
     stockMap[itemId].total_quantity += received;
+  });
+
+  // --- Stock Transfers ---
+  const { data: transfers, error: transferError } = await supabase
+    .from("stock_transfers")
+    .select("item_id, from_store_id, to_store_id, quantity");
+  if (transferError) throw transferError;
+
+  (transfers || []).forEach((t: any) => {
+    const itemId = t.item_id;
+    const qty = Number(t.quantity) || 0;
+    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
+    // Remove from source store
+    if (t.from_store_id) {
+      const storeEntry = stockMap[itemId].stores.find((s) => s.store_id === t.from_store_id);
+      if (storeEntry) storeEntry.quantity -= qty;
+      stockMap[itemId].total_quantity -= qty;
+    }
+    // Add to destination store
+    if (t.to_store_id) {
+      const storeEntry = stockMap[itemId].stores.find((s) => s.store_id === t.to_store_id);
+      if (storeEntry) storeEntry.quantity += qty;
+      else
+        stockMap[itemId].stores.push({
+          store_id: t.to_store_id,
+          store_name: storeMap[t.to_store_id] || "Unknown",
+          quantity: qty,
+        });
+      stockMap[itemId].total_quantity += qty;
+    }
+  });
+
+  // --- Stock Adjustments ---
+  const { data: adjustments, error: adjError } = await supabase
+    .from("stock_adjustments")
+    .select("item_id, store_id, quantity");
+  if (adjError) throw adjError;
+
+  (adjustments || []).forEach((adj: any) => {
+    const itemId = adj.item_id;
+    const qty = Number(adj.quantity) || 0;
+    if (!stockMap[itemId]) stockMap[itemId] = { total_quantity: 0, stores: [] };
+    stockMap[itemId].total_quantity += qty;
+    if (adj.store_id) {
+      const storeEntry = stockMap[itemId].stores.find((s) => s.store_id === adj.store_id);
+      if (storeEntry) storeEntry.quantity += qty;
+      else
+        stockMap[itemId].stores.push({
+          store_id: adj.store_id,
+          store_name: storeMap[adj.store_id] || "Unknown",
+          quantity: qty,
+        });
+    }
   });
 
   return (itemsData || []).map((item: any) => ({
