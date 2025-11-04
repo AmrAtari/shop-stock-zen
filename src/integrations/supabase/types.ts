@@ -1702,52 +1702,6 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never;
-export interface PurchaseOrder {
-  id: string;
-  date: string;
-  total_amount: number;
-  // keep your previous fields intact
-  // add missing optional fields
-  store?: string;
-  supplier?: string;
-  approved_by?: string;
-  exchange_rate?: number;
-}
-
-export interface PurchaseOrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  price: number;
-  // add missing optional field
-  model_number?: string;
-}
-
-// --- New types to fix TS2305 errors ---
-export interface FileImportProps {
-  // Add properties that src/components/FileImport.tsx expects here.
-  // Example properties might include:
-  onImport: (data: any) => void;
-  isLoading: boolean;
-  acceptedFileTypes?: string[];
-}
-
-export interface ProductDialogNewProps {
-  // Add properties that src/components/ProductDialogNew.tsx expects here.
-  // Example properties might include:
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (productData: any) => void;
-}
-
-export interface POApprovalHistory {
-  // Define the structure of an approval history record here.
-  // Example properties might include:
-  approved_by: string; // or UserType;
-  approved_at: string; // ISO date string or Date object
-  status: "pending" | "approved" | "rejected";
-  comments?: string;
-}
 
 export const Constants = {
   public: {
