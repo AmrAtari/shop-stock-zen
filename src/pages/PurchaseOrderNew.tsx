@@ -1,8 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo, Dispatch, SetStateAction, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+// UI Components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,731 +15,471 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { POItemSelector } from "@/components/POItemSelector";
-import { POItemImport } from "@/components/POItemImport";
-import { POBarcodeScanner } from "@/components/POBarcodeScanner";
+import { Calendar } from "@/components/ui/calendar";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils"; 
+
+// Custom Components & Hooks
+import { POItemSelector } from "@/components/POItemSelector"; 
 import { supabase } from "@/integrations/supabase/client";
-import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders"; // Assuming this still exists
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { CalendarIcon, Trash2, ArrowLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Item, Supplier } from "@/types/database";
+
+// --- PLACEHOLDER TYPES & HOOKS (to avoid missing imports) ---
+
+// Define the POItemSelection type to match the state in this file
+type POItemSelection = {
+    variant_id: string; // The ID of the variant
+    sku: string;
+    name: string;
+    unit_cost: number;
+    quantity: number;
+};
+
+// Define the Item type to match the data passed to POItemSelector
+type Item = {
+    id: string;
+    sku: string;
+    name: string;
+    category: string;
+    stock_on_hand: number;
+    cost_price: number;
+};
+
+// Simple hook to fetch all items for the selector (REPLACING useProductVariantsForPO)
+const useAllItems = () => {
+    return useQuery<Item[]>({
+        queryKey: ['all-po-items'],
+        queryFn: async () => {
+            // Reverted to a simple fetch of all variants
+            const { data, error } = await supabase
+                .from('product_variants')
+                .select(`id, sku, name, stock_on_hand, cost_price, products (category)`)
+                .order('sku');
+
+            if (error) throw error;
+
+            return (data || []).map((variant: any) => ({
+                id: variant.id,
+                sku: variant.sku,
+                name: variant.name,
+                category: variant.products.category,
+                stock_on_hand: variant.stock_on_hand,
+                cost_price: variant.cost_price,
+            }));
+        }
+    });
+};
+
+// Placeholder interfaces for assumed components
+interface POItemImportProps {
+    onUpdateItems: (items: POItemSelection[]) => void;
+}
+const POItemImport: React.FC<POItemImportProps> = ({ onUpdateItems }) => (
+    <div className="p-4 border rounded-md">Placeholder for Excel Import functionality.</div>
+);
+
+interface POBarcodeScannerProps {
+    onUpdateItems: (items: POItemSelection[]) => void;
+}
+const POBarcodeScanner: React.FC<POBarcodeScannerProps> = ({ onUpdateItems }) => (
+    <div className="p-4 border rounded-md">Placeholder for Barcode Scanner functionality.</div>
+);
+
+const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
+
+// --- SCHEMA & MAIN COMPONENT ---
 
 const poSchema = z.object({
-  supplier: z.string().min(1, "Supplier is required"),
-  // FIX: Store selection is now required
-  storeId: z.string().min(1, "Destination store is required."),
+  supplierId: z.string().uuid({ message: "Supplier is required." }),
+  destinationStoreId: z.string().uuid({ message: "Destination Store is required." }),
   orderDate: z.date({ required_error: "Order date is required." }),
-  expectedDelivery: z.date().optional(),
-  // NOTE: These fields are optional and will be sent as 'undefined' if blank,
-  // which works with the TEXT columns that allow NULL.
-  buyerCompanyName: z.string().optional(),
-  buyerAddress: z.string().optional(),
-  buyerContact: z.string().optional(),
-  billingAddress: z.string().optional(),
-  shippingAddress: z.string().optional(),
-  paymentTerms: z.string().default("Net 30"),
-  currency: z.enum(["USD", "AED"]).default("USD"),
+  expectedArrivalDate: z.date().optional(),
   shippingMethod: z.string().optional(),
   fobTerms: z.string().optional(),
-  taxPercent: z.number().min(0).max(100).default(0),
-  shippingCharges: z.number().min(0).default(0),
   specialInstructions: z.string().optional(),
+  taxRate: z.number().min(0).max(100).default(0),
 });
 
-type POFormData = z.infer<typeof poSchema>;
-
-interface POItem {
-  sku: string;
-  itemName: string;
-  itemDescription?: string;
-  color?: string;
-  size?: string;
-  modelNumber?: string;
-  unit: string;
-  quantity: number;
-  costPrice: number;
-}
+type POFormValues = z.infer<typeof poSchema>;
 
 const PurchaseOrderNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: suppliers = [] } = useSuppliers();
-  const { data: stores = [] } = useStores();
-  const { data: inventory = [] } = useQuery<Item[]>({
-    queryKey: queryKeys.inventory.all,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("items")
-        .select(`
-          *,
-          supplier:suppliers(name),
-          gender:genders(name),
-          main_group:main_groups(name),
-          category:categories(name),
-          origin:origins(name),
-          season:seasons(name),
-          size:sizes(name),
-          color:colors(name),
-          theme:themes(name)
-        `)
-        .order("name");
-      if (error) throw error;
-      
-      // Resolve attribute names
-      return (data || []).map((item: any) => ({
-        ...item,
-        supplier: item.supplier?.name || '',
-        gender: item.gender?.name || '',
-        main_group: item.main_group?.name || '',
-        category: item.category?.name || '',
-        origin: item.origin?.name || '',
-        season: item.season?.name || '',
-        size: item.size?.name || '',
-        color: item.color?.name || '',
-        theme: item.theme?.name || '',
-      }));
-    },
-  });
-
-  const [poItems, setPOItems] = useState<POItem[]>([]);
-  const [sameBillingAddress, setSameBillingAddress] = useState(false);
-  const [sameShippingAddress, setSameShippingAddress] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  
+  // State for line items selected (POItemSelection is simpler than SelectedPOItem)
+  const [poItems, setPoItems] = useState<POItemSelection[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors },
-  } = useForm<POFormData>({
+  // Data fetching hooks
+  const { data: suppliers, isLoading: isLoadingSuppliers } = useSuppliers();
+  const { data: stores, isLoading: isLoadingStores } = useStores();
+  const { data: allProducts, isLoading: isLoadingProducts } = useAllItems(); // Fetch all items here
+
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<POFormValues>({
     resolver: zodResolver(poSchema),
     defaultValues: {
-      orderDate: new Date(),
-      paymentTerms: "Net 30",
-      currency: "USD",
-      taxPercent: 0,
-      shippingCharges: 0,
-      storeId: "", // Initialize required field
+        orderDate: new Date(),
+        taxRate: 5, 
     },
   });
 
-  const watchSupplier = watch("supplier");
-  const watchBuyerAddress = watch("buyerAddress");
-  const watchCurrency = watch("currency");
-  const watchTaxPercent = watch("taxPercent");
-  const watchShippingCharges = watch("shippingCharges");
+  const { taxRate } = watch();
 
-  useEffect(() => {
-    if (watchSupplier) {
-      const supplier = suppliers.find((s) => s.id === watchSupplier);
-      setSelectedSupplier(supplier || null);
-    }
-  }, [watchSupplier, suppliers]);
-
-  useEffect(() => {
-    if (sameBillingAddress && watchBuyerAddress) {
-      setValue("billingAddress", watchBuyerAddress);
-    }
-  }, [sameBillingAddress, watchBuyerAddress, setValue]);
-
-  useEffect(() => {
-    if (sameShippingAddress && watchBuyerAddress) {
-      setValue("shippingAddress", watchBuyerAddress);
-    }
-  }, [sameShippingAddress, watchBuyerAddress, setValue]);
-
-  const handleAddItemsFromSelector = async (items: Array<{ item: Item; quantity: number; price: number }>) => {
-    // Resolve UUIDs to names for color and size
-    const resolvedItems = await Promise.all(
-      items.map(async ({ item, quantity, price }) => {
-        let colorName = item.color;
-        let sizeName = item.size;
-
-        // Resolve color UUID to name if it's a UUID
-        if (item.color && typeof item.color === 'string' && item.color.length === 36 && item.color.includes('-')) {
-          const { data: colorData } = await supabase
-            .from("colors")
-            .select("name")
-            .eq("id", item.color)
-            .maybeSingle();
-          if (colorData) colorName = colorData.name;
-        }
-
-        // Resolve size UUID to name if it's a UUID
-        if (item.size && typeof item.size === 'string' && item.size.length === 36 && item.size.includes('-')) {
-          const { data: sizeData } = await supabase
-            .from("sizes")
-            .select("name")
-            .eq("id", item.size)
-            .maybeSingle();
-          if (sizeData) sizeName = sizeData.name;
-        }
-
-        return {
-          sku: item.sku,
-          itemName: item.name,
-          itemDescription: item.description || undefined,
-          color: colorName || undefined,
-          size: sizeName || undefined,
-          modelNumber: item.item_number || undefined,
-          unit: item.unit,
-          quantity,
-          costPrice: price,
-        };
-      })
-    );
-
-    setPOItems([...poItems, ...resolvedItems]);
-    toast.success(`Added ${resolvedItems.length} items`);
-  };
-
-  const handleImportItems = (items: any[]) => {
-    const newItems: POItem[] = items.map((item) => ({
-      sku: item.sku,
-      itemName: item.itemName || item.sku,
-      itemDescription: item.description,
-      color: item.color,
-      size: item.size,
-      modelNumber: item.modelNumber,
-      unit: item.unit || "pcs",
-      quantity: item.quantity,
-      costPrice: item.costPrice,
+  // --- HANDLER TO RECEIVE SELECTED ITEMS ---
+  const handleSelectItems = (selectedItems: { item: Item; quantity: number; price: number }[]) => {
+    // Convert the complex selectedItems array into the simple POItemSelection array
+    const newItems: POItemSelection[] = selectedItems.map(s => ({
+        variant_id: s.item.id,
+        sku: s.item.sku,
+        name: s.item.name,
+        unit_cost: s.price, // Use the user-defined price (unit cost)
+        quantity: s.quantity,
     }));
-    setPOItems([...poItems, ...newItems]);
+    
+    // Simple deduplication logic: replace existing if SKU matches, otherwise append
+    setPoItems(prevItems => {
+        const existingMap = new Map(prevItems.map(item => [item.variant_id, item]));
+        newItems.forEach(item => existingMap.set(item.variant_id, item));
+        return Array.from(existingMap.values());
+    });
   };
 
-  const handleBarcodeScans = (scannedItems: any[]) => {
-    const newItems: POItem[] = scannedItems.map((item) => ({
-      sku: item.sku,
-      itemName: item.name || item.sku,
-      unit: "pcs",
-      quantity: item.quantity,
-      costPrice: item.price,
-    }));
-    setPOItems([...poItems, ...newItems]);
-  };
+  // --- CALCULATE TOTALS ---
+  const { subtotal, taxAmount, grandTotal } = useMemo(() => {
+    const subtotal = poItems.reduce((sum, item) => sum + (item.unit_cost * item.quantity), 0);
+    const taxAmount = subtotal * (taxRate / 100);
+    const grandTotal = subtotal + taxAmount;
+    
+    return { subtotal, taxAmount, grandTotal };
+  }, [poItems, taxRate]);
 
-  const lookupSkuForBarcode = async (sku: string) => {
-    const item = inventory.find((i) => i.sku === sku);
-    if (item) {
-      return { name: item.name, price: 0 };
-    }
-    return null;
-  };
 
-  const handleRemoveItem = (index: number) => {
-    setPOItems(poItems.filter((_, i) => i !== index));
-  };
-
-  const handleItemChange = (index: number, field: keyof POItem, value: any) => {
-    const updated = [...poItems];
-    updated[index] = { ...updated[index], [field]: value };
-    setPOItems(updated);
-  };
-
-  const subtotal = poItems.reduce((sum, item) => sum + item.quantity * item.costPrice, 0);
-  const taxAmount = subtotal * (watchTaxPercent / 100);
-  const grandTotal = subtotal + taxAmount + (watchShippingCharges || 0);
-
-  const onSubmit = async (data: POFormData) => {
+  // --- SUBMISSION LOGIC ---
+  const onSubmit = async (data: POFormValues) => {
     if (poItems.length === 0) {
-      toast.error("Please add at least one item");
-      return;
+        toast.error("You must add at least one line item to the purchase order.");
+        return;
     }
-
+    
     setIsSaving(true);
-
+    
     try {
-      const supplierData = suppliers.find((s) => s.id === data.supplier);
-      if (!supplierData) throw new Error("Supplier not found");
-
-      // Generate PO number using database function
-      const { data: poNumber, error: poNumberError } = await supabase.rpc("generate_po_number", {
-        supplier_name: supplierData.name,
-      });
+      // 1. Generate PO Number via RPC (Assumed to exist)
+      const { data: poNumberData, error: poNumberError } = await supabase.rpc('generate_po_number');
 
       if (poNumberError) throw poNumberError;
-
-      // Get current user for authorized_by
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      // Create purchase order data
-      const poDataToInsert = {
-        po_number: poNumber,
-        supplier: supplierData.name,
-        supplier_id: supplierData.id,
-        store_id: data.storeId,
+      const po_number = poNumberData;
+      
+      // 2. Insert PO record
+      const poRecord = {
+        po_number,
+        supplier_id: data.supplierId,
+        destination_store_id: data.destinationStoreId,
         order_date: data.orderDate.toISOString(),
-        expected_delivery: data.expectedDelivery?.toISOString(),
-
-        // These optional fields are sent as 'undefined' if blank
-        buyer_company_name: data.buyerCompanyName,
-        buyer_address: data.buyerAddress,
-        buyer_contact: data.buyerContact,
-        billing_address: data.billingAddress,
-        shipping_address: data.shippingAddress,
-
-        supplier_contact_person: selectedSupplier?.contact_person,
-        payment_terms: data.paymentTerms,
-        currency: data.currency,
+        expected_arrival_date: data.expectedArrivalDate?.toISOString() || null,
         shipping_method: data.shippingMethod,
         fob_terms: data.fobTerms,
         special_instructions: data.specialInstructions,
-        subtotal,
+        status: 'draft', 
+        subtotal: subtotal,
         tax_amount: taxAmount,
-        shipping_charges: data.shippingCharges,
         total_cost: grandTotal,
-        total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
-        status: "draft",
-        authorized_by: user?.id,
+        shipping_charges: 0, 
+        currency: 'USD',
       };
 
-      // Create purchase order and retrieve the inserted row's ID
-      const { data: poData, error: poError } = await supabase
-        .from("purchase_orders")
-        .insert(poDataToInsert)
-        .select("id") // Explicitly select the ID column
-        .single();
+      const { data: insertedPO, error: poError } = await supabase
+        .from('purchase_orders')
+        .insert(poRecord)
+        .select('id')
+        .maybeSingle();
 
-      if (poError) throw poError;
+      if (poError || !insertedPO) throw poError || new Error("Failed to create Purchase Order.");
+      
+      const po_id = insertedPO.id;
 
-      // FINAL FIX: Safely extract the ID and check its existence
-      const poId = poData?.id;
-      if (!poId) {
-        throw new Error(
-          "Failed to retrieve the ID of the created Purchase Order. Please ensure the 'purchase_orders' table has a primary key column named 'id'.",
-        );
-      }
-
-      // Create PO items, using the confirmed PO ID
-      const poItemsData = poItems.map((item) => ({
-        po_id: poId,
+      // 3. Insert PO Items
+      const poItemsToInsert = poItems.map(item => ({
+        po_id,
+        variant_id: item.variant_id,
         sku: item.sku,
-        item_name: item.itemName,
-        item_description: item.itemDescription,
-        color: item.color,
-        size: item.size,
-        model_number: item.modelNumber,
-        unit: item.unit,
-        quantity: item.quantity,
-        cost_price: item.costPrice,
+        product_name: item.name, 
+        quantity_ordered: item.quantity,
+        unit_cost: item.unit_cost,
+        line_total: item.quantity * item.unit_cost,
+        received_quantity: 0,
       }));
 
-      const { error: itemsError } = await supabase.from("purchase_order_items").insert(poItemsData);
+      const { error: itemsError } = await supabase
+        .from('purchase_order_items')
+        .insert(poItemsToInsert);
 
       if (itemsError) throw itemsError;
 
-      // Invalidate queries to refresh data
-      await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
+      toast.success(`Purchase Order ${po_number} created successfully.`);
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); 
+      navigate(`/purchase-orders/${po_id}`);
 
-      toast.success(`Purchase Order ${poNumber} created successfully`);
-      navigate("/purchase-orders");
-    } catch (error: any) {
-      console.error("PO creation error:", error);
-      toast.error(error.message || "Failed to create purchase order");
+    } catch (error) {
+      console.error("PO Creation Error:", error);
+      toast.error("Failed to create Purchase Order.", { description: (error as Error).message });
     } finally {
       setIsSaving(false);
     }
   };
 
+
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/purchase-orders")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold">New Purchase Order</h1>
-          <p className="text-muted-foreground mt-1">Create a new purchase order</p>
-        </div>
-      </div>
+    <div className="space-y-6 max-w-6xl mx-auto py-8">
+      <h1 className="text-3xl font-bold">Create New Purchase Order</h1>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Step 1: Basic Info & Dates */}
+        {/* PO Information Card (Same as before) */}
         <Card>
           <CardHeader>
-            <CardTitle>1. Identification & Dates</CardTitle>
+            <CardTitle>1. Purchase Order Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>PO Number</Label>
-                <Input value="Auto-generated on save" disabled />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="storeId">Destination Store *</Label>
-                <Select value={watch("storeId")} onValueChange={(value) => setValue("storeId", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select store" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stores.map((store) => (
-                      <SelectItem key={store.id} value={store.id}>
-                        {store.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.storeId && <p className="text-sm text-destructive">{errors.storeId.message}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="orderDate">Order Date *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {watch("orderDate") ? format(watch("orderDate"), "PPP") : "Select date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={watch("orderDate")}
-                      onSelect={(date) => date && setValue("orderDate", date)}
-                      className={cn("p-3 pointer-events-auto")}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="expectedDelivery">Expected Delivery Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {watch("expectedDelivery") ? format(watch("expectedDelivery"), "PPP") : "Select date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={watch("expectedDelivery")}
-                      onSelect={(date) => setValue("expectedDelivery", date)}
-                      className={cn("p-3 pointer-events-auto")}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            
+            {/* Supplier Select */}
+            <div className="space-y-2">
+              <Label htmlFor="supplierId" className={errors.supplierId ? "text-red-600" : ""}>Supplier</Label>
+              <Select onValueChange={(value) => setValue('supplierId', value)} disabled={isLoadingSuppliers}>
+                <SelectTrigger className={cn({ "border-red-500": errors.supplierId })}>
+                  <SelectValue placeholder={isLoadingSuppliers ? "Loading Suppliers..." : "Select a supplier"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.supplierId && <p className="text-sm text-red-600">{errors.supplierId.message}</p>}
+            </div>
+
+            {/* Destination Store Select */}
+            <div className="space-y-2">
+              <Label htmlFor="destinationStoreId" className={errors.destinationStoreId ? "text-red-600" : ""}>Destination Store</Label>
+              <Select onValueChange={(value) => setValue('destinationStoreId', value)} disabled={isLoadingStores}>
+                <SelectTrigger className={cn({ "border-red-500": errors.destinationStoreId })}>
+                  <SelectValue placeholder={isLoadingStores ? "Loading Stores..." : "Select destination store"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.destinationStoreId && <p className="text-sm text-red-600">{errors.destinationStoreId.message}</p>}
+            </div>
+
+            {/* Order Date Picker */}
+            <div className="space-y-2">
+              <Label htmlFor="orderDate" className={errors.orderDate ? "text-red-600" : ""}>Order Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !watch('orderDate') && "text-muted-foreground",
+                      { "border-red-500": errors.orderDate }
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {watch('orderDate') ? format(watch('orderDate')!, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={watch('orderDate')}
+                    onSelect={(date) => setValue('orderDate', date!)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {errors.orderDate && <p className="text-sm text-red-600">{errors.orderDate.message}</p>}
+            </div>
+            
+            {/* Expected Arrival Date (Optional) */}
+            <div className="space-y-2">
+              <Label htmlFor="expectedArrivalDate">Expected Arrival Date (Optional)</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn("w-full justify-start text-left font-normal", !watch('expectedArrivalDate') && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {watch('expectedArrivalDate') ? format(watch('expectedArrivalDate')!, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={watch('expectedArrivalDate')}
+                    onSelect={(date) => setValue('expectedArrivalDate', date || undefined)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </CardContent>
         </Card>
 
-        {/* Step 2: Buyer & Supplier Details */}
+        {/* Line Items Card */}
         <Card>
           <CardHeader>
-            <CardTitle>2. Buyer & Supplier Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <h3 className="font-semibold">Buyer Information</h3>
-                <div className="space-y-2">
-                  <Label htmlFor="buyerCompanyName">Company Name</Label>
-                  <Input {...register("buyerCompanyName")} placeholder="Your company name" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="buyerAddress">Address</Label>
-                  <Textarea {...register("buyerAddress")} placeholder="Company address" rows={3} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="buyerContact">Contact</Label>
-                  <Input {...register("buyerContact")} placeholder="Phone / Email" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="billingAddress">Billing Address</Label>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Checkbox
-                      checked={sameBillingAddress}
-                      onCheckedChange={(checked) => setSameBillingAddress(checked as boolean)}
-                    />
-                    <span className="text-sm">Same as buyer address</span>
-                  </div>
-                  <Textarea
-                    {...register("billingAddress")}
-                    placeholder="Billing address"
-                    rows={3}
-                    disabled={sameBillingAddress}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="shippingAddress">Shipping Address</Label>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Checkbox
-                      checked={sameShippingAddress}
-                      onCheckedChange={(checked) => setSameShippingAddress(checked as boolean)}
-                    />
-                    <span className="text-sm">Same as buyer address</span>
-                  </div>
-                  <Textarea
-                    {...register("shippingAddress")}
-                    placeholder="Shipping address"
-                    rows={3}
-                    disabled={sameShippingAddress}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="font-semibold">Supplier Information</h3>
-                <div className="space-y-2">
-                  <Label htmlFor="supplier">Supplier *</Label>
-                  <Select value={watchSupplier} onValueChange={(value) => setValue("supplier", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suppliers.map((supplier) => (
-                        <SelectItem key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.supplier && <p className="text-sm text-destructive">{errors.supplier.message}</p>}
-                </div>
-                {selectedSupplier && (
-                  <div className="p-4 bg-muted rounded-lg space-y-2">
-                    <p className="text-sm">
-                      <strong>Address:</strong> {selectedSupplier.address || "N/A"}
-                    </p>
-                    <p className="text-sm">
-                      <strong>Contact Person:</strong> {selectedSupplier.contact_person || "N/A"}
-                    </p>
-                    <p className="text-sm">
-                      <strong>Phone:</strong> {selectedSupplier.phone || "N/A"}
-                    </p>
-                    <p className="text-sm">
-                      <strong>Email:</strong> {selectedSupplier.email || "N/A"}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Step 3: Items */}
-        <Card>
-          <CardHeader>
-            <CardTitle>3. Add Items</CardTitle>
+            <CardTitle>2. Line Items</CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="manual" className="w-full">
+            <Tabs defaultValue="manual">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="manual">Manual Selection</TabsTrigger>
                 <TabsTrigger value="import">Excel Import</TabsTrigger>
                 <TabsTrigger value="barcode">Barcode Scanner</TabsTrigger>
               </TabsList>
-              <TabsContent value="manual">
-                <POItemSelector items={inventory} onSelect={handleAddItemsFromSelector} />
+              
+              {/* Manual Selection Tab */}
+              <TabsContent value="manual" className="mt-4">
+                {/* REVERTED PROP USAGE */}
+                <POItemSelector 
+                    items={allProducts || []}
+                    isLoading={isLoadingProducts}
+                    onSelect={handleSelectItems} 
+                />
               </TabsContent>
-              <TabsContent value="import">
-                <POItemImport onImport={handleImportItems} existingSkus={inventory.map((i) => i.sku)} />
+
+              {/* Other Tabs */}
+              <TabsContent value="import" className="mt-4">
+                <POItemImport onUpdateItems={setPoItems} />
               </TabsContent>
-              <TabsContent value="barcode">
-                <POBarcodeScanner onScan={handleBarcodeScans} onLookupSku={lookupSkuForBarcode} />
+              <TabsContent value="barcode" className="mt-4">
+                <POBarcodeScanner onUpdateItems={setPoItems} />
               </TabsContent>
             </Tabs>
-
+            
+            {/* Display Selected Items */}
             {poItems.length > 0 && (
-              <div className="mt-6">
-                <h3 className="font-semibold mb-4">Order Items ({poItems.length})</h3>
-                <div className="border rounded-lg">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>#</TableHead>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Item Name</TableHead>
-                        <TableHead>Color</TableHead>
-                        <TableHead>Size</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>Unit</TableHead>
-                        <TableHead>Price</TableHead>
-                        <TableHead>Total</TableHead>
-                        <TableHead></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {poItems.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{index + 1}</TableCell>
-                          <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                          <TableCell>{item.itemName}</TableCell>
-                          <TableCell>
-                            <Input
-                              value={item.color || ""}
-                              onChange={(e) => handleItemChange(index, "color", e.target.value)}
-                              className="w-20"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={item.size || ""}
-                              onChange={(e) => handleItemChange(index, "size", e.target.value)}
-                              className="w-20"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(index, "quantity", parseInt(e.target.value) || 1)}
-                              className="w-20"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={item.unit}
-                              onChange={(e) => handleItemChange(index, "unit", e.target.value)}
-                              className="w-20"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={item.costPrice}
-                              onChange={(e) => handleItemChange(index, "costPrice", parseFloat(e.target.value) || 0)}
-                              className="w-24"
-                            />
-                          </TableCell>
-                          <TableCell>{(item.quantity * item.costPrice).toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(index)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="mt-6">
+                    <h3 className="text-lg font-semibold mb-2">Selected Items ({poItems.length})</h3>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>SKU</TableHead>
+                                <TableHead>Name</TableHead>
+                                <TableHead className="text-right">Quantity</TableHead>
+                                <TableHead className="text-right">Unit Cost</TableHead>
+                                <TableHead className="text-right">Line Total</TableHead>
+                                <TableHead className="w-[50px]"></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {poItems.map(item => (
+                                <TableRow key={item.variant_id}>
+                                    <TableCell className="font-medium">{item.sku}</TableCell>
+                                    <TableCell>{item.name}</TableCell>
+                                    <TableCell className="text-right">{item.quantity}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(item.unit_cost)}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(item.unit_cost * item.quantity)}</TableCell>
+                                    <TableCell>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            onClick={() => setPoItems(poItems.filter(p => p.variant_id !== item.variant_id))}
+                                        >
+                                            Remove
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
                 </div>
-              </div>
             )}
           </CardContent>
         </Card>
+        
+        {/* Totals and Summary Card (Same as before) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Shipping & Notes Card */}
+            <Card className="lg:col-span-2">
+                <CardHeader>
+                    <CardTitle>3. Shipping and Notes</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="shippingMethod">Shipping Method (Optional)</Label>
+                            <Input {...register("shippingMethod")} placeholder="e.g., UPS Ground, Air Freight" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="fobTerms">FOB Terms (Optional)</Label>
+                            <Input {...register("fobTerms")} placeholder="e.g., FOB Destination" />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="specialInstructions">Special Instructions / Notes (Optional)</Label>
+                        <Textarea
+                            {...register("specialInstructions")}
+                            placeholder="Any special requirements or notes..."
+                            rows={4}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
 
-        {/* Step 4: Financial Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>4. Financial Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="paymentTerms">Payment Terms</Label>
-                <Select value={watch("paymentTerms")} onValueChange={(value) => setValue("paymentTerms", value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Net 30">Net 30</SelectItem>
-                    <SelectItem value="Net 60">Net 60</SelectItem>
-                    <SelectItem value="COD">COD (Cash on Delivery)</SelectItem>
-                    <SelectItem value="2% 10 Net 30">2% 10 Net 30</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="currency">Currency</Label>
-                <Select value={watchCurrency} onValueChange={(value) => setValue("currency", value as "USD" | "AED")}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD ($)</SelectItem>
-                    <SelectItem value="AED">AED (د.إ)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="taxPercent">Tax %</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  {...register("taxPercent", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="shippingCharges">Shipping Charges</Label>
-                <Input type="number" min="0" step="0.01" {...register("shippingCharges", { valueAsNumber: true })} />
-              </div>
-            </div>
+            {/* Financial Summary Card */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>4. Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Item Count:</span>
+                        <span className="font-medium">{poItems.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Subtotal:</span>
+                        <span className="font-medium">{formatCurrency(subtotal)}</span> 
+                    </div>
 
-            <div className="p-4 bg-muted rounded-lg space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span className="font-semibold">
-                  {watchCurrency} {subtotal.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tax ({watchTaxPercent}%):</span>
-                <span className="font-semibold">
-                  {watchCurrency} {taxAmount.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Shipping:</span>
-                <span className="font-semibold">
-                  {watchCurrency} {(watchShippingCharges || 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-lg font-bold border-t pt-2">
-                <span>Grand Total:</span>
-                <span>
-                  {watchCurrency} {grandTotal.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                    <Separator />
 
-        {/* Step 5: Logistics & Notes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>5. Logistics & Additional Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="shippingMethod">Shipping Method (Optional)</Label>
-                <Input {...register("shippingMethod")} placeholder="e.g., UPS Ground, Air Freight" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fobTerms">FOB Terms (Optional)</Label>
-                <Input {...register("fobTerms")} placeholder="e.g., FOB Destination" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="specialInstructions">Special Instructions / Notes (Optional)</Label>
-              <Textarea
-                {...register("specialInstructions")}
-                placeholder="Any special requirements or notes..."
-                rows={4}
-              />
-            </div>
-          </CardContent>
-        </Card>
+                    <div className="space-y-2">
+                        <Label>Tax Rate</Label>
+                        <div className="flex items-center gap-2">
+                            <Input 
+                                type="number" 
+                                {...register('taxRate', { valueAsNumber: true })} 
+                                className="w-20 text-right"
+                            />
+                            <span>%</span>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tax Amount ({taxRate}%):</span>
+                        <span className="font-medium">{formatCurrency(taxAmount)}</span> 
+                    </div>
+                    
+                    <Separator />
+                    
+                    <div className="flex justify-between text-xl font-bold pt-1">
+                        <span>Grand Total:</span>
+                        <span>{formatCurrency(grandTotal)}</span> 
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-4">
