@@ -45,20 +45,20 @@ export interface Supplier extends BaseEntity {
 }
 
 // --- Purchase Order Item Type (As stored in purchase_order_items table) ---
-export interface PurchaseOrderItem extends BaseEntity {
-  po_id: number; // Foreign key to purchase_orders.po_id (integer PK)
-  item_id: string; // Foreign key to the actual inventory item (UUID)
+export interface PurchaseOrder extends BaseEntity {
+  po_id: number;
+  supplier_id: string;
+  store_id: string | null;
 
-  // Properties denormalized from the Item/Variant table (or used for display)
-  sku: string;
-  item_name: string;
-  item_description: string | null;
-  color: string | null; // This will hold the RESOLVED name or the UUID
-  size: string | null; // This will hold the RESOLVED name or the UUID
-  unit: string | null;
-  cost_price: number; // The individual item cost on this PO line
-  quantity: number; // The quantity ordered
-  received_quantity: number; // New: Quantity received
+  // FIX: Missing properties from errors
+  store: Store | null; // <-- ADDED: Property 'store' does not exist
+  supplier: Supplier | null; // <-- ADDED: Property 'supplier' does not exist
+  approved_by: string | null; // <-- ADDED: Property 'approved_by' does not exist
+  exchange_rate: number | null; // <-- ADDED: Property 'exchange_rate' does not exist
+
+  currency: string;
+  order_date: string;
+  // ... (rest of the interface)
 }
 
 // --- Purchase Order Type ---
