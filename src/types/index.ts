@@ -2,8 +2,8 @@
  * src/types/index.ts
  *
  * Defines shared TypeScript interfaces used across the application.
- * FIX: Renamed 'description' to 'item_description' to match component usage
- * and cleaned up syntax to resolve TS1443, TS1005, and TS1160 errors.
+ * FIX: Updated PurchaseOrder, PurchaseOrderItem, and added POApprovalHistory
+ * to resolve all property and type mismatches related to the approval flow.
  */
 
 // --- Base Entity Type ---
@@ -52,9 +52,19 @@ export interface Supplier extends BaseEntity {
   created_at: string;
 }
 
+// --- PO Approval History Type (NEW) ---
+export interface POApprovalHistory {
+  id: string; // The bigint ID
+  po_id: string;
+  approver_id: string; // The user ID of the approver
+  status_change: "Approved" | "Rejected";
+  notes: string | null;
+  created_at: string; // Timestamp of the action
+}
+
 // --- Purchase Order Item Type (Resolves most PurchaseOrderDetail.tsx errors) ---
 export interface PurchaseOrderItem extends BaseEntity {
-  po_id: number; // Foreign key linking to PurchaseOrder.po_id (integer PK)
+  po_id: string; // Foreign key to PurchaseOrder.po_id (integer PK)
   item_id: string; // Foreign key to the actual inventory item
 
   // Properties accessed by the component (based on your errors)
@@ -68,6 +78,9 @@ export interface PurchaseOrderItem extends BaseEntity {
   cost_price: number; // The individual item cost
 
   quantity: number;
+  // --- NEW FIELDS ---
+  model_number: string | null; // Added to resolve TS2339
+  received_quantity: number | null; // Added to resolve TS2339 (for receiving module)
 }
 
 // --- Purchase Order Type ---
@@ -94,14 +107,13 @@ export interface PurchaseOrder extends BaseEntity {
   special_instructions: string | null;
   fob_terms: string | null;
   shipping_method: string | null;
-  payment_terms: string | null;
-  supplier_contact_person: string | null;
-  currency: string | null;
-  expected_delivery: string | null;
-  supplier: string | null;
-  created_by: string | null;
-  updated_by: string | null;
+  payment_terms: string;
+  currency: "USD" | "AED" | string;
 
-  // Property 'notes'
-  notes: string | null;
+  // --- NEW FIELDS FOR APPROVAL/FINANCIALS ---
+  exchange_rate: number; // Added to resolve TS2339
+  approved_by: string | null; // Added to resolve TS2339 (User ID of the approver)
+
+  // Joins (Resolved the TS2339 'store' error)
+  store?: { name: string };
 }
