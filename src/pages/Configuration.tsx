@@ -1,9 +1,7 @@
 import React from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Factory, GitPullRequest, Building, Shield, Briefcase, Wrench } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
 
-// Sections
 import OrganizationalStructureSection from "./sections/OrganizationalStructureSection";
 import WorkflowRulesSection from "./sections/WorkflowRulesSection";
 import SystemDefaultsSection from "./sections/SystemDefaultsSection";
@@ -11,16 +9,14 @@ import UserRolesSection from "./sections/UserRolesSection";
 import StockAttributesSection from "./sections/StockAttributesSection";
 import DirectDBAccessSection from "./sections/DirectDBAccessSection";
 
-const Configuration = () => {
-  const { userRole } = useAuth();
-  const isAdmin = userRole === "admin";
+export default function Configuration() {
+  const isAdmin = true; // Replace with your auth logic
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold">System Configuration</h1>
-      <p className="text-gray-500">Manage users, core inventory data models, and global application settings.</p>
 
-      <Tabs defaultValue="organizational-structure" className="w-full">
+      <Tabs defaultValue="organizational-structure">
         <TabsList className="grid w-full grid-cols-6 h-full">
           <TabsTrigger value="organizational-structure" className="h-full">
             <Factory className="w-4 h-4 mr-2" /> Org Structure
@@ -38,11 +34,10 @@ const Configuration = () => {
             <Briefcase className="w-4 h-4 mr-2" /> Stock Attributes
           </TabsTrigger>
           <TabsTrigger value="db-access" disabled={!isAdmin}>
-            <Wrench className="w-4 h-4 mr-2" /> Direct DB Access
+            <Wrench className="w-4 h-4 mr-2" /> DB Access
           </TabsTrigger>
         </TabsList>
 
-        {/* Section Tabs */}
         <TabsContent value="organizational-structure">
           <OrganizationalStructureSection />
         </TabsContent>
@@ -53,17 +48,15 @@ const Configuration = () => {
           <SystemDefaultsSection />
         </TabsContent>
         <TabsContent value="user-roles">
-          <UserRolesSection />
+          <UserRolesSection isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="attributes">
           <StockAttributesSection />
         </TabsContent>
         <TabsContent value="db-access">
-          <DirectDBAccessSection />
+          <DirectDBAccessSection isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
     </div>
   );
-};
-
-export default Configuration;
+}
