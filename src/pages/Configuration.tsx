@@ -55,6 +55,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
+import SuppliersSection from "@/components/config/SuppliersSection";
 
 // *** DatabaseAdminComponent is imported here. ***
 import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
@@ -1203,7 +1204,13 @@ const CatalogManagementDialog: React.FC<{
     </Dialog>
   );
 };
+<div className="space-y-6 p-4">
+  {/* Existing sections */}
 
+  <SuppliersSection />
+
+  {/* More existing sections */}
+</div>;
 // ---------------------------------------------------------------------
 // MAIN COMPONENT
 // ---------------------------------------------------------------------
