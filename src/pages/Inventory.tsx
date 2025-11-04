@@ -4,9 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ProductDialogNew } from "@/components/ProductDialogNew";
-import { FileImport } from "@/components/FileImport";
+import ProductDialogNew from "@/components/ProductDialogNew";
+import FileImport from "@/components/FileImport";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,10 +53,10 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory data including PO, transfers, and transactions ---
+// --- Fetch inventory data with manual join for store names ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
   const { data: itemsData, error: itemsError } = await supabase
-    .from<any, any>("items")
+    .from("items")
     .select(
       `
       *,
@@ -71,21 +72,25 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     `,
     )
     .order("name");
+
   if (itemsError) throw itemsError;
 
+  // Fetch store inventory and stores separately (avoid join errors)
   const { data: storeInventory, error: storeError } = await supabase
-    .from<any, any>("store_inventory")
+    .from("store_inventory")
     .select("item_id, store_id, quantity");
   if (storeError) throw storeError;
 
-  const { data: stores, error: storesError } = await supabase.from<any, any>("stores").select("id, name");
+  const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
   if (storesError) throw storesError;
 
   const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
 
   const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
     const itemId = record.item_id;
-    if (!acc[itemId]) acc[itemId] = { total_quantity: 0, stores: [] };
+    if (!acc[itemId]) {
+      acc[itemId] = { total_quantity: 0, stores: [] };
+    }
     acc[itemId].total_quantity += Number(record.quantity) || 0;
     acc[itemId].stores.push({
       store_id: record.store_id,
@@ -95,82 +100,44 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     return acc;
   }, {});
 
-  // Fetch purchase orders quantities
-  const { data: poItems } = await supabase.from<any, any>("purchase_order_items").select("sku, received_quantity");
-  const poMap = (poItems || []).reduce(
-    (acc, po) => {
-      acc[po.sku] = (acc[po.sku] || 0) + Number(po.received_quantity || 0);
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  // Transactions
-  const { data: transactions } = await supabase.from<any, any>("transactions").select("item_id, quantity, is_refund");
-  const transMap = (transactions || []).reduce(
-    (acc, t) => {
-      const change = t.is_refund ? Number(t.quantity) : -Number(t.quantity);
-      acc[t.item_id] = (acc[t.item_id] || 0) + change;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  // Transfers
-  const { data: transferItems } = await supabase.from<any, any>("transfer_items").select("variant_id, quantity");
-  const transferMap = (transferItems || []).reduce(
-    (acc, t) => {
-      acc[t.variant_id] = (acc[t.variant_id] || 0) + Number(t.quantity);
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  return (itemsData || []).map((item: any) => {
-    const storeQty = stockMap[item.id]?.total_quantity || 0;
-    const poQty = poMap[item.sku] || 0;
-    const transQty = transMap[item.id] || 0;
-    const transferQty = transferMap[item.id] || 0;
-    const totalQuantity = storeQty + poQty + transQty + transferQty;
-
-    return {
-      id: item.id,
-      sku: item.sku || "N/A",
-      name: item.name || "N/A",
-      supplier: item.supplier?.name || "",
-      gender: item.gender?.name || "",
-      main_group: item.main_group?.name || "",
-      category: item.category?.name || "",
-      origin: item.origin?.name || "",
-      season: item.season?.name || "",
-      size: item.size?.name || "",
-      color: item.color?.name || "",
-      theme: item.theme?.name || "",
-      unit: item.unit || "",
-      price: item.price || 0,
-      cost: item.cost || 0,
-      item_number: item.item_number || "",
-      pos_description: item.pos_description || "",
-      description: item.description || "",
-      color_id: item.color_id || "",
-      item_color_code: item.item_color_code || "",
-      color_id_code: item.color_id_code || "",
-      location: item.location || "",
-      quantity: totalQuantity,
-      min_stock: item.min_stock || 0,
-      last_restocked: item.last_restocked,
-      created_at: item.created_at,
-      stores: stockMap[item.id]?.stores || [],
-    };
-  });
+  return (itemsData || []).map((item: any) => ({
+    id: item.id,
+    sku: item.sku || "N/A",
+    name: item.name || "N/A",
+    supplier: item.supplier?.name || "",
+    gender: item.gender?.name || "",
+    main_group: item.main_group?.name || "",
+    category: item.category?.name || "",
+    origin: item.origin?.name || "",
+    season: item.season?.name || "",
+    size: item.size?.name || "",
+    color: item.color?.name || "",
+    theme: item.theme?.name || "",
+    unit: item.unit || "",
+    price: item.price || 0,
+    cost: item.cost || 0,
+    item_number: item.item_number || "",
+    pos_description: item.pos_description || "",
+    description: item.description || "",
+    color_id: item.color_id || "",
+    item_color_code: item.item_color_code || "",
+    color_id_code: item.color_id_code || "",
+    location: item.location || "",
+    quantity: stockMap[item.id]?.total_quantity || 0,
+    min_stock: item.min_stock || 0,
+    last_restocked: item.last_restocked,
+    created_at: item.created_at,
+    stores: stockMap[item.id]?.stores || [],
+  }));
 };
 
-const useInventoryQuery = () =>
-  useQuery<ItemWithDetails[]>({
+const useInventoryQuery = () => {
+  return useQuery<ItemWithDetails[]>({
     queryKey: queryKeys.inventory.all,
     queryFn: fetchInventory,
     staleTime: 2 * 60 * 1000,
   });
+};
 
 const ITEMS_PER_PAGE = 20;
 
@@ -183,23 +150,96 @@ const InventoryPage: React.FC = () => {
   const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
   const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterSupplier, setFilterSupplier] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterMainGroup, setFilterMainGroup] = useState("");
+  const [filterStore, setFilterStore] = useState("");
+  const [filterSeason, setFilterSeason] = useState("");
+  const [filterColor, setFilterColor] = useState("");
+  const [filterSize, setFilterSize] = useState("");
 
   const { data: inventory = [], isLoading, error } = useInventoryQuery();
 
+  const { data: stores = [] } = useQuery({
+    queryKey: ["stores-for-filter"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("stores").select("id, name").order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const supplierOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.supplier).filter(Boolean))).sort(),
+    [inventory],
+  );
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.category).filter(Boolean))).sort(),
+    [inventory],
+  );
+  const mainGroupOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.main_group).filter(Boolean))).sort(),
+    [inventory],
+  );
+  const seasonOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.season).filter(Boolean))).sort(),
+    [inventory],
+  );
+  const colorOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.color).filter(Boolean))).sort(),
+    [inventory],
+  );
+  const sizeOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.size).filter(Boolean))).sort(),
+    [inventory],
+  );
+
   const filteredInventory = useMemo(() => {
-    return inventory.filter(
-      (i) =>
-        i.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        i.sku.toLowerCase().includes(searchTerm.toLowerCase()),
-    );
-  }, [inventory, searchTerm]);
+    return inventory.filter((item) => {
+      const matchesSearch =
+        (item.name?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
+        (item.sku?.toLowerCase() ?? "").includes(searchTerm.toLowerCase()) ||
+        (item.item_number?.toLowerCase() ?? "").includes(searchTerm.toLowerCase());
+      const matchesSupplier = !filterSupplier || item.supplier === filterSupplier;
+      const matchesCategory = !filterCategory || item.category === filterCategory;
+      const matchesMainGroup = !filterMainGroup || item.main_group === filterMainGroup;
+      const matchesStore = !filterStore || item.stores.some((s) => s.store_id === filterStore);
+      const matchesSeason = !filterSeason || item.season === filterSeason;
+      const matchesColor = !filterColor || item.color === filterColor;
+      const matchesSize = !filterSize || item.size === filterSize;
+
+      return (
+        matchesSearch &&
+        matchesSupplier &&
+        matchesCategory &&
+        matchesMainGroup &&
+        matchesStore &&
+        matchesSeason &&
+        matchesColor &&
+        matchesSize
+      );
+    });
+  }, [
+    inventory,
+    searchTerm,
+    filterSupplier,
+    filterCategory,
+    filterMainGroup,
+    filterStore,
+    filterSeason,
+    filterColor,
+    filterSize,
+  ]);
 
   const pagination = usePagination({
     totalItems: filteredInventory.length,
     itemsPerPage: ITEMS_PER_PAGE,
   });
 
-  const displayInventory = filteredInventory.slice(pagination.startIndex, pagination.endIndex);
+  const displayInventory = useMemo(
+    () => filteredInventory.slice(pagination.startIndex, pagination.endIndex),
+    [filteredInventory, pagination.startIndex, pagination.endIndex],
+  );
 
   const toggleSelectItem = (item: ItemWithDetails) => {
     setSelectedItems((prev) =>
@@ -214,7 +254,7 @@ const InventoryPage: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
-    const { error: delError } = await supabase.from<any, any>("items").delete().eq("id", id);
+    const { error: delError } = await supabase.from("items").delete().eq("id", id);
     if (delError) toast.error(delError.message);
     else {
       toast.success("Item deleted successfully");
@@ -227,7 +267,6 @@ const InventoryPage: React.FC = () => {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
       <header className="flex justify-between items-center border-b pb-4">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Layers className="w-6 h-6" /> Inventory Management
@@ -247,16 +286,44 @@ const InventoryPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Search */}
-      <div className="flex items-center gap-2">
-        <Search className="w-5 h-5 text-muted-foreground" />
-        <Input
-          placeholder="Search by name, SKU, or item number..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
-        <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
+      {/* Filters */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <Search className="w-5 h-5 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, SKU, or item number..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+          <div className="text-sm text-muted-foreground">{filteredInventory.length} item(s) found</div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          {[
+            { label: "Supplier", value: filterSupplier, setter: setFilterSupplier, options: supplierOptions },
+            { label: "Category", value: filterCategory, setter: setFilterCategory, options: categoryOptions },
+            { label: "Main Group", value: filterMainGroup, setter: setFilterMainGroup, options: mainGroupOptions },
+            { label: "Store", value: filterStore, setter: setFilterStore, options: stores.map((s) => s.name) },
+            { label: "Season", value: filterSeason, setter: setFilterSeason, options: seasonOptions },
+            { label: "Color", value: filterColor, setter: setFilterColor, options: colorOptions },
+            { label: "Size", value: filterSize, setter: setFilterSize, options: sizeOptions },
+          ].map(({ label, value, setter, options }) => (
+            <Select key={label} value={value} onValueChange={(v) => setter(v === "all" ? "" : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={label} />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                <SelectItem value="all">All {label}s</SelectItem>
+                {options.map((o: any) => (
+                  <SelectItem key={o} value={o}>
+                    {o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -272,10 +339,24 @@ const InventoryPage: React.FC = () => {
               </TableHead>
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
+              <TableHead>Supplier</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Main Group</TableHead>
+              <TableHead>Gender</TableHead>
+              <TableHead>Origin</TableHead>
+              <TableHead>Season</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Color</TableHead>
+              <TableHead>Theme</TableHead>
+              <TableHead>Unit</TableHead>
               <TableHead className="text-right">Stock Qty</TableHead>
+              <TableHead className="text-right">Min Stock</TableHead>
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
+
           <TableBody>
             {displayInventory.map((item) => (
               <TableRow key={item.id}>
@@ -285,23 +366,72 @@ const InventoryPage: React.FC = () => {
                     onCheckedChange={() => toggleSelectItem(item)}
                   />
                 </TableCell>
-                <TableCell>{item.sku}</TableCell>
-                <TableCell>{item.name}</TableCell>
-                <TableCell className="text-right">{item.quantity}</TableCell>
-                <TableCell className="text-right space-x-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setEditingItem(item);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    <Edit className="w-3 h-3" />
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleDelete(item.id)}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                <TableCell className="font-mono text-sm">{item.sku}</TableCell>
+                <TableCell className="font-medium">{item.name}</TableCell>
+                <TableCell>{item.supplier || "-"}</TableCell>
+                <TableCell>{item.category || "-"}</TableCell>
+                <TableCell>{item.main_group || "-"}</TableCell>
+                <TableCell>{item.gender || "-"}</TableCell>
+                <TableCell>{item.origin || "-"}</TableCell>
+                <TableCell>{item.season || "-"}</TableCell>
+                <TableCell>{item.size || "-"}</TableCell>
+                <TableCell>{item.color || "-"}</TableCell>
+                <TableCell>{item.theme || "-"}</TableCell>
+                <TableCell>{item.unit || "-"}</TableCell>
+                <TableCell className="text-right">
+                  {item.stores.length > 0 ? (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="link" size="sm" className="text-primary">
+                          <Package className="w-3 h-3 mr-1" />
+                          {item.quantity}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 bg-background border shadow-lg z-50">
+                        <div className="space-y-2">
+                          <h4 className="font-semibold text-sm">Stock by Store</h4>
+                          <div className="space-y-1">
+                            {item.stores.map((store) => (
+                              <div key={store.store_id} className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">{store.store_name}</span>
+                                <Badge variant="secondary">{store.quantity}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="border-t pt-2 flex justify-between font-semibold text-sm">
+                            <span>Total</span>
+                            <span>{item.quantity}</span>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <span className="text-muted-foreground">0</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Badge variant={item.quantity <= item.min_stock ? "destructive" : "secondary"}>
+                    {item.min_stock}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "-"}</TableCell>
+                <TableCell className="text-right font-semibold">{item.price ? item.price.toFixed(2) : "-"}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setEditingItem(item);
+                        setDialogOpen(true);
+                      }}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(item.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -309,21 +439,39 @@ const InventoryPage: React.FC = () => {
         </Table>
       </div>
 
-      {/* Pagination */}
-      <PaginationControls 
-        currentPage={pagination.currentPage} 
-        totalPages={pagination.totalPages} 
-        totalItems={filteredInventory.length}
-        startIndex={pagination.startIndex + 1}
-        endIndex={pagination.endIndex}
+      <PaginationControls
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
+        goToPage={pagination.goToPage}
         canGoPrev={pagination.canGoPrev}
         canGoNext={pagination.canGoNext}
-        onPageChange={pagination.goToPage} 
+        totalItems={filteredInventory.length}
+        startIndex={pagination.startIndex}
+        endIndex={pagination.endIndex}
       />
 
-      {/* Dialogs */}
-      <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} editingItem={editingItem} />
-      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })} />
+      <ProductDialogNew
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        item={
+          editingItem
+            ? {
+                ...editingItem,
+                sellingPrice: editingItem.price,
+                supplier_id: null,
+                product_id: editingItem.id,
+                tax_rate: null,
+                wholesale_price: null,
+                brand_id: null,
+                category_id: null,
+                gender_id: null,
+                origin_id: null,
+              }
+            : undefined
+        }
+        onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
+      />
+      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
     </div>
   );
 };
