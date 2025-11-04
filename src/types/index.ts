@@ -88,7 +88,30 @@ export interface PurchaseOrder extends BaseEntity {
   payment_terms: string | null;
   notes: string | null; // Internal notes/comments
 }
+export interface FileImportProps {
+  onImportSuccess: (data: any) => void;
+  isLoading: boolean;
+  acceptedFileTypes?: string[];
+  // Add other props used in src/components/FileImport.tsx
+}
 
+export interface ProductDialogNewProps {
+  isOpen: boolean;
+  onClose: () => void;
+  // This likely defines the data type for the product being edited/created
+  initialProductData?: any;
+  onSubmit: (productData: any) => void;
+  // Add other props used in src/components/ProductDialogNew.tsx
+}
+
+// --- Missing Data Structure Type ---
+export interface POApprovalHistory {
+  // Define the structure of an approval history record here.
+  approved_by: string; // The user who approved/rejected
+  approved_at: string; // ISO date string
+  status: "pending" | "approved" | "rejected" | string;
+  comments?: string;
+}
 // --- Utility Types ---
 import { DateRange } from "react-day-picker";
 export type DateRangeType = DateRange | undefined;
