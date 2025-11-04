@@ -2,12 +2,13 @@ import React from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Factory, GitPullRequest, Building, Shield, Briefcase, Wrench } from "lucide-react";
 
-import OrganizationalStructureSection from "./sections/OrganizationalStructureSection";
-import WorkflowRulesSection from "./sections/WorkflowRulesSection";
-import SystemDefaultsSection from "./sections/SystemDefaultsSection";
-import UserRolesSection from "./sections/UserRolesSection";
-import StockAttributesSection from "./sections/StockAttributesSection";
-import DirectDBAccessSection from "./sections/DirectDBAccessSection";
+// Sections
+import OrganizationalStructureSection from "../sections/OrganizationalStructureSection";
+import WorkflowRulesSection from "../sections/WorkflowRulesSection";
+import SystemDefaultsSection from "../sections/SystemDefaultsSection";
+import UserRolesSection from "../sections/UserRolesSection";
+import StockAttributesSection from "../sections/StockAttributesSection";
+import DirectDBAccessSection from "../sections/DirectDBAccessSection";
 
 export default function Configuration() {
   const isAdmin = true; // Replace with your auth logic
