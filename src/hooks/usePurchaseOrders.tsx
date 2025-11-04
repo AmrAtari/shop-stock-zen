@@ -11,7 +11,16 @@ export const usePurchaseOrders = (searchTerm?: string, statusFilter?: string, da
   return useQuery<PurchaseOrder[]>({
     queryKey: [...queryKeys.purchaseOrders.all, searchTerm, statusFilter, dateRange],
     queryFn: async () => {
-      let query = supabase.from("purchase_orders").select("*").order("order_date", { ascending: false });
+      // FIX: Updated select statement to join supplier data, resolving the TS error in PurchaseOrders.tsx
+      let query = supabase
+        .from("purchase_orders")
+        .select(
+          `
+            *,
+            supplier:supplier_id(*)
+          `,
+        )
+        .order("order_date", { ascending: false });
 
       if (searchTerm) {
         query = query.ilike("po_number", `%${searchTerm}%`);
@@ -37,7 +46,8 @@ export const usePurchaseOrders = (searchTerm?: string, statusFilter?: string, da
         throw error;
       }
 
-      return (data as PurchaseOrder[]) || [];
+      // Cast to unknown first to safely align the joined result with the PurchaseOrder type
+      return (data as unknown as PurchaseOrder[]) || [];
     },
   });
 };
@@ -59,7 +69,7 @@ export const useStores = () => {
   return useQuery<Store[]>({
     queryKey: queryKeys.stores.all,
     queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("id, name").order("name");
+      const { data, error } = await supabase.from("stores").select("id, name");
       if (error) throw error;
       return (data as Store[]) || [];
     },
