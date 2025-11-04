@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ProductDialogNew } from "@/components/ProductDialogNew";
-import { FileImport } from "@/components/FileImport";
+import ProductDialogNew from "@/components/ProductDialogNew";
+import FileImport from "@/components/FileImport";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,8 +53,9 @@ interface ItemWithDetails {
   stores: StoreStock[];
 }
 
-// --- Fetch inventory data with manual join for store names ---
+// --- Fetch inventory data including PO, transfers, and transactions ---
 const fetchInventory = async (): Promise<ItemWithDetails[]> => {
+  // Fetch items with joins
   const { data: itemsData, error: itemsError } = await supabase
     .from("items")
     .select(
@@ -72,25 +73,24 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     `,
     )
     .order("name");
-
   if (itemsError) throw itemsError;
 
-  // Fetch store inventory and stores separately (avoid join errors)
+  // Fetch store inventory
   const { data: storeInventory, error: storeError } = await supabase
     .from("store_inventory")
     .select("item_id, store_id, quantity");
   if (storeError) throw storeError;
 
+  // Fetch stores
   const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
   if (storesError) throw storesError;
 
   const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
 
+  // Map stock per item per store
   const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
     const itemId = record.item_id;
-    if (!acc[itemId]) {
-      acc[itemId] = { total_quantity: 0, stores: [] };
-    }
+    if (!acc[itemId]) acc[itemId] = { total_quantity: 0, stores: [] };
     acc[itemId].total_quantity += Number(record.quantity) || 0;
     acc[itemId].stores.push({
       store_id: record.store_id,
@@ -100,35 +100,81 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
     return acc;
   }, {});
 
-  return (itemsData || []).map((item: any) => ({
-    id: item.id,
-    sku: item.sku || "N/A",
-    name: item.name || "N/A",
-    supplier: item.supplier?.name || "",
-    gender: item.gender?.name || "",
-    main_group: item.main_group?.name || "",
-    category: item.category?.name || "",
-    origin: item.origin?.name || "",
-    season: item.season?.name || "",
-    size: item.size?.name || "",
-    color: item.color?.name || "",
-    theme: item.theme?.name || "",
-    unit: item.unit || "",
-    price: item.price || 0,
-    cost: item.cost || 0,
-    item_number: item.item_number || "",
-    pos_description: item.pos_description || "",
-    description: item.description || "",
-    color_id: item.color_id || "",
-    item_color_code: item.item_color_code || "",
-    color_id_code: item.color_id_code || "",
-    location: item.location || "",
-    quantity: stockMap[item.id]?.total_quantity || 0,
-    min_stock: item.min_stock || 0,
-    last_restocked: item.last_restocked,
-    created_at: item.created_at,
-    stores: stockMap[item.id]?.stores || [],
-  }));
+  // Fetch Purchase Orders quantities
+  const { data: poItems } = await supabase
+    .from<{ sku: string; received_quantity: number }>("purchase_order_items")
+    .select("sku, received_quantity");
+  const poMap = (poItems || []).reduce(
+    (acc, po) => {
+      acc[po.sku] = (acc[po.sku] || 0) + Number(po.received_quantity || 0);
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  // Fetch Transactions (sales minus refunds)
+  const { data: transactions } = await supabase
+    .from<{ item_id: string; quantity: number; is_refund: boolean }>("transactions")
+    .select("item_id, quantity, is_refund");
+  const transMap = (transactions || []).reduce(
+    (acc, t) => {
+      const change = t.is_refund ? Number(t.quantity) : -Number(t.quantity);
+      acc[t.item_id] = (acc[t.item_id] || 0) + change;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  // Fetch Transfer Items (received to stores)
+  const { data: transferItems } = await supabase
+    .from<{ variant_id: string; quantity: number }>("transfer_items")
+    .select("variant_id, quantity");
+  const transferMap = (transferItems || []).reduce(
+    (acc, t) => {
+      acc[t.variant_id] = (acc[t.variant_id] || 0) + Number(t.quantity);
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  return (itemsData || []).map((item: any) => {
+    const storeQty = stockMap[item.id]?.total_quantity || 0;
+    const poQty = poMap[item.sku] || 0;
+    const transQty = transMap[item.id] || 0;
+    const transferQty = transferMap[item.id] || 0; // Assuming variant_id = item.id
+
+    const totalQuantity = storeQty + poQty + transferQty + transQty;
+
+    return {
+      id: item.id,
+      sku: item.sku || "N/A",
+      name: item.name || "N/A",
+      supplier: item.supplier?.name || "",
+      gender: item.gender?.name || "",
+      main_group: item.main_group?.name || "",
+      category: item.category?.name || "",
+      origin: item.origin?.name || "",
+      season: item.season?.name || "",
+      size: item.size?.name || "",
+      color: item.color?.name || "",
+      theme: item.theme?.name || "",
+      unit: item.unit || "",
+      price: item.price || 0,
+      cost: item.cost || 0,
+      item_number: item.item_number || "",
+      pos_description: item.pos_description || "",
+      description: item.description || "",
+      color_id: item.color_id || "",
+      item_color_code: item.item_color_code || "",
+      color_id_code: item.color_id_code || "",
+      location: item.location || "",
+      quantity: totalQuantity,
+      min_stock: item.min_stock || 0,
+      last_restocked: item.last_restocked,
+      created_at: item.created_at,
+      stores: stockMap[item.id]?.stores || [],
+    };
+  });
 };
 
 const useInventoryQuery = () => {
@@ -406,7 +452,7 @@ const InventoryPage: React.FC = () => {
                       </PopoverContent>
                     </Popover>
                   ) : (
-                    <span className="text-muted-foreground">0</span>
+                    <span className="text-muted-foreground">{item.quantity}</span>
                   )}
                 </TableCell>
                 <TableCell className="text-right">
@@ -453,7 +499,23 @@ const InventoryPage: React.FC = () => {
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        editingItem={editingItem || undefined}
+        item={
+          editingItem
+            ? {
+                ...editingItem,
+                sellingPrice: editingItem.price,
+                supplier_id: null,
+                product_id: editingItem.id,
+                tax_rate: null,
+                wholesale_price: null,
+                brand_id: null,
+                category_id: null,
+                gender_id: null,
+                origin_id: null,
+              }
+            : undefined
+        }
+        onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
       />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
     </div>
