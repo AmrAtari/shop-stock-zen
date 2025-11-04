@@ -17,7 +17,7 @@ export type VariantWithCost = {
   name: string;
   category: string; 
   current_stock: number; 
-  last_po_cost: number | null; 
+  //last_po_cost: number | null; 
   cost_price: number; 
 };
 
@@ -62,7 +62,7 @@ export const useProductVariantsForPO = () => {
               category: variant.products.category,
               current_stock: variant.stock_on_hand,
               cost_price: variant.cost_price,
-              last_po_cost: latestItem ? latestItem.unit_cost : null,
+             // last_po_cost: latestItem ? latestItem.unit_cost : null,
           } as VariantWithCost;
       });
 
