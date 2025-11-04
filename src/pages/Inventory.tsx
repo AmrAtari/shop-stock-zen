@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import ProductDialogNew from "@/components/ProductDialogNew";
-import FileImport from "@/components/FileImport";
+import { ProductDialogNew } from "@/components/ProductDialogNew";
+import { FileImport } from "@/components/FileImport";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
@@ -310,11 +310,20 @@ const InventoryPage: React.FC = () => {
       </div>
 
       {/* Pagination */}
-      <PaginationControls page={pagination.page} totalPages={pagination.totalPages} onPageChange={pagination.setPage} />
+      <PaginationControls 
+        currentPage={pagination.currentPage} 
+        totalPages={pagination.totalPages} 
+        totalItems={filteredInventory.length}
+        startIndex={pagination.startIndex + 1}
+        endIndex={pagination.endIndex}
+        canGoPrev={pagination.canGoPrev}
+        canGoNext={pagination.canGoNext}
+        onPageChange={pagination.goToPage} 
+      />
 
       {/* Dialogs */}
       <ProductDialogNew open={dialogOpen} onOpenChange={setDialogOpen} editingItem={editingItem} />
-      <FileImport open={importOpen} onOpenChange={setImportOpen} />
+      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })} />
     </div>
   );
 };
