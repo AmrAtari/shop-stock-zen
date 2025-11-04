@@ -106,7 +106,6 @@ export default function UserRolesSection() {
         )}
       </CardContent>
 
-      {/* Dialogs */}
       <UserPermissionsDialog
         open={showPermissionsDialog}
         onOpenChange={setShowPermissionsDialog}
@@ -114,11 +113,7 @@ export default function UserRolesSection() {
         onSave={() => {}}
         onDelete={() => {}}
       />
-      <AddUserDialog
-        open={showAddUserDialog}
-        onOpenChange={setShowAddUserDialog}
-        onUserAdded={loadUsers}
-      />
+      <AddUserDialog open={showAddUserDialog} onOpenChange={setShowAddUserDialog} onUserAdded={loadUsers} />
     </Card>
   );
 }
