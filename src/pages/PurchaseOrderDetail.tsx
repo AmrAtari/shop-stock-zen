@@ -4,15 +4,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { usePurchaseOrderDetail } from "@/hooks/usePurchaseOrderDetail";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package } from "lucide-react";
+// New imports from the revised hook file
+import { usePurchaseOrderDetail, usePOApprovalMutation, useIsPoApprover } from "@/hooks/usePurchaseOrderDetail";
+import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package, Clock } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner"; // Using sonner for toast consistency
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 // Assuming Item type is defined globally, using any for type safety bypass
 type Item = any;
@@ -20,487 +34,447 @@ type Item = any;
 const PurchaseOrderDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Fetch PO details, items, and history
   const { data, isLoading, error } = usePurchaseOrderDetail(id || "");
-  const { isAdmin } = useIsAdmin();
+  // Fetch user's approver status
+  const { data: isApprover, isLoading: isApproverLoading } = useIsPoApprover();
   const queryClient = useQueryClient();
 
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogAction, setDialogAction] = useState<"approve" | "reject">("approve");
+  const [notes, setNotes] = useState("");
+
+  const po = data?.po;
+  const items = data?.items || [];
+  const history = data?.history || []; // New: Approval History
+  const storeName = po?.store?.name || "N/A"; // Use store name from join
+
+  // Hook for the new Approval/Rejection logic
+  const poApprovalMutation = usePOApprovalMutation(id || "");
+
+  // Existing mutation for Send/Receive actions (non-approval status updates)
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
-      const { error } = await supabase
-        .from("purchase_orders")
-        .update({ status: newStatus })
-        .eq("id", id);
-
+      const { error } = await supabase.from("purchase_orders").update({ status: newStatus }).eq("id", id);
       if (error) throw error;
+      return newStatus;
     },
-    onSuccess: () => {
-      // Invalidate both detail and list views to ensure the list updates the status
-      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
+    onSuccess: (newStatus) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id || "") });
+      toast.success(`PO status updated to ${newStatus}`);
+      if (newStatus === "Received") {
+        invalidateInventoryData(queryClient);
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to update status: ${error.message}`);
     },
   });
 
-  if (isLoading) {
-    return <div className="p-8">Loading...</div>;
+  const handleUpdateStatus = (newStatus: string) => {
+    updateStatusMutation.mutate(newStatus);
+  };
+
+  // Handlers for NEW Approval/Rejection Flow
+  const openApprovalDialog = (action: "approve" | "reject") => {
+    setDialogAction(action);
+    setNotes("");
+    setIsDialogOpen(true);
+  };
+
+  const handleApprovalAction = () => {
+    if (!id) return;
+    poApprovalMutation.mutate({ action: dialogAction, notes: notes });
+    setIsDialogOpen(false);
+  };
+  // End NEW Handlers
+
+  if (isLoading || isApproverLoading) {
+    return <div>Loading Purchase Order...</div>;
   }
 
-  if (error || !data) {
-    return (
-      <div className="p-8">
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Purchase order not found</p>
-          <Button className="mt-4" onClick={() => navigate("/purchase-orders")}>
-            Back to Purchase Orders
-          </Button>
-        </div>
-      </div>
-    );
+  if (error || !po) {
+    return <div>Error loading purchase order or PO not found.</div>;
   }
 
-  const { po, items } = data;
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case "Approved":
+        return "default";
+      case "Awaiting Approval":
+        return "secondary";
+      case "Sent":
+        return "blue";
+      case "Received":
+        return "success";
+      case "Partially Received":
+        return "warning";
+      case "Rejected":
+        return "destructive";
+      default:
+        return "outline";
+    }
+  };
+
+  const handleDownload = () => {
+    const dataToExport = items.map((item) => ({
+      "PO Number": po.po_number,
+      SKU: item.sku,
+      "Item Name": item.item_name,
+      Description: item.item_description,
+      Color: item.color,
+      Size: item.size,
+      "Model Number": item.model_number,
+      "Quantity Ordered": item.quantity,
+      "Quantity Received": item.received_quantity || 0,
+      "Cost Price": item.cost_price,
+      "Total Cost": item.quantity * item.cost_price,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "PO Items");
+    XLSX.writeFile(workbook, `${po.po_number}_Items.xlsx`);
+  };
 
   const handlePrint = () => {
     window.print();
   };
 
-  const handleExportExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet([
-      { Field: "PO Number", Value: po.po_number },
-      { Field: "Supplier", Value: po.supplier },
-      { Field: "Order Date", Value: new Date(po.order_date).toLocaleDateString() },
-      { Field: "Status", Value: po.status },
-      { Field: "Payment Terms", Value: po.payment_terms },
-      { Field: "Currency", Value: po.currency },
-      {},
-      { Field: "Buyer Company", Value: po.buyer_company_name || "" },
-      { Field: "Buyer Address", Value: po.buyer_address || "" },
-      { Field: "Billing Address", Value: po.billing_address || "" },
-      { Field: "Shipping Address", Value: po.shipping_address || "" },
-      {},
-      { Field: "ITEMS", Value: "" },
-      ...items.map((item) => ({
-        SKU: item.sku,
-        Name: item.item_name,
-        Description: item.item_description || "",
-        Color: item.color || "",
-        Size: item.size || "",
-        Quantity: item.quantity,
-        Unit: item.unit,
-        "Cost Price": item.cost_price,
-        Total: item.quantity * item.cost_price,
-      })),
-      {},
-      { Field: "Subtotal", Value: po.subtotal },
-      { Field: "Tax Amount", Value: po.tax_amount },
-      { Field: "Shipping Charges", Value: po.shipping_charges },
-      { Field: "Grand Total", Value: po.total_cost },
-    ]);
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Purchase Order");
-    XLSX.writeFile(workbook, `PO_${po.po_number}.xlsx`);
-  };
-
-  const handleSubmit = async () => {
-    try {
-      await updateStatusMutation.mutateAsync("pending");
-      toast({
-        title: "PO Submitted",
-        description: "Purchase order has been submitted for approval.",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to submit purchase order.",
-        variant: "destructive",
-      });
+  // Rendering Approval/Action Buttons
+  const renderApprovalActions = () => {
+    // 1. Approval/Rejection buttons for approvers
+    if (po.status === "Awaiting Approval" && isApprover) {
+      return (
+        <>
+          <Button
+            onClick={() => openApprovalDialog("approve")}
+            variant="success"
+            className="flex items-center gap-2"
+            disabled={poApprovalMutation.isPending}
+          >
+            <CheckCircle className="h-4 w-4" /> Approve PO
+          </Button>
+          <Button
+            onClick={() => openApprovalDialog("reject")}
+            variant="destructive"
+            className="flex items-center gap-2"
+            disabled={poApprovalMutation.isPending}
+          >
+            <XCircle className="h-4 w-4" /> Reject PO
+          </Button>
+        </>
+      );
     }
-  };
-
-  const handleApprove = async () => {
-    try {
-      await updateStatusMutation.mutateAsync("approved");
-      toast({
-        title: "PO Approved",
-        description: "Purchase order has been approved.",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to approve purchase order.",
-        variant: "destructive",
-      });
+    // 2. Send button (only if Approved)
+    if (po.status === "Approved") {
+      return (
+        <Button
+          onClick={() => handleUpdateStatus("Sent")}
+          className="flex items-center gap-2"
+          disabled={updateStatusMutation.isPending}
+        >
+          <Send className="h-4 w-4" /> Send to Supplier
+        </Button>
+      );
     }
-  };
-
-  const handleReject = async () => {
-    try {
-      await updateStatusMutation.mutateAsync("cancelled");
-      toast({
-        title: "PO Rejected",
-        description: "Purchase order has been rejected.",
-        variant: "destructive",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to reject purchase order.",
-        variant: "destructive",
-      });
+    // 3. Receiving button (only if Sent or Partially Received)
+    if (po.status === "Sent" || po.status === "Partially Received") {
+      return (
+        <Button
+          onClick={() => handleUpdateStatus("Received")}
+          className="flex items-center gap-2"
+          disabled={updateStatusMutation.isPending}
+        >
+          <Package className="h-4 w-4" /> Complete Receiving
+        </Button>
+      );
     }
+    return null;
   };
-
-  const handleReceive = async () => {
-    if (!po || !po.store_id) {
-      toast({
-        title: "Error",
-        description: "Cannot receive PO without a destination store",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      console.log("Receiving PO to store:", po.store_id);
-      let updatedCount = 0;
-      const notFoundSkus: string[] = [];
-
-      for (const item of items) {
-        console.log(`Processing item: ${item.sku}`);
-
-        // 1. Find the variant by SKU
-        const { data: variant, error: variantErr } = await supabase
-          .from("variants")
-          .select("variant_id")
-          .eq("sku", item.sku)
-          .maybeSingle();
-
-        if (variantErr) throw variantErr;
-
-        if (variant) {
-          // 2. Update stock_on_hand table
-          const { data: existingStock, error: fetchErr } = await supabase
-            .from("stock_on_hand")
-            .select("quantity")
-            .eq("variant_id", variant.variant_id)
-            .eq("store_id", po.store_id)
-            .maybeSingle();
-
-          if (fetchErr) throw fetchErr;
-
-          const prevQty = existingStock?.quantity || 0;
-          const newQty = prevQty + item.quantity;
-
-          console.log(`Stock - Previous: ${prevQty}, Adding: ${item.quantity}, New: ${newQty}`);
-
-          if (existingStock) {
-            // Update existing record
-            const { error: updateErr } = await supabase
-              .from("stock_on_hand")
-              .update({
-                quantity: newQty,
-                last_updated: new Date().toISOString(),
-              })
-              .eq("variant_id", variant.variant_id)
-              .eq("store_id", po.store_id);
-
-            if (updateErr) throw updateErr;
-          } else {
-            // Insert new record
-            const { error: insertErr } = await supabase.from("stock_on_hand").insert({
-              variant_id: variant.variant_id,
-              store_id: po.store_id,
-              quantity: item.quantity,
-              min_stock: 0,
-              last_updated: new Date().toISOString(),
-            });
-
-            if (insertErr) throw insertErr;
-          }
-
-          updatedCount += 1;
-        } else {
-          if (item.sku) notFoundSkus.push(item.sku);
-        }
-
-        // Update received quantity in PO items
-        const { error: poiErr } = await supabase
-          .from("purchase_order_items")
-          .update({ received_quantity: item.quantity })
-          .eq("id", item.id);
-        if (poiErr) throw poiErr;
-      }
-
-      if (updatedCount > 0) {
-        await updateStatusMutation.mutateAsync("completed");
-        await invalidateInventoryData(queryClient);
-
-        toast({
-          title: "PO Received",
-          description: notFoundSkus.length
-            ? `Inventory updated. Missing SKUs not found in variants: ${notFoundSkus.join(", ")}`
-            : "Purchase order has been received and inventory updated.",
-        });
-      } else {
-        toast({
-          title: "No Items Updated",
-          description: "Could not match any PO items to inventory variants by SKU.",
-          variant: "destructive",
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error?.message || "Failed to receive purchase order.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case "completed":
-      case "approved":
-        return "success";
-      case "pending":
-      case "draft":
-        return "warning";
-      case "cancelled":
-        return "destructive";
-      default:
-        return "default";
-    }
-  };
+  // End Rendering Approval/Action Buttons
 
   return (
-    <div className="p-8 space-y-6 print:p-4">
-      <div className="flex items-center justify-between print:hidden">
+    <div className="p-8 space-y-6">
+      {/* Header with Actions */}
+      <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/purchase-orders")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Purchase Order Details</h1>
-            <p className="text-muted-foreground mt-1">{po.po_number}</p>
+            <h1 className="text-3xl font-bold">Purchase Order: {po.po_number}</h1>
+            <Badge variant={getStatusBadgeVariant(po.status)} className="mt-1 text-sm">
+              {po.status}
+            </Badge>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handlePrint}>
-            <Printer className="mr-2 h-4 w-4" />
-            Print
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          {renderApprovalActions()}
+          <Button variant="outline" className="flex items-center gap-2" onClick={handleDownload}>
+            <Download className="h-4 w-4" /> Export
           </Button>
-          <Button variant="outline" onClick={handleExportExcel}>
-            <Download className="mr-2 h-4 w-4" />
-            Export Excel
+          <Button variant="outline" className="flex items-center gap-2" onClick={handlePrint}>
+            <Printer className="h-4 w-4" /> Print
           </Button>
-          {po.status === "draft" && (
-            <>
-              {/* Added Edit button */}
-              <Button onClick={() => navigate(`/purchase-orders/${id}/edit`)} variant="outline">
-                <Edit className="mr-2 h-4 w-4" />
-                Edit PO
-              </Button>
-              <Button onClick={handleSubmit}>
-                <Send className="mr-2 h-4 w-4" />
-                Submit for Approval
-              </Button>
-            </>
-          )}
-          {po.status === "pending" && isAdmin && (
-            <>
-              <Button onClick={handleApprove} variant="default">
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Approve
-              </Button>
-              <Button onClick={handleReject} variant="destructive">
-                <XCircle className="mr-2 h-4 w-4" />
-                Reject
-              </Button>
-            </>
-          )}
-          {po.status === "approved" && isAdmin && (
-            <Button onClick={handleReceive} variant="default">
-              <Package className="mr-2 h-4 w-4" />
-              Receive & Update Stock
+          {/* Edit button should only be visible if status is Draft or Awaiting Approval */}
+          {(po.status === "Draft" || po.status === "Awaiting Approval") && (
+            <Button
+              variant="outline"
+              className="flex items-center gap-2"
+              onClick={() => navigate(`/purchase-orders/edit/${id}`)}
+            >
+              <Edit className="h-4 w-4" /> Edit
             </Button>
           )}
         </div>
       </div>
 
+      {/* PO Details */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Card 1: PO Overview */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>PO Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-y-4">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Order Date</p>
+              <p className="font-semibold">{format(new Date(po.order_date), "PPP")}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Expected Delivery</p>
+              <p className="font-semibold">
+                {po.expected_delivery ? format(new Date(po.expected_delivery), "PPP") : "N/A"}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Supplier</p>
+              <p className="font-semibold">{po.supplier}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Destination Store</p>
+              <p className="font-semibold">{storeName}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Payment Terms</p>
+              <p className="font-semibold">{po.payment_terms}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Authorized By (Created)</p>
+              {/* Display a truncated User ID or N/A */}
+              <p className="font-semibold">
+                {po.authorized_by ? `User ID: ${po.authorized_by.substring(0, 8)}...` : "N/A"}
+              </p>
+            </div>
+            {/* Display Approved By (NEW) */}
+            {po.approved_by && (
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Approved By</p>
+                <p className="font-semibold">{`User ID: ${po.approved_by.substring(0, 8)}...`}</p>
+              </div>
+            )}
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Committed Cost ({po.currency})</p>
+              {/* Note: Committed cost is now the total_cost at the time of creation/approval */}
+              <p className="font-semibold text-lg">{po.total_cost.toFixed(2)}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card 2: Financial Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Financial Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between">
+              <span>Currency:</span>
+              <span className="font-semibold">{po.currency}</span>
+            </div>
+            {/* Display Exchange Rate (NEW) */}
+            {po.exchange_rate && po.exchange_rate !== 1.0 && (
+              <div className="flex justify-between">
+                <span>Exchange Rate (to USD):</span>
+                <span className="font-semibold">{po.exchange_rate.toFixed(4)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span>Subtotal:</span>
+              <span className="font-semibold">
+                {po.currency} {po.subtotal.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Tax Amount:</span>
+              <span className="font-semibold">
+                {po.currency} {po.tax_amount.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Shipping Charges:</span>
+              <span className="font-semibold">
+                {po.currency} {po.shipping_charges.toFixed(2)}
+              </span>
+            </div>
+            <Separator />
+            <div className="flex justify-between text-lg font-bold">
+              <span>Grand Total:</span>
+              <span>
+                {po.currency} {po.total_cost.toFixed(2)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Card 3: Line Items (No changes from previous) */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-2xl">{po.po_number}</CardTitle>
-              <p className="text-muted-foreground mt-1">Order Date: {format(new Date(po.order_date), "PPP")}</p>
-            </div>
-            <Badge variant={getStatusVariant(po.status) as any} className="text-lg px-4 py-2">
-              {po.status.toUpperCase()}
-            </Badge>
-          </div>
+          <CardTitle>Line Items ({items.length})</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Buyer & Supplier Info */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold mb-3">Buyer Information</h3>
-              <div className="space-y-1 text-sm">
-                {po.buyer_company_name && <p className="font-medium">{po.buyer_company_name}</p>}
-                {po.buyer_address && <p className="text-muted-foreground whitespace-pre-line">{po.buyer_address}</p>}
-                {po.buyer_contact && <p className="text-muted-foreground">{po.buyer_contact}</p>}
-              </div>
-              {po.billing_address && (
-                <>
-                  <h4 className="font-semibold mt-4 mb-2">Billing Address</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-line">{po.billing_address}</p>
-                </>
-              )}
-              {po.shipping_address && (
-                <>
-                  <h4 className="font-semibold mt-4 mb-2">Shipping Address</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-line">{po.shipping_address}</p>
-                </>
-              )}
-            </div>
-            <div>
-              <h3 className="font-semibold mb-3">Supplier Information</h3>
-              <div className="space-y-1 text-sm">
-                <p className="font-medium">{po.supplier}</p>
-                {po.supplier_contact_person && <p className="text-muted-foreground">{po.supplier_contact_person}</p>}
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Order Details */}
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Payment Terms:</span>
-              <p className="font-medium">{po.payment_terms}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Currency:</span>
-              <p className="font-medium">{po.currency}</p>
-            </div>
-            {po.expected_delivery && (
-              <div>
-                <span className="text-muted-foreground">Expected Delivery:</span>
-                <p className="font-medium">{format(new Date(po.expected_delivery), "PPP")}</p>
-              </div>
-            )}
-            {po.shipping_method && (
-              <div>
-                <span className="text-muted-foreground">Shipping Method:</span>
-                <p className="font-medium">{po.shipping_method}</p>
-              </div>
-            )}
-            {po.fob_terms && (
-              <div>
-                <span className="text-muted-foreground">FOB Terms:</span>
-                <p className="font-medium">{po.fob_terms}</p>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Items Table */}
-          <div>
-            <h3 className="font-semibold mb-4">Order Items</h3>
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Item Name</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Color</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Total</TableHead>
+        <CardContent>
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Color/Size</TableHead>
+                  <TableHead>Qty Ordered</TableHead>
+                  <TableHead>Qty Received</TableHead>
+                  <TableHead>Unit Cost</TableHead>
+                  <TableHead>Line Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item, index) => (
+                  <TableRow key={item.id}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell className="font-mono text-sm">{item.sku}</TableCell>
+                    <TableCell>{item.item_name}</TableCell>
+                    <TableCell>
+                      {item.color || "N/A"} / {item.size || "N/A"}
+                    </TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.received_quantity || 0}</TableCell>
+                    <TableCell>
+                      {po.currency} {item.cost_price.toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      {po.currency} {(item.quantity * item.cost_price).toFixed(2)}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item, index) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                      <TableCell>{item.item_name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{item.item_description || "-"}</TableCell>
-                      <TableCell>{item.color || "-"}</TableCell>
-                      <TableCell>{item.size || "-"}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>{item.unit}</TableCell>
-                      <TableCell>
-                        {po.currency} {item.cost_price.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {po.currency} {(item.quantity * item.cost_price).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-
-          {/* Financial Summary */}
-          <div className="flex justify-end">
-            <div className="w-80 space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span className="font-semibold">
-                  {po.currency} {po.subtotal.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tax Amount:</span>
-                <span className="font-semibold">
-                  {po.currency} {po.tax_amount.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Shipping Charges:</span>
-                <span className="font-semibold">
-                  {po.currency} {po.shipping_charges.toFixed(2)}
-                </span>
-              </div>
-              <Separator />
-              <div className="flex justify-between text-lg font-bold">
-                <span>Grand Total:</span>
-                <span>
-                  {po.currency} {po.total_cost.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Notes */}
-          {po.special_instructions && (
-            <>
-              <Separator />
-              <div>
-                <h3 className="font-semibold mb-2">Special Instructions</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-line">{po.special_instructions}</p>
-              </div>
-            </>
-          )}
-
-          {po.notes && (
-            <>
-              <Separator />
-              <div>
-                <h3 className="font-semibold mb-2">Internal Notes</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-line">{po.notes}</p>
-              </div>
-            </>
-          )}
         </CardContent>
       </Card>
+
+      {/* NEW: Approval History and Notes */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" /> Approval History
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-48">
+              {history.length === 0 && (
+                <p className="text-muted-foreground text-sm p-2">No approval actions recorded yet.</p>
+              )}
+              {history.map((h, index) => (
+                <div key={index} className="flex items-start space-x-4 border-b pb-2 mb-2 last:border-b-0 last:pb-0">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="text-xs bg-primary text-primary-foreground">
+                      {h.approver_id ? h.approver_id.substring(0, 2).toUpperCase() : "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="space-y-1 text-sm">
+                    <p className="font-medium">
+                      <Badge variant={h.status_change === "Approved" ? "default" : "destructive"} className="mr-2">
+                        {h.status_change}
+                      </Badge>
+                      by User ID: {h.approver_id ? h.approver_id.substring(0, 8) : "System"}...
+                    </p>
+                    <p className="text-muted-foreground text-xs">{format(new Date(h.created_at), "PPP pp")}</p>
+                    {h.notes && <p className="text-xs italic mt-1">Notes: "{h.notes}"</p>}
+                  </div>
+                </div>
+              ))}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Notes */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Notes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {po.special_instructions && (
+              <div>
+                <h3 className="font-semibold mb-2 text-sm">Special Instructions</h3>
+                <p className="text-sm text-muted-foreground whitespace-pre-line border p-2 rounded-md">
+                  {po.special_instructions}
+                </p>
+              </div>
+            )}
+            {po.notes && (
+              <div>
+                <h3 className="font-semibold mb-2 text-sm">Internal Notes</h3>
+                <p className="text-sm text-muted-foreground whitespace-pre-line border p-2 rounded-md">{po.notes}</p>
+              </div>
+            )}
+            {!po.special_instructions && !po.notes && (
+              <p className="text-muted-foreground text-sm">No special or internal notes provided.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Approval/Rejection Dialog (Confirmation Modal) */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{dialogAction === "approve" ? "Approve Purchase Order" : "Reject Purchase Order"}</DialogTitle>
+            <DialogDescription>
+              {dialogAction === "approve"
+                ? `Confirm approval for PO ${po.po_number}. The status will change to "Approved" and the order can be sent.`
+                : `Are you sure you want to reject PO ${po.po_number}? It will be marked as "Rejected" and cannot be processed.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Label htmlFor="approval-notes">Notes (Optional)</Label>
+            <Textarea
+              id="approval-notes"
+              placeholder="Add a reason or any required changes."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant={dialogAction === "approve" ? "default" : "destructive"}
+              onClick={handleApprovalAction}
+              disabled={poApprovalMutation.isPending}
+            >
+              {poApprovalMutation.isPending
+                ? `${dialogAction === "approve" ? "Approving" : "Rejecting"}...`
+                : `${dialogAction === "approve" ? "Confirm Approval" : "Confirm Rejection"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
