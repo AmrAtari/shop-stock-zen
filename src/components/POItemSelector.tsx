@@ -6,29 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react"; // Make sure Loader2 is imported
+import { Item } from "@/types/database"; // Assuming Item type comes from here
 
-// Placeholder Item type (Ensure this matches the Item type defined in PurchaseOrderNew.tsx)
-type Item = {
-  id: string;
-  sku: string;
-  name: string;
-  category: string;
-  stock_on_hand: number;
-  cost_price: number; // Include base price field for placeholder
-};
-
-// Placeholder prop type for the structure used in PurchaseOrderNew.tsx
+// Exporting the item details type for clarity in the parent file
 export type SelectedPOItem = {
   item: Item;
   quantity: number;
-  price: number; // The user-defined unit cost for the PO
+  price: number;
 };
 
 // REVERTED Props
 interface POItemSelectorProps {
   items: Item[];
-  isLoading: boolean;
+  isLoading: boolean; // Added isLoading prop to allow parent to manage fetch state
   onSelect: (items: SelectedPOItem[]) => void;
 }
 
@@ -48,7 +39,7 @@ export const POItemSelector = ({ items, isLoading, onSelect }: POItemSelectorPro
     if (newSelected.has(item.id)) {
       newSelected.delete(item.id);
     } else {
-      // Default quantity to 1, default price to item's cost_price
+      // Use item.cost_price as the default price
       newSelected.set(item.id, { item, quantity: 1, price: item.cost_price || 0 });
     }
     setSelectedItems(newSelected);
