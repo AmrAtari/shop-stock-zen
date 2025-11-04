@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import ProductDialogNew from "@/components/ProductDialogNew";
-import FileImport from "@/components/FileImport";
+import { ProductDialogNew } from "@/components/ProductDialogNew";
+import { FileImport } from "@/components/FileImport";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
@@ -102,7 +102,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   // Fetch Purchase Orders quantities
   const { data: poItems } = await supabase
-    .from<{ sku: string; received_quantity: number }>("purchase_order_items")
+    .from("purchase_order_items")
     .select("sku, received_quantity");
   const poMap = (poItems || []).reduce(
     (acc, po) => {
@@ -114,7 +114,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   // Fetch Transactions (sales minus refunds)
   const { data: transactions } = await supabase
-    .from<{ item_id: string; quantity: number; is_refund: boolean }>("transactions")
+    .from("transactions")
     .select("item_id, quantity, is_refund");
   const transMap = (transactions || []).reduce(
     (acc, t) => {
@@ -127,7 +127,7 @@ const fetchInventory = async (): Promise<ItemWithDetails[]> => {
 
   // Fetch Transfer Items (received to stores)
   const { data: transferItems } = await supabase
-    .from<{ variant_id: string; quantity: number }>("transfer_items")
+    .from("transfer_items")
     .select("variant_id, quantity");
   const transferMap = (transferItems || []).reduce(
     (acc, t) => {
@@ -499,23 +499,7 @@ const InventoryPage: React.FC = () => {
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        item={
-          editingItem
-            ? {
-                ...editingItem,
-                sellingPrice: editingItem.price,
-                supplier_id: null,
-                product_id: editingItem.id,
-                tax_rate: null,
-                wholesale_price: null,
-                brand_id: null,
-                category_id: null,
-                gender_id: null,
-                origin_id: null,
-              }
-            : undefined
-        }
-        onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
+        editingItem={editingItem}
       />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
     </div>
