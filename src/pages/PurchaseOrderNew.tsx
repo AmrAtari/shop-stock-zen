@@ -27,14 +27,12 @@ import { CalendarIcon, Trash2, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Item, Supplier } from "@/types/database";
 
+// --- START: PHASE 1 CHANGES ---
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
-  // FIX: Store selection is now required
   storeId: z.string().min(1, "Destination store is required."),
   orderDate: z.date({ required_error: "Order date is required." }),
   expectedDelivery: z.date().optional(),
-  // NOTE: These fields are optional and will be sent as 'undefined' if blank,
-  // which works with the TEXT columns that allow NULL.
   buyerCompanyName: z.string().optional(),
   buyerAddress: z.string().optional(),
   buyerContact: z.string().optional(),
@@ -42,12 +40,15 @@ const poSchema = z.object({
   shippingAddress: z.string().optional(),
   paymentTerms: z.string().default("Net 30"),
   currency: z.enum(["USD", "AED"]).default("USD"),
+  // New: Exchange Rate field for non-USD currencies
+  exchangeRate: z.number().min(0.0001, "Rate must be positive").optional(),
   shippingMethod: z.string().optional(),
   fobTerms: z.string().optional(),
   taxPercent: z.number().min(0).max(100).default(0),
   shippingCharges: z.number().min(0).default(0),
   specialInstructions: z.string().optional(),
 });
+// --- END: PHASE 1 CHANGES ---
 
 type POFormData = z.infer<typeof poSchema>;
 
@@ -124,9 +125,10 @@ const PurchaseOrderNew = () => {
       orderDate: new Date(),
       paymentTerms: "Net 30",
       currency: "USD",
+      exchangeRate: 1.0, // Default exchange rate to 1.0
       taxPercent: 0,
       shippingCharges: 0,
-      storeId: "", // Initialize required field
+      storeId: "",
     },
   });
 
@@ -143,9 +145,13 @@ const PurchaseOrderNew = () => {
     }
   }, [watchSupplier, suppliers]);
 
+  // Handle same address checkboxes
   useEffect(() => {
     if (sameBillingAddress && watchBuyerAddress) {
       setValue("billingAddress", watchBuyerAddress);
+    }
+    // Clear if unchecked and addresses were copied
+    if (!sameBillingAddress && setValue("billingAddress", undefined)) {
     }
   }, [sameBillingAddress, watchBuyerAddress, setValue]);
 
@@ -153,8 +159,12 @@ const PurchaseOrderNew = () => {
     if (sameShippingAddress && watchBuyerAddress) {
       setValue("shippingAddress", watchBuyerAddress);
     }
+    // Clear if unchecked and addresses were copied
+    if (!sameShippingAddress && setValue("shippingAddress", undefined)) {
+    }
   }, [sameShippingAddress, watchBuyerAddress, setValue]);
 
+  // ... (Item handling functions: handleAddItemsFromSelector, handleImportItems, handleBarcodeScans, lookupSkuForBarcode, handleRemoveItem, handleItemChange remain unchanged)
   const handleAddItemsFromSelector = async (items: Array<{ item: Item; quantity: number; price: number }>) => {
     // Resolve UUIDs to names for color and size
     const resolvedItems = await Promise.all(
@@ -235,11 +245,13 @@ const PurchaseOrderNew = () => {
     updated[index] = { ...updated[index], [field]: value };
     setPOItems(updated);
   };
+  // ... (End of item handling functions)
 
   const subtotal = poItems.reduce((sum, item) => sum + item.quantity * item.costPrice, 0);
   const taxAmount = subtotal * (watchTaxPercent / 100);
   const grandTotal = subtotal + taxAmount + (watchShippingCharges || 0);
 
+  // --- START: PHASE 1 SUBMIT LOGIC CHANGES ---
   const onSubmit = async (data: POFormData) => {
     if (poItems.length === 0) {
       toast.error("Please add at least one item");
@@ -251,6 +263,9 @@ const PurchaseOrderNew = () => {
     try {
       const supplierData = suppliers.find((s) => s.id === data.supplier);
       if (!supplierData) throw new Error("Supplier not found");
+
+      // Determine exchange rate: 1.0 for USD, otherwise use user input or default to 1.0
+      const currentExchangeRate = data.currency === "USD" ? 1.0 : data.exchangeRate || 1.0;
 
       // Generate PO number using database function
       const { data: poNumber, error: poNumberError } = await supabase.rpc("generate_po_number", {
@@ -273,7 +288,6 @@ const PurchaseOrderNew = () => {
         order_date: data.orderDate.toISOString(),
         expected_delivery: data.expectedDelivery?.toISOString(),
 
-        // These optional fields are sent as 'undefined' if blank
         buyer_company_name: data.buyerCompanyName,
         buyer_address: data.buyerAddress,
         buyer_contact: data.buyerContact,
@@ -290,8 +304,15 @@ const PurchaseOrderNew = () => {
         tax_amount: taxAmount,
         shipping_charges: data.shippingCharges,
         total_cost: grandTotal,
+
+        // New Phase 1 Fields
+        committed_cost: grandTotal, // Locked cost upon creation
+        exchange_rate: currentExchangeRate,
+        approved_by: null, // Always null at creation
+        // Status now starts at "Awaiting Approval"
+        status: "Awaiting Approval",
+
         total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
-        status: "draft",
         authorized_by: user?.id,
       };
 
@@ -299,17 +320,15 @@ const PurchaseOrderNew = () => {
       const { data: poData, error: poError } = await supabase
         .from("purchase_orders")
         .insert(poDataToInsert)
-        .select("id") // Explicitly select the ID column
+        .select("id")
         .single();
 
       if (poError) throw poError;
 
-      // FINAL FIX: Safely extract the ID and check its existence
+      // Safely extract the ID
       const poId = poData?.id;
       if (!poId) {
-        throw new Error(
-          "Failed to retrieve the ID of the created Purchase Order. Please ensure the 'purchase_orders' table has a primary key column named 'id'.",
-        );
+        throw new Error("Failed to retrieve the ID of the created Purchase Order.");
       }
 
       // Create PO items, using the confirmed PO ID
@@ -335,7 +354,7 @@ const PurchaseOrderNew = () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
 
-      toast.success(`Purchase Order ${poNumber} created successfully`);
+      toast.success(`Purchase Order ${poNumber} created successfully and is Awaiting Approval.`);
       navigate("/purchase-orders");
     } catch (error: any) {
       console.error("PO creation error:", error);
@@ -344,6 +363,7 @@ const PurchaseOrderNew = () => {
       setIsSaving(false);
     }
   };
+  // --- END: PHASE 1 SUBMIT LOGIC CHANGES ---
 
   return (
     <div className="p-8 space-y-6">
@@ -358,7 +378,7 @@ const PurchaseOrderNew = () => {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Step 1: Basic Info & Dates */}
+        {/* Step 1: Basic Info & Dates (No Changes) */}
         <Card>
           <CardHeader>
             <CardTitle>1. Identification & Dates</CardTitle>
@@ -427,7 +447,7 @@ const PurchaseOrderNew = () => {
           </CardContent>
         </Card>
 
-        {/* Step 2: Buyer & Supplier Details */}
+        {/* Step 2: Buyer & Supplier Details (No Changes) */}
         <Card>
           <CardHeader>
             <CardTitle>2. Buyer & Supplier Details</CardTitle>
@@ -521,7 +541,7 @@ const PurchaseOrderNew = () => {
           </CardContent>
         </Card>
 
-        {/* Step 3: Items */}
+        {/* Step 3: Items (No Changes) */}
         <Card>
           <CardHeader>
             <CardTitle>3. Add Items</CardTitle>
@@ -625,7 +645,7 @@ const PurchaseOrderNew = () => {
           </CardContent>
         </Card>
 
-        {/* Step 4: Financial Details */}
+        {/* Step 4: Financial Details (Updated for Exchange Rate) */}
         <Card>
           <CardHeader>
             <CardTitle>4. Financial Details</CardTitle>
@@ -658,6 +678,24 @@ const PurchaseOrderNew = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* NEW FIELD: Exchange Rate (Visible only if not USD) */}
+              {watchCurrency !== "USD" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="exchangeRate">Exchange Rate (to USD) *</Label>
+                  <Input
+                    type="number"
+                    min="0.0001"
+                    step="0.0001"
+                    placeholder="e.g., 3.6725 for AED"
+                    {...register("exchangeRate", { valueAsNumber: true })}
+                  />
+                  {errors.exchangeRate && <p className="text-sm text-destructive">{errors.exchangeRate.message}</p>}
+                </div>
+              ) : (
+                <div /> // Placeholder to maintain grid layout
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="taxPercent">Tax %</Label>
                 <Input
@@ -703,7 +741,7 @@ const PurchaseOrderNew = () => {
           </CardContent>
         </Card>
 
-        {/* Step 5: Logistics & Notes */}
+        {/* Step 5: Logistics & Notes (No Changes) */}
         <Card>
           <CardHeader>
             <CardTitle>5. Logistics & Additional Information</CardTitle>
