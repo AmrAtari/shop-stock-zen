@@ -20,15 +20,14 @@ import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 
 // Custom Components & Hooks
-// FIX 2: Correctly import the component and the exported type
+// Correctly import the component and the exported type
 import { POItemSelector, POItemSelection } from "@/components/POItemSelector"; 
 import { supabase } from "@/integrations/supabase/client";
 import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders"; 
 import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys"; // Assuming correct queryKeys definition
 import { toast } from "sonner";
 
-// FIX 6, 7, 8: Define the missing utility function
+// Define the missing utility function locally
 const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
 
 // Placeholder interfaces for assumed components (to resolve prop errors)
@@ -87,6 +86,7 @@ const PurchaseOrderNew = () => {
 
   // --- CALCULATE TOTALS ---
   const { subtotal, taxAmount, grandTotal } = useMemo(() => {
+    // Calculates totals based on the user-inputted unit_cost and quantity
     const subtotal = poItems.reduce((sum, item) => sum + (item.unit_cost * item.quantity), 0);
     const taxAmount = subtotal * (taxRate / 100);
     const grandTotal = subtotal + taxAmount;
@@ -105,8 +105,7 @@ const PurchaseOrderNew = () => {
     setIsSaving(true);
     
     try {
-      // 1. Generate PO Number via RPC 
-      // NOTE: Assuming generate_po_number RPC exists as per original analysis
+      // 1. Generate PO Number via RPC (Assumed to exist)
       const { data: poNumberData, error: poNumberError } = await supabase.rpc('generate_po_number');
 
       if (poNumberError) throw poNumberError;
@@ -145,7 +144,6 @@ const PurchaseOrderNew = () => {
         po_id,
         variant_id: item.variant_id,
         sku: item.sku,
-        // Using item.name here is critical for line item clarity
         product_name: item.name, 
         quantity_ordered: item.quantity,
         unit_cost: item.unit_cost,
@@ -160,7 +158,7 @@ const PurchaseOrderNew = () => {
       if (itemsError) throw itemsError;
 
       toast.success(`Purchase Order ${po_number} created successfully.`);
-      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); // Using a simpler key invalidation
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); 
       navigate(`/purchase-orders/${po_id}`);
 
     } catch (error) {
@@ -290,7 +288,6 @@ const PurchaseOrderNew = () => {
               
               {/* Manual Selection Tab */}
               <TabsContent value="manual" className="mt-4">
-                {/* FIX 3: Component now correctly receives currentItems */}
                 <POItemSelector 
                     currentItems={poItems}
                     onUpdateItems={setPoItems} 
@@ -299,11 +296,9 @@ const PurchaseOrderNew = () => {
 
               {/* Other Tabs */}
               <TabsContent value="import" className="mt-4">
-                {/* FIX 4: Placeholder component with correct prop type */}
                 <POItemImport onUpdateItems={setPoItems} />
               </TabsContent>
               <TabsContent value="barcode" className="mt-4">
-                {/* FIX 5: Placeholder component with correct prop type */}
                 <POBarcodeScanner onUpdateItems={setPoItems} />
               </TabsContent>
             </Tabs>
@@ -351,7 +346,6 @@ const PurchaseOrderNew = () => {
                     </div>
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal:</span>
-                        {/* FIX 6 */}
                         <span className="font-medium">{formatCurrency(subtotal)}</span> 
                     </div>
 
@@ -371,7 +365,6 @@ const PurchaseOrderNew = () => {
 
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Tax Amount ({taxRate}%):</span>
-                        {/* FIX 7 */}
                         <span className="font-medium">{formatCurrency(taxAmount)}</span> 
                     </div>
                     
@@ -379,7 +372,6 @@ const PurchaseOrderNew = () => {
                     
                     <div className="flex justify-between text-xl font-bold pt-1">
                         <span>Grand Total:</span>
-                        {/* FIX 8 */}
                         <span>{formatCurrency(grandTotal)}</span> 
                     </div>
                 </CardContent>
