@@ -1741,10 +1741,12 @@ export interface ProductDialogNewProps {
 }
 
 export interface POApprovalHistory {
-  id: string;
-  approver: string;
-  date: string;
-  status: string;
+  // Define the structure of an approval history record here.
+  // Example properties might include:
+  approved_by: string; // or UserType;
+  approved_at: string; // ISO date string or Date object
+  status: "pending" | "approved" | "rejected";
+  comments?: string;
 }
 
 export const Constants = {
