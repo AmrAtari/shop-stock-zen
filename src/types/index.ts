@@ -63,9 +63,18 @@ export interface PurchaseOrder extends BaseEntity {
 
 // --- Purchase Order Type ---
 export interface PurchaseOrder extends BaseEntity {
-  po_id: number; // Internal sequenced ID (PK)
-  supplier_id: string; // FK to suppliers table (UUID)
-  store_id: string | null; // FK to stores table (UUID)
+  po_id: number;
+  supplier_id: string;
+  store_id: string | null;
+
+  // FIX: Missing properties from errors
+  store: Store | null; // <-- ADDED: Property 'store' does not exist
+  supplier: Supplier | null; // <-- ADDED: Property 'supplier' does not exist
+  approved_by: string | null; // <-- ADDED: Property 'approved_by' does not exist
+  exchange_rate: number | null; // <-- ADDED: Property 'exchange_rate' does not exist
+
+  currency: string;
+  order_date: string;
   currency: string; // New: Currency code (e.g., USD, EUR)
   order_date: string;
   expected_delivery_date: string | null;
