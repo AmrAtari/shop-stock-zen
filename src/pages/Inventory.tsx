@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import ProductDialogNew from "@/components/ProductDialogNew";
-import FileImport from "@/components/FileImport";
+import { ProductDialogNew } from "@/components/ProductDialogNew";
+import { FileImport } from "@/components/FileImport";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
@@ -453,23 +453,7 @@ const InventoryPage: React.FC = () => {
       <ProductDialogNew
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        item={
-          editingItem
-            ? {
-                ...editingItem,
-                sellingPrice: editingItem.price,
-                supplier_id: null,
-                product_id: editingItem.id,
-                tax_rate: null,
-                wholesale_price: null,
-                brand_id: null,
-                category_id: null,
-                gender_id: null,
-                origin_id: null,
-              }
-            : undefined
-        }
-        onSave={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })}
+        editingItem={editingItem || undefined}
       />
       <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
     </div>
