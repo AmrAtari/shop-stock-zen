@@ -45,22 +45,12 @@ export interface Supplier extends BaseEntity {
 }
 
 // --- Purchase Order Item Type (As stored in purchase_order_items table) ---
-export interface PurchaseOrder extends BaseEntity {
-  po_id: number;
-  supplier_id: string;
-  store_id: string | null;
+model_number: string | null; // <-- ADDED: Property 'model_number' does not exist
 
-  // FIX: Missing properties from errors
-  store: Store | null; // <-- ADDED: Property 'store' does not exist
-  supplier: Supplier | null; // <-- ADDED: Property 'supplier' does not exist
-  approved_by: string | null; // <-- ADDED: Property 'approved_by' does not exist
-  exchange_rate: number | null; // <-- ADDED: Property 'exchange_rate' does not exist
-
-  currency: string;
-  order_date: string;
+  sku: string;
+  item_name: string;
   // ... (rest of the interface)
 }
-
 // --- Purchase Order Type ---
 export interface PurchaseOrder extends BaseEntity {
   po_id: number;
