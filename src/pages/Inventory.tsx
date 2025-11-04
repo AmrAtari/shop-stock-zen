@@ -13,9 +13,11 @@ import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAggregatedInventory } from "@/hooks/useStoreInventoryView";
+import { Item } from "@/types/database";
 
 interface StoreStock {
   store_id: string;
@@ -23,167 +25,10 @@ interface StoreStock {
   quantity: number;
 }
 
-interface ItemWithDetails {
-  id: string;
-  sku: string;
-  name: string;
-  supplier: string;
-  gender: string;
-  main_group: string;
-  category: string;
-  origin: string;
-  season: string;
-  size: string;
-  color: string;
-  theme: string;
-  unit: string;
-  price: number;
-  cost: number;
-  item_number: string;
-  pos_description: string;
-  description: string;
-  color_id: string;
-  item_color_code: string;
-  color_id_code: string;
-  location: string;
-  quantity: number;
-  min_stock: number;
-  last_restocked: string | null;
-  created_at: string | null;
+interface ItemWithStores extends Item {
   stores: StoreStock[];
+  total_quantity: number;
 }
-
-// --- Fetch inventory data including PO, transfers, and transactions ---
-const fetchInventory = async (): Promise<ItemWithDetails[]> => {
-  // Fetch items with joins
-  const { data: itemsData, error: itemsError } = await supabase
-    .from("items")
-    .select(
-      `
-      *,
-      supplier:suppliers(name),
-      gender:genders(name),
-      main_group:main_groups(name),
-      category:categories(name),
-      origin:origins(name),
-      season:seasons(name),
-      size:sizes(name),
-      color:colors(name),
-      theme:themes(name)
-    `,
-    )
-    .order("name");
-  if (itemsError) throw itemsError;
-
-  // Fetch store inventory
-  const { data: storeInventory, error: storeError } = await supabase
-    .from("store_inventory")
-    .select("item_id, store_id, quantity");
-  if (storeError) throw storeError;
-
-  // Fetch stores
-  const { data: stores, error: storesError } = await supabase.from("stores").select("id, name");
-  if (storesError) throw storesError;
-
-  const storeMap = Object.fromEntries((stores || []).map((s) => [s.id, s.name]));
-
-  // Map stock per item per store
-  const stockMap = (storeInventory || []).reduce((acc: any, record: any) => {
-    const itemId = record.item_id;
-    if (!acc[itemId]) acc[itemId] = { total_quantity: 0, stores: [] };
-    acc[itemId].total_quantity += Number(record.quantity) || 0;
-    acc[itemId].stores.push({
-      store_id: record.store_id,
-      store_name: storeMap[record.store_id] || "Unknown",
-      quantity: Number(record.quantity) || 0,
-    });
-    return acc;
-  }, {});
-
-  // Fetch Purchase Orders quantities
-  const { data: poItems } = await supabase
-    .from("purchase_order_items")
-    .select("sku, received_quantity");
-  const poMap = (poItems || []).reduce(
-    (acc, po) => {
-      acc[po.sku] = (acc[po.sku] || 0) + Number(po.received_quantity || 0);
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  // Fetch Transactions (sales minus refunds)
-  const { data: transactions } = await supabase
-    .from("transactions")
-    .select("item_id, quantity, is_refund");
-  const transMap = (transactions || []).reduce(
-    (acc, t) => {
-      const change = t.is_refund ? Number(t.quantity) : -Number(t.quantity);
-      acc[t.item_id] = (acc[t.item_id] || 0) + change;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  // Fetch Transfer Items (received to stores)
-  const { data: transferItems } = await supabase
-    .from("transfer_items")
-    .select("variant_id, quantity");
-  const transferMap = (transferItems || []).reduce(
-    (acc, t) => {
-      acc[t.variant_id] = (acc[t.variant_id] || 0) + Number(t.quantity);
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  return (itemsData || []).map((item: any) => {
-    const storeQty = stockMap[item.id]?.total_quantity || 0;
-    const poQty = poMap[item.sku] || 0;
-    const transQty = transMap[item.id] || 0;
-    const transferQty = transferMap[item.id] || 0; // Assuming variant_id = item.id
-
-    const totalQuantity = storeQty + poQty + transferQty + transQty;
-
-    return {
-      id: item.id,
-      sku: item.sku || "N/A",
-      name: item.name || "N/A",
-      supplier: item.supplier?.name || "",
-      gender: item.gender?.name || "",
-      main_group: item.main_group?.name || "",
-      category: item.category?.name || "",
-      origin: item.origin?.name || "",
-      season: item.season?.name || "",
-      size: item.size?.name || "",
-      color: item.color?.name || "",
-      theme: item.theme?.name || "",
-      unit: item.unit || "",
-      price: item.price || 0,
-      cost: item.cost || 0,
-      item_number: item.item_number || "",
-      pos_description: item.pos_description || "",
-      description: item.description || "",
-      color_id: item.color_id || "",
-      item_color_code: item.item_color_code || "",
-      color_id_code: item.color_id_code || "",
-      location: item.location || "",
-      quantity: totalQuantity,
-      min_stock: item.min_stock || 0,
-      last_restocked: item.last_restocked,
-      created_at: item.created_at,
-      stores: stockMap[item.id]?.stores || [],
-    };
-  });
-};
-
-const useInventoryQuery = () => {
-  return useQuery<ItemWithDetails[]>({
-    queryKey: queryKeys.inventory.all,
-    queryFn: fetchInventory,
-    staleTime: 2 * 60 * 1000,
-  });
-};
 
 const ITEMS_PER_PAGE = 20;
 
@@ -193,8 +38,8 @@ const InventoryPage: React.FC = () => {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ItemWithDetails | null>(null);
-  const [selectedItems, setSelectedItems] = useState<ItemWithDetails[]>([]);
+  const [editingItem, setEditingItem] = useState<ItemWithStores | null>(null);
+  const [selectedItems, setSelectedItems] = useState<ItemWithStores[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterSupplier, setFilterSupplier] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
@@ -204,7 +49,11 @@ const InventoryPage: React.FC = () => {
   const [filterColor, setFilterColor] = useState("");
   const [filterSize, setFilterSize] = useState("");
 
-  const { data: inventory = [], isLoading, error } = useInventoryQuery();
+  // Use aggregated inventory which correctly reflects store_inventory as source of truth
+  const { data: rawInventory = [], isLoading, error } = useAggregatedInventory();
+  
+  // Cast to ItemWithStores since useAggregatedInventory returns Item with stores property
+  const inventory = rawInventory as ItemWithStores[];
 
   const { data: stores = [] } = useQuery({
     queryKey: ["stores-for-filter"],
@@ -287,7 +136,7 @@ const InventoryPage: React.FC = () => {
     [filteredInventory, pagination.startIndex, pagination.endIndex],
   );
 
-  const toggleSelectItem = (item: ItemWithDetails) => {
+  const toggleSelectItem = (item: ItemWithStores) => {
     setSelectedItems((prev) =>
       prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item],
     );
@@ -304,7 +153,7 @@ const InventoryPage: React.FC = () => {
     if (delError) toast.error(delError.message);
     else {
       toast.success("Item deleted successfully");
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      await invalidateInventoryData(queryClient);
     }
   };
 
@@ -575,7 +424,11 @@ const InventoryPage: React.FC = () => {
         onOpenChange={setDialogOpen}
         editingItem={editingItem}
       />
-      <FileImport open={importOpen} onOpenChange={setImportOpen} onImportComplete={() => {}} />
+      <FileImport 
+        open={importOpen} 
+        onOpenChange={setImportOpen} 
+        onImportComplete={() => invalidateInventoryData(queryClient)} 
+      />
     </div>
   );
 };
