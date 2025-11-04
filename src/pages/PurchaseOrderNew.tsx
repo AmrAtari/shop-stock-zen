@@ -150,8 +150,9 @@ const PurchaseOrderNew = () => {
     if (sameBillingAddress && watchBuyerAddress) {
       setValue("billingAddress", watchBuyerAddress);
     }
-    // Clear if unchecked and addresses were copied
-    if (!sameBillingAddress && setValue("billingAddress", undefined)) {
+    // FIX: Clear if unchecked (Corrected to fix TS1345 error)
+    if (!sameBillingAddress) {
+      setValue("billingAddress", undefined);
     }
   }, [sameBillingAddress, watchBuyerAddress, setValue]);
 
@@ -159,8 +160,9 @@ const PurchaseOrderNew = () => {
     if (sameShippingAddress && watchBuyerAddress) {
       setValue("shippingAddress", watchBuyerAddress);
     }
-    // Clear if unchecked and addresses were copied
-    if (!sameShippingAddress && setValue("shippingAddress", undefined)) {
+    // FIX: Clear if unchecked (Corrected to fix TS1345 error)
+    if (!sameShippingAddress) {
+      setValue("shippingAddress", undefined);
     }
   }, [sameShippingAddress, watchBuyerAddress, setValue]);
 
