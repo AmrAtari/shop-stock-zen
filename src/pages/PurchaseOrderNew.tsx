@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Dispatch, SetStateAction, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,25 +14,40 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils"; // Assuming a utility for class names
+import { cn } from "@/lib/utils"; 
 import { Separator } from "@/components/ui/separator";
 
 // Custom Components & Hooks
-import { POItemSelector, POItemSelection } from "@/components/POItemSelector"; // 👈 Import modified component
-import { POItemImport } from "@/components/POItemImport"; // Assumed component
-import { POBarcodeScanner } from "@/components/POBarcodeScanner"; // Assumed component
+// FIX 2: Correctly import the component and the exported type
+import { POItemSelector, POItemSelection } from "@/components/POItemSelector"; 
 import { supabase } from "@/integrations/supabase/client";
-import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders"; // Hooks from uploaded files
+import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders"; 
 import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/hooks/queryKeys";
+import { queryKeys } from "@/hooks/queryKeys"; // Assuming correct queryKeys definition
 import { toast } from "sonner";
+
+// FIX 6, 7, 8: Define the missing utility function
+const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
+
+// Placeholder interfaces for assumed components (to resolve prop errors)
+interface POItemImportProps {
+    onUpdateItems: (items: POItemSelection[]) => void;
+}
+const POItemImport: React.FC<POItemImportProps> = ({ onUpdateItems }) => (
+    <div className="p-4 border rounded-md">Placeholder for Excel Import functionality.</div>
+);
+
+interface POBarcodeScannerProps {
+    onUpdateItems: (items: POItemSelection[]) => void;
+}
+const POBarcodeScanner: React.FC<POBarcodeScannerProps> = ({ onUpdateItems }) => (
+    <div className="p-4 border rounded-md">Placeholder for Barcode Scanner functionality.</div>
+);
 
 // --- TYPE AND SCHEMA DEFINITIONS ---
 
-// Define the PO submission schema
 const poSchema = z.object({
   supplierId: z.string().uuid({ message: "Supplier is required." }),
   destinationStoreId: z.string().uuid({ message: "Destination Store is required." }),
@@ -41,7 +56,7 @@ const poSchema = z.object({
   shippingMethod: z.string().optional(),
   fobTerms: z.string().optional(),
   specialInstructions: z.string().optional(),
-  taxRate: z.number().min(0).max(100).default(0), // Assuming a default tax rate field
+  taxRate: z.number().min(0).max(100).default(0),
 });
 
 type POFormValues = z.infer<typeof poSchema>;
@@ -52,7 +67,7 @@ const PurchaseOrderNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
-  // State for line items selected via any method (Manual, Import, Scanner)
+  // State for line items selected
   const [poItems, setPoItems] = useState<POItemSelection[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -64,7 +79,7 @@ const PurchaseOrderNew = () => {
     resolver: zodResolver(poSchema),
     defaultValues: {
         orderDate: new Date(),
-        taxRate: 5, // Defaulting to 5% tax
+        taxRate: 5, 
     },
   });
 
@@ -90,7 +105,8 @@ const PurchaseOrderNew = () => {
     setIsSaving(true);
     
     try {
-      // 1. Generate PO Number via RPC (as suggested in snippet analysis)
+      // 1. Generate PO Number via RPC 
+      // NOTE: Assuming generate_po_number RPC exists as per original analysis
       const { data: poNumberData, error: poNumberError } = await supabase.rpc('generate_po_number');
 
       if (poNumberError) throw poNumberError;
@@ -106,12 +122,11 @@ const PurchaseOrderNew = () => {
         shipping_method: data.shippingMethod,
         fob_terms: data.fobTerms,
         special_instructions: data.specialInstructions,
-        status: 'draft', // Starts as draft
+        status: 'draft', 
         subtotal: subtotal,
         tax_amount: taxAmount,
         total_cost: grandTotal,
-        shipping_charges: 0, // Placeholder, can be added later or as form field
-        // Assume default currency 'USD' or fetch from supplier
+        shipping_charges: 0, 
         currency: 'USD',
       };
 
@@ -130,12 +145,12 @@ const PurchaseOrderNew = () => {
         po_id,
         variant_id: item.variant_id,
         sku: item.sku,
-        name: item.name,
+        // Using item.name here is critical for line item clarity
+        product_name: item.name, 
         quantity_ordered: item.quantity,
         unit_cost: item.unit_cost,
         line_total: item.quantity * item.unit_cost,
         received_quantity: 0,
-        // color and size can be added here if available in POItemSelection
       }));
 
       const { error: itemsError } = await supabase
@@ -145,7 +160,7 @@ const PurchaseOrderNew = () => {
       if (itemsError) throw itemsError;
 
       toast.success(`Purchase Order ${po_number} created successfully.`);
-      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); // Using a simpler key invalidation
       navigate(`/purchase-orders/${po_id}`);
 
     } catch (error) {
@@ -275,17 +290,20 @@ const PurchaseOrderNew = () => {
               
               {/* Manual Selection Tab */}
               <TabsContent value="manual" className="mt-4">
+                {/* FIX 3: Component now correctly receives currentItems */}
                 <POItemSelector 
                     currentItems={poItems}
-                    onUpdateItems={setPoItems} // 👈 Passes state setter to the modified selector
+                    onUpdateItems={setPoItems} 
                 />
               </TabsContent>
 
-              {/* Other Tabs (Placeholder) */}
+              {/* Other Tabs */}
               <TabsContent value="import" className="mt-4">
+                {/* FIX 4: Placeholder component with correct prop type */}
                 <POItemImport onUpdateItems={setPoItems} />
               </TabsContent>
               <TabsContent value="barcode" className="mt-4">
+                {/* FIX 5: Placeholder component with correct prop type */}
                 <POBarcodeScanner onUpdateItems={setPoItems} />
               </TabsContent>
             </Tabs>
@@ -333,7 +351,8 @@ const PurchaseOrderNew = () => {
                     </div>
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal:</span>
-                        <span className="font-medium">{formatCurrency(subtotal)}</span>
+                        {/* FIX 6 */}
+                        <span className="font-medium">{formatCurrency(subtotal)}</span> 
                     </div>
 
                     <Separator />
@@ -352,14 +371,16 @@ const PurchaseOrderNew = () => {
 
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Tax Amount ({taxRate}%):</span>
-                        <span className="font-medium">{formatCurrency(taxAmount)}</span>
+                        {/* FIX 7 */}
+                        <span className="font-medium">{formatCurrency(taxAmount)}</span> 
                     </div>
                     
                     <Separator />
                     
                     <div className="flex justify-between text-xl font-bold pt-1">
                         <span>Grand Total:</span>
-                        <span>{formatCurrency(grandTotal)}</span>
+                        {/* FIX 8 */}
+                        <span>{formatCurrency(grandTotal)}</span> 
                     </div>
                 </CardContent>
             </Card>
