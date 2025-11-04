@@ -4,13 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-// New imports from the revised hook file
+// FIX: Import new hooks
 import { usePurchaseOrderDetail, usePOApprovalMutation, useIsPoApprover } from "@/hooks/usePurchaseOrderDetail";
 import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package, Clock } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner"; // Using sonner for toast consistency
+import { toast } from "sonner"; // Assuming you use 'sonner' for toasts
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import {
@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -37,7 +36,7 @@ const PurchaseOrderDetail = () => {
   // Fetch PO details, items, and history
   const { data, isLoading, error } = usePurchaseOrderDetail(id || "");
   // Fetch user's approver status
-  const { data: isApprover, isLoading: isApproverLoading } = useIsPoApprover();
+  const { data: isApprover, isLoading: isApproverLoading } = useIsPoApprover(); // FIX: Use new hook
   const queryClient = useQueryClient();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -47,7 +46,8 @@ const PurchaseOrderDetail = () => {
   const po = data?.po;
   const items = data?.items || [];
   const history = data?.history || []; // New: Approval History
-  const storeName = po?.store?.name || "N/A"; // Use store name from join
+  // FIX: Accessing store name is now correctly typed
+  const storeName = po?.store?.name || "N/A";
 
   // Hook for the new Approval/Rejection logic
   const poApprovalMutation = usePOApprovalMutation(id || "");
@@ -91,23 +91,31 @@ const PurchaseOrderDetail = () => {
   // End NEW Handlers
 
   if (isLoading || isApproverLoading) {
-    return <div>Loading Purchase Order...</div>;
+    return (
+      <div className="p-8 flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   if (error || !po) {
-    return <div>Error loading purchase order or PO not found.</div>;
+    return <div className="p-8 text-center text-red-500">Error loading purchase order or PO not found.</div>;
   }
 
-  const getStatusBadgeVariant = (status: string) => {
+  // FIX: Changed custom badge variants to standard/expected ones to avoid TS errors
+  const getStatusBadgeVariant = (status: string): "default" | "secondary" | "outline" | "destructive" | "warning" => {
     switch (status) {
       case "Approved":
+        // FIX: Changed from "default" to "default" (standard variant)
         return "default";
       case "Awaiting Approval":
         return "secondary";
       case "Sent":
-        return "blue";
+        // FIX: Changed from "blue" to "outline"
+        return "outline";
       case "Received":
-        return "success";
+        // FIX: Changed from "success" to "default"
+        return "default";
       case "Partially Received":
         return "warning";
       case "Rejected":
@@ -125,11 +133,13 @@ const PurchaseOrderDetail = () => {
       Description: item.item_description,
       Color: item.color,
       Size: item.size,
+      // FIX: Property 'model_number' now exists on PurchaseOrderItem due to type update
       "Model Number": item.model_number,
       "Quantity Ordered": item.quantity,
+      // FIX: Property 'received_quantity' now exists on PurchaseOrderItem due to type update
       "Quantity Received": item.received_quantity || 0,
       "Cost Price": item.cost_price,
-      "Total Cost": item.quantity * item.cost_price,
+      "Line Total": item.quantity * item.cost_price,
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
@@ -150,7 +160,8 @@ const PurchaseOrderDetail = () => {
         <>
           <Button
             onClick={() => openApprovalDialog("approve")}
-            variant="success"
+            // FIX: Changed variant from "success" to "default" to avoid TS error
+            variant="default"
             className="flex items-center gap-2"
             disabled={poApprovalMutation.isPending}
           >
@@ -172,6 +183,8 @@ const PurchaseOrderDetail = () => {
       return (
         <Button
           onClick={() => handleUpdateStatus("Sent")}
+          // FIX: Changed variant from "blue" to "default" to avoid TS error
+          variant="default"
           className="flex items-center gap-2"
           disabled={updateStatusMutation.isPending}
         >
@@ -184,6 +197,7 @@ const PurchaseOrderDetail = () => {
       return (
         <Button
           onClick={() => handleUpdateStatus("Received")}
+          variant="default"
           className="flex items-center gap-2"
           disabled={updateStatusMutation.isPending}
         >
@@ -248,7 +262,7 @@ const PurchaseOrderDetail = () => {
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Expected Delivery</p>
               <p className="font-semibold">
-                {po.expected_delivery ? format(new Date(po.expected_delivery), "PPP") : "N/A"}
+                {po.expected_delivery_date ? format(new Date(po.expected_delivery_date), "PPP") : "N/A"}
               </p>
             </div>
             <div className="space-y-1">
@@ -265,12 +279,12 @@ const PurchaseOrderDetail = () => {
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Authorized By (Created)</p>
-              {/* Display a truncated User ID or N/A */}
               <p className="font-semibold">
                 {po.authorized_by ? `User ID: ${po.authorized_by.substring(0, 8)}...` : "N/A"}
               </p>
             </div>
             {/* Display Approved By (NEW) */}
+            {/* FIX: approved_by property is now correctly recognized */}
             {po.approved_by && (
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Approved By</p>
@@ -278,8 +292,7 @@ const PurchaseOrderDetail = () => {
               </div>
             )}
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Committed Cost ({po.currency})</p>
-              {/* Note: Committed cost is now the total_cost at the time of creation/approval */}
+              <p className="text-sm text-muted-foreground">Total Cost ({po.currency})</p>
               <p className="font-semibold text-lg">{po.total_cost.toFixed(2)}</p>
             </div>
           </CardContent>
@@ -296,6 +309,7 @@ const PurchaseOrderDetail = () => {
               <span className="font-semibold">{po.currency}</span>
             </div>
             {/* Display Exchange Rate (NEW) */}
+            {/* FIX: exchange_rate property is now correctly recognized */}
             {po.exchange_rate && po.exchange_rate !== 1.0 && (
               <div className="flex justify-between">
                 <span>Exchange Rate (to USD):</span>
@@ -305,19 +319,19 @@ const PurchaseOrderDetail = () => {
             <div className="flex justify-between">
               <span>Subtotal:</span>
               <span className="font-semibold">
-                {po.currency} {po.subtotal.toFixed(2)}
+                {po.currency} {po.subtotal?.toFixed(2) || "0.00"}
               </span>
             </div>
             <div className="flex justify-between">
               <span>Tax Amount:</span>
               <span className="font-semibold">
-                {po.currency} {po.tax_amount.toFixed(2)}
+                {po.currency} {po.tax_amount?.toFixed(2) || "0.00"}
               </span>
             </div>
             <div className="flex justify-between">
               <span>Shipping Charges:</span>
               <span className="font-semibold">
-                {po.currency} {po.shipping_charges.toFixed(2)}
+                {po.currency} {po.shipping_charges?.toFixed(2) || "0.00"}
               </span>
             </div>
             <Separator />
@@ -331,19 +345,20 @@ const PurchaseOrderDetail = () => {
         </Card>
       </div>
 
-      {/* Card 3: Line Items (No changes from previous) */}
+      {/* Card 3: Line Items */}
       <Card>
         <CardHeader>
           <CardTitle>Line Items ({items.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-lg">
+          <div className="border rounded-lg overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>#</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Model No.</TableHead>
                   <TableHead>Color/Size</TableHead>
                   <TableHead>Qty Ordered</TableHead>
                   <TableHead>Qty Received</TableHead>
@@ -357,10 +372,13 @@ const PurchaseOrderDetail = () => {
                     <TableCell>{index + 1}</TableCell>
                     <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                     <TableCell>{item.item_name}</TableCell>
+                    {/* FIX: model_number property is now correctly recognized */}
+                    <TableCell>{item.model_number || "N/A"}</TableCell>
                     <TableCell>
                       {item.color || "N/A"} / {item.size || "N/A"}
                     </TableCell>
                     <TableCell>{item.quantity}</TableCell>
+                    {/* FIX: received_quantity property is now correctly recognized */}
                     <TableCell>{item.received_quantity || 0}</TableCell>
                     <TableCell>
                       {po.currency} {item.cost_price.toFixed(2)}
@@ -390,20 +408,35 @@ const PurchaseOrderDetail = () => {
                 <p className="text-muted-foreground text-sm p-2">No approval actions recorded yet.</p>
               )}
               {history.map((h, index) => (
-                <div key={index} className="flex items-start space-x-4 border-b pb-2 mb-2 last:border-b-0 last:pb-0">
+                <div
+                  key={h.id || index}
+                  className="flex items-start space-x-4 border-b pb-2 mb-2 last:border-b-0 last:pb-0"
+                >
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs bg-primary text-primary-foreground">
+                    <AvatarFallback
+                      className={`text-xs ${h.status_change === "Approved" ? "bg-green-500" : "bg-red-500"} text-white`}
+                    >
+                      {/* FIX: Properties now exist due to type update */}
                       {h.approver_id ? h.approver_id.substring(0, 2).toUpperCase() : "?"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="space-y-1 text-sm">
                     <p className="font-medium">
-                      <Badge variant={h.status_change === "Approved" ? "default" : "destructive"} className="mr-2">
+                      <Badge
+                        // FIX: Using standard variants
+                        variant={h.status_change === "Approved" ? "default" : "destructive"}
+                        className="mr-2"
+                      >
                         {h.status_change}
                       </Badge>
+                      {/* FIX: Properties now exist due to type update */}
                       by User ID: {h.approver_id ? h.approver_id.substring(0, 8) : "System"}...
                     </p>
-                    <p className="text-muted-foreground text-xs">{format(new Date(h.created_at), "PPP pp")}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {/* FIX: Properties now exist due to type update */}
+                      {format(new Date(h.created_at), "PPP pp")}
+                    </p>
+                    {/* FIX: Properties now exist due to type update */}
                     {h.notes && <p className="text-xs italic mt-1">Notes: "{h.notes}"</p>}
                   </div>
                 </div>
@@ -457,6 +490,7 @@ const PurchaseOrderDetail = () => {
               placeholder="Add a reason or any required changes."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              rows={3}
             />
           </div>
           <DialogFooter>
