@@ -2,6 +2,7 @@ import React from "react";
 import DatabaseAdminPanel from "@/components/DatabaseAdminPanel";
 import { Card, CardContent } from "@/components/ui/card";
 import { MonitorOff } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function DirectDBAccessSection({ isAdmin }) {
   if (!isAdmin) {
@@ -16,4 +17,3 @@ export default function DirectDBAccessSection({ isAdmin }) {
   }
   return <DatabaseAdminPanel />;
 }
-
