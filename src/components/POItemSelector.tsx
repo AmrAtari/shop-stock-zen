@@ -8,21 +8,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
-// Placeholder Item type (adjust based on your actual Item definition)
+// Placeholder Item type (Ensure this matches the Item type defined in PurchaseOrderNew.tsx)
 type Item = {
   id: string;
   sku: string;
   name: string;
-  category: string; 
+  category: string;
   stock_on_hand: number;
   cost_price: number; // Include base price field for placeholder
 };
 
 // Placeholder prop type for the structure used in PurchaseOrderNew.tsx
-export type SelectedPOItem = { 
-    item: Item; 
-    quantity: number; 
-    price: number; // The user-defined unit cost for the PO
+export type SelectedPOItem = {
+  item: Item;
+  quantity: number;
+  price: number; // The user-defined unit cost for the PO
 };
 
 // REVERTED Props
@@ -40,7 +40,7 @@ export const POItemSelector = ({ items, isLoading, onSelect }: POItemSelectorPro
   const filteredItems = items.filter(
     (item) =>
       item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleToggle = (item: Item) => {
@@ -49,7 +49,7 @@ export const POItemSelector = ({ items, isLoading, onSelect }: POItemSelectorPro
       newSelected.delete(item.id);
     } else {
       // Default quantity to 1, default price to item's cost_price
-      newSelected.set(item.id, { item, quantity: 1, price: item.cost_price || 0 }); 
+      newSelected.set(item.id, { item, quantity: 1, price: item.cost_price || 0 });
     }
     setSelectedItems(newSelected);
   };
@@ -62,7 +62,7 @@ export const POItemSelector = ({ items, isLoading, onSelect }: POItemSelectorPro
     }
     setSelectedItems(newSelected);
   };
-  
+
   const handlePriceChange = (itemId: string, price: number) => {
     const newSelected = new Map(selectedItems);
     const existing = newSelected.get(itemId);
@@ -78,8 +78,12 @@ export const POItemSelector = ({ items, isLoading, onSelect }: POItemSelectorPro
     setSelectedItems(new Map()); // Clear selection after adding
   };
 
-  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
-
+  if (isLoading)
+    return (
+      <div className="flex justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
 
   return (
     <div className="space-y-4">
@@ -107,54 +111,54 @@ export const POItemSelector = ({ items, isLoading, onSelect }: POItemSelectorPro
           </TableHeader>
           <TableBody>
             {filteredItems.length === 0 ? (
-                <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        {searchTerm ? `No items match "${searchTerm}".` : "No products available to select."}
-                    </TableCell>
-                </TableRow>
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  {searchTerm ? `No items match "${searchTerm}".` : "No products available to select."}
+                </TableCell>
+              </TableRow>
             ) : (
-                filteredItems.map((item) => {
-                  const isSelected = selectedItems.has(item.id);
-                  const selectedItemDetails = selectedItems.get(item.id);
+              filteredItems.map((item) => {
+                const isSelected = selectedItems.has(item.id);
+                const selectedItemDetails = selectedItems.get(item.id);
 
-                  return (
-                    <TableRow key={item.id} className={isSelected ? 'bg-blue-50/50' : ''}>
-                      <TableCell>
-                        <Checkbox checked={isSelected} onCheckedChange={() => handleToggle(item)} />
-                      </TableCell>
-                      <TableCell className="font-medium">{item.sku}</TableCell>
-                      <TableCell>{item.name}</TableCell>
-                      <TableCell>{item.stock_on_hand}</TableCell>
-                      <TableCell>
-                        {isSelected ? (
-                          <Input
-                            type="number"
-                            min="1"
-                            value={selectedItemDetails?.quantity || 1}
-                            onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value) || 1)}
-                            className="w-20"
-                          />
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {isSelected ? (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={selectedItemDetails?.price || item.cost_price || 0}
-                            onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
-                            className="w-24"
-                          />
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                return (
+                  <TableRow key={item.id} className={isSelected ? "bg-blue-50/50" : ""}>
+                    <TableCell>
+                      <Checkbox checked={isSelected} onCheckedChange={() => handleToggle(item)} />
+                    </TableCell>
+                    <TableCell className="font-medium">{item.sku}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.stock_on_hand}</TableCell>
+                    <TableCell>
+                      {isSelected ? (
+                        <Input
+                          type="number"
+                          min="1"
+                          value={selectedItemDetails?.quantity || 1}
+                          onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value) || 1)}
+                          className="w-20"
+                        />
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {isSelected ? (
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={selectedItemDetails?.price || item.cost_price || 0}
+                          onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
+                          className="w-24"
+                        />
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
