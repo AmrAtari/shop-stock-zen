@@ -346,29 +346,103 @@ const InventoryPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {[
-            { label: "Supplier", value: filterSupplier, setter: setFilterSupplier, options: supplierOptions },
-            { label: "Category", value: filterCategory, setter: setFilterCategory, options: categoryOptions },
-            { label: "Main Group", value: filterMainGroup, setter: setFilterMainGroup, options: mainGroupOptions },
-            { label: "Store", value: filterStore, setter: setFilterStore, options: stores.map((s) => s.name) },
-            { label: "Season", value: filterSeason, setter: setFilterSeason, options: seasonOptions },
-            { label: "Color", value: filterColor, setter: setFilterColor, options: colorOptions },
-            { label: "Size", value: filterSize, setter: setFilterSize, options: sizeOptions },
-          ].map(({ label, value, setter, options }) => (
-            <Select key={label} value={value} onValueChange={(v) => setter(v === "all" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder={label} />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-50">
-                <SelectItem value="all">All {label}s</SelectItem>
-                {options.map((o: any) => (
-                  <SelectItem key={o} value={o}>
-                    {o}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ))}
+          <Select value={filterSupplier} onValueChange={(v) => setFilterSupplier(v === "all" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Supplier" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="all">All Suppliers</SelectItem>
+              {supplierOptions.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="all">All Categories</SelectItem>
+              {categoryOptions.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterMainGroup} onValueChange={(v) => setFilterMainGroup(v === "all" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Main Group" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="all">All Main Groups</SelectItem>
+              {mainGroupOptions.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterStore} onValueChange={(v) => setFilterStore(v === "all" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Store" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="all">All Stores</SelectItem>
+              {stores.map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterSeason} onValueChange={(v) => setFilterSeason(v === "all" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Season" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="all">All Seasons</SelectItem>
+              {seasonOptions.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterColor} onValueChange={(v) => setFilterColor(v === "all" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Color" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="all">All Colors</SelectItem>
+              {colorOptions.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterSize} onValueChange={(v) => setFilterSize(v === "all" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Size" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="all">All Sizes</SelectItem>
+              {sizeOptions.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
