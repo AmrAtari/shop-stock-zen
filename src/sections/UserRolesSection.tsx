@@ -6,7 +6,7 @@ import { Edit2, Plus, RotateCcw } from "lucide-react";
 
 import { AddUserDialog } from "../dialogs/AddUserDialog";
 import { UserPermissionsDialog } from "../dialogs/UserPermissionsDialog";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
 export default function UserRolesSection({ isAdmin }) {
@@ -23,12 +23,19 @@ export default function UserRolesSection({ isAdmin }) {
       setUsers(data?.users || []);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setLoadingUsers(false); }
+    } finally {
+      setLoadingUsers(false);
+    }
   }, []);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
-  const handleEditPermissions = (user: any) => { setSelectedUser(user); setShowPermissionsDialog(true); };
+  const handleEditPermissions = (user: any) => {
+    setSelectedUser(user);
+    setShowPermissionsDialog(true);
+  };
 
   return (
     <Card>
@@ -56,7 +63,7 @@ export default function UserRolesSection({ isAdmin }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map(user => (
+            {users.map((user) => (
               <TableRow key={user.id}>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>{user.role}</TableCell>
@@ -71,7 +78,13 @@ export default function UserRolesSection({ isAdmin }) {
         </Table>
       </CardContent>
       <AddUserDialog open={showAddUserDialog} onOpenChange={setShowAddUserDialog} onUserAdded={loadUsers} />
-      <UserPermissionsDialog open={showPermissionsDialog} onOpenChange={setShowPermissionsDialog} user={selectedUser} onSave={() => {}} onDelete={() => {}} />
+      <UserPermissionsDialog
+        open={showPermissionsDialog}
+        onOpenChange={setShowPermissionsDialog}
+        user={selectedUser}
+        onSave={() => {}}
+        onDelete={() => {}}
+      />
     </Card>
   );
 }
