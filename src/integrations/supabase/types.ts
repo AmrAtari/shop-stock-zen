@@ -1733,10 +1733,11 @@ export interface FileImportProps {
 }
 
 export interface ProductDialogNewProps {
-  // add fields your ProductDialogNew component needs
+  // Add properties that src/components/ProductDialogNew.tsx expects here.
+  // Example properties might include:
   isOpen: boolean;
   onClose: () => void;
-  productId?: string;
+  onSubmit: (productData: any) => void;
 }
 
 export interface POApprovalHistory {
