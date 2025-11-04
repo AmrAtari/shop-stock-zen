@@ -1725,8 +1725,11 @@ export interface PurchaseOrderItem {
 
 // --- New types to fix TS2305 errors ---
 export interface FileImportProps {
-  // add the fields your FileImport component needs
-  onFileSelect: (file: File) => void;
+  // Add properties that src/components/FileImport.tsx expects here.
+  // Example properties might include:
+  onImport: (data: any) => void;
+  isLoading: boolean;
+  acceptedFileTypes?: string[];
 }
 
 export interface ProductDialogNewProps {
