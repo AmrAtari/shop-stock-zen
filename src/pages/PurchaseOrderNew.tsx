@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-// UI Components (Table components ADDED here)
+// UI Components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,14 +18,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Separator } from "@/components/ui/separator";
-// 👇 FIX: Import all missing Table components
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // Added missing table imports
 import { cn } from "@/lib/utils";
 
 // Custom Components & Hooks
 import { POItemSelector } from "@/components/POItemSelector";
 import { supabase } from "@/integrations/supabase/client";
-import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders";
+import { useSuppliers, useStores } from "@/hooks/usePurchaseOrders"; // Assuming this exists
 import { toast } from "sonner";
 
 // --- PLACEHOLDER TYPES & HOOKS (Reverted Version) ---
@@ -49,11 +48,12 @@ type Item = {
   cost_price: number;
 };
 
-// Simple hook to fetch all items for the selector (REPLACING useProductVariantsForPO)
+// Simple hook to fetch all items for the selector
 const useAllItems = () => {
   return useQuery<Item[]>({
     queryKey: ["all-po-items"],
     queryFn: async () => {
+      // Simple fetch to prevent timeouts
       const { data, error } = await supabase
         .from("product_variants")
         .select(`id, sku, name, stock_on_hand, cost_price, products (category)`)
@@ -114,7 +114,7 @@ const PurchaseOrderNew = () => {
 
   const { data: suppliers, isLoading: isLoadingSuppliers } = useSuppliers();
   const { data: stores, isLoading: isLoadingStores } = useStores();
-  const { data: allProducts, isLoading: isLoadingProducts } = useAllItems(); // Fetch all items here
+  const { data: allProducts, isLoading: isLoadingProducts } = useAllItems();
 
   const {
     register,
@@ -373,7 +373,7 @@ const PurchaseOrderNew = () => {
               </TabsContent>
             </Tabs>
 
-            {/* Display Selected Items (This block now correctly uses imported Table components) */}
+            {/* Display Selected Items */}
             {poItems.length > 0 && (
               <div className="mt-6">
                 <h3 className="text-lg font-semibold mb-2">Selected Items ({poItems.length})</h3>
