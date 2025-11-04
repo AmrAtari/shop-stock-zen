@@ -709,106 +709,171 @@ export type Database = {
       }
       purchase_order_items: {
         Row: {
+          brand_id: string | null
+          category_id: string | null
           color: string | null
           cost_price: number
           created_at: string
+          created_by: string | null
+          gender_id: string | null
           id: string
           item_description: string | null
           item_id: string | null
           item_name: string
           model_number: string | null
+          origin_id: string | null
           po_id: string
           quantity: number
           received_quantity: number
           size: string | null
           sku: string
           unit: string | null
+          updated_by: string | null
         }
         Insert: {
+          brand_id?: string | null
+          category_id?: string | null
           color?: string | null
           cost_price: number
           created_at?: string
+          created_by?: string | null
+          gender_id?: string | null
           id?: string
           item_description?: string | null
           item_id?: string | null
           item_name: string
           model_number?: string | null
+          origin_id?: string | null
           po_id: string
           quantity: number
           received_quantity?: number
           size?: string | null
           sku: string
           unit?: string | null
+          updated_by?: string | null
         }
         Update: {
+          brand_id?: string | null
+          category_id?: string | null
           color?: string | null
           cost_price?: number
           created_at?: string
+          created_by?: string | null
+          gender_id?: string | null
           id?: string
           item_description?: string | null
           item_id?: string | null
           item_name?: string
           model_number?: string | null
+          origin_id?: string | null
           po_id?: string
           quantity?: number
           received_quantity?: number
           size?: string | null
           sku?: string
           unit?: string | null
+          updated_by?: string | null
         }
         Relationships: []
       }
       purchase_orders: {
         Row: {
+          authorized_by: string | null
+          billing_address: string | null
+          buyer_address: string | null
+          buyer_company_name: string | null
+          buyer_contact: string | null
+          created_by: string | null
+          currency: string | null
           currency_id: string | null
+          expected_delivery: string | null
           expected_delivery_date: string | null
+          fob_terms: string | null
+          id: number
           order_date: string
+          payment_terms: string | null
           po_id: number
+          po_number: string | null
+          shipping_address: string | null
+          shipping_charges: number | null
+          shipping_method: string | null
+          special_instructions: string | null
           status: string | null
           store_id: string | null
+          subtotal: number | null
+          supplier: string | null
+          supplier_contact_person: string | null
           supplier_id: string
+          tax_amount: number | null
+          total_cost: number | null
+          total_items: number | null
+          updated_by: string | null
         }
         Insert: {
+          authorized_by?: string | null
+          billing_address?: string | null
+          buyer_address?: string | null
+          buyer_company_name?: string | null
+          buyer_contact?: string | null
+          created_by?: string | null
+          currency?: string | null
           currency_id?: string | null
+          expected_delivery?: string | null
           expected_delivery_date?: string | null
+          fob_terms?: string | null
+          id?: number
           order_date: string
+          payment_terms?: string | null
           po_id?: number
+          po_number?: string | null
+          shipping_address?: string | null
+          shipping_charges?: number | null
+          shipping_method?: string | null
+          special_instructions?: string | null
           status?: string | null
           store_id?: string | null
+          subtotal?: number | null
+          supplier?: string | null
+          supplier_contact_person?: string | null
           supplier_id: string
+          tax_amount?: number | null
+          total_cost?: number | null
+          total_items?: number | null
+          updated_by?: string | null
         }
         Update: {
+          authorized_by?: string | null
+          billing_address?: string | null
+          buyer_address?: string | null
+          buyer_company_name?: string | null
+          buyer_contact?: string | null
+          created_by?: string | null
+          currency?: string | null
           currency_id?: string | null
+          expected_delivery?: string | null
           expected_delivery_date?: string | null
+          fob_terms?: string | null
+          id?: number
           order_date?: string
+          payment_terms?: string | null
           po_id?: number
+          po_number?: string | null
+          shipping_address?: string | null
+          shipping_charges?: number | null
+          shipping_method?: string | null
+          special_instructions?: string | null
           status?: string | null
           store_id?: string | null
+          subtotal?: number | null
+          supplier?: string | null
+          supplier_contact_person?: string | null
           supplier_id?: string
+          tax_amount?: number | null
+          total_cost?: number | null
+          total_items?: number | null
+          updated_by?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "purchase_orders_currency_id_fkey"
-            columns: ["currency_id"]
-            isOneToOne: false
-            referencedRelation: "currency_"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "purchase_orders_store_id_fkey"
-            columns: ["store_id"]
-            isOneToOne: false
-            referencedRelation: "stores"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "purchase_orders_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       refunds: {
         Row: {
@@ -992,6 +1057,45 @@ export type Database = {
           },
         ]
       }
+      store_inventory: {
+        Row: {
+          created_at: string | null
+          id: string
+          item_id: string
+          quantity: number | null
+          store_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          item_id: string
+          quantity?: number | null
+          store_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          item_id?: string
+          quantity?: number | null
+          store_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stores: {
         Row: {
           created_at: string
@@ -1040,6 +1144,39 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          currency: string
+          default_tax_rate: number
+          default_unit: string
+          enable_audit_log: boolean
+          id: string
+          low_stock_threshold: number
+          require_2fa: boolean
+          updated_at: string | null
+        }
+        Insert: {
+          currency?: string
+          default_tax_rate?: number
+          default_unit?: string
+          enable_audit_log?: boolean
+          id?: string
+          low_stock_threshold?: number
+          require_2fa?: boolean
+          updated_at?: string | null
+        }
+        Update: {
+          currency?: string
+          default_tax_rate?: number
+          default_unit?: string
+          enable_audit_log?: boolean
+          id?: string
+          low_stock_threshold?: number
+          require_2fa?: boolean
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -1363,7 +1500,38 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_store_stock_levels: {
+        Row: {
+          brand: string | null
+          category: string | null
+          id: string | null
+          item_id: string | null
+          item_name: string | null
+          last_restocked: string | null
+          min_stock: number | null
+          quantity: number | null
+          sku: string | null
+          store_id: string | null
+          store_name: string | null
+          unit: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       add_foreign_key: {
@@ -1403,6 +1571,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_admin: { Args: { uid: string }; Returns: boolean }
       list_public_tables: {
         Args: never
         Returns: {
