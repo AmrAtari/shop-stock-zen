@@ -1,138 +1,153 @@
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search } from "lucide-react";
-import { Item } from "@/types/database";
+// src/components/POItemSelector.tsx
 
-interface POItemSelectorProps {
-  items: Item[];
-  onSelect: (items: Array<{ item: Item; quantity: number; price: number }>) => void;
+import { useState } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2 } from "lucide-react";
+
+import { useProductVariantsForPO, VariantWithCost } from "@/hooks/useProductVariantsForPO"; 
+
+// Local utility function
+const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`; 
+
+// 👈 FIX 1: Exported the type for use in PurchaseOrderNew.tsx
+export type POItemSelection = {
+  variant_id: string;
+  sku: string;
+  name: string;
+  unit_cost: number; 
+  quantity: number;
+};
+
+// 👈 FIX 2: Exported the interface with the required props
+export interface POItemSelectorProps {
+    currentItems: POItemSelection[];
+    onUpdateItems: (items: POItemSelection[]) => void;
 }
 
-export const POItemSelector = ({ items, onSelect }: POItemSelectorProps) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedItems, setSelectedItems] = useState<Map<string, { item: Item; quantity: number; price: number }>>(new Map());
+export const POItemSelector: React.FC<POItemSelectorProps> = ({ currentItems, onUpdateItems }) => {
+  const { data: variants, isLoading } = useProductVariantsForPO();
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredItems = items.filter(
-    (item) =>
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Convert array to map for efficient lookups/updates
+  const selectedItemsMap = currentItems.reduce((acc, item) => {
+    acc[item.variant_id] = item;
+    return acc;
+  }, {} as Record<string, POItemSelection>);
 
-  const handleToggle = (item: Item) => {
-    const newSelected = new Map(selectedItems);
-    if (newSelected.has(item.id)) {
-      newSelected.delete(item.id);
+  const handleInputChange = (variant: VariantWithCost, field: 'quantity' | 'unit_cost', value: string) => {
+    const numericValue = parseFloat(value);
+    
+    const currentItem = selectedItemsMap[variant.variant_id] || {
+      variant_id: variant.variant_id,
+      sku: variant.sku,
+      name: variant.name,
+      unit_cost: variant.cost_price, 
+      quantity: 0,
+    };
+
+    let updatedItem = { ...currentItem };
+
+    if (field === 'quantity') {
+      updatedItem.quantity = Math.max(0, numericValue || 0);
+    } else if (field === 'unit_cost') {
+      updatedItem.unit_cost = Math.max(0, numericValue || 0);
+    }
+    
+    const newSelectedItemsMap = { ...selectedItemsMap };
+
+    if (updatedItem.quantity > 0) {
+        newSelectedItemsMap[variant.variant_id] = updatedItem;
     } else {
-      newSelected.set(item.id, { item, quantity: 1, price: 0 });
+        delete newSelectedItemsMap[variant.variant_id];
     }
-    setSelectedItems(newSelected);
+
+    onUpdateItems(Object.values(newSelectedItemsMap)); 
   };
 
-  const handleQuantityChange = (itemId: string, quantity: number) => {
-    const newSelected = new Map(selectedItems);
-    const existing = newSelected.get(itemId);
-    if (existing) {
-      newSelected.set(itemId, { ...existing, quantity });
-      setSelectedItems(newSelected);
-    }
-  };
 
-  const handlePriceChange = (itemId: string, price: number) => {
-    const newSelected = new Map(selectedItems);
-    const existing = newSelected.get(itemId);
-    if (existing) {
-      newSelected.set(itemId, { ...existing, price });
-      setSelectedItems(newSelected);
-    }
-  };
+  const filteredVariants = variants?.filter(variant => 
+    variant.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    variant.name.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
 
-  const handleAddItems = () => {
-    onSelect(Array.from(selectedItems.values()));
-    setSelectedItems(new Map());
-  };
+  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by SKU or name..."
-            value={searchTerm}
+        <Input 
+            placeholder="Search by SKU or name..." 
+            value={searchTerm} 
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-      </div>
+        />
 
-      <div className="border rounded-lg max-h-[400px] overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12"></TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Stock</TableHead>
-              <TableHead>Quantity</TableHead>
-              <TableHead>Cost Price</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredItems.map((item) => (
-              <TableRow key={item.id}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[50px]">Select</TableHead>
+            <TableHead>SKU</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Category</TableHead>
+            <TableHead>Stock</TableHead>
+            
+            <TableHead className="w-[100px]">Quantity</TableHead>
+            <TableHead className="text-right w-[120px]">Last PO Cost</TableHead>
+            <TableHead className="text-right w-[120px]">New Unit Cost</TableHead>
+            
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filteredVariants.map((variant) => {
+            const currentItem = selectedItemsMap[variant.variant_id];
+            const referenceCost = variant.last_po_cost ?? variant.cost_price;
+
+            return (
+              <TableRow key={variant.variant_id} className={currentItem ? 'bg-blue-50/50' : ''}>
+                
                 <TableCell>
-                  <Checkbox
-                    checked={selectedItems.has(item.id)}
-                    onCheckedChange={() => handleToggle(item)}
+                    <Checkbox checked={!!currentItem} disabled />
+                </TableCell>
+
+                <TableCell className="font-medium">{variant.sku}</TableCell>
+                <TableCell>{variant.name}</TableCell>
+                <TableCell>{variant.category}</TableCell>
+                <TableCell>{variant.current_stock}</TableCell>
+                
+                {/* Quantity Input */}
+                <TableCell>
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    placeholder="0" 
+                    className="w-[80px]" 
+                    value={currentItem?.quantity || ''}
+                    onChange={(e) => handleInputChange(variant, 'quantity', e.target.value)}
                   />
                 </TableCell>
-                <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                <TableCell>{item.name}</TableCell>
-                <TableCell>{item.category}</TableCell>
-                <TableCell>{item.quantity}</TableCell>
-                <TableCell>
-                  {selectedItems.has(item.id) ? (
-                    <Input
-                      type="number"
-                      min="1"
-                      value={selectedItems.get(item.id)?.quantity || 1}
-                      onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value) || 1)}
-                      className="w-20"
-                    />
-                  ) : (
-                    "-"
-                  )}
-                </TableCell>
-                <TableCell>
-                  {selectedItems.has(item.id) ? (
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={selectedItems.get(item.id)?.price || 0}
-                      onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
-                      className="w-24"
-                    />
-                  ) : (
-                    "-"
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
 
-      {selectedItems.size > 0 && (
-        <div className="flex justify-between items-center p-4 bg-muted rounded-lg">
-          <span className="text-sm font-medium">{selectedItems.size} items selected</span>
-          <Button onClick={handleAddItems}>Add Selected Items</Button>
-        </div>
-      )}
+                {/* Last PO Cost (Reference/Read-Only) */}
+                <TableCell className="text-right text-sm text-muted-foreground">
+                  {variant.last_po_cost ? formatCurrency(variant.last_po_cost) : formatCurrency(variant.cost_price)}
+                </TableCell>
+                
+                {/* New Unit Cost (User Input) */}
+                <TableCell className="text-right">
+                  <Input 
+                    type="number" 
+                    step="0.01"
+                    placeholder={formatCurrency(referenceCost)} 
+                    className="w-[100px] text-right" 
+                    value={currentItem?.unit_cost || ''}
+                    onChange={(e) => handleInputChange(variant, 'unit_cost', e.target.value)}
+                  />
+                </TableCell>
+
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
     </div>
   );
 };
