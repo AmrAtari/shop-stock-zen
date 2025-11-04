@@ -1,72 +1,151 @@
-// src/hooks/useProductVariantsForPO.tsx
+// src/components/POItemSelector.tsx
 
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { queryKeys } from "./queryKeys"; // Assuming you have queryKeys
+import { useState } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2 } from "lucide-react";
 
-// Define the shape of the data returned to the component
-export type VariantWithCost = {
-  variant_id: string; // UUID
+import { useProductVariantsForPO, VariantWithCost } from "@/hooks/useProductVariantsForPO"; 
+const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`; // Local utility
+
+// FIX 2: Exported the type to resolve 'POItemSelection' not found error
+export type POItemSelection = {
+  variant_id: string;
   sku: string;
   name: string;
-  category: string; // Retrieved from the joined product table
-  current_stock: number; // Assuming stock is tracked on the variant
-  last_po_cost: number | null; // Historical cost (can be null)
-  cost_price: number; // Default system cost
+  unit_cost: number; 
+  quantity: number;
 };
 
-/**
- * Hook to fetch all product variants, joining product details, and finding the
- * unit_cost from the most recent purchase order item for historical reference.
- */
-export const useProductVariantsForPO = () => {
-  return useQuery<VariantWithCost[]>({
-    queryKey: queryKeys.productVariants.withLastPoCost, // Assuming a suitable key
-    queryFn: async () => {
-      // 1. Fetch all product variants and their parent product (for category)
-      // This is the main list of items available for purchase
-      const { data: rawVariants, error: variantError } = await supabase
-        .from('product_variants')
-        .select(`
-          id, 
-          sku, 
-          name, 
-          stock_on_hand, 
-          cost_price, 
-          products (category) // Join to 'products' table to get the category
-        `)
-        .order('sku');
-      
-      if (variantError) {
-          console.error("Error fetching product variants:", variantError);
-          throw variantError;
-      }
-      
-      // 2. Map over variants and fetch the single most recent PO item cost for each
-      const variantsWithCostPromises = (rawVariants || []).map(async (variant: any) => {
-          
-          const { data: latestItem } = await supabase
-              .from('purchase_order_items')
-              .select('unit_cost, purchase_orders!inner(order_date)') // Join to PO to sort by date
-              .eq('variant_id', variant.id)
-              // Order by the PO's order_date descending to get the most recent one
-              .order('purchase_orders.order_date', { ascending: false }) 
-              .limit(1)
-              .maybeSingle();
+// FIX 3: Exported the interface to resolve prop type mismatch error
+export interface POItemSelectorProps {
+    currentItems: POItemSelection[];
+    onUpdateItems: (items: POItemSelection[]) => void;
+}
 
-          // Combine all data into the final shape
-          return {
-              variant_id: variant.id,
-              sku: variant.sku,
-              name: variant.name,
-              category: variant.products.category,
-              current_stock: variant.stock_on_hand,
-              cost_price: variant.cost_price,
-              last_po_cost: latestItem ? latestItem.unit_cost : null,
-          } as VariantWithCost;
-      });
+export const POItemSelector: React.FC<POItemSelectorProps> = ({ currentItems, onUpdateItems }) => {
+  const { data: variants, isLoading } = useProductVariantsForPO();
+  const [searchTerm, setSearchTerm] = useState('');
 
-      return await Promise.all(variantsWithCostPromises);
-    },
-  });
+  // Convert array to map for efficient lookups/updates
+  const selectedItemsMap = currentItems.reduce((acc, item) => {
+    acc[item.variant_id] = item;
+    return acc;
+  }, {} as Record<string, POItemSelection>);
+
+  const handleInputChange = (variant: VariantWithCost, field: 'quantity' | 'unit_cost', value: string) => {
+    const numericValue = parseFloat(value);
+    
+    const currentItem = selectedItemsMap[variant.variant_id] || {
+      variant_id: variant.variant_id,
+      sku: variant.sku,
+      name: variant.name,
+      unit_cost: variant.cost_price, 
+      quantity: 0,
+    };
+
+    let updatedItem = { ...currentItem };
+
+    if (field === 'quantity') {
+      updatedItem.quantity = Math.max(0, numericValue || 0);
+    } else if (field === 'unit_cost') {
+      updatedItem.unit_cost = Math.max(0, numericValue || 0);
+    }
+    
+    const newSelectedItemsMap = { ...selectedItemsMap };
+
+    if (updatedItem.quantity > 0) {
+        newSelectedItemsMap[variant.variant_id] = updatedItem;
+    } else {
+        delete newSelectedItemsMap[variant.variant_id];
+    }
+
+    onUpdateItems(Object.values(newSelectedItemsMap)); 
+  };
+
+
+  const filteredVariants = variants?.filter(variant => 
+    variant.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    variant.name.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
+
+  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+
+  return (
+    <div className="space-y-4">
+        <Input 
+            placeholder="Search by SKU or name..." 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)}
+        />
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[50px]">Select</TableHead>
+            <TableHead>SKU</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Category</TableHead>
+            <TableHead>Stock</TableHead>
+            
+            <TableHead className="w-[100px]">Quantity</TableHead>
+            <TableHead className="text-right w-[120px]">Last PO Cost</TableHead>
+            <TableHead className="text-right w-[120px]">New Unit Cost</TableHead>
+            
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filteredVariants.map((variant) => {
+            const currentItem = selectedItemsMap[variant.variant_id];
+            const referenceCost = variant.last_po_cost ?? variant.cost_price;
+
+            return (
+              <TableRow key={variant.variant_id} className={currentItem ? 'bg-blue-50/50' : ''}>
+                
+                <TableCell>
+                    <Checkbox checked={!!currentItem} disabled />
+                </TableCell>
+
+                <TableCell className="font-medium">{variant.sku}</TableCell>
+                <TableCell>{variant.name}</TableCell>
+                <TableCell>{variant.category}</TableCell>
+                <TableCell>{variant.current_stock}</TableCell>
+                
+                {/* Quantity Input */}
+                <TableCell>
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    placeholder="0" 
+                    className="w-[80px]" 
+                    value={currentItem?.quantity || ''}
+                    onChange={(e) => handleInputChange(variant, 'quantity', e.target.value)}
+                  />
+                </TableCell>
+
+                {/* Last PO Cost (Reference/Read-Only) */}
+                <TableCell className="text-right text-sm text-muted-foreground">
+                  {variant.last_po_cost ? formatCurrency(variant.last_po_cost) : formatCurrency(variant.cost_price)}
+                </TableCell>
+                
+                {/* New Unit Cost (User Input) */}
+                <TableCell className="text-right">
+                  <Input 
+                    type="number" 
+                    step="0.01"
+                    placeholder={formatCurrency(referenceCost)} 
+                    className="w-[100px] text-right" 
+                    value={currentItem?.unit_cost || ''}
+                    onChange={(e) => handleInputChange(variant, 'unit_cost', e.target.value)}
+                  />
+                </TableCell>
+
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
 };
