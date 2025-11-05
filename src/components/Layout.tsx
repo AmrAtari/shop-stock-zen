@@ -10,6 +10,7 @@ import {
   LogOut,
   Settings,
   Bot,
+  Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,8 +33,9 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
     { name: "Transfers", href: "/transfers", icon: Store },
+    { name: "Accounting", href: "/accounting", icon: Calculator },
     { name: "Reports", href: "/reports", icon: BarChart3 },
-    { name: "AI Reports", href: "/ai-reports", icon: Bot }, // ✅ New AI Reports link
+    { name: "AI Reports", href: "/ai-reports", icon: Bot },
     { name: "POS", href: "/pos", icon: ShoppingCart },
   ];
 

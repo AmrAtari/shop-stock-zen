@@ -1,0 +1,215 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { DollarSign, TrendingUp, TrendingDown, FileText, Users, CreditCard } from "lucide-react";
+import { Link } from "react-router-dom";
+
+const AccountingDashboard = () => {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Accounting</h1>
+        <div className="flex gap-2">
+          <Link to="/accounting/journal-entries/new">
+            <Button>
+              <FileText className="w-4 h-4 mr-2" />
+              New Journal Entry
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Financial Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Assets</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">$125,430</div>
+            <p className="text-xs text-muted-foreground">+12% from last month</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Liabilities</CardTitle>
+            <TrendingDown className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">$45,231</div>
+            <p className="text-xs text-muted-foreground">-3% from last month</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Revenue (MTD)</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">$32,540</div>
+            <p className="text-xs text-muted-foreground">+8% from last month</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Net Income (MTD)</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">$12,234</div>
+            <p className="text-xs text-muted-foreground">+15% from last month</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Accounts Payable</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm">Outstanding Bills</span>
+              <span className="font-semibold">$15,430</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm">Overdue</span>
+              <span className="font-semibold text-destructive">$3,200</span>
+            </div>
+            <Link to="/accounting/accounts-payable">
+              <Button variant="outline" className="w-full mt-2">
+                <Users className="w-4 h-4 mr-2" />
+                View All Bills
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Accounts Receivable</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm">Outstanding Invoices</span>
+              <span className="font-semibold">$22,540</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm">Overdue</span>
+              <span className="font-semibold text-destructive">$5,100</span>
+            </div>
+            <Link to="/accounting/accounts-receivable">
+              <Button variant="outline" className="w-full mt-2">
+                <FileText className="w-4 h-4 mr-2" />
+                View All Invoices
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Recent Transactions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm">Today's Transactions</span>
+              <span className="font-semibold">24</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm">Pending Approvals</span>
+              <span className="font-semibold">3</span>
+            </div>
+            <Link to="/accounting/journal-entries">
+              <Button variant="outline" className="w-full mt-2">
+                <CreditCard className="w-4 h-4 mr-2" />
+                View All Entries
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Navigation Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Link to="/accounting/chart-of-accounts">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Chart of Accounts</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/accounting/journal-entries">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Journal Entries</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/accounting/payments">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <CreditCard className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Payments</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/accounting/reports">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Financial Reports</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/accounting/bank-accounts">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <DollarSign className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Bank Accounts</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/accounting/tax">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Tax Management</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/accounting/budgets">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <TrendingUp className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Budgets</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/accounting/period-closing">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Period Closing</p>
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+export default AccountingDashboard;

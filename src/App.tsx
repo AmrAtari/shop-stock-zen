@@ -26,6 +26,13 @@ import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
 
+// Accounting
+import AccountingDashboard from "./pages/accounting/AccountingDashboard";
+import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
+import JournalEntries from "./pages/accounting/JournalEntries";
+import AccountsPayable from "./pages/accounting/AccountsPayable";
+import AccountsReceivable from "./pages/accounting/AccountsReceivable";
+
 // POS
 import POSHome from "./pages/POS/POSHome";
 import POSReceipts from "./pages/POS/POSReceipts";
@@ -229,6 +236,58 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <Layout>
                     <Notifications />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Accounting Module */}
+            <Route
+              path="/accounting"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AccountingDashboard />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/chart-of-accounts"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ChartOfAccounts />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/journal-entries"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <JournalEntries />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/accounts-payable"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AccountsPayable />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/accounts-receivable"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AccountsReceivable />
                   </Layout>
                 </ProtectedRoute>
               }

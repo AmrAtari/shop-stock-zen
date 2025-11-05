@@ -362,8 +362,8 @@ const PurchaseOrderDetail = () => {
             <div>
               <h3 className="font-semibold mb-3">Supplier Information</h3>
               <div className="space-y-1 text-sm">
-                <p className="font-medium">{po.supplier}</p>
-                {po.supplier_contact_person && <p className="text-muted-foreground">{po.supplier_contact_person}</p>}
+                <p className="font-medium">{typeof po.supplier === 'string' ? po.supplier : po.supplier?.name}</p>
+                <p className="text-muted-foreground">{typeof po.supplier === 'object' ? po.supplier?.contact_person : ''}</p>
               </div>
             </div>
           </div>
@@ -380,10 +380,10 @@ const PurchaseOrderDetail = () => {
               <span className="text-muted-foreground">Currency:</span>
               <p className="font-medium">{po.currency}</p>
             </div>
-            {po.expected_delivery && (
+            {po.expected_delivery_date && (
               <div>
                 <span className="text-muted-foreground">Expected Delivery:</span>
-                <p className="font-medium">{format(new Date(po.expected_delivery), "PPP")}</p>
+                <p className="font-medium">{format(new Date(po.expected_delivery_date), "PPP")}</p>
               </div>
             )}
             {po.shipping_method && (

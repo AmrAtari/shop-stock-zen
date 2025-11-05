@@ -198,7 +198,7 @@ const PurchaseOrders = () => {
                   {paginatedPurchaseOrders.map((po) => (
                     <TableRow key={po.id}>
                       <TableCell className="font-medium">{po.po_number}</TableCell>
-                      <TableCell>{po.supplier}</TableCell>
+                      <TableCell>{typeof po.supplier === 'string' ? po.supplier : po.supplier?.name}</TableCell>
                       <TableCell>{new Date(po.order_date).toLocaleDateString()}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(po.status) as any}>{po.status}</Badge>
