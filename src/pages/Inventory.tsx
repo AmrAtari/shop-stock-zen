@@ -423,11 +423,20 @@ const InventoryPage: React.FC = () => {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         editingItem={editingItem}
+        isOpen={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        initialProductData={editingItem}
+        onSubmit={async (data) => {
+          // Handle submit
+          setDialogOpen(false);
+        }}
       />
       <FileImport 
         open={importOpen} 
         onOpenChange={setImportOpen} 
-        onImportComplete={() => invalidateInventoryData(queryClient)} 
+        onImportComplete={() => invalidateInventoryData(queryClient)}
+        onImportSuccess={() => {}}
+        isLoading={false}
       />
     </div>
   );

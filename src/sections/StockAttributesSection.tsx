@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
-import { AddAttributeDialog } from "../dialogs/AddAttributeDialog";
-import { CatalogManagementDialog } from "../dialogs/CatalogManagementDialog";
+import { AddAttributeDialog } from "@/dialogs/AddAttributeDialog";
+import { CatalogManagementDialog } from "@/dialogs/CatalogManagementDialog";
 import { ATTRIBUTE_ICONS } from "@/constants/icons";
 
 export default function StockAttributesSection() {
@@ -62,12 +62,12 @@ export default function StockAttributesSection() {
       </CardHeader>
       <CardContent className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {attributeTypes.map((attr) => {
-          const Icon = ATTRIBUTE_ICONS.find((i) => i.value === attr.icon)?.icon || Tags;
+          const IconComponent = ATTRIBUTE_ICONS.find((i) => i.value === attr.icon)?.icon || Tags;
           return (
             <Card key={attr.id} className="cursor-pointer hover:shadow" onClick={() => handleOpenCatalog(attr)}>
               <CardHeader className="flex justify-between">
                 <CardTitle className="text-sm">{attr.label}</CardTitle>
-                <Icon className="w-5 h-5 text-gray-400" />
+                <IconComponent className="w-5 h-5 text-gray-400" />
               </CardHeader>
             </Card>
           );
@@ -78,26 +78,16 @@ export default function StockAttributesSection() {
         open={openAttributeDialog}
         onOpenChange={setOpenAttributeDialog}
         onSave={handleAttributeTypeSave}
-        isAdmin={true}
       />
       <CatalogManagementDialog
         open={openCatalogDialog}
         onOpenChange={setOpenCatalogDialog}
-        activeCatalog={activeCatalog}
-        isAdmin={true}
-        catalogItems={catalogItems}
+        catalog={activeCatalog}
+        items={catalogItems}
         newValue={newValue}
-        setNewValue={setNewValue}
-        page={page}
-        setPage={setPage}
-        totalPages={totalPages}
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        loadData={async () => {}}
-        handleAdd={async () => {}}
-        handleDelete={async () => {}}
-        handleEdit={() => {}}
-        handleExport={() => {}}
+        onNewValueChange={setNewValue}
+        onAdd={async () => {}}
+        onDelete={async () => {}}
       />
     </Card>
   );

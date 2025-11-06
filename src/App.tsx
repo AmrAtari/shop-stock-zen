@@ -32,6 +32,12 @@ import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntries from "./pages/accounting/JournalEntries";
 import AccountsPayable from "./pages/accounting/AccountsPayable";
 import AccountsReceivable from "./pages/accounting/AccountsReceivable";
+import AccountingReports from "./pages/accounting/Reports";
+import BalanceSheet from "./pages/accounting/BalanceSheet";
+import IncomeStatement from "./pages/accounting/IncomeStatement";
+import CashFlow from "./pages/accounting/CashFlow";
+import TrialBalance from "./pages/accounting/TrialBalance";
+import GeneralLedger from "./pages/accounting/GeneralLedger";
 
 // POS
 import POSHome from "./pages/POS/POSHome";
@@ -288,6 +294,66 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <Layout>
                     <AccountsReceivable />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/reports"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AccountingReports />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/reports/balance-sheet"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <BalanceSheet />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/reports/income-statement"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <IncomeStatement />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/reports/cash-flow"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <CashFlow />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/reports/trial-balance"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <TrialBalance />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/reports/general-ledger"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <GeneralLedger />
                   </Layout>
                 </ProtectedRoute>
               }
