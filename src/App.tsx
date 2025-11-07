@@ -38,6 +38,8 @@ import IncomeStatement from "./pages/accounting/IncomeStatement";
 import CashFlow from "./pages/accounting/CashFlow";
 import TrialBalance from "./pages/accounting/TrialBalance";
 import GeneralLedger from "./pages/accounting/GeneralLedger";
+import BankAccounts from "./pages/accounting/BankAccounts";
+import BankReconciliation from "./pages/accounting/BankReconciliation";
 
 // POS
 import POSHome from "./pages/POS/POSHome";
@@ -354,6 +356,46 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <Layout>
                     <GeneralLedger />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/bank-accounts"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <BankAccounts />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/bank-accounts/:accountId/reconciliation"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <BankReconciliation />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/bank-reconciliation/:id"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <BankReconciliation />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/bank-accounts/reconciliation/new"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <BankReconciliation />
                   </Layout>
                 </ProtectedRoute>
               }

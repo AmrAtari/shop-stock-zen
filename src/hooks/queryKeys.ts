@@ -75,6 +75,20 @@ export const queryKeys = {
     aging: ["accounts-payable", "aging"] as const,
     payments: (billId?: string) => ["accounts-payable", "payments", billId] as const,
   },
+
+  banking: {
+    all: ["bank-accounts"] as const,
+    accounts: ["bank-accounts", "list"] as const,
+    detail: (id: string) => ["bank-accounts", "detail", id] as const,
+    reconciliations: (bankAccountId?: string) => ["bank-reconciliation", bankAccountId] as const,
+    reconciliationDetail: (id: string) => ["bank-reconciliation", "detail", id] as const,
+    transactions: (bankAccountId: string) => ["bank-transactions", bankAccountId] as const,
+  },
+
+  accounting: {
+    dashboardMetrics: ["accounting-dashboard-metrics"] as const,
+    accountBalances: ["account-balances"] as const,
+  },
 };
 
 // Helper function to invalidate all inventory-related queries

@@ -2,8 +2,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DollarSign, TrendingUp, TrendingDown, FileText, Users, CreditCard } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAccountingDashboard } from "@/hooks/useAccountingDashboard";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const AccountingDashboard = () => {
+  const { data: metrics, isLoading } = useAccountingDashboard();
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-12 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -26,8 +43,7 @@ const AccountingDashboard = () => {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$125,430</div>
-            <p className="text-xs text-muted-foreground">+12% from last month</p>
+            <div className="text-2xl font-bold">${metrics?.totalAssets.toFixed(2) || "0.00"}</div>
           </CardContent>
         </Card>
 
@@ -37,8 +53,7 @@ const AccountingDashboard = () => {
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$45,231</div>
-            <p className="text-xs text-muted-foreground">-3% from last month</p>
+            <div className="text-2xl font-bold">${metrics?.totalLiabilities.toFixed(2) || "0.00"}</div>
           </CardContent>
         </Card>
 
@@ -48,8 +63,7 @@ const AccountingDashboard = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$32,540</div>
-            <p className="text-xs text-muted-foreground">+8% from last month</p>
+            <div className="text-2xl font-bold">${metrics?.revenueMTD.toFixed(2) || "0.00"}</div>
           </CardContent>
         </Card>
 
@@ -59,8 +73,9 @@ const AccountingDashboard = () => {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$12,234</div>
-            <p className="text-xs text-muted-foreground">+15% from last month</p>
+            <div className={`text-2xl font-bold ${(metrics?.netIncomeMTD || 0) >= 0 ? "text-green-600" : "text-destructive"}`}>
+              ${metrics?.netIncomeMTD.toFixed(2) || "0.00"}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -74,11 +89,11 @@ const AccountingDashboard = () => {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-sm">Outstanding Bills</span>
-              <span className="font-semibold">$15,430</span>
+              <span className="font-semibold">${metrics?.apTotal.toFixed(2) || "0.00"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm">Overdue</span>
-              <span className="font-semibold text-destructive">$3,200</span>
+              <span className="font-semibold text-destructive">${metrics?.apOverdue.toFixed(2) || "0.00"}</span>
             </div>
             <Link to="/accounting/accounts-payable">
               <Button variant="outline" className="w-full mt-2">
@@ -96,11 +111,11 @@ const AccountingDashboard = () => {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-sm">Outstanding Invoices</span>
-              <span className="font-semibold">$22,540</span>
+              <span className="font-semibold">${metrics?.arTotal.toFixed(2) || "0.00"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm">Overdue</span>
-              <span className="font-semibold text-destructive">$5,100</span>
+              <span className="font-semibold text-destructive">${metrics?.arOverdue.toFixed(2) || "0.00"}</span>
             </div>
             <Link to="/accounting/accounts-receivable">
               <Button variant="outline" className="w-full mt-2">
@@ -118,11 +133,11 @@ const AccountingDashboard = () => {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-sm">Today's Transactions</span>
-              <span className="font-semibold">24</span>
+              <span className="font-semibold">{metrics?.todayTransactions || 0}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm">Pending Approvals</span>
-              <span className="font-semibold">3</span>
+              <span className="font-semibold">{metrics?.pendingApprovals || 0}</span>
             </div>
             <Link to="/accounting/journal-entries">
               <Button variant="outline" className="w-full mt-2">
