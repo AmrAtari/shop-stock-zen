@@ -67,6 +67,14 @@ export const queryKeys = {
   auth: {
     isApprover: ["auth-is-po-approver"] as const,
   },
+
+  accountsPayable: {
+    all: ["accounts-payable"] as const,
+    bills: (status?: string) => ["accounts-payable", "bills", status] as const,
+    detail: (id: string) => ["accounts-payable", "detail", id] as const,
+    aging: ["accounts-payable", "aging"] as const,
+    payments: (billId?: string) => ["accounts-payable", "payments", billId] as const,
+  },
 };
 
 // Helper function to invalidate all inventory-related queries
