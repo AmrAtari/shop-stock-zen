@@ -271,3 +271,5 @@ export const POSReceipt = ({
     </Dialog>
   );
 };
+
+export default POSReceipts;
