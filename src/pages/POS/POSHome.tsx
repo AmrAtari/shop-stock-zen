@@ -53,19 +53,25 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FIX: Using price_levels!inner(selling_price) to perform a required join and
-      // efficiently fetch only the current price, resolving the 400 Bad Request error.
+      // FIX: Changed !inner to !left to return ALL items, resolving the "no products" issue.
+      // Items without a current price will be returned with a price of 0.
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, size, color, price_levels!inner(selling_price)")
+        .select("id, name, quantity, sku, size, color, price_levels!left(selling_price)")
         .eq("price_levels.is_current", true)
         .order("name");
       if (error) throw error;
-      return (data || []).map((i: any) => ({
-        ...i,
-        // Assumes price_levels returns an array with one element if the filter worked
-        price: i.price_levels?.[0]?.selling_price || 0,
-      }));
+
+      return (data || []).map((i: any) => {
+        // Find the valid selling price, which should be the only one if it exists
+        const currentPriceLevel = i.price_levels?.find((p: any) => p.selling_price !== null);
+
+        return {
+          ...i,
+          // Use the current price, or default to 0 if none found (i.e., item exists but no current price)
+          price: currentPriceLevel?.selling_price || 0,
+        };
+      });
     },
   });
 
