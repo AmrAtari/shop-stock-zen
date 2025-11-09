@@ -52,25 +52,32 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FINAL FIX: Select ALL columns from the left-joined price_levels table
-      // and perform the 'is_current' filter in JavaScript. This avoids the 400 Bad Request.
-      const { data, error } = await supabase
+      // FIX: Querying two tables separately to bypass the 400 Bad Request error
+
+      // 1. Fetch all items
+      const { data: itemsData, error: itemsError } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, size, color, price_levels!left(*)")
+        .select("id, name, quantity, sku, size, color")
         .order("name");
 
-      if (error) throw error;
+      if (itemsError) throw itemsError;
 
-      return (data || []).map((i: any) => {
-        // Find the single price_level where 'is_current' is true (client-side filter)
-        const currentPriceLevel = i.price_levels?.find((p: any) => p.is_current === true);
+      // 2. Fetch all current price levels
+      const { data: pricesData, error: pricesError } = await supabase
+        .from("price_levels")
+        .select("item_id, selling_price")
+        .eq("is_current", true);
 
-        return {
-          ...i,
-          // Use the selling_price from the current price level, or default to 0.
-          price: currentPriceLevel?.selling_price || 0,
-        };
-      });
+      if (pricesError) console.error("Could not fetch price levels:", pricesError);
+
+      const priceMap = new Map(pricesData?.map((p: any) => [p.item_id, p.selling_price]) || []);
+
+      // 3. Combine them
+      return (itemsData || []).map((item: any) => ({
+        ...item,
+        // Get price from the map, defaulting to 0 if not found
+        price: priceMap.get(item.id) || 0,
+      }));
     },
   });
 
