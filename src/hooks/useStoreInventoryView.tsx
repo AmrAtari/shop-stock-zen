@@ -91,6 +91,15 @@ export const useAggregatedInventory = () => {
         throw stockError;
       }
 
+      // Fetch received quantities from purchase orders
+      const { data: receivedData, error: receivedError } = await supabase
+        .from("purchase_order_items")
+        .select("item_id, received_quantity");
+
+      if (receivedError) {
+        console.error("Error fetching received quantities:", receivedError);
+      }
+
       console.log("Raw items data:", itemsData?.length);
       console.log("Stock data:", stockData?.length);
 
@@ -115,6 +124,16 @@ export const useAggregatedInventory = () => {
         return acc;
       }, {});
 
+      // Create a map of item_id to total received quantity
+      const receivedMap = (receivedData || []).reduce((acc: any, record: any) => {
+        const itemId = record.item_id;
+        if (!acc[itemId]) {
+          acc[itemId] = 0;
+        }
+        acc[itemId] += record.received_quantity || 0;
+        return acc;
+      }, {});
+
       // Combine item data with aggregated stock information and resolve attribute names
       const result = (itemsData || []).map((item: any) => ({
         ...item,
@@ -130,6 +149,7 @@ export const useAggregatedInventory = () => {
         quantity: stockMap[item.id]?.total_quantity || 0,
         total_quantity: stockMap[item.id]?.total_quantity || 0,
         stores: stockMap[item.id]?.stores || [],
+        received_quantity: receivedMap[item.id] || 0,
       }));
 
       console.log("Final aggregated inventory:", result.length, "items");

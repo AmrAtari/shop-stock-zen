@@ -11,15 +11,9 @@ export const usePurchaseOrders = (searchTerm?: string, statusFilter?: string, da
   return useQuery<PurchaseOrder[]>({
     queryKey: [...queryKeys.purchaseOrders.all, searchTerm, statusFilter, dateRange],
     queryFn: async () => {
-      // FIX: Updated select statement to join supplier data, resolving the TS error in PurchaseOrders.tsx
       let query = supabase
         .from("purchase_orders")
-        .select(
-          `
-            *,
-            supplier:supplier_id(*)
-          `,
-        )
+        .select("*")
         .order("order_date", { ascending: false });
 
       if (searchTerm) {
@@ -33,9 +27,7 @@ export const usePurchaseOrders = (searchTerm?: string, statusFilter?: string, da
       if (dateRange && dateRange.from && dateRange.to) {
         const fromDate = dateRange.from.toISOString();
         const toDate = new Date(dateRange.to);
-        // Ensure the range includes the entire 'to' day
         toDate.setDate(toDate.getDate() + 1);
-
         query = query.gte("order_date", fromDate).lte("order_date", toDate.toISOString());
       }
 
@@ -46,8 +38,7 @@ export const usePurchaseOrders = (searchTerm?: string, statusFilter?: string, da
         throw error;
       }
 
-      // Cast to unknown first to safely align the joined result with the PurchaseOrder type
-      return (data as unknown as PurchaseOrder[]) || [];
+      return (data as PurchaseOrder[]) || [];
     },
   });
 };
