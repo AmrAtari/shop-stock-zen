@@ -1,7 +1,7 @@
 // src/components/POSSessionControl.tsx
 
 import { useState } from "react";
-import { usePOS } from "@src/pages/POS/POSContext"; // Adjusted path: assumes POSContext is in pos/
+import { usePOS } from "../pos/POSContext";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
