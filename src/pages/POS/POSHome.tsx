@@ -1,11 +1,10 @@
-// src/pages/POS/POSHome.tsx
+// src/pos/POSHome.tsx
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { POSBarcodeInput } from "@/components/POSBarcodeInput";
-// Import interfaces/components for Payment and Receipt
 import { POSPaymentDialog } from "@/components/POSPaymentDialog";
 import { POSReceipt } from "@/components/POSReceipt";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,8 +22,8 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
-  size?: string;
-  color?: string;
+  size?: string; // Re-add for consistency, even if not fully used
+  color?: string; // Re-add for consistency, even if not fully used
 };
 
 type CartItem = Product & {
@@ -41,7 +40,7 @@ export type Payment = {
 
 const POSHome = () => {
   const queryClient = useQueryClient();
-  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold } = usePOS();
+  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold, removeHold, holds } = usePOS();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -53,71 +52,79 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FIX: Changed !inner to !left to return ALL items, resolving the "no products" issue.
-      // Items without a current price will be returned with a price of 0.
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, size, color, price_levels!left(selling_price)")
-        .eq("price_levels.is_current", true)
+        // FIX: Use !left for left join, and embed the filter directly in the select string
+        // to prevent the 400 Bad Request error. Only 'selling_price' is needed.
+        .select("id, name, quantity, sku, price_levels!left(selling_price:is_current.eq.true)")
+        // REMOVED: .eq("price_levels.is_current", true)
         .order("name");
+
       if (error) throw error;
 
-      return (data || []).map((i: any) => {
-        // Find the valid selling price, which should be the only one if it exists
-        const currentPriceLevel = i.price_levels?.find((p: any) => p.selling_price !== null);
-
-        return {
-          ...i,
-          // Use the current price, or default to 0 if none found (i.e., item exists but no current price)
-          price: currentPriceLevel?.selling_price || 0,
-        };
-      });
+      return (data || []).map((i: any) => ({
+        ...i,
+        // The price_levels array now only contains the selling_price (if is_current=true), or is empty.
+        price: i.price_levels?.[0]?.selling_price || 0,
+      }));
     },
   });
 
-  // --- LOCAL CART/HOLD HANDLERS ---
-
-  // 1. Logic to add a product to the cart (called by POSBarcodeInput)
-  const handleProductSelect = useCallback(
-    (product: Product) => {
-      // Check if product is already in cart
-      const existing = cart.find((item) => item.id === product.id);
-      if (existing) {
-        // Increment quantity if it exists
-        setCart((c) =>
-          c.map((item) => (item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item)),
-        );
-      } else {
-        // Add new item to cart
-        setCart((c) => [...c, { ...product, cartQuantity: 1 }]);
-      }
-    },
-    [cart],
-  );
-
-  // 2. Logic to update cart item quantity
-  const updateCartQty = useCallback((itemId: string, newQty: number) => {
-    if (newQty <= 0) {
-      // Remove item if quantity is zero or less
-      setCart((c) => c.filter((item) => item.id !== itemId));
+  // Add product to cart (respect stock)
+  const handleProductSelect = useCallback((product: Product) => {
+    if (product.quantity <= 0) {
+      toast.error("Out of stock");
       return;
     }
-    setCart((c) => c.map((item) => (item.id === itemId ? { ...item, cartQuantity: newQty } : item)));
+    setCart((prev) => {
+      const found = prev.find((p) => p.id === product.id);
+      if (found) {
+        if (found.cartQuantity + 1 > product.quantity) {
+          toast.error("Not enough stock");
+          return prev;
+        }
+        return prev.map((p) => (p.id === product.id ? { ...p, cartQuantity: p.cartQuantity + 1 } : p));
+      }
+      return [...prev, { ...product, cartQuantity: 1 }];
+    });
   }, []);
 
-  // 3. Logic to remove item from cart
-  const removeFromCart = useCallback((itemId: string) => {
-    setCart((c) => c.filter((item) => item.id !== itemId));
-  }, []);
+  const updateCartQty = (id: string, qty: number) => {
+    setCart((prev) =>
+      prev
+        .map((it) => (it.id === id ? { ...it, cartQuantity: Math.max(0, qty) } : it))
+        .filter((it) => it.cartQuantity > 0),
+    );
+  };
 
-  // 4. Logic to create a hold (uses saveHold from usePOS context)
-  const createHold = useCallback(() => {
+  const removeFromCart = (id: string) => setCart((c) => c.filter((i) => i.id !== id));
+
+  // Hold / Resume
+  const createHold = () => {
     if (!cart.length) return toast.error("Cart empty, cannot create a hold.");
-    const holdId = `HOLD-${Date.now()}`;
-    saveHold(holdId, cart);
+    const id = `H-${Date.now()}`;
+    saveHold(id, cart);
     setCart([]);
-    toast.success(`Cart saved as hold: ${holdId}`);
-  }, [cart, saveHold]);
+    toast.success(`Cart saved as hold: ${id}`);
+  };
+
+  const resumeHoldById = (id: string) => {
+    const held = resumeHold(id);
+    if (held) {
+      setCart(held);
+      removeHold(id);
+      toast.success(`Resumed hold: ${id}`);
+    } else {
+      toast.error("Hold not found");
+    }
+  };
+
+  // Discounts
+  const applyItemDiscount = (id: string, type: "fixed" | "percent", value: number) => {
+    setCart((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, itemDiscountType: type, itemDiscountValue: value } : it)),
+    );
+  };
 
   // --- CALCULATIONS ---
 
@@ -151,8 +158,7 @@ const POSHome = () => {
   // Final Total (Pre-Tax + Tax)
   const total = useMemo(() => preTaxTotal + taxAmount, [preTaxTotal, taxAmount]);
 
-  // --- CHECKOUT FLOW ---
-
+  // Checkout flow
   const handlePaymentComplete = async (payments: Payment[], changeDue: number = 0) => {
     if (!cart.length) return toast.error("Cart empty");
     if (!sessionId || !cashierId) {
@@ -178,6 +184,7 @@ const POSHome = () => {
       });
       if (summaryError) {
         console.error("Could not insert into transaction_summary:", summaryError);
+        // Do not throw, try to continue to insert line items (transactions)
       }
 
       // 2. Insert Split Tender Payments
@@ -192,6 +199,7 @@ const POSHome = () => {
 
       if (paymentError) {
         console.error("Could not insert into transaction_payments:", paymentError);
+        // Do not throw, try to continue to insert line items (transactions)
       }
 
       // 3. Insert Line Items (The user's existing 'transactions' table is used for this)
@@ -267,19 +275,16 @@ const POSHome = () => {
     }
   };
 
-  // --- KEYBOARD SHORTCUTS ---
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // F2 to Hold
       if (e.key === "F2") createHold();
-      // Shift + P to Pay
-      if (e.shiftKey && e.key === "P") setShowPaymentDialog(true);
-      // Escape to Clear Cart
+      if (e.ctrlKey && e.key === "p") setShowPaymentDialog(true);
       if (e.key === "Escape") setCart([]);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [createHold]); // createHold is a dependency
+  }, [createHold]); // cart is not a dependency if createHold is defined as above
 
   // session helper quick open
   const quickOpenSession = async () => {
@@ -288,17 +293,6 @@ const POSHome = () => {
     const startCash = parseFloat(startCashStr || "0");
     if (!cashier) return toast.error("Cashier required");
     await openSession(cashier, startCash);
-  };
-
-  // Quick function to resume a hold by ID
-  const handleResumeHold = (holdId: string) => {
-    const resumedCart = resumeHold(holdId);
-    if (resumedCart) {
-      setCart(resumedCart);
-      toast.success(`Resumed hold: ${holdId}`);
-    } else {
-      toast.error(`Hold not found: ${holdId}`);
-    }
   };
 
   return (
@@ -340,7 +334,7 @@ const POSHome = () => {
                   <Loader2 className="animate-spin h-6 w-6" />
                 </div>
               ) : (
-                <POSBarcodeInput products={products} onProductSelect={handleProductSelect} />
+                <POSBarcodeInput products={products} onProductSelect={(p) => handleProductSelect(p)} />
               )}
             </CardContent>
           </Card>
@@ -395,7 +389,7 @@ const POSHome = () => {
           )}
 
           {/* Holds List Card */}
-          {Object.keys(usePOS().holds).length > 0 && (
+          {Object.keys(holds).length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -405,14 +399,17 @@ const POSHome = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {Object.keys(usePOS().holds).map((holdId) => (
+                  {Object.keys(holds).map((holdId) => (
                     <div key={holdId} className="flex justify-between items-center p-2 border rounded">
                       <div className="font-medium">
-                        {holdId} ({usePOS().holds[holdId].length} items)
+                        {holdId} ({holds[holdId].length} items)
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={() => handleResumeHold(holdId)}>
+                        <Button size="sm" onClick={() => resumeHoldById(holdId)}>
                           <Play className="h-4 w-4 mr-1" /> Resume
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => removeHold(holdId)}>
+                          <X className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -459,12 +456,12 @@ const POSHome = () => {
 
                 <div className="text-right">
                   <div>Item discounts: -${itemDiscountTotal.toFixed(2)}</div>
-                  <div>Global discount: -${globalDiscountAmount.toFixed(2)}</div>
+                  <div>Global: -${globalDiscountAmount.toFixed(2)}</div>
                   <div className="font-medium mt-1">Total (Pre-Tax): ${preTaxTotal.toFixed(2)}</div>
                 </div>
               </div>
 
-              {/* Display Tax */}
+              {/* Tax Line */}
               <div className="flex justify-between font-medium">
                 <span>Tax ({TAX_RATE * 100}%)</span>
                 <span>${taxAmount.toFixed(2)}</span>
@@ -472,13 +469,13 @@ const POSHome = () => {
 
               <hr />
               <div className="flex justify-between text-xl font-bold">
-                <span>TOTAL DUE</span>
+                <span>GRAND TOTAL</span>
                 <span>${total.toFixed(2)}</span>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <Button disabled={!cart.length} onClick={() => setShowPaymentDialog(true)}>
-                  Pay (Shift + P)
+                  Pay (Ctrl + P)
                 </Button>
                 <Button variant="outline" onClick={() => window.location.assign("/pos/closing")}>
                   Close Session
@@ -523,14 +520,13 @@ const POSHome = () => {
         onPaymentComplete={handlePaymentComplete}
       />
 
-      {/* The receipt dialog is opened by setting lastTransaction.open = true inside handlePaymentComplete */}
       {lastTransaction && (
         <POSReceipt
           open={lastTransaction.open || false}
           onOpenChange={() => setLastTransaction(null)}
           items={lastTransaction.items}
           total={lastTransaction.total}
-          payments={lastTransaction.payments}
+          payments={lastTransaction.payments} // Use the new payments array
           changeDue={lastTransaction.changeDue}
           taxAmount={lastTransaction.taxAmount}
           subtotal={lastTransaction.subtotal}
