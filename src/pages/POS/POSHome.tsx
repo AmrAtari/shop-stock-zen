@@ -7,11 +7,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { POSBarcodeInput } from "@/components/POSBarcodeInput";
 import { POSPaymentDialog } from "@/components/POSPaymentDialog";
 import { POSReceipt } from "@/components/POSReceipt";
-import { POSSessionControl } from "@/components/POSSessionControl"; // <-- NEW IMPORT
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePOS } from "./POSContext";
+import { POSSessionControl } from "@/components/POSSessionControl"; // <-- NEW IMPORT
 
 type Product = {
   id: string;
@@ -20,6 +20,8 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
+  size?: string; // Added for apparel context
+  color?: string; // Added for apparel context
 };
 
 type CartItem = Product & {
@@ -30,7 +32,7 @@ type CartItem = Product & {
 
 const POSHome = () => {
   const queryClient = useQueryClient();
-  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold, removeHold } = usePOS();
+  const { sessionId, cashierId, isSessionOpen, saveHold, resumeHold, removeHold } = usePOS();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -45,11 +47,16 @@ const POSHome = () => {
     queryFn: async (): Promise<Product[]> => {
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, price_levels(selling_price, is_current)")
+        .select("id, name, quantity, sku, price_levels(selling_price, is_current), size, color") // Updated select to include size and color
         .eq("price_levels.is_current", true)
         .order("name");
       if (error) throw error;
-      return (data || []).map((i: any) => ({ ...i, price: i.price_levels?.[0]?.selling_price || 0 }));
+      return (data || []).map((i: any) => ({
+        ...i,
+        price: i.price_levels?.[0]?.selling_price || 0,
+        size: i.size,
+        color: i.color,
+      }));
     },
   });
 
@@ -70,7 +77,6 @@ const POSHome = () => {
       }
       return [...prev, { ...product, cartQuantity: 1 }];
     });
-    // Helpful beep / UI feedback could be added here
   }, []);
 
   const updateCartQty = (id: string, qty: number) => {
@@ -142,7 +148,7 @@ const POSHome = () => {
 
     const transactionId = `TXN-${Date.now()}`;
     try {
-      // Insert into transactions table
+      // Insert into transactions table (NOTE: This structure should be improved in the "Data Robustness" section)
       const transactionItems = cart.map((item) => {
         const itemDiscountFixed = item.itemDiscountType === "fixed" ? item.itemDiscountValue || 0 : 0;
         const itemDiscountPercent = item.itemDiscountType === "percent" ? item.itemDiscountValue || 0 : 0;
@@ -222,24 +228,8 @@ const POSHome = () => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [cart, createHold]);
-  <header className="flex items-center justify-between mb-6">
-    <div className="flex items-center gap-3">
-      <ShoppingCart className="h-8 w-8" />
-      <div>
-        <h1 className="text-2xl font-bold">POS</h1>
-        {/* This is now handled by the component */}
-        <POSSessionControl />
-      </div>
-    </div>
-  </header>;
-  // session helper quick open
-  //const quickOpenSession = async () => {
-  //  const cashier = prompt("Enter cashier id/email:");
-  //  const startCashStr = prompt("Start cash amount:", "0");
-  //  const startCash = parseFloat(startCashStr || "0");
-  //  if (!cashier) return toast.error("Cashier required");
-  //await openSession(cashier, startCash);
-  // };
+
+  // Removed quickOpenSession function
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">
@@ -248,28 +238,26 @@ const POSHome = () => {
           <ShoppingCart className="h-8 w-8" />
           <div>
             <h1 className="text-2xl font-bold">POS</h1>
-            <p className="text-sm text-muted-foreground">Cashier workflows, refunds, and closing</p>
+            {/* NEW: Use the formal session control component */}
+            <POSSessionControl />
           </div>
         </div>
 
+        {/* Action buttons consolidated for quick access */}
         <div className="flex gap-2 items-center">
-          {!isSessionOpen ? (
-            <Button onClick={quickOpenSession}>Open Session</Button>
-          ) : (
-            <Button onClick={() => toast.success("Session active")} variant="outline">
-              Session Active
-            </Button>
-          )}
-          <Button onClick={() => window.location.assign("/pos/receipts")}>Receipts</Button>
-          <Button onClick={() => window.location.assign("/pos/refunds")} variant="ghost">
+          <Button onClick={() => window.location.assign("/pos/receipts")} variant="outline">
+            Receipts
+          </Button>
+          <Button onClick={() => window.location.assign("/pos/refunds")} variant="destructive">
             Refunds
           </Button>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* left: scanner + product list */}
-        <div className="lg:col-span-2 space-y-4">
+      {/* MODIFIED: Layout changed to a 3/2 split (5 columns total) */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+        {/* LEFT SIDE: Product Input & Cart (3 columns) */}
+        <div className="md:col-span-3 space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Add items (scan or search)</CardTitle>
@@ -285,65 +273,130 @@ const POSHome = () => {
             </CardContent>
           </Card>
 
-          {cart.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Cart ({cart.length} items)</CardTitle>
-              </CardHeader>
-              <CardContent>
+          {/* Cart Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Cart ({cart.length} items)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {cart.length === 0 ? (
+                <div className="text-muted-foreground text-center p-4">Cart is empty. Scan or search a product.</div>
+              ) : (
                 <div className="space-y-3">
-                  {cart.map((it) => (
-                    <div key={it.id} className="flex items-center justify-between p-2 bg-muted/40 rounded">
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{it.name}</div>
-                        <div className="text-sm text-muted-foreground">SKU: {it.sku}</div>
-                      </div>
+                  {cart.map((item) => {
+                    const productData = products.find((p) => p.id === item.id);
+                    const maxQty = productData?.quantity ?? item.cartQuantity;
 
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          className="w-16 text-center"
-                          value={it.cartQuantity}
-                          min={1}
-                          max={it.quantity}
-                          onChange={(e) => updateCartQty(it.id, parseInt(e.target.value || "0"))}
-                        />
-
-                        <div className="flex flex-col items-end">
-                          <div className="font-semibold">${(it.price * it.cartQuantity).toFixed(2)}</div>
-                          <div className="text-xs text-muted-foreground">${it.price.toFixed(2)} each</div>
+                    return (
+                      <div key={item.id} className="flex items-center justify-between p-2 bg-muted/40 rounded">
+                        <div className="min-w-0 pr-2 flex-1">
+                          <div className="font-medium truncate">{item.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            SKU: {item.sku}
+                            {item.size && <span> • Size: {item.size}</span>}
+                            {item.color && <span> • Color: {item.color}</span>}
+                          </div>
+                          {item.itemDiscountValue ? (
+                            <div className="text-xs text-red-500">
+                              Discount: {item.itemDiscountValue}
+                              {item.itemDiscountType === "percent" ? "%" : " Fixed"}
+                            </div>
+                          ) : null}
                         </div>
 
-                        <Button variant="ghost" size="icon" onClick={() => removeFromCart(it.id)}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
+                        {/* MODIFIED: Quantity Control with +/- Buttons (Faster UX) */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center border rounded-md">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 p-0"
+                              onClick={() => updateCartQty(item.id, item.cartQuantity - 1)}
+                              disabled={item.cartQuantity <= 1}
+                            >
+                              -
+                            </Button>
+                            <Input
+                              type="number"
+                              value={item.cartQuantity}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                const finalVal = Math.min(val, maxQty);
+                                updateCartQty(item.id, finalVal);
+                              }}
+                              className="w-12 h-8 text-center border-y-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none p-1"
+                              min="1"
+                              max={maxQty}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                if (item.cartQuantity < maxQty) {
+                                  updateCartQty(item.id, item.cartQuantity + 1);
+                                } else {
+                                  toast.error("Reached maximum available stock.");
+                                }
+                              }}
+                              disabled={item.cartQuantity >= maxQty}
+                            >
+                              +
+                            </Button>
+                          </div>
 
-                      {/* per-item discount quick controls (small) */}
-                    </div>
+                          <div className="flex flex-col items-end w-20">
+                            <div className="font-semibold">${(item.price * item.cartQuantity).toFixed(2)}</div>
+                            <div className="text-xs text-muted-foreground">${item.price.toFixed(2)} ea</div>
+                          </div>
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 p-0"
+                            onClick={() => removeFromCart(item.id)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-4 flex gap-2">
+                <Button onClick={createHold} disabled={!cart.length}>
+                  Hold (F2)
+                </Button>
+                <Button variant="outline" onClick={() => setCart([])} disabled={!cart.length}>
+                  Clear Cart (Esc)
+                </Button>
+              </div>
+
+              {/* Hold List Logic */}
+              {Object.keys((window as any).posHolds || {}).length > 0 && (
+                <div className="mt-2">
+                  <h4 className="text-sm font-medium">Holds</h4>
+                  {holdsList.map((id) => (
+                    <Button
+                      key={id}
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 mr-2"
+                      onClick={() => resumeHoldById(id)}
+                    >
+                      <Play className="h-3 w-3 mr-1" /> Resume {id}
+                    </Button>
                   ))}
                 </div>
-
-                <div className="mt-4 flex gap-2">
-                  <Button onClick={createHold}>Hold (F2)</Button>
-                  <Button variant="outline" onClick={() => setCart([])}>
-                    Clear
-                  </Button>
-                </div>
-
-                {Object.keys((window as any).posHolds || {}).length > 0 && (
-                  <div className="mt-2">
-                    <h4 className="text-sm font-medium">Holds</h4>
-                    {/* Render holds from localStorage */}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {/* right: summary & payment */}
-        <div className="space-y-4">
+        {/* RIGHT SIDE: Summary & Payment (2 columns) */}
+        <div className="md:col-span-2 space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Summary</CardTitle>
@@ -354,8 +407,8 @@ const POSHome = () => {
                 <span>${subtotal.toFixed(2)}</span>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <div>
+              <div className="flex items-center justify-between gap-2 border-t pt-3">
+                <div className="flex-1">
                   <div className="text-xs text-muted-foreground">Global Discount</div>
                   <div className="flex gap-2 mt-1">
                     <select
@@ -364,12 +417,12 @@ const POSHome = () => {
                       className="rounded border px-2 py-1"
                     >
                       <option value="fixed">Fixed</option>
-                      <option value="percent">Percent</option>
+                      <option value="percent">%</option>
                     </select>
 
                     <Input
                       type="number"
-                      className="w-28"
+                      className="w-28 h-8"
                       value={globalDiscountValue}
                       onChange={(e) => setGlobalDiscountValue(parseFloat(e.target.value || "0"))}
                     />
@@ -377,29 +430,35 @@ const POSHome = () => {
                 </div>
 
                 <div className="text-right">
-                  <div>Item discounts: ${itemDiscountTotal.toFixed(2)}</div>
-                  <div>Global: ${globalDiscountAmount.toFixed(2)}</div>
+                  <div className="text-red-500">Item discounts: -${itemDiscountTotal.toFixed(2)}</div>
+                  <div className="text-red-500">Global: -${globalDiscountAmount.toFixed(2)}</div>
                 </div>
               </div>
 
               <hr />
               <div className="flex justify-between text-xl font-bold">
-                <span>Total</span>
+                <span>TOTAL</span>
                 <span>${total.toFixed(2)}</span>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button disabled={!cart.length} onClick={() => setShowPaymentDialog(true)}>
-                  Pay
+              <div className="mt-4 grid grid-cols-1 gap-2">
+                <Button
+                  size="lg"
+                  className="w-full"
+                  disabled={!cart.length || !isSessionOpen}
+                  onClick={() => setShowPaymentDialog(true)}
+                >
+                  <ReceiptIcon className="h-5 w-5 mr-2" /> Pay (${total.toFixed(2)})
                 </Button>
+              </div>
+
+              {/* POS Actions moved to right column */}
+              <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-4">
                 <Button variant="outline" onClick={() => window.location.assign("/pos/closing")}>
-                  Close Session
+                  Closing Cash
                 </Button>
-                <Button variant="ghost" onClick={() => window.location.assign("/pos/receipts")}>
-                  Receipts
-                </Button>
-                <Button variant="destructive" onClick={() => window.location.assign("/pos/refunds")}>
-                  Refunds
+                <Button variant="outline" onClick={() => window.location.assign("/pos/receipts")}>
+                  View Receipts
                 </Button>
               </div>
             </CardContent>
