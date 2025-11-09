@@ -1,7 +1,9 @@
 // src/components/POSSessionControl.tsx
 
 import { useState } from "react";
-import { usePOS } from "../pos/POSContext";
+// 🎯 FINAL CORRECTED PATH: Using the project alias assuming 'pos' is a top-level directory under 'src'
+// If your 'pos' directory is not under 'src', you might need to adjust this alias path (e.g., if POSContext is in 'src/pages/POS/POSContext').
+import { usePOS } from "@/pos/POSContext";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
