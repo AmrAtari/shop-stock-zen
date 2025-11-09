@@ -30,6 +30,8 @@ import AIReports from "./pages/AIReports";
 import AccountingDashboard from "./pages/accounting/AccountingDashboard";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntries from "./pages/accounting/JournalEntries";
+import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
+import JournalEntryNew from "./pages/accounting/JournalEntryNew";
 import AccountsPayable from "./pages/accounting/AccountsPayable";
 import AccountsReceivable from "./pages/accounting/AccountsReceivable";
 import AccountingReports from "./pages/accounting/Reports";
@@ -276,6 +278,26 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <Layout>
                     <JournalEntries />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/journal-entries/new"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <JournalEntryNew />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounting/journal-entries/:id"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <JournalEntryDetail />
                   </Layout>
                 </ProtectedRoute>
               }
