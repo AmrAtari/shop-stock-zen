@@ -23,6 +23,8 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
+  size?: string;
+  color?: string;
 };
 
 type CartItem = Product & {
@@ -39,23 +41,23 @@ export type Payment = {
 
 const POSHome = () => {
   const queryClient = useQueryClient();
-  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold, removeHold } = usePOS();
+  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold } = usePOS();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [lastTransaction, setLastTransaction] = useState<any | null>(null);
   const [globalDiscountType, setGlobalDiscountType] = useState<"fixed" | "percent">("fixed");
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
-  const [holdsList, setHoldsList] = useState<string[]>([]);
 
   // Fetch products
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FIX: Corrected Supabase syntax for filtering on joined tables (as noted in prior communication)
+      // FIX: Using price_levels!inner(selling_price) to perform a required join and
+      // efficiently fetch only the current price, resolving the 400 Bad Request error.
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, size, color, price_levels(selling_price, is_current)")
+        .select("id, name, quantity, sku, size, color, price_levels!inner(selling_price)")
         .eq("price_levels.is_current", true)
         .order("name");
       if (error) throw error;
@@ -67,7 +69,7 @@ const POSHome = () => {
     },
   });
 
-  // --- MISSING LOCAL CART/HOLD HANDLERS ---
+  // --- LOCAL CART/HOLD HANDLERS ---
 
   // 1. Logic to add a product to the cart (called by POSBarcodeInput)
   const handleProductSelect = useCallback(
@@ -111,7 +113,7 @@ const POSHome = () => {
     toast.success(`Cart saved as hold: ${holdId}`);
   }, [cart, saveHold]);
 
-  // --- CALCULATIONS (UNCHANGED FROM PREVIOUS TURN) ---
+  // --- CALCULATIONS ---
 
   const subtotal = useMemo(() => cart.reduce((s, it) => s + it.price * it.cartQuantity, 0), [cart]);
 
@@ -143,7 +145,7 @@ const POSHome = () => {
   // Final Total (Pre-Tax + Tax)
   const total = useMemo(() => preTaxTotal + taxAmount, [preTaxTotal, taxAmount]);
 
-  // --- CHECKOUT FLOW (UNCHANGED FROM PREVIOUS TURN) ---
+  // --- CHECKOUT FLOW ---
 
   const handlePaymentComplete = async (payments: Payment[], changeDue: number = 0) => {
     if (!cart.length) return toast.error("Cart empty");
@@ -262,14 +264,16 @@ const POSHome = () => {
   // --- KEYBOARD SHORTCUTS ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // F2 to Hold
       if (e.key === "F2") createHold();
+      // Shift + P to Pay
       if (e.shiftKey && e.key === "P") setShowPaymentDialog(true);
+      // Escape to Clear Cart
       if (e.key === "Escape") setCart([]);
     };
     window.addEventListener("keydown", handler);
-    // Dependencies now only include the functions/states that change the behavior
     return () => window.removeEventListener("keydown", handler);
-  }, [createHold]); // Only need createHold as a dependency now
+  }, [createHold]); // createHold is a dependency
 
   // session helper quick open
   const quickOpenSession = async () => {
@@ -278,6 +282,17 @@ const POSHome = () => {
     const startCash = parseFloat(startCashStr || "0");
     if (!cashier) return toast.error("Cashier required");
     await openSession(cashier, startCash);
+  };
+
+  // Quick function to resume a hold by ID
+  const handleResumeHold = (holdId: string) => {
+    const resumedCart = resumeHold(holdId);
+    if (resumedCart) {
+      setCart(resumedCart);
+      toast.success(`Resumed hold: ${holdId}`);
+    } else {
+      toast.error(`Hold not found: ${holdId}`);
+    }
   };
 
   return (
@@ -319,7 +334,6 @@ const POSHome = () => {
                   <Loader2 className="animate-spin h-6 w-6" />
                 </div>
               ) : (
-                // Used the newly defined handleProductSelect
                 <POSBarcodeInput products={products} onProductSelect={handleProductSelect} />
               )}
             </CardContent>
@@ -346,7 +360,6 @@ const POSHome = () => {
                           value={it.cartQuantity}
                           min={1}
                           max={it.quantity}
-                          // Used the newly defined updateCartQty
                           onChange={(e) => updateCartQty(it.id, parseInt(e.target.value || "0"))}
                         />
 
@@ -371,13 +384,34 @@ const POSHome = () => {
                     Clear
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+          )}
 
-                {Object.keys((window as any).posHolds || {}).length > 0 && (
-                  <div className="mt-2">
-                    <h4 className="text-sm font-medium">Holds</h4>
-                    {/* Render holds from localStorage */}
-                  </div>
-                )}
+          {/* Holds List Card */}
+          {Object.keys(usePOS().holds).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PauseCircle className="w-5 h-5" />
+                  Held Carts
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {Object.keys(usePOS().holds).map((holdId) => (
+                    <div key={holdId} className="flex justify-between items-center p-2 border rounded">
+                      <div className="font-medium">
+                        {holdId} ({usePOS().holds[holdId].length} items)
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleResumeHold(holdId)}>
+                          <Play className="h-4 w-4 mr-1" /> Resume
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
