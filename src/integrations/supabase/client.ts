@@ -1,3 +1,5 @@
+// src/integrations/supabase/client.ts
+
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -9,10 +11,8 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
-    // This setting helps prevent the "Multiple GoTrueClient instances detected" warning
-    // by using a consistent storage key across your application.
+    // This is the critical change to fix the warning
     storageKey: "pos_app_storage_key",
-    // Recommended for React apps to correctly handle session URLs
     detectSessionInUrl: true,
   },
 });
