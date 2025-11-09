@@ -52,14 +52,13 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FIX: Querying multiple tables separately to get prices and attribute names
+      // FIX: Removing the .order() clause from the initial fetch to resolve the 400 Bad Request error.
+      // Ordering will now be done in JavaScript (Step 5).
 
       // 1. Fetch all items (including foreign keys)
       const { data: itemsData, error: itemsError } = await supabase
         .from("items")
-        // Fetch the foreign key IDs for size and color, which are now correctly named in the schema
-        .select("id, name, quantity, sku, size_id, color_id")
-        .order("name");
+        .select("id, name, quantity, sku, size_id, color_id"); // .order("name") removed
 
       if (itemsError) throw itemsError;
 
@@ -80,15 +79,16 @@ const POSHome = () => {
       const { data: colorsData = [] } = await supabase.from("colors").select("id, name");
       const colorMap = new Map(colorsData.map((c: any) => [c.id, c.name]));
 
-      // 5. Combine and map to the final Product type
-      return (itemsData || []).map((item: any) => ({
+      // 5. Combine, map, AND NOW ORDER in JavaScript
+      const combinedProducts = (itemsData || []).map((item: any) => ({
         ...item,
-        // Map the foreign key IDs (size_id/color_id) to the readable names
         size: item.size_id ? sizeMap.get(item.size_id) : undefined,
         color: item.color_id ? colorMap.get(item.color_id) : undefined,
-        // Get price from the map, defaulting to 0 if not found
         price: priceMap.get(item.id) || 0,
       }));
+
+      // Sort the products here, in the application code
+      return combinedProducts.sort((a, b) => a.name.localeCompare(b.name));
     },
   });
 
