@@ -22,8 +22,8 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
-  size?: string;
-  color?: string;
+  size?: string; // Expecting readable name
+  color?: string; // Expecting readable name
 };
 
 type CartItem = Product & {
@@ -32,7 +32,7 @@ type CartItem = Product & {
   itemDiscountValue?: number;
 };
 
-// Type for Split Tender payments
+// New type for Split Tender payments
 export type Payment = {
   method: "cash" | "card";
   amount: number;
@@ -52,29 +52,40 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FIX: Querying two tables separately to bypass the 400 Bad Request error
+      // FIX: Querying multiple tables separately to get prices and attribute names
 
-      // 1. Fetch all items
+      // 1. Fetch all items (including foreign keys)
       const { data: itemsData, error: itemsError } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, size, color")
+        // Fetch the foreign key IDs for size and color, which are now correctly named in the schema
+        .select("id, name, quantity, sku, size_id, color_id")
         .order("name");
 
       if (itemsError) throw itemsError;
 
       // 2. Fetch all current price levels
-      const { data: pricesData, error: pricesError } = await supabase
+      const { data: pricesData = [], error: pricesError } = await supabase
         .from("price_levels")
         .select("item_id, selling_price")
         .eq("is_current", true);
 
       if (pricesError) console.error("Could not fetch price levels:", pricesError);
-
       const priceMap = new Map(pricesData?.map((p: any) => [p.item_id, p.selling_price]) || []);
 
-      // 3. Combine them
+      // 3. Fetch all sizes (to map IDs to names)
+      const { data: sizesData = [] } = await supabase.from("sizes").select("id, name");
+      const sizeMap = new Map(sizesData.map((s: any) => [s.id, s.name]));
+
+      // 4. Fetch all colors (to map IDs to names)
+      const { data: colorsData = [] } = await supabase.from("colors").select("id, name");
+      const colorMap = new Map(colorsData.map((c: any) => [c.id, c.name]));
+
+      // 5. Combine and map to the final Product type
       return (itemsData || []).map((item: any) => ({
         ...item,
+        // Map the foreign key IDs (size_id/color_id) to the readable names
+        size: item.size_id ? sizeMap.get(item.size_id) : undefined,
+        color: item.color_id ? colorMap.get(item.color_id) : undefined,
         // Get price from the map, defaulting to 0 if not found
         price: priceMap.get(item.id) || 0,
       }));
