@@ -1,7 +1,5 @@
-// src/components/POSPaymentDialog.tsx
-
-import { useState, useMemo } from "react";
-import { CreditCard, Banknote, Receipt, Plus } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import { CreditCard, Banknote, Receipt } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,10 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Separator } from "@/components/ui/separator";
-import { toast } from "sonner";
 
-type Payment = {
+// Re-use the Payment type defined in POSHome.tsx
+export type Payment = {
   method: "cash" | "card";
   amount: number;
 };
@@ -26,211 +23,236 @@ interface POSPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   totalAmount: number;
-  // MODIFIED: onPaymentComplete now accepts an array of payments
-  onPaymentComplete: (payments: Payment[]) => void;
+  // Update to handle an array of payments and the final change due
+  onPaymentComplete: (payments: Payment[], changeDue: number) => void;
 }
 
 export const POSPaymentDialog = ({ open, onOpenChange, totalAmount, onPaymentComplete }: POSPaymentDialogProps) => {
-  const [currentPaymentMethod, setCurrentPaymentMethod] = useState<"cash" | "card">("cash");
-  const [currentPaymentAmount, setCurrentPaymentAmount] = useState<string>("");
+  const [currentMethod, setCurrentMethod] = useState<"cash" | "card">("cash");
+  const [currentAmount, setCurrentAmount] = useState("");
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // --- CALCULATIONS ---
-  const paidTotal = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
+  // --- Calculations ---
+  const totalPaid = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
+  const remainingDue = useMemo(() => Math.max(0, totalAmount - totalPaid), [totalAmount, totalPaid]);
+  // Cash change is only calculated if all due is paid AND a cash payment is involved
+  const cashPayment = payments.find((p) => p.method === "cash");
+  const change = useMemo(() => {
+    const currentInput = parseFloat(currentAmount) || 0;
+    if (remainingDue > 0) return 0; // Not fully paid yet
 
-  const remainingAmount = useMemo(() => Math.max(0, totalAmount - paidTotal), [totalAmount, paidTotal]);
-
-  const isComplete = paidTotal >= totalAmount;
-  const changeDue = Math.max(0, paidTotal - totalAmount);
-
-  // Amount to auto-fill for current payment
-  const amountToTender = parseFloat(currentPaymentAmount) || remainingAmount;
-  // --------------------
-
-  const handleOpenChange = (isOpen: boolean) => {
-    if (!isOpen) {
-      // Reset state on close
-      setPayments([]);
-      setCurrentPaymentAmount("");
-      setCurrentPaymentMethod("cash");
-      setIsProcessing(false);
-    }
-    onOpenChange(isOpen);
-  };
-
-  const handleAddPayment = () => {
-    const amount = amountToTender;
-
-    if (amount <= 0) {
-      return toast.error("Payment amount must be greater than zero.");
+    // If we're entering an amount greater than or equal to the remaining due,
+    // we calculate the change from the current input amount.
+    if (currentMethod === "cash" && currentInput > remainingDue) {
+      return currentInput - remainingDue;
     }
 
-    // Determine the actual amount to record:
-    // If it's a cash payment that overpays, record the tendered amount.
-    // If it's a card/split payment, only record the amount needed to complete the total.
-    const amountTendered = currentPaymentMethod === "cash" ? amount : Math.min(amount, remainingAmount);
+    return 0;
+  }, [remainingDue, currentMethod, currentAmount]);
 
-    const amountToRecord =
-      paidTotal + amountTendered > totalAmount && currentPaymentMethod === "card"
-        ? remainingAmount // Card only charges up to the remaining amount
-        : amountTendered; // Cash is flexible (for change)
+  const handleAddPayment = useCallback(() => {
+    const amount = parseFloat(currentAmount) || 0;
+    if (amount <= 0 || isProcessing) return;
 
-    // Validation
-    if (paidTotal >= totalAmount) {
-      return toast.error("Sale is already complete.");
+    let paymentAmount = 0;
+
+    if (amount >= remainingDue) {
+      // Payment covers the remaining amount, plus change (if cash)
+      paymentAmount = remainingDue + change;
+    } else {
+      // Partial payment
+      paymentAmount = amount;
     }
 
-    setPayments((prev) => [...prev, { method: currentPaymentMethod, amount: amountToRecord }]);
-    setCurrentPaymentAmount(""); // Clear input after adding
-  };
+    // Safety check for payment amount being positive
+    if (paymentAmount <= 0) return;
 
-  const handleCompleteSale = async () => {
-    if (!isComplete) {
-      return toast.error("Total amount not fully paid.");
-    }
+    setPayments((p) => [...p, { method: currentMethod, amount: paymentAmount }]);
+    setCurrentAmount("");
+  }, [currentAmount, currentMethod, remainingDue, change, isProcessing]);
+
+  const handlePayment = async () => {
+    if (isProcessing || remainingDue > 0) return;
 
     setIsProcessing(true);
 
-    // Simulate processing delay for UI feedback
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Before completing, ensure any change is accounted for in the final payment array
+    // The previous logic in handleAddPayment already ensured the last payment included the change
+    // but we need to check if the last payment was cash and adjust if necessary.
+    let finalPayments = [...payments];
+    let finalChangeDue = change;
 
-    // Pass the full payment array to POSHome for transaction record
-    onPaymentComplete(payments);
+    // If the cart is exactly paid and the last payment was cash,
+    // but the customer entered a higher amount (change > 0),
+    // we need to make sure the cash payment amount reflects the amount received
+    // (Total due + change). The handleAddPayment logic already handles this if used.
 
-    // Note: State reset is handled by handleOpenChange when POSHome closes the dialog
+    // Fallback: If no payments recorded but paid, add the payment now
+    if (finalPayments.length === 0 && (parseFloat(currentAmount) || 0) > 0) {
+      handleAddPayment(); // Add the payment that caused the change
+      // We will execute the main logic on the next render's finalPayments state.
+      // For a single step, we re-calculate:
+      const amount = parseFloat(currentAmount) || 0;
+      const paid = Math.min(amount, totalAmount);
+      finalPayments = [{ method: currentMethod, amount: paid }];
+      finalChangeDue = Math.max(0, amount - totalAmount);
+    }
+
+    // Execute the completion logic
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate processing delay
+      onPaymentComplete(finalPayments, finalChangeDue);
+      handleClose();
+    } catch (e) {
+      setIsProcessing(false);
+    }
   };
 
-  // Utility for displaying payments
-  const PaymentIcon = ({ method }: { method: "cash" | "card" }) => {
-    return method === "cash" ? (
-      <Banknote className="h-4 w-4 text-green-600" />
-    ) : (
-      <CreditCard className="h-4 w-4 text-blue-600" />
-    );
+  const handleClose = () => {
+    onOpenChange(false);
+    // Reset state when closing
+    setCurrentMethod("cash");
+    setCurrentAmount("");
+    setPayments([]);
+    setIsProcessing(false);
   };
+
+  // --- Keyboard Shortcut for Adding Payment (Enter key) ---
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // If remaining due is 0, complete the sale
+      if (remainingDue <= 0) {
+        handlePayment();
+      } else {
+        handleAddPayment();
+      }
+    }
+  };
+
+  // If the dialog is not open, don't render the UI logic
+  if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Process Payment</DialogTitle>
+          <DialogTitle>Complete Transaction</DialogTitle>
           <DialogDescription>
-            Total Due: <span className="text-xl font-bold text-primary">${totalAmount.toFixed(2)}</span>
+            Total Due: <span className="font-bold text-lg">${totalAmount.toFixed(2)}</span>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
-          {/* LEFT COLUMN: Payment Entry */}
-          <div className="space-y-4">
-            <Label>Payment Method</Label>
-            <RadioGroup
-              defaultValue="cash"
-              value={currentPaymentMethod}
-              onValueChange={(value: "cash" | "card") => {
-                setCurrentPaymentMethod(value);
-                setCurrentPaymentAmount(""); // Clear amount when method changes
-              }}
-              className="grid grid-cols-2 gap-4"
-            >
-              <div>
-                <RadioGroupItem value="cash" id="cash" className="sr-only" />
-                <Label
-                  htmlFor="cash"
-                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground data-[state=checked]:border-primary"
-                >
-                  <Banknote className="mb-3 h-6 w-6" />
-                  Cash
-                </Label>
-              </div>
-              <div>
-                <RadioGroupItem value="card" id="card" className="sr-only" />
-                <Label
-                  htmlFor="card"
-                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground data-[state=checked]:border-primary"
-                >
-                  <CreditCard className="mb-3 h-6 w-6" />
-                  Card
-                </Label>
-              </div>
-            </RadioGroup>
-
-            {/* Amount Input */}
-            <div className="space-y-2">
-              <Label htmlFor="payment-amount">Amount ({currentPaymentMethod === "cash" ? "Tendered" : "Paid"})</Label>
-              <Input
-                id="payment-amount"
-                type="number"
-                value={currentPaymentAmount}
-                onChange={(e) => setCurrentPaymentAmount(e.target.value)}
-                placeholder={remainingAmount.toFixed(2)}
-                disabled={isComplete}
-                className="text-lg"
-              />
-            </div>
-
-            {/* Payment Button */}
-            <Button
-              onClick={handleAddPayment}
-              disabled={isComplete || isProcessing || amountToTender <= 0}
-              className="w-full"
-            >
-              <Plus className="mr-2 h-4 w-4" /> Add Payment
-            </Button>
-
-            {currentPaymentMethod === "card" && !isComplete && (
-              <p className="text-sm text-muted-foreground text-center pt-2">
-                Process card payment on terminal after clicking 'Add Payment'.
-              </p>
-            )}
+        <div className="space-y-4">
+          <div className="flex justify-between font-bold text-xl text-green-600">
+            <span>Remaining Due:</span>
+            <span>${remainingDue.toFixed(2)}</span>
           </div>
 
-          {/* RIGHT COLUMN: Summary & Payments List */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium">Payments Applied</h3>
-            {payments.length === 0 ? (
-              <div className="text-muted-foreground text-sm text-center p-4 border rounded">No payments yet.</div>
-            ) : (
-              <div className="space-y-2">
-                {payments.map((p, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 rounded bg-muted">
-                    <div className="flex items-center gap-2">
-                      <PaymentIcon method={p.method} />
-                      <span className="capitalize">{p.method}</span>
-                    </div>
-                    <span className="font-semibold">${p.amount.toFixed(2)}</span>
-                  </div>
-                ))}
-                <Separator />
-              </div>
-            )}
+          <RadioGroup
+            defaultValue="cash"
+            value={currentMethod}
+            onValueChange={(value: "cash" | "card") => setCurrentMethod(value)}
+            className="flex gap-4"
+          >
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="cash" id="cash-method" />
+              <Label htmlFor="cash-method" className="flex items-center gap-1">
+                <Banknote className="h-4 w-4" /> Cash
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="card" id="card-method" />
+              <Label htmlFor="card-method" className="flex items-center gap-1">
+                <CreditCard className="h-4 w-4" /> Card
+              </Label>
+            </div>
+          </RadioGroup>
 
-            <div className="space-y-1">
-              <div className="flex justify-between">
-                <span className="text-lg font-bold">Paid:</span>
-                <span className="text-lg font-bold text-green-600">${paidTotal.toFixed(2)}</span>
+          {/* Payment Input Area */}
+          {remainingDue > 0 && currentMethod === "cash" && (
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label htmlFor="amountPaid">Amount Received (Cash)</Label>
+                <Input
+                  id="amountPaid"
+                  type="number"
+                  placeholder={remainingDue.toFixed(2)}
+                  value={currentAmount}
+                  onChange={(e) => setCurrentAmount(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  step="0.01"
+                  autoFocus
+                />
               </div>
-              <div className="flex justify-between">
-                <span className="text-lg font-bold">Remaining:</span>
-                <span className={`text-lg font-bold ${remainingAmount > 0 ? "text-red-600" : "text-primary"}`}>
-                  ${remainingAmount.toFixed(2)}
-                </span>
+              <Button className="self-end" onClick={handleAddPayment} disabled={parseFloat(currentAmount) <= 0}>
+                Add Payment
+              </Button>
+            </div>
+          )}
+
+          {remainingDue > 0 && currentMethod === "card" && (
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label htmlFor="cardAmount">Amount to Charge (Card)</Label>
+                <Input
+                  id="cardAmount"
+                  type="number"
+                  placeholder={remainingDue.toFixed(2)}
+                  value={currentAmount || remainingDue.toFixed(2)}
+                  onChange={(e) => setCurrentAmount(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  step="0.01"
+                  autoFocus
+                />
               </div>
-              {isComplete && (
-                <div className="flex justify-between text-xl font-bold pt-2 border-t mt-2">
-                  <span>Change Due:</span>
-                  <span className="text-primary">${changeDue.toFixed(2)}</span>
+              <Button className="self-end" onClick={handleAddPayment} disabled={parseFloat(currentAmount) <= 0}>
+                Add Payment
+              </Button>
+            </div>
+          )}
+
+          {/* Payment List */}
+          {payments.length > 0 && (
+            <div className="border rounded p-3 space-y-1">
+              <div className="font-semibold mb-1">Payments Applied:</div>
+              {payments.map((p, index) => (
+                <div key={index} className="flex justify-between text-sm">
+                  <span>
+                    {p.method === "cash" ? (
+                      <Banknote className="inline h-3 w-3 mr-1" />
+                    ) : (
+                      <CreditCard className="inline h-3 w-3 mr-1" />
+                    )}
+                    {p.method.charAt(0).toUpperCase() + p.method.slice(1)}
+                  </span>
+                  <span>${p.amount.toFixed(2)}</span>
                 </div>
-              )}
+              ))}
             </div>
-          </div>
+          )}
+
+          {/* Final Summary (After Full Payment) */}
+          {remainingDue <= 0 && (
+            <div className="p-3 bg-green-50 rounded-lg">
+              <div className="flex justify-between font-medium">
+                <span>Total Paid:</span>
+                <span className="font-medium">${totalPaid.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                <span>Change Due:</span>
+                <span className="text-primary">${change.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isProcessing}>
+          <Button variant="outline" onClick={handleClose} disabled={isProcessing}>
             Cancel
           </Button>
-          <Button onClick={handleCompleteSale} disabled={isProcessing || !isComplete} className="min-w-[150px]">
+          <Button onClick={handlePayment} disabled={isProcessing || remainingDue > 0} className="min-w-[120px]">
             {isProcessing ? (
               "Processing..."
             ) : (
