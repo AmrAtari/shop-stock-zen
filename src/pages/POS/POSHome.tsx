@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { POSBarcodeInput } from "@/components/POSBarcodeInput";
 import { POSPaymentDialog } from "@/components/POSPaymentDialog";
 import { POSReceipt } from "@/components/POSReceipt";
+import { POSSessionControl } from "@/src/POS/POSSessionControl"; // <-- NEW IMPORT
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,7 +146,7 @@ const POSHome = () => {
       const transactionItems = cart.map((item) => {
         const itemDiscountFixed = item.itemDiscountType === "fixed" ? item.itemDiscountValue || 0 : 0;
         const itemDiscountPercent = item.itemDiscountType === "percent" ? item.itemDiscountValue || 0 : 0;
-        
+
         return {
           transaction_id: transactionId,
           session_id: sessionId,
@@ -165,9 +166,7 @@ const POSHome = () => {
         };
       });
 
-      const { error: transactionError } = await supabase
-        .from("transactions")
-        .insert(transactionItems);
+      const { error: transactionError } = await supabase.from("transactions").insert(transactionItems);
 
       if (transactionError) throw transactionError;
 
@@ -179,7 +178,7 @@ const POSHome = () => {
           quantity: item.cartQuantity,
           price: item.price,
           user_id: cashierId,
-        }))
+        })),
       );
 
       if (saleError) throw saleError;
