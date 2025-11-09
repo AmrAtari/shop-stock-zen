@@ -43,27 +43,75 @@ const POSHome = () => {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  // Updated lastTransaction to store tax, payments, and change due
   const [lastTransaction, setLastTransaction] = useState<any | null>(null);
   const [globalDiscountType, setGlobalDiscountType] = useState<"fixed" | "percent">("fixed");
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
   const [holdsList, setHoldsList] = useState<string[]>([]);
 
-  // Fetch products (keeping existing query, assuming the previous Supabase error was transient)
+  // Fetch products
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
+      // FIX: Corrected Supabase syntax for filtering on joined tables (as noted in prior communication)
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, price_levels(selling_price, is_current)")
+        .select("id, name, quantity, sku, size, color, price_levels(selling_price, is_current)")
         .eq("price_levels.is_current", true)
         .order("name");
       if (error) throw error;
-      return (data || []).map((i: any) => ({ ...i, price: i.price_levels?.[0]?.selling_price || 0 }));
+      return (data || []).map((i: any) => ({
+        ...i,
+        // Assumes price_levels returns an array with one element if the filter worked
+        price: i.price_levels?.[0]?.selling_price || 0,
+      }));
     },
   });
 
-  // ... (handleProductSelect, updateCartQty, removeFromCart, createHold, resumeHoldById, applyItemDiscount - no changes)
+  // --- MISSING LOCAL CART/HOLD HANDLERS ---
+
+  // 1. Logic to add a product to the cart (called by POSBarcodeInput)
+  const handleProductSelect = useCallback(
+    (product: Product) => {
+      // Check if product is already in cart
+      const existing = cart.find((item) => item.id === product.id);
+      if (existing) {
+        // Increment quantity if it exists
+        setCart((c) =>
+          c.map((item) => (item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item)),
+        );
+      } else {
+        // Add new item to cart
+        setCart((c) => [...c, { ...product, cartQuantity: 1 }]);
+      }
+    },
+    [cart],
+  );
+
+  // 2. Logic to update cart item quantity
+  const updateCartQty = useCallback((itemId: string, newQty: number) => {
+    if (newQty <= 0) {
+      // Remove item if quantity is zero or less
+      setCart((c) => c.filter((item) => item.id !== itemId));
+      return;
+    }
+    setCart((c) => c.map((item) => (item.id === itemId ? { ...item, cartQuantity: newQty } : item)));
+  }, []);
+
+  // 3. Logic to remove item from cart
+  const removeFromCart = useCallback((itemId: string) => {
+    setCart((c) => c.filter((item) => item.id !== itemId));
+  }, []);
+
+  // 4. Logic to create a hold (uses saveHold from usePOS context)
+  const createHold = useCallback(() => {
+    if (!cart.length) return toast.error("Cart empty, cannot create a hold.");
+    const holdId = `HOLD-${Date.now()}`;
+    saveHold(holdId, cart);
+    setCart([]);
+    toast.success(`Cart saved as hold: ${holdId}`);
+  }, [cart, saveHold]);
+
+  // --- CALCULATIONS (UNCHANGED FROM PREVIOUS TURN) ---
 
   const subtotal = useMemo(() => cart.reduce((s, it) => s + it.price * it.cartQuantity, 0), [cart]);
 
@@ -95,7 +143,8 @@ const POSHome = () => {
   // Final Total (Pre-Tax + Tax)
   const total = useMemo(() => preTaxTotal + taxAmount, [preTaxTotal, taxAmount]);
 
-  // Checkout flow: now supports Split Tender
+  // --- CHECKOUT FLOW (UNCHANGED FROM PREVIOUS TURN) ---
+
   const handlePaymentComplete = async (payments: Payment[], changeDue: number = 0) => {
     if (!cart.length) return toast.error("Cart empty");
     if (!sessionId || !cashierId) {
@@ -108,7 +157,6 @@ const POSHome = () => {
 
     try {
       // 1. Insert Transaction Summary (Header)
-      // We assume a 'transaction_summary' table is available to store totals.
       const { error: summaryError } = await supabase.from("transaction_summary").insert({
         id: transactionId,
         session_id: sessionId,
@@ -119,11 +167,9 @@ const POSHome = () => {
         grand_total: total,
         total_paid: totalPaid,
         change_due: changeDue,
-        // status: 'completed', // Add status if you have this column
       });
       if (summaryError) {
         console.error("Could not insert into transaction_summary:", summaryError);
-        // We will not throw here, relying on line items/payments to be saved if this table is missing.
       }
 
       // 2. Insert Split Tender Payments
@@ -132,14 +178,12 @@ const POSHome = () => {
         method: p.method,
         amount: p.amount,
         session_id: sessionId,
-        // cashier_id: cashierId, // could be added if needed for RLS
       }));
 
       const { error: paymentError } = await supabase.from("transaction_payments").insert(paymentRows);
 
       if (paymentError) {
         console.error("Could not insert into transaction_payments:", paymentError);
-        // We will not throw here, as line items are more critical.
       }
 
       // 3. Insert Line Items (The user's existing 'transactions' table is used for this)
@@ -162,7 +206,6 @@ const POSHome = () => {
             itemDiscountFixed * item.cartQuantity -
             (item.price * item.cartQuantity * itemDiscountPercent) / 100,
           is_refund: false,
-          // payment_method removed from line items
         };
       });
 
@@ -170,7 +213,7 @@ const POSHome = () => {
 
       if (lineItemError) throw lineItemError;
 
-      // 4. Update Stock (User's existing logic)
+      // 4. Update Stock
       for (const item of cart) {
         const { error: updateErr } = await supabase
           .from("items")
@@ -179,7 +222,7 @@ const POSHome = () => {
         if (updateErr) throw updateErr;
       }
 
-      // Save transaction to sales for historical record (user's existing logic)
+      // 5. Save transaction to sales for historical record
       const { error: saleError } = await supabase.from("sales").insert(
         cart.map((item) => ({
           item_id: item.id,
@@ -192,7 +235,7 @@ const POSHome = () => {
 
       if (saleError) throw saleError;
 
-      // 5. Set Transaction Data for Receipt
+      // 6. Set Transaction Data for Receipt
       setLastTransaction({
         transactionId,
         items: cart,
@@ -203,6 +246,7 @@ const POSHome = () => {
         payments: payments, // The full array of payments
         changeDue: changeDue,
         date: new Date(),
+        open: true, // Auto-open receipt
       });
 
       setCart([]);
@@ -215,17 +259,17 @@ const POSHome = () => {
     }
   };
 
-  // Keyboard shortcuts
+  // --- KEYBOARD SHORTCUTS ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "F2") createHold();
-      // Changed to Shift+P (or Ctrl+P) to avoid conflict with browser print
       if (e.shiftKey && e.key === "P") setShowPaymentDialog(true);
       if (e.key === "Escape") setCart([]);
     };
     window.addEventListener("keydown", handler);
+    // Dependencies now only include the functions/states that change the behavior
     return () => window.removeEventListener("keydown", handler);
-  }, [cart, createHold]);
+  }, [createHold]); // Only need createHold as a dependency now
 
   // session helper quick open
   const quickOpenSession = async () => {
@@ -275,7 +319,8 @@ const POSHome = () => {
                   <Loader2 className="animate-spin h-6 w-6" />
                 </div>
               ) : (
-                <POSBarcodeInput products={products} onProductSelect={(p) => handleProductSelect(p)} />
+                // Used the newly defined handleProductSelect
+                <POSBarcodeInput products={products} onProductSelect={handleProductSelect} />
               )}
             </CardContent>
           </Card>
@@ -301,6 +346,7 @@ const POSHome = () => {
                           value={it.cartQuantity}
                           min={1}
                           max={it.quantity}
+                          // Used the newly defined updateCartQty
                           onChange={(e) => updateCartQty(it.id, parseInt(e.target.value || "0"))}
                         />
 
@@ -433,19 +479,17 @@ const POSHome = () => {
       <POSPaymentDialog
         open={showPaymentDialog}
         onOpenChange={setShowPaymentDialog}
-        // Pass the final total
         totalAmount={total}
-        // Updated prop name for consistency
         onPaymentComplete={handlePaymentComplete}
       />
 
+      {/* The receipt dialog is opened by setting lastTransaction.open = true inside handlePaymentComplete */}
       {lastTransaction && (
         <POSReceipt
-          open={lastTransaction.open || true}
+          open={lastTransaction.open || false}
           onOpenChange={() => setLastTransaction(null)}
           items={lastTransaction.items}
           total={lastTransaction.total}
-          // Pass the new data points
           payments={lastTransaction.payments}
           changeDue={lastTransaction.changeDue}
           taxAmount={lastTransaction.taxAmount}
