@@ -222,15 +222,24 @@ const POSHome = () => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [cart, createHold]);
-
+  <header className="flex items-center justify-between mb-6">
+    <div className="flex items-center gap-3">
+      <ShoppingCart className="h-8 w-8" />
+      <div>
+        <h1 className="text-2xl font-bold">POS</h1>
+        {/* This is now handled by the component */}
+        <POSSessionControl />
+      </div>
+    </div>
+  </header>;
   // session helper quick open
-  const quickOpenSession = async () => {
-    const cashier = prompt("Enter cashier id/email:");
-    const startCashStr = prompt("Start cash amount:", "0");
-    const startCash = parseFloat(startCashStr || "0");
-    if (!cashier) return toast.error("Cashier required");
-    await openSession(cashier, startCash);
-  };
+  //const quickOpenSession = async () => {
+  //  const cashier = prompt("Enter cashier id/email:");
+  //  const startCashStr = prompt("Start cash amount:", "0");
+  //  const startCash = parseFloat(startCashStr || "0");
+  //  if (!cashier) return toast.error("Cashier required");
+  //await openSession(cashier, startCash);
+  // };
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">
