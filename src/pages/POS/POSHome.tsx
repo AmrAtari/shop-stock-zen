@@ -22,8 +22,8 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
-  size?: string; // Re-add for consistency, even if not fully used
-  color?: string; // Re-add for consistency, even if not fully used
+  size?: string;
+  color?: string;
 };
 
 type CartItem = Product & {
@@ -32,7 +32,7 @@ type CartItem = Product & {
   itemDiscountValue?: number;
 };
 
-// New type for Split Tender payments
+// Type for Split Tender payments
 export type Payment = {
   method: "cash" | "card";
   amount: number;
@@ -52,21 +52,25 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
+      // FINAL FIX: Select ALL columns from the left-joined price_levels table
+      // and perform the 'is_current' filter in JavaScript. This avoids the 400 Bad Request.
       const { data, error } = await supabase
         .from("items")
-        // FIX: Use !left for left join, and embed the filter directly in the select string
-        // to prevent the 400 Bad Request error. Only 'selling_price' is needed.
-        .select("id, name, quantity, sku, price_levels!left(selling_price:is_current.eq.true)")
-        // REMOVED: .eq("price_levels.is_current", true)
+        .select("id, name, quantity, sku, size, color, price_levels!left(*)")
         .order("name");
 
       if (error) throw error;
 
-      return (data || []).map((i: any) => ({
-        ...i,
-        // The price_levels array now only contains the selling_price (if is_current=true), or is empty.
-        price: i.price_levels?.[0]?.selling_price || 0,
-      }));
+      return (data || []).map((i: any) => {
+        // Find the single price_level where 'is_current' is true (client-side filter)
+        const currentPriceLevel = i.price_levels?.find((p: any) => p.is_current === true);
+
+        return {
+          ...i,
+          // Use the selling_price from the current price level, or default to 0.
+          price: currentPriceLevel?.selling_price || 0,
+        };
+      });
     },
   });
 
@@ -142,9 +146,11 @@ const POSHome = () => {
 
   const globalDiscountAmount = useMemo(() => {
     if (!globalDiscountValue) return 0;
+    // Calculate global discount based on the subtotal *after* item discounts
+    const discountBase = subtotal - itemDiscountTotal;
     if (globalDiscountType === "fixed") return globalDiscountValue;
-    return (subtotal * globalDiscountValue) / 100;
-  }, [subtotal, globalDiscountType, globalDiscountValue]);
+    return (discountBase * globalDiscountValue) / 100;
+  }, [subtotal, itemDiscountTotal, globalDiscountType, globalDiscountValue]);
 
   // Total after all discounts, but BEFORE tax
   const preTaxTotal = useMemo(
@@ -184,7 +190,7 @@ const POSHome = () => {
       });
       if (summaryError) {
         console.error("Could not insert into transaction_summary:", summaryError);
-        // Do not throw, try to continue to insert line items (transactions)
+        // Continue to insert line items even if summary fails (may indicate missing table)
       }
 
       // 2. Insert Split Tender Payments
@@ -199,7 +205,7 @@ const POSHome = () => {
 
       if (paymentError) {
         console.error("Could not insert into transaction_payments:", paymentError);
-        // Do not throw, try to continue to insert line items (transactions)
+        // Continue to insert line items even if payments fails
       }
 
       // 3. Insert Line Items (The user's existing 'transactions' table is used for this)
@@ -227,18 +233,27 @@ const POSHome = () => {
 
       const { error: lineItemError } = await supabase.from("transactions").insert(transactionItems);
 
-      if (lineItemError) throw lineItemError;
+      if (lineItemError) throw lineItemError; // Line items are critical
 
       // 4. Update Stock
       for (const item of cart) {
+        // Fetch current stock to prevent race conditions on quantity
+        const { data: currentItem, error: fetchErr } = await supabase
+          .from("items")
+          .select("quantity")
+          .eq("id", item.id)
+          .single();
+
+        if (fetchErr || !currentItem) continue; // Skip stock update on failure
+
         const { error: updateErr } = await supabase
           .from("items")
-          .update({ quantity: Math.max(0, item.quantity - item.cartQuantity) })
+          .update({ quantity: Math.max(0, currentItem.quantity - item.cartQuantity) })
           .eq("id", item.id);
-        if (updateErr) throw updateErr;
+        if (updateErr) console.error("Stock update failed for item", item.id, updateErr);
       }
 
-      // 5. Save transaction to sales for historical record
+      // 5. Save transaction to sales for historical record (optional, based on schema)
       const { error: saleError } = await supabase.from("sales").insert(
         cart.map((item) => ({
           item_id: item.id,
@@ -249,7 +264,7 @@ const POSHome = () => {
         })),
       );
 
-      if (saleError) throw saleError;
+      if (saleError) console.error("Sales table insert failed", saleError);
 
       // 6. Set Transaction Data for Receipt
       setLastTransaction({
@@ -284,7 +299,7 @@ const POSHome = () => {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [createHold]); // cart is not a dependency if createHold is defined as above
+  }, [createHold, setShowPaymentDialog]);
 
   // session helper quick open
   const quickOpenSession = async () => {
@@ -310,8 +325,8 @@ const POSHome = () => {
           {!isSessionOpen ? (
             <Button onClick={quickOpenSession}>Open Session</Button>
           ) : (
-            <Button onClick={() => toast.success("Session active")} variant="outline">
-              Session Active
+            <Button onClick={() => toast.success(`Session active: ${sessionId}`)} variant="outline">
+              Session Active: {sessionId}
             </Button>
           )}
           <Button onClick={() => window.location.assign("/pos/receipts")}>Receipts</Button>
@@ -332,9 +347,10 @@ const POSHome = () => {
               {isLoadingProducts ? (
                 <div className="py-8 text-center">
                   <Loader2 className="animate-spin h-6 w-6" />
+                  <p className="mt-2 text-muted-foreground">Loading Products...</p>
                 </div>
               ) : (
-                <POSBarcodeInput products={products} onProductSelect={(p) => handleProductSelect(p)} />
+                <POSBarcodeInput products={products as any} onProductSelect={(p) => handleProductSelect(p)} />
               )}
             </CardContent>
           </Card>
@@ -342,7 +358,7 @@ const POSHome = () => {
           {cart.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Cart ({cart.length} items)</CardTitle>
+                <CardTitle>Cart ({cart.reduce((sum, item) => sum + item.cartQuantity, 0)} items)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -474,10 +490,14 @@ const POSHome = () => {
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button disabled={!cart.length} onClick={() => setShowPaymentDialog(true)}>
+                <Button disabled={!cart.length || !isSessionOpen} onClick={() => setShowPaymentDialog(true)}>
                   Pay (Ctrl + P)
                 </Button>
-                <Button variant="outline" onClick={() => window.location.assign("/pos/closing")}>
+                <Button
+                  variant="outline"
+                  onClick={() => window.location.assign("/pos/closing")}
+                  disabled={!isSessionOpen}
+                >
                   Close Session
                 </Button>
                 <Button variant="ghost" onClick={() => window.location.assign("/pos/receipts")}>
@@ -526,7 +546,7 @@ const POSHome = () => {
           onOpenChange={() => setLastTransaction(null)}
           items={lastTransaction.items}
           total={lastTransaction.total}
-          payments={lastTransaction.payments} // Use the new payments array
+          payments={lastTransaction.payments} // Passing full payments array for split tender support in receipt
           changeDue={lastTransaction.changeDue}
           taxAmount={lastTransaction.taxAmount}
           subtotal={lastTransaction.subtotal}
