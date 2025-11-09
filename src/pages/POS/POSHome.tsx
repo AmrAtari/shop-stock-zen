@@ -1,4 +1,5 @@
 // src/pos/POSHome.tsx
+
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePOS } from "./POSContext";
-import { POSSessionControl } from "@/components/POSSessionControl"; // <-- NEW IMPORT
+import { POSSessionControl } from "@/components/POSSessionControl"; // <-- CORRECTED IMPORT
 
 type Product = {
   id: string;
@@ -20,8 +21,8 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
-  size?: string; // Added for apparel context
-  color?: string; // Added for apparel context
+  size?: string;
+  color?: string;
 };
 
 type CartItem = Product & {
@@ -47,7 +48,7 @@ const POSHome = () => {
     queryFn: async (): Promise<Product[]> => {
       const { data, error } = await supabase
         .from("items")
-        .select("id, name, quantity, sku, price_levels(selling_price, is_current), size, color") // Updated select to include size and color
+        .select("id, name, quantity, sku, price_levels(selling_price, is_current), size, color")
         .eq("price_levels.is_current", true)
         .order("name");
       if (error) throw error;
@@ -228,8 +229,6 @@ const POSHome = () => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [cart, createHold]);
-
-  // Removed quickOpenSession function
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">
