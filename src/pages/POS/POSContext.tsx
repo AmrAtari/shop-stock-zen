@@ -3,15 +3,30 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// Define the CartItem structure for the holds
+interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  sku: string;
+  image?: string;
+  size?: string;
+  color?: string;
+  cartQuantity: number;
+  itemDiscountType?: "fixed" | "percent";
+  itemDiscountValue?: number;
+}
+
 interface POSContextValue {
   sessionId: string | null;
   cashierId: string | null;
   openSession: (cashierId: string, startCash: number) => Promise<void>;
   closeSession: (endCash: number, notes?: string) => Promise<void>;
   isSessionOpen: boolean;
-  holds: Record<string, any[]>; // id => cart
-  saveHold: (holdId: string, cart: any[]) => void;
-  resumeHold: (holdId: string) => any[] | null;
+  holds: Record<string, CartItem[]>; // id => cart
+  saveHold: (holdId: string, cart: CartItem[]) => void;
+  resumeHold: (holdId: string) => CartItem[] | null;
   removeHold: (holdId: string) => void;
 }
 
@@ -21,7 +36,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [cashierId, setCashierId] = useState<string | null>(null);
   const [isSessionOpen, setIsSessionOpen] = useState(false);
-  const [holds, setHolds] = useState<Record<string, any[]>>({});
+  // Holds state is initialized by loading from localStorage
+  const [holds, setHolds] = useState<Record<string, CartItem[]>>(() => {
+    const savedHolds = localStorage.getItem("pos-holds");
+    return savedHolds ? JSON.parse(savedHolds) : {};
+  });
+
+  // --- Session Management (Keep previous implementation) ---
 
   useEffect(() => {
     // Optionally load last open session from localStorage
@@ -32,50 +53,51 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCashierId(c);
       setIsSessionOpen(true);
     }
-    const storedHolds = localStorage.getItem("pos-holds");
-    if (storedHolds) setHolds(JSON.parse(storedHolds));
   }, []);
 
-  const persistHolds = (newHolds: Record<string, any[]>) => {
-    setHolds(newHolds);
-    localStorage.setItem("pos-holds", JSON.stringify(newHolds));
-  };
-
-  const saveHold = (holdId: string, cart: any[]) => {
-    const copy = { ...holds, [holdId]: cart };
-    persistHolds(copy);
-    toast.success("Cart held");
-  };
-
-  const resumeHold = (holdId: string) => {
-    const cart = holds[holdId] ?? null;
-    return cart;
-  };
-
-  const removeHold = (holdId: string) => {
-    const copy = { ...holds };
-    delete copy[holdId];
-    persistHolds(copy);
-  };
-
-  const openSession = async (cashier: string, startCash: number) => {
+  const openSession = async (cashierId: string, startCash: number) => {
     try {
-      const { data, error } = await supabase
+      // 1. Check for existing open session for this cashier
+      const { data: existingSessions, error: fetchError } = await supabase
         .from("cash_sessions")
-        .insert([{ cashier_id: cashier, start_cash: startCash, open_at: new Date().toISOString() }])
-        .select()
-        .single();
+        .select("id")
+        .eq("cashier_id", cashierId)
+        .is("close_at", null);
+
+      if (fetchError) throw fetchError;
+
+      if (existingSessions && existingSessions.length > 0) {
+        // Resume existing session
+        const existingSessionId = existingSessions[0].id;
+        setSessionId(existingSessionId);
+        setCashierId(cashierId);
+        setIsSessionOpen(true);
+        localStorage.setItem("pos-session-id", existingSessionId);
+        localStorage.setItem("pos-cashier-id", cashierId);
+        toast.success(`Resumed existing session: ${existingSessionId}`);
+        return;
+      }
+
+      // 2. Open new session
+      const newSessionId = `SESS-${Date.now()}`;
+      const { error } = await supabase.from("cash_sessions").insert({
+        id: newSessionId,
+        cashier_id: cashierId,
+        start_cash: startCash,
+        open_at: new Date().toISOString(),
+      });
 
       if (error) throw error;
-      setSessionId(data.id);
-      setCashierId(cashier);
+
+      setSessionId(newSessionId);
+      setCashierId(cashierId);
       setIsSessionOpen(true);
-      localStorage.setItem("pos-session-id", data.id);
-      localStorage.setItem("pos-cashier-id", cashier);
-      toast.success("Session opened");
+      localStorage.setItem("pos-session-id", newSessionId);
+      localStorage.setItem("pos-cashier-id", cashierId);
+      toast.success(`Session opened: ${newSessionId}`);
     } catch (err: any) {
       console.error(err);
-      toast.error("Failed to open session");
+      toast.error("Failed to open session: " + err.message);
     }
   };
 
@@ -86,12 +108,6 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      // compute expected cash from sales for this session
-      const { data: cashSumRes, error: sumErr } = await supabase.rpc("pos_session_expected_cash", {
-        session_id_param: sessionId,
-      }); // optional RPC if you have one
-
-      // fallback: you can compute expected by querying sales table for this session
       // For now we'll update the session row with end_cash and close_at
       const { error } = await supabase
         .from("cash_sessions")
@@ -109,6 +125,34 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error(err);
       toast.error("Failed to close session");
     }
+  };
+
+  // --- Hold Logic (New) ---
+
+  const saveHold = (holdId: string, cart: CartItem[]) => {
+    setHolds((prevHolds) => {
+      const newHolds = { ...prevHolds, [holdId]: cart };
+      localStorage.setItem("pos-holds", JSON.stringify(newHolds));
+      return newHolds;
+    });
+  };
+
+  const resumeHold = (holdId: string): CartItem[] | null => {
+    const cart = holds[holdId];
+    if (cart) {
+      removeHold(holdId); // Remove from holds list
+      return cart;
+    }
+    return null;
+  };
+
+  const removeHold = (holdId: string) => {
+    setHolds((prevHolds) => {
+      const newHolds = { ...prevHolds };
+      delete newHolds[holdId];
+      localStorage.setItem("pos-holds", JSON.stringify(newHolds));
+      return newHolds;
+    });
   };
 
   return (
@@ -132,6 +176,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 export const usePOS = () => {
   const ctx = useContext(POSContext);
-  if (!ctx) throw new Error("usePOS must be used inside POSProvider");
+  if (ctx === undefined) {
+    throw new Error("usePOS must be used within a POSProvider");
+  }
   return ctx;
 };
