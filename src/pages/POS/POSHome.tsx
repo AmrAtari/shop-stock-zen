@@ -19,8 +19,6 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
-  size?: string;
-  color?: string;
 };
 
 type CartItem = Product & {
@@ -40,26 +38,20 @@ const POSHome = () => {
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
   const [holdsList, setHoldsList] = useState<string[]>([]);
 
-  // Fetch products - FIX APPLIED HERE
+  // Fetch products
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FIX: Removed comments and newlines from the select string.
       const { data, error } = await supabase
         .from("items")
-        .select(`id, name, quantity, sku, price_levels(selling_price, is_current), size:size(name), color:color(name)`)
-        .eq("price_levels.is_current", true)
+        // CORRECTED: The failing 'price_levels' join and filter are removed.
+        // Now fetching the direct 'price' column available on the 'items' table.
+        .select("id, name, quantity, sku, price, size(name), color(name)")
+        // Removed: .eq("price_levels.is_current", true)
         .order("name");
-
       if (error) throw error;
-
-      // Map the data to flatten the joined size and color names.
-      return (data || []).map((i: any) => ({
-        ...i,
-        price: i.price_levels?.[0]?.selling_price || 0,
-        size: i.size?.name || undefined,
-        color: i.color?.name || undefined,
-      }));
+      // CORRECTED: Mapping logic updated to use the direct 'price' property.
+      return (data || []).map((i: any) => ({ ...i, price: i.price || 0 }));
     },
   });
 
@@ -195,13 +187,9 @@ const POSHome = () => {
 
       // Update stock for each item
       for (const item of cart) {
-        // Find the full product details to get the original quantity for the update calculation
-        const originalProduct = products.find((p) => p.id === item.id);
-        const currentStock = originalProduct ? originalProduct.quantity : item.quantity;
-
         const { error: updateErr } = await supabase
           .from("items")
-          .update({ quantity: Math.max(0, currentStock - item.cartQuantity) })
+          .update({ quantity: Math.max(0, item.quantity - item.cartQuantity) })
           .eq("id", item.id);
         if (updateErr) throw updateErr;
       }
