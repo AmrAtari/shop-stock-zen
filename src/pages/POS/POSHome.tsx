@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { POSBarcodeInput } from "@/components/POSBarcodeInput";
 import { POSPaymentDialog } from "@/components/POSPaymentDialog";
 import { POSReceipt } from "@/components/POSReceipt";
-import { POSSessionControl } from "@/src/POS/POSSessionControl"; // <-- NEW IMPORT
+import { POSSessionControl } from "@/components/POSSessionControl"; // <-- NEW IMPORT
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
