@@ -19,8 +19,8 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
-  size?: string; // ADDED to match the schema fix
-  color?: string; // ADDED to match the schema fix
+  size?: string;
+  color?: string;
 };
 
 type CartItem = Product & {
@@ -44,26 +44,16 @@ const POSHome = () => {
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
     queryKey: ["pos-products"],
     queryFn: async (): Promise<Product[]> => {
-      // FIX: Updated select statement to use the correct Foreign Key names ('size', 'color')
-      // perform the join, fetch the 'name' from the linked table, and alias them.
+      // FIX: Removed comments and newlines from the select string.
       const { data, error } = await supabase
         .from("items")
-        .select(
-          `
-          id, 
-          name, 
-          quantity, 
-          sku, 
-          price_levels(selling_price, is_current),
-          size:size(name),    // Join on FK 'size', fetch 'name', alias to 'size'
-          color:color(name)  // Join on FK 'color', fetch 'name', alias to 'color'
-        `,
-        )
+        .select(`id, name, quantity, sku, price_levels(selling_price, is_current), size:size(name), color:color(name)`)
         .eq("price_levels.is_current", true)
         .order("name");
+
       if (error) throw error;
 
-      // FIX: Updated map function to flatten the joined size and color names.
+      // Map the data to flatten the joined size and color names.
       return (data || []).map((i: any) => ({
         ...i,
         price: i.price_levels?.[0]?.selling_price || 0,
@@ -101,7 +91,6 @@ const POSHome = () => {
     );
   };
 
-  // FIX: Corrected comparison from i.id !== i to i.id !== id
   const removeFromCart = (id: string) => setCart((c) => c.filter((i) => i.id !== id));
 
   // Hold / Resume
