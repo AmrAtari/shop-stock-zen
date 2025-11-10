@@ -46,11 +46,10 @@ export const usePurchaseOrderDetail = (id: string) => {
   return useQuery({
     queryKey: queryKeys.purchaseOrders.detail(id),
     queryFn: async () => {
-      // 1. Fetch the Purchase Order record with the 'store' join
+      // 1. Fetch the Purchase Order record
       const { data: po, error: poError } = await supabase
         .from("purchase_orders")
-        // FIX: Selects the 'store' name to resolve TS2339 property 'store' does not exist
-        .select("*, store:stores(name)")
+        .select("*")
         .eq("id", id)
         .maybeSingle();
 
@@ -62,9 +61,20 @@ export const usePurchaseOrderDetail = (id: string) => {
         throw new Error("Purchase order not found");
       }
 
-      const purchaseOrder = po as PurchaseOrder;
+      // 2. Fetch store name separately if store_id exists
+      let storeName = null;
+      if (po.store_id) {
+        const { data: store } = await supabase
+          .from("stores")
+          .select("name")
+          .eq("id", po.store_id)
+          .maybeSingle();
+        storeName = store?.name;
+      }
 
-      // 2. Fetch the Purchase Order Items (using raw items as resolution logic is complex)
+      const purchaseOrder = { ...po, store: storeName } as PurchaseOrder;
+
+      // 3. Fetch the Purchase Order Items (using raw items as resolution logic is complex)
       const { data: rawItems, error: itemsError } = await supabase
         .from("purchase_order_items")
         .select("*")
@@ -76,7 +86,7 @@ export const usePurchaseOrderDetail = (id: string) => {
         throw itemsError;
       }
 
-      // 3. Fetch Approval History (FIXED: Simple select to avoid the TS Parser Error)
+      // 4. Fetch Approval History (FIXED: Simple select to avoid the TS Parser Error)
       const { data: history, error: historyError } = await supabase
         .from("po_approval_history")
         .select(`*`)
