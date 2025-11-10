@@ -135,7 +135,7 @@ const POSHome = () => {
   );
 
   // Checkout flow: create transaction, write sales rows, update stock, attach sessionId & cashierId
-  const handlePaymentComplete = async (method: "cash" | "card", amountPaid?: number) => {
+  const handlePaymentComplete = async (payments: Array<{ method: "cash" | "card"; amount: number }>, changeDue: number) => {
     if (!cart.length) return toast.error("Cart empty");
     if (!sessionId || !cashierId) {
       toast.error("Open a cashier session first");
@@ -143,6 +143,10 @@ const POSHome = () => {
     }
 
     const transactionId = `TXN-${Date.now()}`;
+    // Use the payment method with the largest amount as the primary method
+    const primaryPayment = payments.reduce((max, p) => p.amount > max.amount ? p : max, payments[0]);
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    
     try {
       // Insert into transactions table
       const transactionItems = cart.map((item) => {
@@ -164,7 +168,7 @@ const POSHome = () => {
             itemDiscountFixed * item.cartQuantity -
             (item.price * item.cartQuantity * itemDiscountPercent) / 100,
           is_refund: false,
-          payment_method: method,
+          payment_method: primaryPayment.method,
         };
       });
 
@@ -199,8 +203,8 @@ const POSHome = () => {
         transactionId,
         items: cart,
         total,
-        paymentMethod: method,
-        amountPaid,
+        paymentMethod: primaryPayment.method,
+        amountPaid: totalPaid,
         date: new Date(),
       });
 

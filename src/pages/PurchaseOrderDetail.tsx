@@ -165,21 +165,21 @@ const PurchaseOrderDetail = () => {
       for (const item of items) {
         console.log(`Processing item: ${item.sku}`);
 
-        // 1. Find the variant by SKU
-        const { data: variant, error: variantErr } = await supabase
-          .from("variants")
-          .select("variant_id")
+        // 1. Find the item by SKU
+        const { data: foundItem, error: itemErr } = await supabase
+          .from("items")
+          .select("id")
           .eq("sku", item.sku)
           .maybeSingle();
 
-        if (variantErr) throw variantErr;
+        if (itemErr) throw itemErr;
 
-        if (variant) {
-          // 2. Update stock_on_hand table
+        if (foundItem) {
+          // 2. Update store_inventory table
           const { data: existingStock, error: fetchErr } = await supabase
-            .from("stock_on_hand")
+            .from("store_inventory")
             .select("quantity")
-            .eq("variant_id", variant.variant_id)
+            .eq("item_id", foundItem.id)
             .eq("store_id", po.store_id)
             .maybeSingle();
 
@@ -193,27 +193,42 @@ const PurchaseOrderDetail = () => {
           if (existingStock) {
             // Update existing record
             const { error: updateErr } = await supabase
-              .from("stock_on_hand")
+              .from("store_inventory")
               .update({
                 quantity: newQty,
-                last_updated: new Date().toISOString(),
               })
-              .eq("variant_id", variant.variant_id)
+              .eq("item_id", foundItem.id)
               .eq("store_id", po.store_id);
 
             if (updateErr) throw updateErr;
           } else {
             // Insert new record
-            const { error: insertErr } = await supabase.from("stock_on_hand").insert({
-              variant_id: variant.variant_id,
+            const { error: insertErr } = await supabase.from("store_inventory").insert({
+              item_id: foundItem.id,
               store_id: po.store_id,
               quantity: item.quantity,
-              min_stock: 0,
-              last_updated: new Date().toISOString(),
             });
 
             if (insertErr) throw insertErr;
           }
+
+          // Also update the global items table quantity
+          const { data: globalItem, error: globalFetchErr } = await supabase
+            .from("items")
+            .select("quantity")
+            .eq("id", foundItem.id)
+            .single();
+
+          if (globalFetchErr) throw globalFetchErr;
+
+          const { error: globalUpdateErr } = await supabase
+            .from("items")
+            .update({
+              quantity: (globalItem?.quantity || 0) + item.quantity,
+            })
+            .eq("id", foundItem.id);
+
+          if (globalUpdateErr) throw globalUpdateErr;
 
           updatedCount += 1;
         } else {
