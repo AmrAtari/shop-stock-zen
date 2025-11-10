@@ -46,10 +46,10 @@ export const usePurchaseOrderDetail = (id: string) => {
   return useQuery({
     queryKey: queryKeys.purchaseOrders.detail(id),
     queryFn: async () => {
-      // 1. Fetch the Purchase Order record
+      // 1. Fetch the Purchase Order record with store join (now that FK exists)
       const { data: po, error: poError } = await supabase
         .from("purchase_orders")
-        .select("*")
+        .select("*, stores(name)")
         .eq("id", id)
         .maybeSingle();
 
@@ -61,18 +61,7 @@ export const usePurchaseOrderDetail = (id: string) => {
         throw new Error("Purchase order not found");
       }
 
-      // 2. Fetch store name separately if store_id exists
-      let storeName = null;
-      if (po.store_id) {
-        const { data: store } = await supabase
-          .from("stores")
-          .select("name")
-          .eq("id", po.store_id)
-          .maybeSingle();
-        storeName = store?.name;
-      }
-
-      const purchaseOrder = { ...po, store: storeName } as PurchaseOrder;
+      const purchaseOrder = po as PurchaseOrder;
 
       // 3. Fetch the Purchase Order Items (using raw items as resolution logic is complex)
       const { data: rawItems, error: itemsError } = await supabase
