@@ -17,6 +17,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,17 +28,18 @@ const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
+  const { t } = useTranslation();
 
   const navigation = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    ...(isAdmin ? [{ name: "System Configuration", href: "/configuration", icon: Settings }] : []),
-    { name: "Inventory", href: "/inventory", icon: Package },
-    { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
-    { name: "Transfers", href: "/transfers", icon: Store },
-    { name: "Accounting", href: "/accounting", icon: Calculator },
-    { name: "Reports", href: "/reports", icon: BarChart3 },
+    { name: t('common.dashboard'), href: "/", icon: LayoutDashboard },
+    ...(isAdmin ? [{ name: t('common.configuration'), href: "/configuration", icon: Settings }] : []),
+    { name: t('common.inventory'), href: "/inventory", icon: Package },
+    { name: t('common.purchaseOrders'), href: "/purchase-orders", icon: ShoppingCart },
+    { name: t('common.transfers'), href: "/transfers", icon: Store },
+    { name: t('common.accounting'), href: "/accounting", icon: Calculator },
+    { name: t('common.reports'), href: "/reports", icon: BarChart3 },
     { name: "AI Reports", href: "/ai-reports", icon: Bot },
-    { name: "POS", href: "/pos", icon: ShoppingCart },
+    { name: t('common.pos'), href: "/pos", icon: ShoppingCart },
   ];
 
   const handleLogout = async () => {
@@ -53,9 +56,12 @@ const Layout = ({ children }: LayoutProps) => {
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
-        <div className="p-6 border-b border-sidebar-border">
-          <h1 className="text-2xl font-bold text-sidebar-foreground">Quantom IMS</h1>
-          <p className="text-sm text-sidebar-foreground/70 mt-1">Inventory Manager</p>
+        <div className="p-6 border-b border-sidebar-border flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-sidebar-foreground">Quantom IMS</h1>
+            <p className="text-sm text-sidebar-foreground/70 mt-1">Inventory Manager</p>
+          </div>
+          <LanguageSwitcher />
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
@@ -87,7 +93,7 @@ const Layout = ({ children }: LayoutProps) => {
             onClick={handleLogout}
           >
             <LogOut className="w-5 h-5 mr-3" />
-            <span className="font-medium">Logout</span>
+            <span className="font-medium">{t('common.logout')}</span>
           </Button>
         </div>
       </aside>
