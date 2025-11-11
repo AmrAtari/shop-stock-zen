@@ -189,14 +189,10 @@ const POSHome = () => {
 
       if (saleError) throw saleError;
 
-      // Update stock for each item
-      for (const item of cart) {
-        const { error: updateErr } = await supabase
-          .from("items")
-          .update({ quantity: Math.max(0, item.quantity - item.cartQuantity) })
-          .eq("id", item.id);
-        if (updateErr) throw updateErr;
-      }
+      // TODO: Update store_inventory instead of items table
+      // POS needs to track which store it's operating from to update the correct store_inventory record
+      // For now, skipping inventory updates to prevent double-counting
+      console.warn("POS inventory updates disabled - requires store context implementation");
 
       // show receipt
       setLastTransaction({

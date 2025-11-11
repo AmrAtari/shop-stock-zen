@@ -212,23 +212,8 @@ const PurchaseOrderDetail = () => {
             if (insertErr) throw insertErr;
           }
 
-          // Also update the global items table quantity
-          const { data: globalItem, error: globalFetchErr } = await supabase
-            .from("items")
-            .select("quantity")
-            .eq("id", foundItem.id)
-            .single();
-
-          if (globalFetchErr) throw globalFetchErr;
-
-          const { error: globalUpdateErr } = await supabase
-            .from("items")
-            .update({
-              quantity: (globalItem?.quantity || 0) + item.quantity,
-            })
-            .eq("id", foundItem.id);
-
-          if (globalUpdateErr) throw globalUpdateErr;
+          // Note: items.quantity is deprecated - all inventory tracked in store_inventory
+          // The aggregated view will calculate totals from store_inventory
 
           updatedCount += 1;
         } else {
