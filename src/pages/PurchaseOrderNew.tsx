@@ -115,6 +115,10 @@ const PurchaseOrderNew = () => {
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const isUuid = (v: string | null | undefined) =>
+    typeof v === "string" &&
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v);
+
   const {
     register,
     handleSubmit,
@@ -371,11 +375,7 @@ const PurchaseOrderNew = () => {
             quantity: item.quantity,
             cost_price: item.costPrice,
           };
-
-          if (itemData?.id) {
-            row.item_id = itemData.id; // only include when UUID exists
-          }
-
+          
           return row;
         })
       );
