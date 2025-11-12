@@ -262,7 +262,7 @@ export const useReportsData = () => {
         .from("purchase_order_items")
         .select(`
           id, created_at, item_name, received_quantity, sku,
-          po:purchase_orders(store:stores(name))
+          purchase_orders!inner(store:stores(name))
         `)
         .gt("received_quantity", 0)
         .order("created_at", { ascending: false })
@@ -293,7 +293,7 @@ export const useReportsData = () => {
           transaction_type: 'PURCHASE_ORDER',
           quantity: po.received_quantity,
           date: po.created_at,
-          location: po.po?.store?.name || '',
+          location: po.purchase_orders?.store?.name || '',
           category: '',
           brand: '',
         });

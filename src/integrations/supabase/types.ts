@@ -770,7 +770,7 @@ export type Database = {
           item_name: string
           model_number: string | null
           origin_id: string | null
-          po_id: string
+          po_id: number | null
           qc_notes: string | null
           quantity: number
           received_quantity: number
@@ -794,7 +794,7 @@ export type Database = {
           item_name: string
           model_number?: string | null
           origin_id?: string | null
-          po_id: string
+          po_id?: number | null
           qc_notes?: string | null
           quantity: number
           received_quantity?: number
@@ -818,7 +818,7 @@ export type Database = {
           item_name?: string
           model_number?: string | null
           origin_id?: string | null
-          po_id?: string
+          po_id?: number | null
           qc_notes?: string | null
           quantity?: number
           received_quantity?: number
@@ -828,7 +828,15 @@ export type Database = {
           unit?: string | null
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["po_id"]
+          },
+        ]
       }
       purchase_orders: {
         Row: {
