@@ -7,6 +7,7 @@ import { Upload, AlertCircle, CheckCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 interface ImportedItem {
   sku: string;
@@ -31,6 +32,7 @@ export const POItemImport = ({ onImport, existingSkus }: POItemImportProps) => {
   const [importedItems, setImportedItems] = useState<ImportedItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
+  const { formatCurrency } = useSystemSettings();
 
   const processImportData = (jsonData: any[]) => {
     const items: ImportedItem[] = jsonData.map((row: any) => {
@@ -210,7 +212,7 @@ export const POItemImport = ({ onImport, existingSkus }: POItemImportProps) => {
                     <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                     <TableCell>{item.itemName || "-"}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
-                    <TableCell>${item.costPrice.toFixed(2)}</TableCell>
+                    <TableCell>{formatCurrency(item.costPrice)}</TableCell>
                     <TableCell>{item.color || "-"}</TableCell>
                     <TableCell>{item.size || "-"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{item.message || "-"}</TableCell>
