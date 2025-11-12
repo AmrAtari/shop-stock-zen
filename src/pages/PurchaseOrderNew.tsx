@@ -193,19 +193,56 @@ const PurchaseOrderNew = () => {
     toast.success(`Added ${resolvedItems.length} items`);
   };
 
-  const handleImportItems = (items: any[]) => {
-    const newItems: POItem[] = items.map((item) => ({
-      sku: item.sku,
-      itemName: item.itemName || item.sku,
-      itemDescription: item.description,
-      color: item.color,
-      size: item.size,
-      modelNumber: item.modelNumber,
-      unit: item.unit || "pcs",
-      quantity: item.quantity,
-      costPrice: item.costPrice,
-    }));
-    setPOItems([...poItems, ...newItems]);
+  const handleImportItems = async (items: any[]) => {
+    // Enrich imported items with data from inventory database
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        const inventoryItem = inventory.find((i) => i.sku === item.sku);
+        
+        if (inventoryItem) {
+          // Resolve color and size if they're UUIDs
+          let colorName = inventoryItem.color;
+          let sizeName = inventoryItem.size;
+
+          if (inventoryItem.color && typeof inventoryItem.color === "string" && inventoryItem.color.length === 36 && inventoryItem.color.includes("-")) {
+            const { data: colorData } = await supabase.from("colors").select("name").eq("id", inventoryItem.color).maybeSingle();
+            if (colorData) colorName = colorData.name;
+          }
+
+          if (inventoryItem.size && typeof inventoryItem.size === "string" && inventoryItem.size.length === 36 && inventoryItem.size.includes("-")) {
+            const { data: sizeData } = await supabase.from("sizes").select("name").eq("id", inventoryItem.size).maybeSingle();
+            if (sizeData) sizeName = sizeData.name;
+          }
+
+          return {
+            sku: item.sku,
+            itemName: item.itemName || inventoryItem.name || item.sku,
+            itemDescription: item.description || inventoryItem.description,
+            color: item.color || colorName,
+            size: item.size || sizeName,
+            modelNumber: item.modelNumber || inventoryItem.item_number,
+            unit: item.unit || inventoryItem.unit || "pcs",
+            quantity: item.quantity,
+            costPrice: item.costPrice,
+          };
+        }
+
+        return {
+          sku: item.sku,
+          itemName: item.itemName || item.sku,
+          itemDescription: item.description,
+          color: item.color,
+          size: item.size,
+          modelNumber: item.modelNumber,
+          unit: item.unit || "pcs",
+          quantity: item.quantity,
+          costPrice: item.costPrice,
+        };
+      })
+    );
+    
+    setPOItems([...poItems, ...enrichedItems]);
+    toast.success(`Imported ${enrichedItems.length} items with data enrichment`);
   };
 
   const handleBarcodeScans = (scannedItems: any[]) => {
@@ -313,19 +350,31 @@ const PurchaseOrderNew = () => {
         );
       }
 
-      // Create PO items, using the confirmed PO ID
-      const poItemsData = poItems.map((item) => ({
-        po_id: poId,
-        sku: item.sku,
-        item_name: item.itemName,
-        item_description: item.itemDescription,
-        color: item.color,
-        size: item.size,
-        model_number: item.modelNumber,
-        unit: item.unit,
-        quantity: item.quantity,
-        cost_price: item.costPrice,
-      }));
+      // Create PO items, using the confirmed PO ID and lookup item_id from items table
+      const poItemsData = await Promise.all(
+        poItems.map(async (item) => {
+          // Look up the item UUID from the items table using the SKU
+          const { data: itemData } = await supabase
+            .from("items")
+            .select("id")
+            .eq("sku", item.sku)
+            .maybeSingle();
+
+          return {
+            po_id: poId,
+            item_id: itemData?.id || null, // Use the UUID or null if not found
+            sku: item.sku,
+            item_name: item.itemName,
+            item_description: item.itemDescription,
+            color: item.color,
+            size: item.size,
+            model_number: item.modelNumber,
+            unit: item.unit,
+            quantity: item.quantity,
+            cost_price: item.costPrice,
+          };
+        })
+      );
 
       const { error: itemsError } = await supabase.from("purchase_order_items").insert(poItemsData);
 
@@ -347,8 +396,8 @@ const PurchaseOrderNew = () => {
   };
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center gap-4">
+    <div className="h-screen flex flex-col">
+      <div className="p-8 pb-4 flex items-center gap-4 border-b bg-background">
         <Button variant="ghost" size="icon" onClick={() => navigate("/purchase-orders")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -358,7 +407,8 @@ const PurchaseOrderNew = () => {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
+        <div className="p-8 space-y-6">
         {/* Step 1: Basic Info & Dates */}
         <Card>
           <CardHeader>
@@ -727,6 +777,7 @@ const PurchaseOrderNew = () => {
           <Button type="submit" disabled={isSaving || poItems.length === 0}>
             {isSaving ? "Creating..." : "Create Purchase Order"}
           </Button>
+        </div>
         </div>
       </form>
     </div>
