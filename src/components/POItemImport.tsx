@@ -34,11 +34,38 @@ export const POItemImport = ({ onImport, existingSkus }: POItemImportProps) => {
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
   const { formatCurrency } = useSystemSettings();
 
+  // Normalize column names for flexible matching
+  const normalizeKey = (key: string): string => {
+    return key.toLowerCase().replace(/[_\s-]+/g, '');
+  };
+
+  // Find value from row with flexible column name matching
+  const findValue = (row: any, possibleNames: string[]): any => {
+    const normalizedRow: Record<string, any> = {};
+    
+    // Create a normalized version of the row
+    Object.keys(row).forEach(key => {
+      normalizedRow[normalizeKey(key)] = row[key];
+    });
+
+    // Try to find a match
+    for (const name of possibleNames) {
+      const normalizedName = normalizeKey(name);
+      if (normalizedRow[normalizedName] !== undefined) {
+        return normalizedRow[normalizedName];
+      }
+    }
+    return undefined;
+  };
+
   const processImportData = (jsonData: any[]) => {
     const items: ImportedItem[] = jsonData.map((row: any) => {
-        const sku = String(row.SKU || row.sku || "").trim();
-        const quantity = parseFloat(row.Quantity || row.quantity || 0);
-        const costPrice = parseFloat(row["Cost Price"] || row.costPrice || row["Unit Price"] || 0);
+        // Use flexible column matching
+        const sku = String(findValue(row, ['SKU', 'sku', 'item_code', 'itemcode', 'code', 'item_sku']) || "").trim();
+        const quantity = parseFloat(findValue(row, ['Quantity', 'quantity', 'qty', 'amount', 'count']) || 0);
+        const costPrice = parseFloat(
+          findValue(row, ['Cost Price', 'costPrice', 'cost_price', 'Unit Price', 'unitPrice', 'unit_price', 'price', 'cost']) || 0
+        );
 
         let status: "valid" | "warning" | "error" = "valid";
         let message = "";
@@ -63,14 +90,14 @@ export const POItemImport = ({ onImport, existingSkus }: POItemImportProps) => {
 
         return {
           sku,
-          itemName: String(row["Item Name"] || row.itemName || row.name || ""),
-          description: String(row.Description || row.description || ""),
+          itemName: String(findValue(row, ['Item Name', 'itemName', 'item_name', 'name', 'product_name', 'productName']) || ""),
+          description: String(findValue(row, ['Description', 'description', 'desc', 'details']) || ""),
           quantity,
           costPrice,
-          color: String(row.Color || row.color || ""),
-          size: String(row.Size || row.size || ""),
-          modelNumber: String(row["Model Number"] || row.modelNumber || ""),
-          unit: String(row.Unit || row.unit || "pcs"),
+          color: String(findValue(row, ['Color', 'color', 'colour']) || ""),
+          size: String(findValue(row, ['Size', 'size']) || ""),
+          modelNumber: String(findValue(row, ['Model Number', 'modelNumber', 'model_number', 'model', 'item_number', 'itemNumber']) || ""),
+          unit: String(findValue(row, ['Unit', 'unit', 'uom', 'unit_of_measure']) || "pcs"),
           status,
         message,
       };
