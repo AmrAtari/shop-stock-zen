@@ -91,13 +91,13 @@ export const useAggregatedInventory = () => {
         throw stockError;
       }
 
-      // Fetch received quantities from purchase orders
-      const { data: receivedData, error: receivedError } = await supabase
+      // Fetch on-order quantities (ordered but not yet received) from purchase orders
+      const { data: onOrderData, error: onOrderError } = await supabase
         .from("purchase_order_items")
-        .select("item_id, received_quantity");
+        .select("item_id, quantity, received_quantity");
 
-      if (receivedError) {
-        console.error("Error fetching received quantities:", receivedError);
+      if (onOrderError) {
+        console.error("Error fetching on-order quantities:", onOrderError);
       }
 
       console.log("Raw items data:", itemsData?.length);
@@ -124,13 +124,14 @@ export const useAggregatedInventory = () => {
         return acc;
       }, {});
 
-      // Create a map of item_id to total received quantity
-      const receivedMap = (receivedData || []).reduce((acc: any, record: any) => {
+      // Create a map of item_id to total on-order quantity (quantity - received_quantity)
+      const onOrderMap = (onOrderData || []).reduce((acc: any, record: any) => {
         const itemId = record.item_id;
         if (!acc[itemId]) {
           acc[itemId] = 0;
         }
-        acc[itemId] += record.received_quantity || 0;
+        const onOrder = (record.quantity || 0) - (record.received_quantity || 0);
+        acc[itemId] += Math.max(0, onOrder); // Only count positive differences
         return acc;
       }, {});
 
@@ -149,7 +150,7 @@ export const useAggregatedInventory = () => {
         quantity: stockMap[item.id]?.total_quantity || 0,
         total_quantity: stockMap[item.id]?.total_quantity || 0,
         stores: stockMap[item.id]?.stores || [],
-        received_quantity: receivedMap[item.id] || 0,
+        on_order_quantity: onOrderMap[item.id] || 0,
       }));
 
       console.log("Final aggregated inventory:", result.length, "items");

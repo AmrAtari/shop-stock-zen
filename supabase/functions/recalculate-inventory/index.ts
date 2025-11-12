@@ -124,66 +124,48 @@ serve(async (req) => {
     console.warn(`Transaction-to-store mapping unavailable. Sales not deducted from inventory.`);
     console.warn(`To fix: Add store_id to transactions or cash_sessions table.`);
 
-    // Step 4: RESET all store_inventory quantities to 0 first
-    console.log("Resetting all store_inventory quantities to 0...");
+    // Step 4: Delete all existing store_inventory records
+    console.log("Deleting all existing store_inventory records...");
     
-    const { error: resetError } = await supabaseClient
+    const { error: deleteError } = await supabaseClient
       .from("store_inventory")
-      .update({ quantity: 0 })
-      .neq("id", "00000000-0000-0000-0000-000000000000"); // Update all rows
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000"); // Delete all rows
 
-    if (resetError) {
-      console.error("Error resetting inventory:", resetError);
+    if (deleteError) {
+      console.error("Error deleting inventory:", deleteError);
+      throw deleteError;
     }
 
-    // Step 5: Write calculated quantities back to store_inventory
-    console.log("Writing calculated quantities to store_inventory...");
+    // Step 5: Batch insert calculated quantities using upsert
+    console.log("Batch inserting calculated quantities to store_inventory...");
 
-    let updatedCount = 0;
-    let insertedCount = 0;
-
+    const insertRecords = [];
     for (const [key, calculatedQty] of inventoryMap.entries()) {
       const [itemId, storeId] = key.split("-");
-
-      // Check if record exists
-      const { data: existing } = await supabaseClient
-        .from("store_inventory")
-        .select("id, quantity")
-        .eq("item_id", itemId)
-        .eq("store_id", storeId)
-        .maybeSingle();
-
-      if (existing) {
-        // Update
-        const { error: updateErr } = await supabaseClient
-          .from("store_inventory")
-          .update({ quantity: calculatedQty })
-          .eq("id", existing.id);
-
-        if (updateErr) {
-          console.error(`Error updating ${key}:`, updateErr);
-        } else {
-          updatedCount++;
-        }
-      } else {
-        // Insert
-        const { error: insertErr } = await supabaseClient
-          .from("store_inventory")
-          .insert({
-            item_id: itemId,
-            store_id: storeId,
-            quantity: calculatedQty,
-          });
-
-        if (insertErr) {
-          console.error(`Error inserting ${key}:`, insertErr);
-        } else {
-          insertedCount++;
-        }
-      }
+      insertRecords.push({
+        item_id: itemId,
+        store_id: storeId,
+        quantity: calculatedQty,
+        last_restocked: new Date().toISOString(),
+      });
     }
 
-    console.log(`Recalculation complete. Updated: ${updatedCount}, Inserted: ${insertedCount}`);
+    let insertedCount = 0;
+    if (insertRecords.length > 0) {
+      const { error: insertErr, count } = await supabaseClient
+        .from("store_inventory")
+        .insert(insertRecords)
+        .select();
+
+      if (insertErr) {
+        console.error("Error batch inserting inventory:", insertErr);
+        throw insertErr;
+      }
+      insertedCount = insertRecords.length;
+    }
+
+    console.log(`Recalculation complete. Inserted: ${insertedCount}`);
 
     return new Response(
       JSON.stringify({
@@ -195,7 +177,6 @@ serve(async (req) => {
           poItemsProcessed: poItems.length,
           transfersProcessed: transfers.length,
           transactionsProcessed: transactions.length,
-          inventoryEntriesUpdated: updatedCount,
           inventoryEntriesInserted: insertedCount,
         },
         warnings: [

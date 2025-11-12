@@ -28,7 +28,7 @@ interface StoreStock {
 interface ItemWithStores extends Item {
   stores: StoreStock[];
   total_quantity: number;
-  received_quantity?: number; // Total received from POs
+  on_order_quantity?: number; // Items ordered but not yet received
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -320,7 +320,7 @@ const InventoryPage: React.FC = () => {
               <TableHead>Theme</TableHead>
               <TableHead>Unit</TableHead>
               <TableHead className="text-right">Stock Qty</TableHead>
-              <TableHead className="text-right">Received Qty</TableHead>
+              <TableHead className="text-right">On Order</TableHead>
               <TableHead className="text-right">Min Stock</TableHead>
               <TableHead className="text-right">Cost</TableHead>
               <TableHead className="text-right">Price</TableHead>
@@ -382,7 +382,7 @@ const InventoryPage: React.FC = () => {
                 </TableCell>
                 <TableCell className="text-right">
                   <Badge variant="outline" className="font-mono">
-                    {item.received_quantity || 0}
+                    {item.on_order_quantity || 0}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
