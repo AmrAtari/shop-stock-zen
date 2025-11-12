@@ -64,11 +64,12 @@ export const usePurchaseOrderDetail = (id: string) => {
 
       const purchaseOrder = po as PurchaseOrder;
 
-      // 3. Fetch the Purchase Order Items
+      const poKey = (purchaseOrder as any).po_id ?? numericId;
+      // 3. Fetch the Purchase Order Items using po.po_id linkage
       const { data: rawItems, error: itemsError } = await supabase
         .from("purchase_order_items")
         .select("*")
-        .eq("po_id", numericId)
+        .eq("po_id", poKey)
         .order("created_at", { ascending: true });
 
       if (itemsError) {
