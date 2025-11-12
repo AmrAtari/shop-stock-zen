@@ -43,7 +43,6 @@ const poSchema = z.object({
   billingAddress: z.string().optional(),
   shippingAddress: z.string().optional(),
   paymentTerms: z.string().default("Net 30"),
-  currency: z.string().default("USD"),
   shippingMethod: z.string().optional(),
   fobTerms: z.string().optional(),
   taxPercent: z.number().min(0).max(100).default(0),
@@ -127,7 +126,6 @@ const PurchaseOrderNew = () => {
     defaultValues: {
       orderDate: new Date(),
       paymentTerms: "Net 30",
-      currency: systemCurrency,
       taxPercent: 0,
       shippingCharges: 0,
       storeId: "", // Initialize required field
@@ -136,7 +134,6 @@ const PurchaseOrderNew = () => {
 
   const watchSupplier = watch("supplier");
   const watchBuyerAddress = watch("buyerAddress");
-  const watchCurrency = watch("currency");
   const watchTaxPercent = watch("taxPercent");
   const watchShippingCharges = watch("shippingCharges");
 
@@ -286,7 +283,7 @@ const PurchaseOrderNew = () => {
 
         supplier_contact_person: selectedSupplier?.contact_person,
         payment_terms: data.paymentTerms,
-        currency: data.currency,
+        currency: systemCurrency,
         shipping_method: data.shippingMethod,
         fob_terms: data.fobTerms,
         special_instructions: data.specialInstructions,
@@ -613,7 +610,7 @@ const PurchaseOrderNew = () => {
                               className="w-24"
                             />
                           </TableCell>
-                          <TableCell>{formatCurrency(item.quantity * item.costPrice, watchCurrency)}</TableCell>
+                          <TableCell>{formatCurrency(item.quantity * item.costPrice, systemCurrency)}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(index)}>
                               <Trash2 className="h-4 w-4" />
@@ -651,22 +648,6 @@ const PurchaseOrderNew = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="currency">Currency</Label>
-                <Select value={watchCurrency} onValueChange={(value) => setValue("currency", value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD ($)</SelectItem>
-                    <SelectItem value="EUR">EUR (€)</SelectItem>
-                    <SelectItem value="GBP">GBP (£)</SelectItem>
-                    <SelectItem value="AED">AED (د.إ)</SelectItem>
-                    <SelectItem value="SAR">SAR (﷼)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">System currency: {systemCurrency}</p>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="taxPercent">Tax %</Label>
                 <Input
                   type="number"
@@ -686,25 +667,25 @@ const PurchaseOrderNew = () => {
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span className="font-semibold">
-                  {formatCurrency(subtotal, watchCurrency)}
+                  {formatCurrency(subtotal, systemCurrency)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Tax ({watchTaxPercent}%):</span>
                 <span className="font-semibold">
-                  {formatCurrency(taxAmount, watchCurrency)}
+                  {formatCurrency(taxAmount, systemCurrency)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Shipping:</span>
                 <span className="font-semibold">
-                  {formatCurrency(watchShippingCharges || 0, watchCurrency)}
+                  {formatCurrency(watchShippingCharges || 0, systemCurrency)}
                 </span>
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-2">
                 <span>Grand Total:</span>
                 <span>
-                  {formatCurrency(grandTotal, watchCurrency)}
+                  {formatCurrency(grandTotal, systemCurrency)}
                 </span>
               </div>
             </div>
