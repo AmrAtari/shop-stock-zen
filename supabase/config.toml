@@ -2,3 +2,6 @@ project_id = "lxpaycvpgbadjwnsnhum"
 
 [functions.import-google-sheet]
 verify_jwt = false
+
+[functions.recalculate-inventory]
+verify_jwt = false
