@@ -365,7 +365,6 @@ const PurchaseOrderNew = () => {
 
           const row: any = {
             po_id: poId,
-            item_id: null as string | null, // explicit NULL by default
             sku: item.sku,
             item_name: item.itemName,
             item_description: item.itemDescription,
@@ -377,13 +376,21 @@ const PurchaseOrderNew = () => {
             cost_price: item.costPrice,
           };
 
+          // Only attach item_id when it's a valid UUID
           if (itemData?.id && isUuid(itemData.id)) {
-            row.item_id = itemData.id; // set only valid UUID
+            row.item_id = itemData.id;
           }
 
           return row;
         })
       );
+
+      // Extra safety: strip any invalid item_id values that might slip through
+      poItemsData.forEach((r: any) => {
+        if (typeof r.item_id === "string" && !isUuid(r.item_id)) {
+          delete r.item_id;
+        }
+      });
 
       console.log("PO items payload:", poItemsData);
 
