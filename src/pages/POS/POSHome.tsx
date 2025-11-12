@@ -1,6 +1,6 @@
 // src/pos/POSHome.tsx
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play } from "lucide-react";
+import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -493,6 +493,32 @@ const POSHome = () => {
                 </CardContent>
               </Card>
             )}
+
+            {/* Keyboard Shortcuts */}
+            <Card className="border-2 border-primary/20">
+              <CardHeader className="bg-primary/5 border-b border-primary/10">
+                <CardTitle className="text-sm text-primary flex items-center gap-2">
+                  <Keyboard className="h-4 w-4" />
+                  Keyboard Shortcuts
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Hold Transaction</span>
+                    <kbd className="px-2 py-1 text-xs font-semibold bg-muted border border-border rounded">F2</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Process Payment</span>
+                    <kbd className="px-2 py-1 text-xs font-semibold bg-muted border border-border rounded">Ctrl + P</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Clear Cart</span>
+                    <kbd className="px-2 py-1 text-xs font-semibold bg-muted border border-border rounded">ESC</kbd>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
