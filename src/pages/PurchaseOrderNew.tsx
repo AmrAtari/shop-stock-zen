@@ -354,45 +354,19 @@ const PurchaseOrderNew = () => {
         );
       }
 
-      // Create PO items, using the confirmed PO ID and lookup item_id from items table
-      const poItemsData = await Promise.all(
-        poItems.map(async (item) => {
-          const { data: itemData } = await supabase
-            .from("items")
-            .select("id")
-            .eq("sku", item.sku)
-            .maybeSingle();
-
-          const row: any = {
-            po_id: poId,
-            sku: item.sku,
-            item_name: item.itemName,
-            item_description: item.itemDescription,
-            color: item.color,
-            size: item.size,
-            model_number: item.modelNumber,
-            unit: item.unit,
-            quantity: item.quantity,
-            cost_price: item.costPrice,
-          };
-
-          // Only attach item_id when it's a valid UUID
-          if (itemData?.id && isUuid(itemData.id)) {
-            row.item_id = itemData.id;
-          }
-
-          return row;
-        })
-      );
-
-      // Extra safety: strip any invalid item_id values that might slip through
-      poItemsData.forEach((r: any) => {
-        if (typeof r.item_id === "string" && !isUuid(r.item_id)) {
-          delete r.item_id;
-        }
-      });
-
-      console.log("PO items payload:", poItemsData);
+      // Create PO items without linking to items table (item_id left NULL by design)
+      const poItemsData = poItems.map((item) => ({
+        po_id: poId,
+        sku: item.sku,
+        item_name: item.itemName,
+        item_description: item.itemDescription,
+        color: item.color,
+        size: item.size,
+        model_number: item.modelNumber,
+        unit: item.unit,
+        quantity: item.quantity,
+        cost_price: item.costPrice,
+      }));
 
       const { error: itemsError } = await supabase.from("purchase_order_items").insert(poItemsData);
 
