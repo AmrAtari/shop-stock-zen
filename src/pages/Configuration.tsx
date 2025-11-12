@@ -158,7 +158,7 @@ const useSystemSettings = () => {
   // Fetch dynamic lists from pre-defined Supabase tables
   const reloadDynamicLists = useCallback(async () => {
     try {
-      const { data: currencies, error: currError } = await supabase.from("currencies").select("id, name, created_at");
+      const { data: currencies, error: currError } = await supabase.from("currency_").select("id, name, created_at");
       const { data: units, error: unitError } = await supabase.from("units").select("id, name, created_at");
 
       if (currError || unitError) throw new Error("Failed to load dynamic lists.");
@@ -177,14 +177,14 @@ const useSystemSettings = () => {
   // Fetch general settings from a single row configuration table
   const loadGeneralSettings = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from("system_settings").select("*").single();
-      if (error && error.code !== "PGRST116") throw error; // PGRST116 is "No rows found"
+      const { data, error } = await supabase.from("system_settings").select("*").maybeSingle();
+      if (error) throw error;
 
       if (data) {
         setGeneralSettings({
-          currency: data.default_currency || "USD",
+          currency: data.currency || "USD",
           defaultTaxRate: data.default_tax_rate?.toString() || "5.0",
-          defaultUnit: data.default_unit || "kg",
+          defaultUnit: data.default_unit || "pcs",
           lowStockThreshold: data.low_stock_threshold || 5,
           enableAuditLog: data.enable_audit_log || false,
           require2FA: data.require_2fa || false,
@@ -211,22 +211,39 @@ const useSystemSettings = () => {
   const handleSaveGeneralSettings = async () => {
     setIsSavingSettings(true);
     try {
-      // Upsert (insert or update) the single row
-      const { error } = await supabase.from("system_settings").upsert(
-        {
-          id: 1, // Assuming a single config row with ID 1
-          default_currency: generalSettings.currency,
+      // Get the current settings row
+      const { data: currentSettings } = await supabase
+        .from("system_settings")
+        .select("id")
+        .maybeSingle();
+
+      if (!currentSettings) {
+        toast({ 
+          title: "Error", 
+          description: "No system settings found. Please contact administrator.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      // Update the existing row
+      const { error } = await supabase
+        .from("system_settings")
+        .update({
+          currency: generalSettings.currency,
           default_tax_rate: parseFloat(generalSettings.defaultTaxRate),
           default_unit: generalSettings.defaultUnit,
           low_stock_threshold: generalSettings.lowStockThreshold,
           enable_audit_log: generalSettings.enableAuditLog,
           require_2fa: generalSettings.require2FA,
-        },
-        { onConflict: "id" },
-      );
+        })
+        .eq("id", currentSettings.id);
 
       if (error) throw error;
-      toast({ title: "Success", description: "System Defaults saved to database.", variant: "default" });
+      toast({ title: "Success", description: "System settings saved successfully!", variant: "default" });
+      
+      // Reload to confirm
+      await loadGeneralSettings();
     } catch (error: any) {
       toast({ title: "Save Failed", description: error.message, variant: "destructive" });
     } finally {

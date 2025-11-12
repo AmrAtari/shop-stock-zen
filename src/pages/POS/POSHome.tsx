@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { usePOS } from "./POSContext";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 type Product = {
   id: string;
@@ -32,6 +33,7 @@ type CartItem = Product & {
 const POSHome = () => {
   const queryClient = useQueryClient();
   const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold, removeHold, holds } = usePOS();
+  const { formatCurrency } = useSystemSettings();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -374,7 +376,7 @@ const POSHome = () => {
 
                           <div className="text-right min-w-[80px]">
                             <div className="text-lg font-bold text-foreground">
-                              ${(it.price * it.cartQuantity).toFixed(2)}
+                              {formatCurrency(it.price * it.cartQuantity)}
                             </div>
                           </div>
 
@@ -420,7 +422,7 @@ const POSHome = () => {
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-semibold text-foreground">${subtotal.toFixed(2)}</span>
+                    <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
                   </div>
 
                   {(itemDiscountTotal > 0 || globalDiscountAmount > 0) && (
@@ -428,13 +430,13 @@ const POSHome = () => {
                       {itemDiscountTotal > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Item Discounts</span>
-                          <span className="font-semibold text-success">-${itemDiscountTotal.toFixed(2)}</span>
+                          <span className="font-semibold text-success">-{formatCurrency(itemDiscountTotal)}</span>
                         </div>
                       )}
                       {globalDiscountAmount > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Global Discount</span>
-                          <span className="font-semibold text-success">-${globalDiscountAmount.toFixed(2)}</span>
+                          <span className="font-semibold text-success">-{formatCurrency(globalDiscountAmount)}</span>
                         </div>
                       )}
                     </>
@@ -445,7 +447,7 @@ const POSHome = () => {
                   <div className="bg-primary/10 p-4 rounded-lg">
                     <div className="flex justify-between items-center">
                       <span className="text-base font-semibold text-foreground">Total</span>
-                      <span className="text-2xl font-bold text-primary">${total.toFixed(2)}</span>
+                      <span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
                     </div>
                   </div>
                 </div>
@@ -511,7 +513,7 @@ const POSHome = () => {
                   <div className="text-xs text-muted-foreground">Transaction ID</div>
                   <div className="font-mono text-sm font-semibold">{lastTransaction?.transactionId}</div>
                   <div className="text-xs text-muted-foreground mt-2">Total Amount</div>
-                  <div className="text-lg font-bold text-success">${lastTransaction?.total?.toFixed?.(2)}</div>
+                  <div className="text-lg font-bold text-success">{formatCurrency(lastTransaction?.total || 0)}</div>
                   <Button size="sm" variant="outline" className="w-full mt-3" onClick={() => setShowPaymentDialog(true)}>
                     <ReceiptIcon className="h-3 w-3 mr-2" />
                     Reprint Receipt
