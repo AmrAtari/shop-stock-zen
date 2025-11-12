@@ -26,6 +26,7 @@ import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
 import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
+import InventoryRecalculate from "./pages/InventoryRecalculate";
 
 // Accounting
 import AccountingDashboard from "./pages/accounting/AccountingDashboard";
@@ -172,6 +173,16 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <Layout>
                     <PhysicalInventoryDetail />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/inventory/recalculate"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <InventoryRecalculate />
                   </Layout>
                 </ProtectedRoute>
               }

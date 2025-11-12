@@ -24,21 +24,26 @@ export const POSSessionControl = () => {
   const [open, setOpen] = useState(false);
   const [cashierInput, setCashierInput] = useState("");
   const [startCashInput, setStartCashInput] = useState("0");
+  const [storeInput, setStoreInput] = useState("");
 
   const handleOpenSession = async () => {
     const startCash = parseFloat(startCashInput);
     if (!cashierInput) {
       return toast.error("Cashier ID is required.");
     }
+    if (!storeInput) {
+      return toast.error("Store ID is required.");
+    }
     if (isNaN(startCash) || startCash < 0) {
       return toast.error("Starting cash must be a valid non-negative number.");
     }
 
     try {
-      await openSession(cashierInput, startCash);
+      await openSession(cashierInput, startCash, storeInput);
       setOpen(false); // Close modal on success
       setCashierInput("");
       setStartCashInput("0");
+      setStoreInput("");
     } catch (error) {
       // Error handling is assumed to be handled within usePOS/POSContext
     }
@@ -98,6 +103,18 @@ export const POSSessionControl = () => {
               className="col-span-3"
               placeholder="0.00"
               min="0"
+            />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="storeId" className="text-right">
+              Store ID
+            </Label>
+            <Input
+              id="storeId"
+              value={storeInput}
+              onChange={(e) => setStoreInput(e.target.value)}
+              className="col-span-3"
+              placeholder="e.g., store UUID or leave for default"
             />
           </div>
         </div>

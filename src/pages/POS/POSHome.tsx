@@ -32,7 +32,7 @@ type CartItem = Product & {
 
 const POSHome = () => {
   const queryClient = useQueryClient();
-  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold, removeHold, holds } = usePOS();
+  const { sessionId, cashierId, storeId, openSession, isSessionOpen, saveHold, resumeHold, removeHold, holds } = usePOS();
   const { formatCurrency } = useSystemSettings();
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -203,10 +203,39 @@ const POSHome = () => {
 
       if (saleError) throw saleError;
 
-      // TODO: Update store_inventory instead of items table
-      // POS needs to track which store it's operating from to update the correct store_inventory record
-      // For now, skipping inventory updates to prevent double-counting
-      console.warn("POS inventory updates disabled - requires store context implementation");
+      // Update store_inventory - decrement quantities for the active store
+      if (storeId) {
+        for (const item of cart) {
+          const { data: existingStock, error: fetchErr } = await supabase
+            .from("store_inventory")
+            .select("quantity")
+            .eq("item_id", item.id)
+            .eq("store_id", storeId)
+            .maybeSingle();
+
+          if (fetchErr) {
+            console.error("Error fetching store inventory:", fetchErr);
+            continue;
+          }
+
+          const prevQty = existingStock?.quantity || 0;
+          const newQty = prevQty - item.cartQuantity;
+
+          if (existingStock) {
+            const { error: updateErr } = await supabase
+              .from("store_inventory")
+              .update({ quantity: newQty })
+              .eq("item_id", item.id)
+              .eq("store_id", storeId);
+
+            if (updateErr) {
+              console.error("Error updating store inventory:", updateErr);
+            } else {
+              console.log(`Decremented ${item.sku} by ${item.cartQuantity} at store ${storeId}`);
+            }
+          }
+        }
+      }
 
       // show receipt
       setLastTransaction({
@@ -245,7 +274,11 @@ const POSHome = () => {
     const startCashStr = prompt("Start cash amount:", "0");
     const startCash = parseFloat(startCashStr || "0");
     if (!cashier) return toast.error("Cashier required");
-    await openSession(cashier, startCash);
+    
+    // For now, use a hardcoded store - in production this should be a proper store selector
+    const store = prompt("Enter store ID (leave empty for default):");
+    const defaultStore = "d0223c13-45d0-46c5-b737-3ded952b24cb"; // Hebron Store as default
+    await openSession(cashier, startCash, store || defaultStore);
   };
 
   return (

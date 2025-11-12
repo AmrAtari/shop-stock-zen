@@ -21,7 +21,8 @@ interface CartItem {
 interface POSContextValue {
   sessionId: string | null;
   cashierId: string | null;
-  openSession: (cashierId: string, startCash: number) => Promise<void>;
+  storeId: string | null;
+  openSession: (cashierId: string, startCash: number, storeId: string) => Promise<void>;
   closeSession: (endCash: number, notes?: string) => Promise<void>;
   isSessionOpen: boolean;
   holds: Record<string, CartItem[]>; // id => cart
@@ -35,6 +36,7 @@ const POSContext = createContext<POSContextValue | undefined>(undefined);
 export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [cashierId, setCashierId] = useState<string | null>(null);
+  const [storeId, setStoreId] = useState<string | null>(null);
   const [isSessionOpen, setIsSessionOpen] = useState(false);
   // Holds state is initialized by loading from localStorage
   const [holds, setHolds] = useState<Record<string, CartItem[]>>(() => {
@@ -48,14 +50,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Optionally load last open session from localStorage
     const s = localStorage.getItem("pos-session-id");
     const c = localStorage.getItem("pos-cashier-id");
-    if (s && c) {
+    const st = localStorage.getItem("pos-store-id");
+    if (s && c && st) {
       setSessionId(s);
       setCashierId(c);
+      setStoreId(st);
       setIsSessionOpen(true);
     }
   }, []);
 
-  const openSession = async (cashierId: string, startCash: number) => {
+  const openSession = async (cashierId: string, startCash: number, storeId: string) => {
     try {
       // 1. Check for existing open session for this cashier
       const { data: existingSessions, error: fetchError } = await supabase
@@ -71,9 +75,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const existingSessionId = existingSessions[0].id;
         setSessionId(existingSessionId);
         setCashierId(cashierId);
+        setStoreId(storeId);
         setIsSessionOpen(true);
         localStorage.setItem("pos-session-id", existingSessionId);
         localStorage.setItem("pos-cashier-id", cashierId);
+        localStorage.setItem("pos-store-id", storeId);
         toast.success(`Resumed existing session: ${existingSessionId}`);
         return;
       }
@@ -91,9 +97,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setSessionId(newSessionId);
       setCashierId(cashierId);
+      setStoreId(storeId);
       setIsSessionOpen(true);
       localStorage.setItem("pos-session-id", newSessionId);
       localStorage.setItem("pos-cashier-id", cashierId);
+      localStorage.setItem("pos-store-id", storeId);
       toast.success(`Session opened: ${newSessionId}`);
     } catch (err: any) {
       console.error(err);
@@ -118,9 +126,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       toast.success("Session closed");
       setSessionId(null);
       setCashierId(null);
+      setStoreId(null);
       setIsSessionOpen(false);
       localStorage.removeItem("pos-session-id");
       localStorage.removeItem("pos-cashier-id");
+      localStorage.removeItem("pos-store-id");
     } catch (err: any) {
       console.error(err);
       toast.error("Failed to close session");
@@ -160,6 +170,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         sessionId,
         cashierId,
+        storeId,
         openSession,
         closeSession,
         isSessionOpen,

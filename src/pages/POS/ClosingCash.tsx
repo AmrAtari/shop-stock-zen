@@ -31,7 +31,9 @@ const ClosingCash = () => {
     const cashier = prompt("cashier id:");
     if (!cashier) return toast.error("Cashier required");
     const start = parseFloat(prompt("Start cash amount", "0") || "0");
-    await openSession(cashier, start);
+    const store = prompt("Store ID (leave empty for default):");
+    const defaultStore = "d0223c13-45d0-46c5-b737-3ded952b24cb"; // Hebron Store
+    await openSession(cashier, start, store || defaultStore);
   };
 
   const handleClose = async () => {
