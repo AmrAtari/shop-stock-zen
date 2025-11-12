@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Eye, Printer, Trash2, Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Plus, Eye, Printer, Trash2, Calendar as CalendarIcon, Loader2, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,6 +31,7 @@ const PurchaseOrders = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   // Data Fetching: usePurchaseOrders fetches the filtered list
   const { data: purchaseOrders = [], isLoading } = usePurchaseOrders(searchTerm, statusFilter, dateRange);
@@ -91,6 +92,26 @@ const PurchaseOrders = () => {
     }
   };
 
+  const handleRecalculate = async () => {
+    setIsRecalculating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("recalculate-inventory", {
+        body: {},
+      });
+
+      if (error) throw error;
+
+      toast.success("Inventory recalculated successfully");
+      await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      await queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
+    } catch (error: any) {
+      console.error("Recalculation error:", error);
+      toast.error(error.message || "Failed to recalculate inventory");
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -98,10 +119,29 @@ const PurchaseOrders = () => {
           <h1 className="text-3xl font-bold">Purchase Orders</h1>
           <p className="text-muted-foreground mt-1">Manage your purchase orders</p>
         </div>
-        <Button onClick={() => navigate("/purchase-orders/new")}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Purchase Order
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleRecalculate} 
+            disabled={isRecalculating}
+            variant="outline"
+          >
+            {isRecalculating ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Recalculating...
+              </>
+            ) : (
+              <>
+                <Calculator className="w-4 h-4 mr-2" />
+                Recalculate Inventory
+              </>
+            )}
+          </Button>
+          <Button onClick={() => navigate("/purchase-orders/new")}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Purchase Order
+          </Button>
+        </div>
       </div>
 
       <Card>
