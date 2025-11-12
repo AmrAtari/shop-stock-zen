@@ -235,185 +235,265 @@ const POSHome = () => {
   };
 
   return (
-    <div className="container mx-auto p-4 max-w-6xl">
-      <header className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <ShoppingCart className="h-8 w-8" />
-          <div>
-            <h1 className="text-2xl font-bold">POS</h1>
-            <p className="text-sm text-muted-foreground">Cashier workflows, refunds, and closing</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-muted/30">
+      {/* Professional Header Bar */}
+      <header className="bg-card border-b border-border sticky top-0 z-10 shadow-sm">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="bg-primary/10 p-2.5 rounded-lg">
+                <ShoppingCart className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-foreground">Point of Sale</h1>
+                <p className="text-sm text-muted-foreground">Fast checkout & transaction management</p>
+              </div>
+            </div>
 
-        <div className="flex gap-2 items-center">
-          {!isSessionOpen ? (
-            <Button onClick={quickOpenSession}>Open Session</Button>
-          ) : (
-            <Button onClick={() => toast.success("Session active")} variant="outline">
-              Session Active
-            </Button>
-          )}
-          <Button onClick={() => window.location.assign("/pos/receipts")}>Receipts</Button>
-          <Button onClick={() => window.location.assign("/pos/refunds")} variant="ghost">
-            Refunds
-          </Button>
+            <div className="flex gap-3 items-center">
+              {!isSessionOpen ? (
+                <Button onClick={quickOpenSession} size="lg" className="font-semibold">
+                  Open Session
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 bg-success/10 text-success px-4 py-2 rounded-lg border border-success/20">
+                  <div className="h-2 w-2 bg-success rounded-full animate-pulse" />
+                  <span className="text-sm font-medium">Session Active</span>
+                </div>
+              )}
+              <Button onClick={() => window.location.assign("/pos/receipts")} variant="outline" size="lg">
+                <ReceiptIcon className="h-4 w-4 mr-2" />
+                Receipts
+              </Button>
+              <Button onClick={() => window.location.assign("/pos/closing")} variant="outline" size="lg">
+                Close Session
+              </Button>
+            </div>
+          </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* left: scanner + product list */}
-        <div className="lg:col-span-2 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Add items (scan or search)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoadingProducts ? (
-                <div className="py-8 text-center">
-                  <Loader2 className="animate-spin h-6 w-6" />
-                </div>
-              ) : (
-                <POSBarcodeInput products={products} onProductSelect={(p) => handleProductSelect(p)} />
-              )}
-            </CardContent>
-          </Card>
-
-          {cart.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Cart ({cart.length} items)</CardTitle>
+      <div className="container mx-auto px-6 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Panel - Product Selection & Cart */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Barcode Scanner Section */}
+            <Card className="border-2">
+              <CardHeader className="bg-muted/50 border-b">
+                <CardTitle className="text-lg">Product Scanner</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {cart.map((it) => (
-                    <div key={it.id} className="flex items-center justify-between p-2 bg-muted/40 rounded">
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{it.name}</div>
-                        <div className="text-sm text-muted-foreground">SKU: {it.sku}</div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          className="w-16 text-center"
-                          value={it.cartQuantity}
-                          min={1}
-                          max={it.quantity}
-                          onChange={(e) => updateCartQty(it.id, parseInt(e.target.value || "0"))}
-                        />
-
-                        <div className="flex flex-col items-end">
-                          <div className="font-semibold">${(it.price * it.cartQuantity).toFixed(2)}</div>
-                          <div className="text-xs text-muted-foreground">${it.price.toFixed(2)} each</div>
-                        </div>
-
-                        <Button variant="ghost" size="icon" onClick={() => removeFromCart(it.id)}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      {/* per-item discount quick controls (small) */}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <Button onClick={createHold}>Hold (F2)</Button>
-                  <Button variant="outline" onClick={() => setCart([])}>
-                    Clear
-                  </Button>
-                </div>
-
-                {Object.keys((window as any).posHolds || {}).length > 0 && (
-                  <div className="mt-2">
-                    <h4 className="text-sm font-medium">Holds</h4>
-                    {/* Render holds from localStorage */}
+              <CardContent className="pt-6">
+                {isLoadingProducts ? (
+                  <div className="py-12 text-center">
+                    <Loader2 className="animate-spin h-8 w-8 text-primary mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">Loading products...</p>
                   </div>
+                ) : (
+                  <POSBarcodeInput products={products} onProductSelect={(p) => handleProductSelect(p)} />
                 )}
               </CardContent>
             </Card>
-          )}
-        </div>
 
-        {/* right: summary & payment */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
-              </div>
+            {/* Shopping Cart */}
+            {cart.length > 0 ? (
+              <Card className="border-2">
+                <CardHeader className="bg-muted/50 border-b">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">Shopping Cart</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-semibold">
+                        {cart.length} {cart.length === 1 ? 'item' : 'items'}
+                      </span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="space-y-2 max-h-[450px] overflow-y-auto pr-2">
+                    {cart.map((it) => (
+                      <div key={it.id} className="flex items-center gap-4 p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-foreground truncate">{it.name}</h4>
+                          <p className="text-sm text-muted-foreground">SKU: {it.sku}</p>
+                          <p className="text-xs text-muted-foreground mt-1">${it.price.toFixed(2)} × {it.cartQuantity}</p>
+                        </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs text-muted-foreground">Global Discount</div>
-                  <div className="flex gap-2 mt-1">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 bg-muted px-3 py-2 rounded-lg">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-7 w-7 p-0"
+                              onClick={() => updateCartQty(it.id, it.cartQuantity - 1)}
+                            >
+                              -
+                            </Button>
+                            <Input
+                              type="number"
+                              className="w-16 h-8 text-center font-semibold"
+                              value={it.cartQuantity}
+                              min={1}
+                              max={it.quantity}
+                              onChange={(e) => updateCartQty(it.id, parseInt(e.target.value || "0"))}
+                            />
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-7 w-7 p-0"
+                              onClick={() => updateCartQty(it.id, it.cartQuantity + 1)}
+                              disabled={it.cartQuantity >= it.quantity}
+                            >
+                              +
+                            </Button>
+                          </div>
+
+                          <div className="text-right min-w-[80px]">
+                            <div className="text-lg font-bold text-foreground">
+                              ${(it.price * it.cartQuantity).toFixed(2)}
+                            </div>
+                          </div>
+
+                          <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => removeFromCart(it.id)}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t flex gap-3">
+                    <Button onClick={createHold} variant="outline" className="flex-1">
+                      <PauseCircle className="h-4 w-4 mr-2" />
+                      Hold (F2)
+                    </Button>
+                    <Button variant="outline" onClick={() => setCart([])} className="flex-1">
+                      <X className="h-4 w-4 mr-2" />
+                      Clear Cart
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-2 border-dashed">
+                <CardContent className="py-16 text-center">
+                  <ShoppingCart className="h-16 w-16 text-muted-foreground/40 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-muted-foreground mb-2">Cart is Empty</h3>
+                  <p className="text-sm text-muted-foreground">Scan or search for products to add them to the cart</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Right Panel - Order Summary & Payment */}
+          <div className="space-y-6">
+            {/* Order Summary */}
+            <Card className="border-2">
+              <CardHeader className="bg-muted/50 border-b">
+                <CardTitle className="text-lg">Order Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-semibold text-foreground">${subtotal.toFixed(2)}</span>
+                  </div>
+
+                  {(itemDiscountTotal > 0 || globalDiscountAmount > 0) && (
+                    <>
+                      {itemDiscountTotal > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Item Discounts</span>
+                          <span className="font-semibold text-success">-${itemDiscountTotal.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {globalDiscountAmount > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Global Discount</span>
+                          <span className="font-semibold text-success">-${globalDiscountAmount.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t">
+                  <div className="bg-primary/10 p-4 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="text-base font-semibold text-foreground">Total</span>
+                      <span className="text-2xl font-bold text-primary">${total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Discount Controls */}
+                <div className="pt-3 border-t space-y-3">
+                  <label className="text-sm font-medium text-foreground">Apply Discount</label>
+                  <div className="flex gap-2">
                     <select
                       value={globalDiscountType}
                       onChange={(e) => setGlobalDiscountType(e.target.value as any)}
-                      className="rounded border px-2 py-1"
+                      className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                     >
-                      <option value="fixed">Fixed</option>
-                      <option value="percent">Percent</option>
+                      <option value="fixed">$ Fixed</option>
+                      <option value="percent">% Percent</option>
                     </select>
 
                     <Input
                       type="number"
-                      className="w-28"
-                      value={globalDiscountValue}
+                      placeholder="0"
+                      className="flex-1"
+                      value={globalDiscountValue || ""}
                       onChange={(e) => setGlobalDiscountValue(parseFloat(e.target.value || "0"))}
                     />
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div>Item discounts: ${itemDiscountTotal.toFixed(2)}</div>
-                  <div>Global: ${globalDiscountAmount.toFixed(2)}</div>
+                {/* Payment Button */}
+                <div className="pt-4">
+                  <Button 
+                    disabled={!cart.length || !isSessionOpen} 
+                    onClick={() => setShowPaymentDialog(true)}
+                    size="lg"
+                    className="w-full text-base font-semibold"
+                  >
+                    {!isSessionOpen ? 'Open Session to Continue' : 'Process Payment'}
+                  </Button>
                 </div>
-              </div>
 
-              <hr />
-              <div className="flex justify-between text-xl font-bold">
-                <span>Total</span>
-                <span>${total.toFixed(2)}</span>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button disabled={!cart.length} onClick={() => setShowPaymentDialog(true)}>
-                  Pay
-                </Button>
-                <Button variant="outline" onClick={() => window.location.assign("/pos/closing")}>
-                  Close Session
-                </Button>
-                <Button variant="ghost" onClick={() => window.location.assign("/pos/receipts")}>
-                  Receipts
-                </Button>
-                <Button variant="destructive" onClick={() => window.location.assign("/pos/refunds")}>
-                  Refunds
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {lastTransaction && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Last Transaction</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div>ID: {lastTransaction?.transactionId}</div>
-                <div>Total: ${lastTransaction?.total?.toFixed?.(2)}</div>
-                <div className="mt-2">
-                  <Button size="sm" variant="outline" onClick={() => setShowPaymentDialog(true)}>
-                    Reprint
+                {/* Quick Actions */}
+                <div className="pt-2 grid grid-cols-2 gap-2">
+                  <Button variant="outline" onClick={() => window.location.assign("/pos/refunds")} size="sm">
+                    Refunds
+                  </Button>
+                  <Button variant="outline" onClick={() => window.location.assign("/pos/receipts")} size="sm">
+                    <ReceiptIcon className="h-4 w-4 mr-1" />
+                    History
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          )}
+
+            {/* Last Transaction */}
+            {lastTransaction && (
+              <Card className="border-2 border-success/20 bg-success/5">
+                <CardHeader className="bg-success/10 border-b border-success/20">
+                  <CardTitle className="text-base text-success flex items-center gap-2">
+                    <ReceiptIcon className="h-4 w-4" />
+                    Last Transaction
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-2">
+                  <div className="text-xs text-muted-foreground">Transaction ID</div>
+                  <div className="font-mono text-sm font-semibold">{lastTransaction?.transactionId}</div>
+                  <div className="text-xs text-muted-foreground mt-2">Total Amount</div>
+                  <div className="text-lg font-bold text-success">${lastTransaction?.total?.toFixed?.(2)}</div>
+                  <Button size="sm" variant="outline" className="w-full mt-3" onClick={() => setShowPaymentDialog(true)}>
+                    <ReceiptIcon className="h-3 w-3 mr-2" />
+                    Reprint Receipt
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
 
