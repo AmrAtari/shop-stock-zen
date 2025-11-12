@@ -1,15 +1,17 @@
 // src/pos/POSHome.tsx
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard } from "lucide-react";
+import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { POSBarcodeInput } from "@/components/POSBarcodeInput";
 import { POSPaymentDialog } from "@/components/POSPaymentDialog";
 import { POSReceipt } from "@/components/POSReceipt";
+import { POSHoldsSidebar } from "@/components/POSHoldsSidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { usePOS } from "./POSContext";
 
 type Product = {
@@ -29,14 +31,14 @@ type CartItem = Product & {
 
 const POSHome = () => {
   const queryClient = useQueryClient();
-  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold, removeHold } = usePOS();
+  const { sessionId, cashierId, openSession, isSessionOpen, saveHold, resumeHold, removeHold, holds } = usePOS();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [lastTransaction, setLastTransaction] = useState<any | null>(null);
   const [globalDiscountType, setGlobalDiscountType] = useState<"fixed" | "percent">("fixed");
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
-  const [holdsList, setHoldsList] = useState<string[]>([]);
+  const [showHoldsSidebar, setShowHoldsSidebar] = useState(false);
 
   // Fetch products
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
@@ -87,10 +89,14 @@ const POSHome = () => {
 
   // Hold / Resume
   const createHold = () => {
+    if (cart.length === 0) {
+      toast.error("Cart is empty");
+      return;
+    }
     const id = `H-${Date.now()}`;
     saveHold(id, cart);
-    setHoldsList((h) => [id, ...h]);
     setCart([]);
+    toast.success("Transaction held");
   };
 
   const resumeHoldById = (id: string) => {
@@ -98,10 +104,16 @@ const POSHome = () => {
     if (held) {
       setCart(held);
       removeHold(id);
-      setHoldsList((h) => h.filter((x) => x !== id));
+      setShowHoldsSidebar(false);
+      toast.success("Transaction resumed");
     } else {
       toast.error("Hold not found");
     }
+  };
+
+  const deleteHoldById = (id: string) => {
+    removeHold(id);
+    toast.success("Hold deleted");
   };
 
   // Discounts
@@ -261,6 +273,20 @@ const POSHome = () => {
                   <span className="text-sm font-medium">Session Active</span>
                 </div>
               )}
+              <Button 
+                onClick={() => setShowHoldsSidebar(true)} 
+                variant="outline" 
+                size="lg"
+                className="relative"
+              >
+                <Clock className="h-4 w-4 mr-2" />
+                Holds
+                {Object.keys(holds).length > 0 && (
+                  <Badge className="ml-2 px-2 py-0 h-5 bg-primary">
+                    {Object.keys(holds).length}
+                  </Badge>
+                )}
+              </Button>
               <Button onClick={() => window.location.assign("/pos/receipts")} variant="outline" size="lg">
                 <ReceiptIcon className="h-4 w-4 mr-2" />
                 Receipts
@@ -542,6 +568,14 @@ const POSHome = () => {
           transactionId={lastTransaction.transactionId}
         />
       )}
+
+      <POSHoldsSidebar
+        holds={holds}
+        onResumeHold={resumeHoldById}
+        onDeleteHold={deleteHoldById}
+        isOpen={showHoldsSidebar}
+        onClose={() => setShowHoldsSidebar(false)}
+      />
     </div>
   );
 };
