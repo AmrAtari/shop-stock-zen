@@ -365,6 +365,7 @@ const PurchaseOrderNew = () => {
 
           const row: any = {
             po_id: poId,
+            item_id: null, // default to NULL; only set when valid UUID exists
             sku: item.sku,
             item_name: item.itemName,
             item_description: item.itemDescription,

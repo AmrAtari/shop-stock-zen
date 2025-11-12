@@ -46,11 +46,12 @@ export const usePurchaseOrderDetail = (id: string) => {
   return useQuery({
     queryKey: queryKeys.purchaseOrders.detail(id),
     queryFn: async () => {
+      const numericId = parseInt(id, 10);
       // 1. Fetch the Purchase Order record with store join (now that FK exists)
       const { data: po, error: poError } = await supabase
         .from("purchase_orders")
         .select("*, stores(name)")
-        .eq("id", id)
+        .eq("id", numericId)
         .maybeSingle();
 
       if (poError) {
@@ -63,11 +64,11 @@ export const usePurchaseOrderDetail = (id: string) => {
 
       const purchaseOrder = po as PurchaseOrder;
 
-      // 3. Fetch the Purchase Order Items (using raw items as resolution logic is complex)
+      // 3. Fetch the Purchase Order Items
       const { data: rawItems, error: itemsError } = await supabase
         .from("purchase_order_items")
         .select("*")
-        .eq("po_id", id)
+        .eq("po_id", numericId)
         .order("created_at", { ascending: true });
 
       if (itemsError) {
