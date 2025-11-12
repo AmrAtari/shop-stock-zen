@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Search, Receipt, TrendingDown, ArrowRightLeft, BarChart2, Target, DollarSign } from "lucide-react";
+import { Download, Search, Receipt, TrendingDown, ArrowRightLeft, BarChart2, Target, DollarSign, History } from "lucide-react";
 import { useReportsData } from "@/hooks/useReportsData";
 import { formatCurrency, formatNumber, formatPercentage } from "@/lib/formatters";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
@@ -16,9 +16,11 @@ interface ReportsExtendedProps {
   selectedStore: string;
   selectedCategory: string;
   selectedBrand: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
-const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selectedBrand }: ReportsExtendedProps) => {
+const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selectedBrand, dateFrom, dateTo }: ReportsExtendedProps) => {
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
   const { 
@@ -28,7 +30,8 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     stockMovementReport,
     inventoryTurnoverReport,
     profitMarginReport,
-  } = useReportsData();
+    itemLifecycleReport,
+  } = useReportsData(dateFrom, dateTo);
 
   // Filter POS Receipts
   const filteredReceipts = useMemo(() => {
@@ -97,6 +100,18 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [profitMarginReport, searchTerm, selectedCategory, selectedBrand]);
 
+  // Filter Item Lifecycle
+  const filteredItemLifecycle = useMemo(() => {
+    return itemLifecycleReport.filter((item: any) => {
+      const matchesSearch = item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           item.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           item.model_number?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
+      const matchesBrand = selectedBrand === "all" || item.brand === selectedBrand;
+      return matchesSearch && matchesCategory && matchesBrand;
+    });
+  }, [itemLifecycleReport, searchTerm, selectedCategory, selectedBrand]);
+
   const exportToCSV = (data: any[], filename: string) => {
     if (data.length === 0) return;
     
@@ -120,7 +135,7 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
 
   return (
     <Tabs defaultValue="receipts" className="space-y-4">
-      <TabsList className="grid grid-cols-4 lg:grid-cols-7">
+      <TabsList className="grid grid-cols-4 lg:grid-cols-8">
         <TabsTrigger value="receipts" className="flex items-center gap-2">
           <Receipt className="h-4 w-4" />
           <span className="hidden sm:inline">Receipts</span>
@@ -128,6 +143,10 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
         <TabsTrigger value="items-sold" className="flex items-center gap-2">
           <TrendingDown className="h-4 w-4" />
           <span className="hidden sm:inline">Items Sold</span>
+        </TabsTrigger>
+        <TabsTrigger value="lifecycle" className="flex items-center gap-2">
+          <History className="h-4 w-4" />
+          <span className="hidden sm:inline">Lifecycle</span>
         </TabsTrigger>
         <TabsTrigger value="transfers" className="flex items-center gap-2">
           <ArrowRightLeft className="h-4 w-4" />
@@ -246,6 +265,66 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
                       <TableCell className={Number(item.total_profit) >= 0 ? "text-success" : "text-destructive"}>
                         {formatCurrency(item.total_profit || 0, currency)}
                       </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* Item Lifecycle Report */}
+      <TabsContent value="lifecycle">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Item Lifecycle Tracking</CardTitle>
+              <CardDescription>Track items from entry to sale by SKU or model number</CardDescription>
+            </div>
+            <Button onClick={() => exportToCSV(filteredItemLifecycle, "item-lifecycle-report")}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-[600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Item Name</TableHead>
+                    <TableHead>Model #</TableHead>
+                    <TableHead>Date Added</TableHead>
+                    <TableHead>Store</TableHead>
+                    <TableHead>Current Stock</TableHead>
+                    <TableHead>Last PO Date</TableHead>
+                    <TableHead>Last Sale Date</TableHead>
+                    <TableHead>Total Sold</TableHead>
+                    <TableHead>Total Revenue</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>Category</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredItemLifecycle.map((item: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-mono">{item.sku}</TableCell>
+                      <TableCell>{item.item_name}</TableCell>
+                      <TableCell>{item.model_number || "-"}</TableCell>
+                      <TableCell>{item.date_added ? new Date(item.date_added).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell>{item.store_name || "-"}</TableCell>
+                      <TableCell>{item.current_stock || 0}</TableCell>
+                      <TableCell>
+                        {item.last_po_date ? new Date(item.last_po_date).toLocaleDateString() : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {item.last_sale_date ? new Date(item.last_sale_date).toLocaleDateString() : "-"}
+                      </TableCell>
+                      <TableCell>{formatNumber(item.total_quantity_sold || 0, 0)}</TableCell>
+                      <TableCell>{formatCurrency(item.total_revenue || 0, currency)}</TableCell>
+                      <TableCell>{item.brand || "-"}</TableCell>
+                      <TableCell>{item.category || "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

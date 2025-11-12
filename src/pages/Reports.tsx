@@ -14,6 +14,14 @@ import ReportsExtended from "./ReportsExtended";
 const Reports = () => {
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
+  
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedStore, setSelectedStore] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedBrand, setSelectedBrand] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+
   const { 
     stores, 
     categories, 
@@ -21,19 +29,8 @@ const Reports = () => {
     storeInventoryReport, 
     salesReport, 
     poReport,
-    posReceiptsReport,
-    itemsSoldReport,
-    transfersReport,
-    stockMovementReport,
-    inventoryTurnoverReport,
-    profitMarginReport,
     isLoading 
-  } = useReportsData();
-  
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedStore, setSelectedStore] = useState<string>("all");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedBrand, setSelectedBrand] = useState<string>("all");
+  } = useReportsData(dateFrom, dateTo);
 
   // Filter inventory data
   const filteredInventory = useMemo(() => {
@@ -466,6 +463,8 @@ const Reports = () => {
             selectedStore={selectedStore}
             selectedCategory={selectedCategory}
             selectedBrand={selectedBrand}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
           />
         </TabsContent>
       </Tabs>

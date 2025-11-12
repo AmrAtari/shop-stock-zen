@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export const useReportsData = () => {
+export const useReportsData = (dateFrom?: string, dateTo?: string) => {
   // Stores for filters
   const { data: stores = [] } = useQuery({
     queryKey: ["stores"],
@@ -37,9 +37,12 @@ export const useReportsData = () => {
 
   // Store Inventory Report
   const storeInventoryReport = useQuery({
-    queryKey: ["store-inventory-report"],
+    queryKey: ["store-inventory-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_store_inventory_report").select("*");
+      let query = supabase.from("v_store_inventory_report").select("*");
+      if (dateFrom) query = query.gte("created_at", dateFrom);
+      if (dateTo) query = query.lte("created_at", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -48,9 +51,12 @@ export const useReportsData = () => {
 
   // Sales Report
   const salesReport = useQuery({
-    queryKey: ["sales-report"],
+    queryKey: ["sales-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_sales_report").select("*");
+      let query = supabase.from("v_sales_report").select("*");
+      if (dateFrom) query = query.gte("created_at", dateFrom);
+      if (dateTo) query = query.lte("created_at", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -59,9 +65,12 @@ export const useReportsData = () => {
 
   // Purchase Orders Report
   const poReport = useQuery({
-    queryKey: ["po-report"],
+    queryKey: ["po-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_po_report").select("*");
+      let query = supabase.from("v_po_report").select("*");
+      if (dateFrom) query = query.gte("order_date", dateFrom);
+      if (dateTo) query = query.lte("order_date", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -70,9 +79,12 @@ export const useReportsData = () => {
 
   // POS Receipts Report
   const posReceiptsReport = useQuery({
-    queryKey: ["pos-receipts-report"],
+    queryKey: ["pos-receipts-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_pos_receipts_report").select("*");
+      let query = supabase.from("v_pos_receipts_report").select("*");
+      if (dateFrom) query = query.gte("created_at", dateFrom);
+      if (dateTo) query = query.lte("created_at", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -81,9 +93,12 @@ export const useReportsData = () => {
 
   // Items Sold Report
   const itemsSoldReport = useQuery({
-    queryKey: ["items-sold-report"],
+    queryKey: ["items-sold-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_items_sold_report").select("*");
+      let query = supabase.from("v_items_sold_report").select("*");
+      if (dateFrom) query = query.gte("first_sale_date", dateFrom);
+      if (dateTo) query = query.lte("last_sale_date", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -92,9 +107,12 @@ export const useReportsData = () => {
 
   // Transfers Report
   const transfersReport = useQuery({
-    queryKey: ["transfers-report"],
+    queryKey: ["transfers-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_transfers_report").select("*");
+      let query = supabase.from("v_transfers_report").select("*");
+      if (dateFrom) query = query.gte("transfer_date", dateFrom);
+      if (dateTo) query = query.lte("transfer_date", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -103,9 +121,12 @@ export const useReportsData = () => {
 
   // Stock Movement Summary
   const stockMovementReport = useQuery({
-    queryKey: ["stock-movement-report"],
+    queryKey: ["stock-movement-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_stock_movement_summary").select("*");
+      let query = supabase.from("v_stock_movement_summary").select("*");
+      if (dateFrom) query = query.gte("movement_date", dateFrom);
+      if (dateTo) query = query.lte("movement_date", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -125,9 +146,26 @@ export const useReportsData = () => {
 
   // Profit Margin Report
   const profitMarginReport = useQuery({
-    queryKey: ["profit-margin-report"],
+    queryKey: ["profit-margin-report", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_profit_margin_report").select("*");
+      let query = supabase.from("v_profit_margin_report").select("*");
+      if (dateFrom) query = query.gte("sale_date", dateFrom);
+      if (dateTo) query = query.lte("sale_date", dateTo);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Item Lifecycle Report
+  const itemLifecycleReport = useQuery({
+    queryKey: ["item-lifecycle-report", dateFrom, dateTo],
+    queryFn: async () => {
+      let query = supabase.from("v_item_lifecycle_report").select("*");
+      if (dateFrom) query = query.gte("date_added", dateFrom);
+      if (dateTo) query = query.lte("date_added", dateTo);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -143,7 +181,8 @@ export const useReportsData = () => {
     transfersReport.isLoading ||
     stockMovementReport.isLoading ||
     inventoryTurnoverReport.isLoading ||
-    profitMarginReport.isLoading;
+    profitMarginReport.isLoading ||
+    itemLifecycleReport.isLoading;
 
   const error = 
     storeInventoryReport.error || 
@@ -154,7 +193,8 @@ export const useReportsData = () => {
     transfersReport.error ||
     stockMovementReport.error ||
     inventoryTurnoverReport.error ||
-    profitMarginReport.error;
+    profitMarginReport.error ||
+    itemLifecycleReport.error;
 
   return {
     stores,
@@ -169,6 +209,7 @@ export const useReportsData = () => {
     stockMovementReport: stockMovementReport.data || [],
     inventoryTurnoverReport: inventoryTurnoverReport.data || [],
     profitMarginReport: profitMarginReport.data || [],
+    itemLifecycleReport: itemLifecycleReport.data || [],
     isLoading,
     error,
   };

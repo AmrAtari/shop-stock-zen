@@ -1243,6 +1243,13 @@ export type Database = {
             foreignKeyName: "store_inventory_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_items_report"
             referencedColumns: ["id"]
           },
@@ -1352,6 +1359,13 @@ export type Database = {
             columns: ["variant_id"]
             isOneToOne: false
             referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "supplier_pricing_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -1545,6 +1559,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -1874,6 +1895,43 @@ export type Database = {
         }
         Relationships: []
       }
+      v_item_lifecycle_report: {
+        Row: {
+          brand: string | null
+          category: string | null
+          current_stock: number | null
+          date_added: string | null
+          item_id: string | null
+          item_name: string | null
+          last_po_cost: number | null
+          last_po_date: string | null
+          last_po_number: string | null
+          last_po_quantity: number | null
+          last_sale_amount: number | null
+          last_sale_date: string | null
+          last_sale_price: number | null
+          last_sale_quantity: number | null
+          last_transaction_id: string | null
+          model_number: string | null
+          original_cost: number | null
+          original_price: number | null
+          sku: string | null
+          store_id: string | null
+          store_name: string | null
+          total_quantity_sold: number | null
+          total_revenue: number | null
+          total_transactions: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_items_report: {
         Row: {
           brand: string | null
@@ -2000,6 +2058,13 @@ export type Database = {
             foreignKeyName: "transactions_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_items_report"
             referencedColumns: ["id"]
           },
@@ -2080,6 +2145,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -2180,6 +2252,13 @@ export type Database = {
             foreignKeyName: "store_inventory_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_items_report"
             referencedColumns: ["id"]
           },
@@ -2241,6 +2320,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
             referencedColumns: ["item_id"]
           },
           {
