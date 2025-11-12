@@ -333,20 +333,20 @@ const PurchaseOrderNew = () => {
         authorized_by: user?.id,
       };
 
-      // Create purchase order and retrieve the inserted row's ID
+      // Create purchase order and retrieve the inserted row's po_id
       const { data: poData, error: poError } = await supabase
         .from("purchase_orders")
         .insert(poDataToInsert)
-        .select("id") // Explicitly select the ID column
+        .select("po_id") // Select po_id which is the foreign key reference
         .single();
 
       if (poError) throw poError;
 
-      // FINAL FIX: Safely extract the ID and check its existence
-      const poId = poData?.id;
+      // Extract the po_id and check its existence
+      const poId = poData?.po_id;
       if (!poId) {
         throw new Error(
-          "Failed to retrieve the ID of the created Purchase Order. Please ensure the 'purchase_orders' table has a primary key column named 'id'.",
+          "Failed to retrieve the po_id of the created Purchase Order.",
         );
       }
 
