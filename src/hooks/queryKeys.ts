@@ -19,6 +19,7 @@ export const queryKeys = {
   reports: {
     all: ["reports"] as const,
     inventoryOnHand: ["reports", "inventoryOnHand"] as const,
+    inventoryValuation: ["reports", "inventoryValuation"] as const,
     categoryValue: ["reports", "categoryValue"] as const,
     lowStock: ["reports", "lowStock"] as const,
     inventoryAging: ["reports", "inventoryAging"] as const,
@@ -26,6 +27,8 @@ export const queryKeys = {
     abcAnalysis: ["reports", "abcAnalysis"] as const,
     recentAdjustments: ["reports", "recentAdjustments"] as const,
     stockMovementTransaction: ["reports", "stockMovementTransaction"] as const,
+    salesPerformance: ["reports", "salesPerformance"] as const,
+    cogs: ["reports", "cogs"] as const,
     stores: ["reports", "stores"] as const,
     categories: ["reports", "categories"] as const,
     brands: ["reports", "brands"] as const,

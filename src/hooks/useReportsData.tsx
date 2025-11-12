@@ -82,8 +82,30 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Placeholder for missing 'inventory_valuation_view'
-  const categoryValueQuery = { data: [], isLoading: false, error: null };
+  // Inventory Valuation - calculate from items
+  const inventoryValuationQuery = useQuery({
+    queryKey: queryKeys.reports.inventoryValuation,
+    queryFn: async () => {
+      const { data: items, error } = await supabase
+        .from("items")
+        .select(`
+          id, name, quantity, cost, category:categories(name), 
+          main_group:main_groups(name), location
+        `);
+      if (error) throw error;
+
+      return items?.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity || 0,
+        value: (item.quantity || 0) * (item.cost || 0),
+        location: item.location || '',
+        category: item.category?.name || '',
+        brand: item.main_group?.name || '',
+      })) || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
   const lowStockQuery = useQuery({
     queryKey: queryKeys.reports.lowStock,
@@ -110,31 +132,196 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Placeholder for missing 'inventory_aging_view'
-  const inventoryAgingQuery = { data: [], isLoading: false, error: null };
+  // Inventory Aging - calculate age from created_at or last_restocked
+  const inventoryAgingQuery = useQuery({
+    queryKey: queryKeys.reports.inventoryAging,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("items")
+        .select(`
+          id, name, quantity, created_at, last_restocked, location,
+          category:categories(name), main_group:main_groups(name)
+        `);
+      if (error) throw error;
 
-  // Placeholder for missing 'stock_movement_view'
-  const stockMovementQuery = { data: [], isLoading: false, error: null };
+      return data?.map((item: any) => {
+        const referenceDate = item.last_restocked || item.created_at;
+        const ageDays = referenceDate 
+          ? Math.floor((Date.now() - new Date(referenceDate).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        
+        return {
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity || 0,
+          age_days: ageDays,
+          location: item.location || '',
+          category: item.category?.name || '',
+          brand: item.main_group?.name || '',
+        };
+      }) || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
-  // Placeholder for missing 'abc_analysis_view'
-  const abcAnalysisQuery = { data: [], isLoading: false, error: null };
+  // Stock Movement - from transactions (POS sales)
+  const stockMovementQuery = useQuery({
+    queryKey: queryKeys.reports.stockMovement,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(`
+          id, created_at, quantity, sku,
+          item:items(name, category:categories(name), main_group:main_groups(name), location)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (error) throw error;
 
-  // Placeholder for missing 'inventory_adjustments' table
-  const recentAdjustmentsQuery = { data: [], isLoading: false, error: null };
+      return data?.map((txn: any) => ({
+        id: txn.id,
+        name: txn.item?.name || txn.sku,
+        movement_type: 'SALE',
+        quantity: -Math.abs(txn.quantity), // negative for sales
+        date: txn.created_at,
+        location: txn.item?.location || '',
+        category: txn.item?.category?.name || '',
+        brand: txn.item?.main_group?.name || '',
+      })) || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
-  // FIX: Placeholder for missing 'stock_transactions' table
-  /*
+  // ABC Analysis - based on inventory value
+  const abcAnalysisQuery = useQuery({
+    queryKey: queryKeys.reports.abcAnalysis,
+    queryFn: async () => {
+      const { data: items, error } = await supabase
+        .from("items")
+        .select(`
+          id, name, quantity, cost, location,
+          category:categories(name)
+        `);
+      if (error) throw error;
+
+      const itemsWithValue = items?.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        category: item.category?.name || '',
+        value: (item.quantity || 0) * (item.cost || 0),
+        location: item.location || '',
+      })) || [];
+
+      // Sort by value descending
+      itemsWithValue.sort((a, b) => b.value - a.value);
+      
+      const totalValue = itemsWithValue.reduce((sum, item) => sum + item.value, 0);
+      let cumulativeValue = 0;
+      
+      // Classify items: A = 80% value, B = 15% value, C = 5% value
+      return itemsWithValue.map((item) => {
+        cumulativeValue += item.value;
+        const cumulativePercent = (cumulativeValue / totalValue) * 100;
+        
+        let classification: 'A' | 'B' | 'C';
+        if (cumulativePercent <= 80) classification = 'A';
+        else if (cumulativePercent <= 95) classification = 'B';
+        else classification = 'C';
+        
+        return { ...item, classification };
+      });
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Recent Adjustments - from physical inventory counts
+  const recentAdjustmentsQuery = useQuery({
+    queryKey: queryKeys.reports.recentAdjustments,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("physical_inventory_counts")
+        .select(`
+          id, created_at, item_name, system_quantity, counted_quantity, 
+          notes, status
+        `)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+
+      return data?.map((count: any) => ({
+        id: count.id,
+        created_at: count.created_at,
+        item_name: count.item_name,
+        previous_quantity: count.system_quantity,
+        new_quantity: count.counted_quantity,
+        adjustment: count.counted_quantity - count.system_quantity,
+        reason: count.notes || 'Physical inventory count',
+      })) || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Stock Movement Transactions - aggregate from all sources
   const stockMovementTransactionQuery = useQuery({
     queryKey: queryKeys.reports.stockMovementTransaction,
     queryFn: async () => {
-      const { data, error } = await supabase.from("stock_transactions").select("*").limit(1000);
-      if (error) throw error;
-      return data;
+      // Fetch from transactions (POS sales)
+      const { data: sales, error: salesError } = await supabase
+        .from("transactions")
+        .select("id, created_at, sku, quantity, item:items(name, location, category:categories(name), main_group:main_groups(name))")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (salesError) throw salesError;
+
+      // Fetch from purchase orders (received items)
+      const { data: poItems, error: poError } = await supabase
+        .from("purchase_order_items")
+        .select(`
+          id, created_at, item_name, received_quantity, sku,
+          po:purchase_orders(store:stores(name))
+        `)
+        .gt("received_quantity", 0)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (poError) throw poError;
+
+      const transactions: any[] = [];
+      
+      // Add sales transactions
+      sales?.forEach((sale: any) => {
+        transactions.push({
+          id: sale.id,
+          name: sale.item?.name || sale.sku,
+          transaction_type: 'SALE',
+          quantity: -Math.abs(sale.quantity),
+          date: sale.created_at,
+          location: sale.item?.location || '',
+          category: sale.item?.category?.name || '',
+          brand: sale.item?.main_group?.name || '',
+        });
+      });
+      
+      // Add PO receipts
+      poItems?.forEach((po: any) => {
+        transactions.push({
+          id: po.id,
+          name: po.item_name,
+          transaction_type: 'PURCHASE_ORDER',
+          quantity: po.received_quantity,
+          date: po.created_at,
+          location: po.po?.store?.name || '',
+          category: '',
+          brand: '',
+        });
+      });
+      
+      // Sort by date descending
+      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      return transactions;
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60 * 5,
   });
-  */
-  const stockMovementTransactionQuery = { data: [], isLoading: false, error: null };
 
   // --- Unique Value Queries ---
 
@@ -174,41 +361,105 @@ export const useReportsData = () => {
 
   // --- End of Unique Value Queries ---
 
+  // Sales Performance - aggregate from transactions
+  const salesPerformanceQuery = useQuery({
+    queryKey: queryKeys.reports.salesPerformance,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(`
+          id, created_at, sku, quantity, price, amount,
+          item:items(name, location, category:categories(name), main_group:main_groups(name))
+        `)
+        .eq("is_refund", false)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+
+      return data?.map((txn: any) => ({
+        id: txn.id,
+        name: txn.item?.name || txn.sku,
+        sales: txn.amount || 0,
+        quantity: txn.quantity || 0,
+        date: txn.created_at,
+        location: txn.item?.location || '',
+        category: txn.item?.category?.name || '',
+        brand: txn.item?.main_group?.name || '',
+      })) || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // COGS - cost of goods sold from transactions
+  const cogsQuery = useQuery({
+    queryKey: queryKeys.reports.cogs,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(`
+          id, created_at, sku, quantity, price, amount,
+          item:items(name, cost, location, category:categories(name))
+        `)
+        .eq("is_refund", false)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+
+      return data?.map((txn: any) => {
+        const cost = (txn.item?.cost || 0) * (txn.quantity || 0);
+        return {
+          id: txn.id,
+          name: txn.item?.name || txn.sku,
+          cost_of_goods_sold: cost,
+          revenue: txn.amount || 0,
+          date: txn.created_at,
+          location: txn.item?.location || '',
+          category: txn.item?.category?.name || '',
+        };
+      }) || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
   return {
     inventoryOnHand: inventoryOnHandQuery.data || [],
-    inventoryValuation: categoryValueQuery.data || [],
+    inventoryValuation: inventoryValuationQuery.data || [],
     lowStock: lowStockQuery.data || [],
     inventoryAging: inventoryAgingQuery.data || [],
     stockMovement: stockMovementQuery.data || [],
     abcAnalysis: abcAnalysisQuery.data || [],
     recentAdjustments: recentAdjustmentsQuery.data || [],
-    stockMovementTransaction: stockMovementTransactionQuery.data || [], // Now returns [] from placeholder
-    salesPerformance: [],
-    cogs: [],
+    stockMovementTransaction: stockMovementTransactionQuery.data || [],
+    salesPerformance: salesPerformanceQuery.data || [],
+    cogs: cogsQuery.data || [],
     stores: storesQuery.data || [],
     categories: categoriesQuery.data || [],
     brands: brandsQuery.data || [],
     isLoading:
       inventoryOnHandQuery.isLoading ||
-      categoryValueQuery.isLoading ||
+      inventoryValuationQuery.isLoading ||
       lowStockQuery.isLoading ||
       inventoryAgingQuery.isLoading ||
       stockMovementQuery.isLoading ||
       abcAnalysisQuery.isLoading ||
       recentAdjustmentsQuery.isLoading ||
       stockMovementTransactionQuery.isLoading ||
+      salesPerformanceQuery.isLoading ||
+      cogsQuery.isLoading ||
       storesQuery.isLoading ||
       categoriesQuery.isLoading ||
       brandsQuery.isLoading,
     error:
       inventoryOnHandQuery.error ||
-      categoryValueQuery.error ||
+      inventoryValuationQuery.error ||
       lowStockQuery.error ||
       inventoryAgingQuery.error ||
       stockMovementQuery.error ||
       abcAnalysisQuery.error ||
       recentAdjustmentsQuery.error ||
       stockMovementTransactionQuery.error ||
+      salesPerformanceQuery.error ||
+      cogsQuery.error ||
       storesQuery.error ||
       categoriesQuery.error ||
       brandsQuery.error,
