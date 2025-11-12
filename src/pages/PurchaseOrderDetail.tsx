@@ -13,6 +13,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 // Assuming Item type is defined globally, using any for type safety bypass
 type Item = any;
@@ -23,6 +25,8 @@ const PurchaseOrderDetail = () => {
   const { data, isLoading, error } = usePurchaseOrderDetail(id || "");
   const { isAdmin } = useIsAdmin();
   const queryClient = useQueryClient();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
@@ -433,10 +437,10 @@ const PurchaseOrderDetail = () => {
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell>{item.unit}</TableCell>
                       <TableCell>
-                        {po.currency} {item.cost_price.toFixed(2)}
+                        {formatCurrency(item.cost_price, currency)}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {po.currency} {(item.quantity * item.cost_price).toFixed(2)}
+                        {formatCurrency(item.quantity * item.cost_price, currency)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -451,26 +455,26 @@ const PurchaseOrderDetail = () => {
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span className="font-semibold">
-                  {po.currency} {po.subtotal.toFixed(2)}
+                  {formatCurrency(po.subtotal, currency)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Tax Amount:</span>
                 <span className="font-semibold">
-                  {po.currency} {po.tax_amount.toFixed(2)}
+                  {formatCurrency(po.tax_amount, currency)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Shipping Charges:</span>
                 <span className="font-semibold">
-                  {po.currency} {po.shipping_charges.toFixed(2)}
+                  {formatCurrency(po.shipping_charges, currency)}
                 </span>
               </div>
               <Separator />
               <div className="flex justify-between text-lg font-bold">
                 <span>Grand Total:</span>
                 <span>
-                  {po.currency} {po.total_cost.toFixed(2)}
+                  {formatCurrency(po.total_cost, currency)}
                 </span>
               </div>
             </div>

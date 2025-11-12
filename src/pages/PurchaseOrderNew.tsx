@@ -26,6 +26,8 @@ import { format } from "date-fns";
 import { CalendarIcon, Trash2, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Item, Supplier } from "@/types/database";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
@@ -41,7 +43,7 @@ const poSchema = z.object({
   billingAddress: z.string().optional(),
   shippingAddress: z.string().optional(),
   paymentTerms: z.string().default("Net 30"),
-  currency: z.enum(["USD", "AED"]).default("USD"),
+  currency: z.string().default("USD"),
   shippingMethod: z.string().optional(),
   fobTerms: z.string().optional(),
   taxPercent: z.number().min(0).max(100).default(0),
@@ -66,6 +68,8 @@ interface POItem {
 const PurchaseOrderNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { settings } = useSystemSettings();
+  const systemCurrency = settings?.currency || "USD";
   const { data: suppliers = [] } = useSuppliers();
   const { data: stores = [] } = useStores();
   const { data: inventory = [] } = useQuery<Item[]>({
@@ -123,7 +127,7 @@ const PurchaseOrderNew = () => {
     defaultValues: {
       orderDate: new Date(),
       paymentTerms: "Net 30",
-      currency: "USD",
+      currency: systemCurrency,
       taxPercent: 0,
       shippingCharges: 0,
       storeId: "", // Initialize required field
@@ -609,7 +613,7 @@ const PurchaseOrderNew = () => {
                               className="w-24"
                             />
                           </TableCell>
-                          <TableCell>{(item.quantity * item.costPrice).toFixed(2)}</TableCell>
+                          <TableCell>{formatCurrency(item.quantity * item.costPrice, watchCurrency)}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(index)}>
                               <Trash2 className="h-4 w-4" />
@@ -648,15 +652,19 @@ const PurchaseOrderNew = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="currency">Currency</Label>
-                <Select value={watchCurrency} onValueChange={(value) => setValue("currency", value as "USD" | "AED")}>
+                <Select value={watchCurrency} onValueChange={(value) => setValue("currency", value)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="EUR">EUR (€)</SelectItem>
+                    <SelectItem value="GBP">GBP (£)</SelectItem>
                     <SelectItem value="AED">AED (د.إ)</SelectItem>
+                    <SelectItem value="SAR">SAR (﷼)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">System currency: {systemCurrency}</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="taxPercent">Tax %</Label>
@@ -678,25 +686,25 @@ const PurchaseOrderNew = () => {
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span className="font-semibold">
-                  {watchCurrency} {subtotal.toFixed(2)}
+                  {formatCurrency(subtotal, watchCurrency)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Tax ({watchTaxPercent}%):</span>
                 <span className="font-semibold">
-                  {watchCurrency} {taxAmount.toFixed(2)}
+                  {formatCurrency(taxAmount, watchCurrency)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Shipping:</span>
                 <span className="font-semibold">
-                  {watchCurrency} {(watchShippingCharges || 0).toFixed(2)}
+                  {formatCurrency(watchShippingCharges || 0, watchCurrency)}
                 </span>
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-2">
                 <span>Grand Total:</span>
                 <span>
-                  {watchCurrency} {grandTotal.toFixed(2)}
+                  {formatCurrency(grandTotal, watchCurrency)}
                 </span>
               </div>
             </div>

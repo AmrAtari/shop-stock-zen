@@ -18,12 +18,16 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/queryKeys";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 // NOTE: Ensure the PaginationControls and usePagination hook are available in your project
 
 const PurchaseOrders = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
@@ -205,7 +209,7 @@ const PurchaseOrders = () => {
                       </TableCell>
                       <TableCell>{po.total_items}</TableCell>
                       <TableCell>
-                        {po.currency} {po.total_cost.toFixed(2)}
+                        {formatCurrency(po.total_cost, currency)}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
