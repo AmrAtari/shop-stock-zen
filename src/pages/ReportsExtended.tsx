@@ -10,6 +10,7 @@ import { useReportsData } from "@/hooks/useReportsData";
 import { formatCurrency, formatNumber, formatPercentage } from "@/lib/formatters";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import PivotTable from "@/components/reports/PivotTable";
+import { ItemDrillDownDialog } from "@/components/reports/ItemDrillDownDialog";
 
 interface ReportsExtendedProps {
   searchTerm: string;
@@ -23,6 +24,13 @@ interface ReportsExtendedProps {
 const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selectedBrand, dateFrom, dateTo }: ReportsExtendedProps) => {
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
+  const [drillDownOpen, setDrillDownOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<{
+    itemId: string;
+    sku: string;
+    itemName: string;
+  } | null>(null);
+
   const { 
     posReceiptsReport,
     itemsSoldReport,
@@ -32,6 +40,11 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     profitMarginReport,
     itemLifecycleReport,
   } = useReportsData(dateFrom, dateTo);
+
+  const handleRowClick = (itemId: string, sku: string, itemName: string) => {
+    setSelectedItem({ itemId, sku, itemName });
+    setDrillDownOpen(true);
+  };
 
   // Filter POS Receipts
   const filteredReceipts = useMemo(() => {
@@ -134,6 +147,7 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
   };
 
   return (
+    <>
     <Tabs defaultValue="receipts" className="space-y-4">
       <TabsList className="grid grid-cols-4 lg:grid-cols-8">
         <TabsTrigger value="receipts" className="flex items-center gap-2">
@@ -253,7 +267,11 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
                 </TableHeader>
                 <TableBody>
                   {filteredItemsSold.map((item: any) => (
-                    <TableRow key={item.item_id}>
+                    <TableRow 
+                      key={item.item_id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
+                    >
                       <TableCell className="font-mono">{item.sku}</TableCell>
                       <TableCell>{item.item_name}</TableCell>
                       <TableCell>{item.category || "-"}</TableCell>
@@ -308,7 +326,11 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
                 </TableHeader>
                 <TableBody>
                   {filteredItemLifecycle.map((item: any, idx: number) => (
-                    <TableRow key={idx}>
+                    <TableRow 
+                      key={idx}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
+                    >
                       <TableCell className="font-mono">{item.sku}</TableCell>
                       <TableCell>{item.item_name}</TableCell>
                       <TableCell>{item.model_number || "-"}</TableCell>
@@ -408,7 +430,11 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
                 </TableHeader>
                 <TableBody>
                   {filteredStockMovement.map((item: any, index: number) => (
-                    <TableRow key={index}>
+                    <TableRow 
+                      key={index}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
+                    >
                       <TableCell>{item.movement_date ? new Date(item.movement_date).toLocaleDateString() : "-"}</TableCell>
                       <TableCell className="capitalize">{item.movement_type}</TableCell>
                       <TableCell className="font-mono">{item.sku}</TableCell>
@@ -547,6 +573,18 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
         />
       </TabsContent>
     </Tabs>
+
+    {/* Drill-Down Dialog */}
+    {selectedItem && (
+      <ItemDrillDownDialog
+        open={drillDownOpen}
+        onOpenChange={setDrillDownOpen}
+        itemId={selectedItem.itemId}
+        sku={selectedItem.sku}
+        itemName={selectedItem.itemName}
+      />
+    )}
+    </>
   );
 };
 
