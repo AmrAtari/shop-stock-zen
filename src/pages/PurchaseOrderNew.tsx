@@ -353,16 +353,14 @@ const PurchaseOrderNew = () => {
       // Create PO items, using the confirmed PO ID and lookup item_id from items table
       const poItemsData = await Promise.all(
         poItems.map(async (item) => {
-          // Look up the item UUID from the items table using the SKU
           const { data: itemData } = await supabase
             .from("items")
             .select("id")
             .eq("sku", item.sku)
             .maybeSingle();
 
-          return {
+          const row: any = {
             po_id: poId,
-            item_id: itemData?.id || null, // Use the UUID or null if not found
             sku: item.sku,
             item_name: item.itemName,
             item_description: item.itemDescription,
@@ -373,6 +371,12 @@ const PurchaseOrderNew = () => {
             quantity: item.quantity,
             cost_price: item.costPrice,
           };
+
+          if (itemData?.id) {
+            row.item_id = itemData.id; // only include when UUID exists
+          }
+
+          return row;
         })
       );
 
