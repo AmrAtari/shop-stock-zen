@@ -365,7 +365,6 @@ const PurchaseOrderNew = () => {
 
           const row: any = {
             po_id: poId,
-            item_id: null, // default to NULL; only set when valid UUID exists
             sku: item.sku,
             item_name: item.itemName,
             item_description: item.itemDescription,
@@ -376,14 +375,23 @@ const PurchaseOrderNew = () => {
             quantity: item.quantity,
             cost_price: item.costPrice,
           };
-          
+
+          // Only attach item_id when it's a valid UUID
+          if (itemData?.id && isUuid(itemData.id)) {
+            row.item_id = itemData.id;
+          }
+
           return row;
         })
       );
 
       const { error: itemsError } = await supabase.from("purchase_order_items").insert(poItemsData);
 
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        // Roll back orphan PO if items failed to insert
+        await supabase.from("purchase_orders").delete().eq("po_id", poId);
+        throw itemsError;
+      }
 
       // Invalidate queries to refresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });

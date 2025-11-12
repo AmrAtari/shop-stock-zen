@@ -274,7 +274,7 @@ const PurchaseOrderDetail = () => {
   };
 
   return (
-    <div className="p-8 space-y-6 print:p-4">
+    <div className="h-full overflow-y-auto p-8 space-y-6 print:p-4">
       <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/purchase-orders")}>
