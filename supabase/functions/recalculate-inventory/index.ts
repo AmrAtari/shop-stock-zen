@@ -124,7 +124,19 @@ serve(async (req) => {
     console.warn(`Transaction-to-store mapping unavailable. Sales not deducted from inventory.`);
     console.warn(`To fix: Add store_id to transactions or cash_sessions table.`);
 
-    // Step 4: Write calculated quantities back to store_inventory
+    // Step 4: RESET all store_inventory quantities to 0 first
+    console.log("Resetting all store_inventory quantities to 0...");
+    
+    const { error: resetError } = await supabaseClient
+      .from("store_inventory")
+      .update({ quantity: 0 })
+      .neq("id", "00000000-0000-0000-0000-000000000000"); // Update all rows
+
+    if (resetError) {
+      console.error("Error resetting inventory:", resetError);
+    }
+
+    // Step 5: Write calculated quantities back to store_inventory
     console.log("Writing calculated quantities to store_inventory...");
 
     let updatedCount = 0;
