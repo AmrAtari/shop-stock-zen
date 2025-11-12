@@ -68,8 +68,93 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  const isLoading = storeInventoryReport.isLoading || salesReport.isLoading || poReport.isLoading;
-  const error = storeInventoryReport.error || salesReport.error || poReport.error;
+  // POS Receipts Report
+  const posReceiptsReport = useQuery({
+    queryKey: ["pos-receipts-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("v_pos_receipts_report").select("*");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Items Sold Report
+  const itemsSoldReport = useQuery({
+    queryKey: ["items-sold-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("v_items_sold_report").select("*");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Transfers Report
+  const transfersReport = useQuery({
+    queryKey: ["transfers-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("v_transfers_report").select("*");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Stock Movement Summary
+  const stockMovementReport = useQuery({
+    queryKey: ["stock-movement-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("v_stock_movement_summary").select("*");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Inventory Turnover Report
+  const inventoryTurnoverReport = useQuery({
+    queryKey: ["inventory-turnover-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("v_inventory_turnover_report").select("*");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Profit Margin Report
+  const profitMarginReport = useQuery({
+    queryKey: ["profit-margin-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("v_profit_margin_report").select("*");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const isLoading = 
+    storeInventoryReport.isLoading || 
+    salesReport.isLoading || 
+    poReport.isLoading ||
+    posReceiptsReport.isLoading ||
+    itemsSoldReport.isLoading ||
+    transfersReport.isLoading ||
+    stockMovementReport.isLoading ||
+    inventoryTurnoverReport.isLoading ||
+    profitMarginReport.isLoading;
+
+  const error = 
+    storeInventoryReport.error || 
+    salesReport.error || 
+    poReport.error ||
+    posReceiptsReport.error ||
+    itemsSoldReport.error ||
+    transfersReport.error ||
+    stockMovementReport.error ||
+    inventoryTurnoverReport.error ||
+    profitMarginReport.error;
 
   return {
     stores,
@@ -78,6 +163,12 @@ export const useReportsData = () => {
     storeInventoryReport: storeInventoryReport.data || [],
     salesReport: salesReport.data || [],
     poReport: poReport.data || [],
+    posReceiptsReport: posReceiptsReport.data || [],
+    itemsSoldReport: itemsSoldReport.data || [],
+    transfersReport: transfersReport.data || [],
+    stockMovementReport: stockMovementReport.data || [],
+    inventoryTurnoverReport: inventoryTurnoverReport.data || [],
+    profitMarginReport: profitMarginReport.data || [],
     isLoading,
     error,
   };

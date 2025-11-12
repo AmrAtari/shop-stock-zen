@@ -9,11 +9,26 @@ import { Download, Search, Package, TrendingUp, ShoppingCart } from "lucide-reac
 import { useReportsData } from "@/hooks/useReportsData";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import ReportsExtended from "./ReportsExtended";
 
 const Reports = () => {
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
-  const { stores, categories, brands, storeInventoryReport, salesReport, poReport, isLoading } = useReportsData();
+  const { 
+    stores, 
+    categories, 
+    brands, 
+    storeInventoryReport, 
+    salesReport, 
+    poReport,
+    posReceiptsReport,
+    itemsSoldReport,
+    transfersReport,
+    stockMovementReport,
+    inventoryTurnoverReport,
+    profitMarginReport,
+    isLoading 
+  } = useReportsData();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStore, setSelectedStore] = useState<string>("all");
@@ -189,6 +204,10 @@ const Reports = () => {
           <TabsTrigger value="po" className="flex items-center gap-2">
             <ShoppingCart className="h-4 w-4" />
             Purchase Orders
+          </TabsTrigger>
+          <TabsTrigger value="advanced" className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Advanced Reports
           </TabsTrigger>
         </TabsList>
 
@@ -438,6 +457,16 @@ const Reports = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Advanced Reports Tab */}
+        <TabsContent value="advanced">
+          <ReportsExtended 
+            searchTerm={searchTerm}
+            selectedStore={selectedStore}
+            selectedCategory={selectedCategory}
+            selectedBrand={selectedBrand}
+          />
         </TabsContent>
       </Tabs>
     </div>
