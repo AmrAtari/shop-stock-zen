@@ -1133,6 +1133,7 @@ export type Database = {
           created_at: string | null
           id: string
           item_id: string
+          qty_on_order: number
           quantity: number | null
           store_id: string
         }
@@ -1140,6 +1141,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           item_id: string
+          qty_on_order?: number
           quantity?: number | null
           store_id: string
         }
@@ -1147,6 +1149,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           item_id?: string
+          qty_on_order?: number
           quantity?: number | null
           store_id?: string
         }
@@ -1396,6 +1399,20 @@ export type Database = {
           transaction_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_session_id_fkey"
             columns: ["session_id"]
