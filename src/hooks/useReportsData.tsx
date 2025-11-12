@@ -35,49 +35,26 @@ export const useReportsData = () => {
   const inventoryOnHandQuery = useQuery({
     queryKey: queryKeys.reports.inventoryOnHand,
     queryFn: async () => {
-      // Fetch all items with joined attribute names
-      const { data: items, error: itemsError } = await supabase
+      // Fetch core item fields directly (avoid joins that require DB FKs)
+      const { data: items, error } = await supabase
         .from("items")
-        .select(`
-          *,
-          supplier:suppliers(name),
-          gender:genders(name),
-          main_group:main_groups(name),
-          category:categories(name),
-          origin:origins(name),
-          season:seasons(name),
-          size:sizes(name),
-          color:colors(name),
-          theme:themes(name)
-        `);
-      if (itemsError) throw itemsError;
+        .select("id, name, sku, quantity, price, cost, location, min_stock, created_at");
+      if (error) throw error;
 
-      // Fetch current price levels
-      const { data: prices, error: pricesError } = await supabase
-        .from("price_levels")
-        .select("item_id, cost_price, selling_price")
-        .filter("is_current", "eq", true);
-      if (pricesError) throw pricesError;
-
-      // Map the prices and resolve attribute names
-      return items?.map((item: any) => {
-        const price = prices?.find((p) => p.item_id === item.id);
-        return {
-          ...item,
-          supplier: item.supplier?.name || '',
-          gender: item.gender?.name || '',
-          main_group: item.main_group?.name || '',
-          category: item.category?.name || '',
-          origin: item.origin?.name || '',
-          season: item.season?.name || '',
-          size: item.size?.name || '',
-          color: item.color?.name || '',
-          theme: item.theme?.name || '',
-          brand: item.main_group?.name || '',
-          cost_price: price?.cost_price || 0,
-          selling_price: price?.selling_price || 0,
-        };
-      });
+      // Map to a consistent shape expected by reports
+      return (
+        items?.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          quantity: Number(item.quantity || 0),
+          location: item.location || '',
+          min_stock: Number(item.min_stock || 0),
+          cost_price: Number(item.cost || 0),
+          selling_price: Number(item.price || 0),
+          created_at: item.created_at,
+        })) || []
+      );
     },
     staleTime: 1000 * 60 * 5,
   });
@@ -85,82 +62,76 @@ export const useReportsData = () => {
   // Inventory Valuation - calculate from items
   const inventoryValuationQuery = useQuery({
     queryKey: queryKeys.reports.inventoryValuation,
-    queryFn: async () => {
-      const { data: items, error } = await supabase
-        .from("items")
-        .select(`
-          id, name, quantity, cost, category:categories(name), 
-          main_group:main_groups(name), location
-        `);
-      if (error) throw error;
+  queryFn: async () => {
+    const { data: items, error } = await supabase
+      .from("items")
+      .select("id, name, quantity, cost, price, location");
+    if (error) throw error;
 
-      return items?.map((item: any) => ({
+    return (
+      items?.map((item: any) => ({
         id: item.id,
         name: item.name,
-        quantity: item.quantity || 0,
-        value: (item.quantity || 0) * (item.cost || 0),
+        quantity: Number(item.quantity || 0),
+        value: Number(item.quantity || 0) * Number(item.cost || 0),
         location: item.location || '',
-        category: item.category?.name || '',
-        brand: item.main_group?.name || '',
-      })) || [];
-    },
+        category: '',
+        brand: '',
+      })) || []
+    );
+  },
     staleTime: 1000 * 60 * 5,
   });
 
   const lowStockQuery = useQuery({
     queryKey: queryKeys.reports.lowStock,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("items")
-        .select(`
-          name, sku, quantity, min_stock, location,
-          category:categories(name),
-          main_group:main_groups(name)
-        `);
-      if (error) throw error;
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from("items")
+      .select("id, name, sku, quantity, min_stock, location");
+    if (error) throw error;
 
-      // Resolve attribute names
-      return (
-        data?.map((item: any) => ({
-          ...item,
-          category: item.category?.name || '',
-          main_group: item.main_group?.name || '',
-          brand: item.main_group?.name || '',
-        })) || []
-      );
-    },
+    const rows = data || [];
+    // Only show items at or below min stock
+    return rows
+      .filter((item: any) => Number(item.quantity || 0) <= Number(item.min_stock || 0))
+      .map((item: any) => ({
+        ...item,
+        category: '',
+        main_group: '',
+        brand: '',
+      }));
+  },
     staleTime: 1000 * 60 * 5,
   });
 
   // Inventory Aging - calculate age from created_at or last_restocked
   const inventoryAgingQuery = useQuery({
     queryKey: queryKeys.reports.inventoryAging,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("items")
-        .select(`
-          id, name, quantity, created_at, last_restocked, location,
-          category:categories(name), main_group:main_groups(name)
-        `);
-      if (error) throw error;
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from("items")
+      .select("id, name, quantity, created_at, last_restocked, location");
+    if (error) throw error;
 
-      return data?.map((item: any) => {
+    return (
+      data?.map((item: any) => {
         const referenceDate = item.last_restocked || item.created_at;
-        const ageDays = referenceDate 
+        const ageDays = referenceDate
           ? Math.floor((Date.now() - new Date(referenceDate).getTime()) / (1000 * 60 * 60 * 24))
           : 0;
-        
         return {
           id: item.id,
           name: item.name,
-          quantity: item.quantity || 0,
+          quantity: Number(item.quantity || 0),
           age_days: ageDays,
           location: item.location || '',
-          category: item.category?.name || '',
-          brand: item.main_group?.name || '',
+          category: '',
+          brand: '',
         };
-      }) || [];
-    },
+      }) || []
+    );
+  },
     staleTime: 1000 * 60 * 5,
   });
 
@@ -170,24 +141,23 @@ export const useReportsData = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select(`
-          id, created_at, quantity, sku,
-          item:items(name, category:categories(name), main_group:main_groups(name), location)
-        `)
+        .select("id, created_at, quantity, sku")
         .order("created_at", { ascending: false })
         .limit(1000);
       if (error) throw error;
 
-      return data?.map((txn: any) => ({
-        id: txn.id,
-        name: txn.item?.name || txn.sku,
-        movement_type: 'SALE',
-        quantity: -Math.abs(txn.quantity), // negative for sales
-        date: txn.created_at,
-        location: txn.item?.location || '',
-        category: txn.item?.category?.name || '',
-        brand: txn.item?.main_group?.name || '',
-      })) || [];
+      return (
+        data?.map((txn: any) => ({
+          id: txn.id,
+          name: txn.sku,
+          movement_type: 'SALE',
+          quantity: -Math.abs(Number(txn.quantity || 0)),
+          date: txn.created_at,
+          location: '',
+          category: '',
+          brand: '',
+        })) || []
+      );
     },
     staleTime: 1000 * 60 * 5,
   });
@@ -198,36 +168,34 @@ export const useReportsData = () => {
     queryFn: async () => {
       const { data: items, error } = await supabase
         .from("items")
-        .select(`
-          id, name, quantity, cost, location,
-          category:categories(name)
-        `);
+        .select("id, name, quantity, cost, location");
       if (error) throw error;
 
-      const itemsWithValue = items?.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        category: item.category?.name || '',
-        value: (item.quantity || 0) * (item.cost || 0),
-        location: item.location || '',
-      })) || [];
+      const itemsWithValue =
+        items?.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          category: '',
+          value: Number(item.quantity || 0) * Number(item.cost || 0),
+          location: item.location || '',
+        })) || [];
 
       // Sort by value descending
       itemsWithValue.sort((a, b) => b.value - a.value);
-      
-      const totalValue = itemsWithValue.reduce((sum, item) => sum + item.value, 0);
+
+      const totalValue = itemsWithValue.reduce((sum, item) => sum + item.value, 0) || 1;
       let cumulativeValue = 0;
-      
+
       // Classify items: A = 80% value, B = 15% value, C = 5% value
       return itemsWithValue.map((item) => {
         cumulativeValue += item.value;
         const cumulativePercent = (cumulativeValue / totalValue) * 100;
-        
+
         let classification: 'A' | 'B' | 'C';
         if (cumulativePercent <= 80) classification = 'A';
         else if (cumulativePercent <= 95) classification = 'B';
         else classification = 'C';
-        
+
         return { ...item, classification };
       });
     },
@@ -249,59 +217,53 @@ export const useReportsData = () => {
   const stockMovementTransactionQuery = useQuery({
     queryKey: queryKeys.reports.stockMovementTransaction,
     queryFn: async () => {
-      // Fetch from transactions (POS sales)
+      // Fetch POS sales
       const { data: sales, error: salesError } = await supabase
         .from("transactions")
-        .select("id, created_at, sku, quantity, item:items(name, location, category:categories(name), main_group:main_groups(name))")
+        .select("id, created_at, sku, quantity")
         .order("created_at", { ascending: false })
         .limit(500);
       if (salesError) throw salesError;
 
-      // Fetch from purchase orders (received items)
+      // Fetch PO receipts (received items)
       const { data: poItems, error: poError } = await supabase
         .from("purchase_order_items")
-        .select(`
-          id, created_at, item_name, received_quantity, sku,
-          purchase_orders!inner(store:stores(name))
-        `)
+        .select("id, created_at, item_name, received_quantity, sku")
         .gt("received_quantity", 0)
         .order("created_at", { ascending: false })
         .limit(500);
       if (poError) throw poError;
 
       const transactions: any[] = [];
-      
-      // Add sales transactions
+
       sales?.forEach((sale: any) => {
         transactions.push({
           id: sale.id,
-          name: sale.item?.name || sale.sku,
+          name: sale.sku,
           transaction_type: 'SALE',
-          quantity: -Math.abs(sale.quantity),
+          quantity: -Math.abs(Number(sale.quantity || 0)),
           date: sale.created_at,
-          location: sale.item?.location || '',
-          category: sale.item?.category?.name || '',
-          brand: sale.item?.main_group?.name || '',
+          location: '',
+          category: '',
+          brand: '',
         });
       });
-      
-      // Add PO receipts
+
       poItems?.forEach((po: any) => {
         transactions.push({
           id: po.id,
           name: po.item_name,
           transaction_type: 'PURCHASE_ORDER',
-          quantity: po.received_quantity,
+          quantity: Number(po.received_quantity || 0),
           date: po.created_at,
-          location: po.purchase_orders?.store?.name || '',
+          location: '',
           category: '',
           brand: '',
         });
       });
-      
-      // Sort by date descending
+
       transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
+
       return transactions;
     },
     staleTime: 1000 * 60 * 5,
