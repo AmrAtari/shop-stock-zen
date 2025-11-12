@@ -234,29 +234,13 @@ export const useReportsData = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Recent Adjustments - from physical inventory counts
+  // Recent Adjustments - placeholder (physical_inventory_counts table doesn't exist yet)
+  // TODO: Create physical_inventory_counts table or use alternative data source
   const recentAdjustmentsQuery = useQuery({
     queryKey: queryKeys.reports.recentAdjustments,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("physical_inventory_counts")
-        .select(`
-          id, created_at, item_name, system_quantity, counted_quantity, 
-          notes, status
-        `)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-
-      return data?.map((count: any) => ({
-        id: count.id,
-        created_at: count.created_at,
-        item_name: count.item_name,
-        previous_quantity: count.system_quantity,
-        new_quantity: count.counted_quantity,
-        adjustment: count.counted_quantity - count.system_quantity,
-        reason: count.notes || 'Physical inventory count',
-      })) || [];
+      // Return empty array until physical_inventory_counts table is created
+      return [];
     },
     staleTime: 1000 * 60 * 5,
   });
