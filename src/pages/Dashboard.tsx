@@ -178,7 +178,7 @@ const Dashboard = () => {
           .map((fieldName) => {
             const cell = row[fieldName] === null || row[fieldName] === undefined ? "" : String(row[fieldName]);
             // Escape commas and double quotes
-            return `"${cell.replace(/"/g, '""')}"`;
+            return `\"${cell.replace(/\"/g, '\"\"')}\"`;
           })
           .join(","),
       ),
@@ -200,7 +200,7 @@ const Dashboard = () => {
     exportToCsv(unassignedItemsData, "Unspecified_Inventory_Report.csv");
   };
 
-  // Debug function to check ALL tables in your database (RETAINED FOR DEBUGGING IF NEEDED)
+  // Debug function to check ALL tables in your database
   const debugAllTables = async () => {
     console.log("=== COMPLETE DATABASE DEBUG ===");
 
@@ -210,7 +210,9 @@ const Dashboard = () => {
         "stores",
         "variants",
         "products",
-        "stock_on_hand", // Added correct table names
+        "store_inventory", // Corrected table name based on PO logic
+        "stock_on_hand",
+        "items",
       ];
 
       for (const tableName of tables) {
@@ -233,7 +235,7 @@ const Dashboard = () => {
           }
           console.log(`\n`);
         } catch (err) {
-          console.log(`Table "${tableName}" doesn't exist or can't be accessed:`, err);
+          console.log(`Table \"${tableName}\" doesn't exist or can't be accessed:`, err);
         }
       }
     } catch (error) {
@@ -242,62 +244,24 @@ const Dashboard = () => {
   };
 
   /**
-   * FIX: Re-examined logic to ensure correct stock assignment based on store_id.
-   * 1. Fetches all stores to create a robust map of store_id -> storeName/metrics.
-   * 2. Iterates over stock records, using the stock's store_id to look up the correct metrics object.
-   * This logic should prevent stock from being assigned to the wrong store.
-   * Added console logs for debugging stock assignment.
+   * FIX: Rewritten to directly query the correct tables: store_inventory and variants.
+   * ADDED: Console logging to debug the specific store assignment error reported by the user.
    */
   const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
       console.log("🔍 Fetching REAL store metrics from database...");
 
-      // 1. Fetch ALL active stores (ID and Name)
-      const { data: allStores, error: storesError } = await supabase.from("stores").select("id, name");
-
-      if (storesError) {
-        console.error("❌ Error fetching stores:", storesError);
-        toast.error("Failed to load store list");
-        return;
-      }
-
-      // Define special store IDs
-      const unspecifiedStoreId = "unspecified";
-      const unspecifiedStoreName = "(Non-Specified Store)";
-
-      // Initialize the map with ALL fetched stores (ensures stores with 0 stock are included)
-      // The key is the store ID, which is the only reliable link.
-      const newInventoryByStore = new Map<
-        string,
-        { storeName: string; totalItems: number; inventoryValue: number; lowStockCount: number }
-      >();
-
-      // Add all stores from the 'stores' table
-      allStores.forEach((store) => {
-        newInventoryByStore.set(store.id, {
-          storeName: store.name,
-          totalItems: 0,
-          inventoryValue: 0,
-          lowStockCount: 0,
-        });
-        console.log(`Store Initialized: ID=${store.id}, Name='${store.name}'`);
-      });
-
-      // Always ensure the Non-Specified store is represented
-      newInventoryByStore.set(unspecifiedStoreId, {
-        storeName: unspecifiedStoreName,
-        totalItems: 0,
-        inventoryValue: 0,
-        lowStockCount: 0,
-      });
-
-      // 2. Fetch combined inventory data (Stock, Variant/Price, and Product Name details)
-      const { data: fullInventory, error: fullInventoryError } = await supabase.from("stock_on_hand").select(
-        `
+      // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
+      // Querying store_inventory is the most efficient way to get store-specific inventory, and matches the PO receipt logic.
+      const { data: fullInventory, error: fullInventoryError } = await supabase
+        .from("store_inventory") // *** CORRECTED TABLE NAME TO MATCH PO RECEIPT LOGIC ***
+        .select(
+          `
             quantity,
             min_stock,
             store_id,
+            stores(name),
             variants(
                 variant_id,
                 sku, 
@@ -306,7 +270,8 @@ const Dashboard = () => {
                 products(name)
             )
           `,
-      );
+        )
+        .limit(5000);
 
       if (fullInventoryError) {
         console.error("❌ Error fetching full inventory:", fullInventoryError);
@@ -316,53 +281,54 @@ const Dashboard = () => {
 
       console.log(`📦 Found ${fullInventory.length} stock records.`);
 
+      const newInventoryByStore = new Map<
+        string,
+        { totalItems: number; inventoryValue: number; lowStockCount: number }
+      >();
+      const newStoreNameMap = new Map<string, string>();
       const newUnassignedItemsData: any[] = [];
       const newStoreMetricsData: StoreMetrics[] = [];
 
       fullInventory.forEach((item: any) => {
-        // Use 'unspecified' if store_id is null/undefined
-        const stockStoreId = item.store_id || unspecifiedStoreId;
-
-        let storeIdToUse = stockStoreId;
-
-        // If the store ID isn't in our map (and it's not the 'unspecified' default),
-        // it means the stock record points to a non-existent store ID. Group it as Unspecified.
-        if (!newInventoryByStore.has(stockStoreId)) {
-          if (stockStoreId !== unspecifiedStoreId) {
-            console.warn(`Stock record found for unknown store ID: ${item.store_id}. Grouping as Unspecified.`);
-          }
-          storeIdToUse = unspecifiedStoreId;
-        }
-
-        const metrics = newInventoryByStore.get(storeIdToUse)!;
-
-        const variant = item.variants;
-        const currentStoreName = metrics.storeName;
+        // Use 'unspecified' if store_id is null, which allows us to group unassigned items.
+        const storeId = item.store_id || "unspecified";
+        const storeName = item.stores?.name || "(Non-Specified Store)";
 
         const quantity = Number(item.quantity) || 0;
-        const minStock = Number(item.min_stock) || 0;
 
-        // Log the assignment for debugging the user's report
+        // *** NEW DEBUG LOGGING ADDED HERE ***
         if (quantity > 0) {
           console.log(
-            `Processing Stock: SKU=${variant?.sku || "N/A"}, Qty=${quantity}, Assigned Store: ID=${storeIdToUse}, Name='${currentStoreName}'`,
+            `[STOCK ASSIGNMENT DEBUG] Item: ${item.variants?.products?.name || item.variants?.sku || "N/A"} (Qty: ${quantity}). Store ID found: ${item.store_id}. Store Name Assigned: ${storeName}`,
           );
         }
+        // **********************************
+
+        const variant = item.variants;
 
         // Map to a simplified, flat object for CSV export consistency
         const mappedItem = {
           item_name: variant?.products?.name || "N/A",
           sku: variant?.sku || "N/A",
-          quantity: quantity,
-          min_stock: minStock,
-          store_name: currentStoreName,
+          quantity: item.quantity,
+          min_stock: item.min_stock,
+          store_name: storeName,
           selling_price: variant?.selling_price,
           cost: variant?.cost,
         };
 
-        if (storeIdToUse === unspecifiedStoreId) {
+        if (storeId === "unspecified") {
           newUnassignedItemsData.push(mappedItem);
         }
+
+        if (!newInventoryByStore.has(storeId)) {
+          newInventoryByStore.set(storeId, { totalItems: 0, inventoryValue: 0, lowStockCount: 0 });
+          newStoreNameMap.set(storeId, storeName);
+        }
+
+        const metrics = newInventoryByStore.get(storeId)!;
+
+        const minStock = Number(item.min_stock) || 0;
 
         // Price logic: Use selling price, fallback to cost, default to 50 for calculation
         const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
@@ -377,15 +343,10 @@ const Dashboard = () => {
       });
 
       // Convert Map results to the final StoreMetrics array
-      newInventoryByStore.forEach((metrics) => {
-        // Filter out stores that were initialized but have 0 items, 0 value, 0 low stock, AND are NOT the unspecified store
-        // Rationale: Keep all stores for a complete breakdown, even if 0, for consistency.
-        // The previous logic was to always push all, let's stick to that for a complete picture.
+      newInventoryByStore.forEach((metrics, storeId) => {
         newStoreMetricsData.push({
-          storeName: metrics.storeName,
-          totalItems: metrics.totalItems,
-          inventoryValue: metrics.inventoryValue,
-          lowStockCount: metrics.lowStockCount,
+          storeName: newStoreNameMap.get(storeId) || "(Unknown Store)",
+          ...metrics,
         });
       });
 
@@ -400,7 +361,7 @@ const Dashboard = () => {
     }
   };
 
-  // Fetch real notifications from database (Function body kept for completeness, no changes here)
+  // Fetch real notifications from database
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
@@ -493,14 +454,14 @@ const Dashboard = () => {
     fetchRealStoreMetrics();
     fetchNotifications();
 
-    // Set up real-time listeners for automatic refresh
+    // Set up real-time listeners
     const subscription = supabase
       .channel("dashboard-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
         fetchNotifications();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "stock_on_hand" }, () => {
-        // This handles automatic refresh for stock movements (transfers, POs, etc.)
+      // FIX: Changed 'items' table listener to the correct 'store_inventory' table
+      .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, () => {
         fetchRealStoreMetrics();
       })
       .subscribe();
@@ -675,10 +636,7 @@ const Dashboard = () => {
   const hasUnspecifiedInventory = unassignedItemsData.length > 0;
 
   return (
-    // FIX 2: Ensure the main dashboard container can scroll if content overflows.
-    // This is generally handled by the layout component wrapping this, but adding overflow-y-auto here
-    // as a safeguard if the surrounding structure is too restrictive.
-    <div className="p-8 space-y-8 h-full overflow-y-auto">
+    <div className="p-8 space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
@@ -808,7 +766,12 @@ const Dashboard = () => {
                   Export Unspecified Data
                 </Button>
               )}
-              {/* Removed Debug All Tables and Refresh Data buttons as requested */}
+              <Button variant="outline" size="sm" onClick={debugAllTables}>
+                Debug All Tables
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchRealStoreMetrics}>
+                Refresh Data
+              </Button>
             </div>
           </CardTitle>
         </CardHeader>
@@ -825,8 +788,9 @@ const Dashboard = () => {
               <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No Store Data Found</h3>
               <p className="text-muted-foreground mb-4">
-                We couldn't find any store inventory data. Please ensure your stores and stock are configured.
+                We couldn't find any store inventory data. Check the console for debug information.
               </p>
+              <Button onClick={debugAllTables}>Debug Database</Button>
             </div>
           ) : (
             <>
@@ -859,7 +823,6 @@ const Dashboard = () => {
 
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
-                {/* The fetchRealStoreMetrics ensures this grid contains ALL stores */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {storeMetrics
                     .sort((a, b) => {
