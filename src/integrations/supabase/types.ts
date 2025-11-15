@@ -1712,24 +1712,88 @@ export type Database = {
       }
       transfer_items: {
         Row: {
-          quantity: number
+          approved_quantity: number | null
+          created_at: string | null
+          id: string
+          item_id: string
+          notes: string | null
+          received_quantity: number | null
+          requested_quantity: number
+          shipped_quantity: number | null
           transfer_id: number
-          transfer_item_id: number
-          variant_id: number
         }
         Insert: {
-          quantity: number
+          approved_quantity?: number | null
+          created_at?: string | null
+          id?: string
+          item_id: string
+          notes?: string | null
+          received_quantity?: number | null
+          requested_quantity?: number
+          shipped_quantity?: number | null
           transfer_id: number
-          transfer_item_id?: number
-          variant_id: number
         }
         Update: {
-          quantity?: number
+          approved_quantity?: number | null
+          created_at?: string | null
+          id?: string
+          item_id?: string
+          notes?: string | null
+          received_quantity?: number | null
+          requested_quantity?: number
+          shipped_quantity?: number | null
           transfer_id?: number
-          transfer_item_id?: number
-          variant_id?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_report"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
+          },
           {
             foreignKeyName: "transfer_items_transfer_id_fkey"
             columns: ["transfer_id"]
@@ -1737,43 +1801,65 @@ export type Database = {
             referencedRelation: "transfers"
             referencedColumns: ["transfer_id"]
           },
-          {
-            foreignKeyName: "transfer_items_transfer_id_fkey"
-            columns: ["transfer_id"]
-            isOneToOne: false
-            referencedRelation: "v_transfers_report"
-            referencedColumns: ["transfer_id"]
-          },
-          {
-            foreignKeyName: "transfer_items_variant_id_fkey"
-            columns: ["variant_id"]
-            isOneToOne: false
-            referencedRelation: "variants"
-            referencedColumns: ["variant_id"]
-          },
         ]
       }
       transfers: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
           from_store_id: string
+          notes: string | null
+          reason: string | null
+          received_at: string | null
+          received_by: string | null
+          request_date: string | null
+          requested_by: string | null
+          shipped_at: string | null
+          shipped_by: string | null
           status: string | null
           to_store_id: string
           transfer_date: string | null
           transfer_id: number
+          transfer_number: string | null
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
           from_store_id: string
+          notes?: string | null
+          reason?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          request_date?: string | null
+          requested_by?: string | null
+          shipped_at?: string | null
+          shipped_by?: string | null
           status?: string | null
           to_store_id: string
           transfer_date?: string | null
           transfer_id?: number
+          transfer_number?: string | null
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
           from_store_id?: string
+          notes?: string | null
+          reason?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          request_date?: string | null
+          requested_by?: string | null
+          shipped_at?: string | null
+          shipped_by?: string | null
           status?: string | null
           to_store_id?: string
           transfer_date?: string | null
           transfer_id?: number
+          transfer_number?: string | null
         }
         Relationships: [
           {
@@ -2464,44 +2550,6 @@ export type Database = {
           },
         ]
       }
-      v_transfers_report: {
-        Row: {
-          from_store_id: string | null
-          from_store_location: string | null
-          from_store_name: string | null
-          status: string | null
-          to_store_id: string | null
-          to_store_location: string | null
-          to_store_name: string | null
-          transfer_date: string | null
-          transfer_id: number | null
-          transfer_quantity: number | null
-          variant_id: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "transfer_items_variant_id_fkey"
-            columns: ["variant_id"]
-            isOneToOne: false
-            referencedRelation: "variants"
-            referencedColumns: ["variant_id"]
-          },
-          {
-            foreignKeyName: "transfers_from_store_id_fkey"
-            columns: ["from_store_id"]
-            isOneToOne: false
-            referencedRelation: "stores"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transfers_to_store_id_fkey"
-            columns: ["to_store_id"]
-            isOneToOne: false
-            referencedRelation: "stores"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Functions: {
       add_foreign_key: {
@@ -2521,6 +2569,7 @@ export type Database = {
       execute_sql: { Args: { sql: string }; Returns: Json }
       generate_pi_session_number: { Args: never; Returns: string }
       generate_po_number: { Args: { supplier_name: string }; Returns: string }
+      generate_transfer_number: { Args: never; Returns: string }
       get_table_columns: {
         Args: { table_name_param: string }
         Returns: {
@@ -2560,6 +2609,10 @@ export type Database = {
           table_name_param: string
         }
         Returns: Json
+      }
+      update_shipped_quantities: {
+        Args: { p_transfer_id: number }
+        Returns: undefined
       }
     }
     Enums: {

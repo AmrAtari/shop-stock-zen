@@ -50,6 +50,8 @@ import POSHome from "./pages/POS/POSHome";
 import POSReceipts from "./pages/POS/POSReceipts";
 import POSRefunds from "./pages/POS/POSRefunds";
 import ClosingCash from "./pages/POS/ClosingCash";
+import POSTransfers from "./pages/POS/POSTransfers";
+import POSTransferRequest from "./pages/POS/POSTransferRequest";
 import { POSProvider } from "./pages/POS/POSContext";
 
 // Layout & ProtectedRoute
@@ -97,6 +99,22 @@ const App: React.FC = () => {
                       element={
                         <ProtectedRoute>
                           <POSRefunds />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="transfers"
+                      element={
+                        <ProtectedRoute>
+                          <POSTransfers />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="transfer-request"
+                      element={
+                        <ProtectedRoute>
+                          <POSTransferRequest />
                         </ProtectedRoute>
                       }
                     />
