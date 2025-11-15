@@ -259,15 +259,7 @@ const Dashboard = () => {
             min_stock,
             store_id,
             stores(name),
-            items!inner(
-                name,
-                variants(
-                    sku, 
-                    selling_price, 
-                    cost,
-                    products(name)
-                )
-            )
+          items!inner(name,origins(sku,selling_price,cost,products(name)))
           `,
         )
         .limit(5000);
