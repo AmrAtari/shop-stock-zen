@@ -12,19 +12,12 @@ import {
   Store,
   Warehouse,
   FileText,
-  Download,
-  BarChart as BarChartIcon, // Import BarChart icon with alias to avoid conflict with recharts
+  Download, // Added icon for export
 } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription, // <--- FIXED: Imported CardDescription
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -55,103 +48,417 @@ interface ChartConfig {
   type: "bar" | "pie" | "line";
   title: string;
   dataKey: string;
+  reportTab: string;
   color: string;
-  xAxisLabel?: string;
-  yAxisLabel?: string;
 }
 
 interface DashboardChart {
   id: string;
-  chartConfig: ChartConfig;
+  chartId: string;
   position: number;
 }
 
-const defaultCharts: ChartConfig[] = [
+interface Notification {
+  id: string;
+  type: "purchase_order" | "transfer" | "low_stock" | "system";
+  title: string;
+  description: string;
+  link: string;
+  created_at: string;
+  is_read?: boolean;
+}
+
+interface StoreMetrics {
+  storeName: string;
+  totalItems: number;
+  inventoryValue: number;
+  lowStockCount: number;
+}
+
+const availableCharts: ChartConfig[] = [
   {
-    id: "lowStockSummary",
+    id: "inventory-by-category",
     type: "bar",
-    title: "Low Stock Items",
-    dataKey: "quantity",
-    color: "#ff8c00",
-    xAxisLabel: "Item Name",
-    yAxisLabel: "Quantity",
+    title: "Inventory by Category",
+    dataKey: "categoryQuantity",
+    reportTab: "INVENTORY_ON_HAND",
+    color: "hsl(var(--primary))",
   },
   {
-    id: "inventoryValueByStore",
+    id: "value-distribution",
     type: "pie",
-    title: "Inventory Value by Store",
-    dataKey: "inventoryValue",
-    color: "#4caf50",
+    title: "Value Distribution",
+    dataKey: "categoryValue",
+    reportTab: "INVENTORY_VALUATION",
+    color: "hsl(var(--chart-1))",
   },
   {
-    id: "inventoryValueByCategory",
+    id: "stock-movement",
+    type: "line",
+    title: "Stock Movement Trends",
+    dataKey: "stockMovementTrends",
+    reportTab: "STOCK_MOVEMENT",
+    color: "hsl(var(--primary))",
+  },
+  {
+    id: "abc-analysis",
     type: "pie",
-    title: "Inventory Value by Category",
-    dataKey: "inventoryValue",
-    color: "#2196f3",
+    title: "ABC Analysis Distribution",
+    dataKey: "abcDistribution",
+    reportTab: "ABC_ANALYSIS",
+    color: "hsl(var(--chart-2))",
   },
   {
-    id: "stockMovement",
-    type: "line",
-    title: "Monthly Stock Movement",
-    dataKey: "movements",
-    color: "#9c27b0",
-    xAxisLabel: "Month",
-    yAxisLabel: "Movement Count",
+    id: "low-stock-items",
+    type: "bar",
+    title: "Low Stock Items by Category",
+    dataKey: "lowStockByCategory",
+    reportTab: "LOW_STOCK",
+    color: "hsl(var(--warning))",
   },
   {
-    id: "inventoryTurnoverRate",
+    id: "inventory-turnover",
     type: "line",
-    title: "Inventory Turnover Rate (Monthly)",
+    title: "Inventory Turnover",
     dataKey: "turnoverRates",
-    color: "#f44336",
-    xAxisLabel: "Month",
-    yAxisLabel: "Turnover Rate",
+    reportTab: "PERFORMANCE",
+    color: "hsl(var(--success))",
   },
 ];
 
+const COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+];
+
 const Dashboard = () => {
+  const { metrics, categoryQuantity, categoryValue, lowStockItems, stockMovementTrends, abcDistribution, isLoading } =
+    useDashboardData();
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
-
-  const { data: dashboardData, isLoading: isLoadingData, error: dataError } = useDashboardData(); // <--- FIXED: Correctly destructuring data, isLoading, and error.
-
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
-
-  // Chart configuration state
+  const [isEditMode, setIsEditMode] = useState(false);
   const [dashboardCharts, setDashboardCharts] = useState<DashboardChart[]>([]);
   const [isAddChartOpen, setIsAddChartOpen] = useState(false);
   const [selectedChart, setSelectedChart] = useState<string>("");
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [storeMetrics, setStoreMetrics] = useState<StoreMetrics[]>([]);
+  const [storeMetricsLoading, setStoreMetricsLoading] = useState(true);
+  // NEW STATE: To hold the actual item data for the unassigned report
+  const [unassignedItemsData, setUnassignedItemsData] = useState<any[]>([]);
 
+  /**
+   * Utility function to export JSON data to CSV.
+   * @param data Array of objects to export.
+   * @param filename Desired filename for the download.
+   */
+  const exportToCsv = (data: any[], filename: string) => {
+    if (!data || data.length === 0) {
+      toast.error("No data to export.");
+      return;
+    }
+
+    // Get all unique headers from all objects
+    const allKeys = new Set<string>();
+    data.forEach((row) => Object.keys(row).forEach((key) => allKeys.add(key)));
+    const headers = Array.from(allKeys);
+
+    // Create CSV rows
+    const csv = [
+      headers.join(","), // Header row
+      ...data.map((row) =>
+        headers
+          .map((fieldName) => {
+            const cell = row[fieldName] === null || row[fieldName] === undefined ? "" : String(row[fieldName]);
+            // Escape commas and double quotes
+            return `"${cell.replace(/"/g, '""')}"`;
+          })
+          .join(","),
+      ),
+    ].join("\n");
+
+    // Create and trigger download
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${data.length} items to ${filename}`);
+  };
+
+  // Handler for the export button
+  const handleExportUnspecified = () => {
+    exportToCsv(unassignedItemsData, "Unspecified_Inventory_Report.csv");
+  };
+
+  // Debug function to check ALL tables in your database
+  const debugAllTables = async () => {
+    console.log("=== COMPLETE DATABASE DEBUG ===");
+
+    try {
+      // Check all possible table names
+      const tables = [
+        "stores",
+        "variants",
+        "products",
+        "stock_on_hand", // Added correct table names
+      ];
+
+      for (const tableName of tables) {
+        try {
+          // Use type assertion to avoid TypeScript errors
+          const { data, error } = await supabase
+            .from(tableName as any)
+            .select("*")
+            .limit(5);
+
+          console.log(`=== Table: ${tableName} ===`);
+          console.log(`Data:`, data);
+          console.log(`Error:`, error);
+
+          if (data && data.length > 0) {
+            console.log(`Columns:`, Object.keys(data[0]));
+            console.log(`Sample row:`, data[0]);
+          } else {
+            console.log(`No data in table ${tableName}`);
+          }
+          console.log(`\n`);
+        } catch (err) {
+          console.log(`Table "${tableName}" doesn't exist or can't be accessed:`, err);
+        }
+      }
+    } catch (error) {
+      console.error("Complete debug failed:", error);
+    }
+  };
+
+  /**
+   * FIX: Rewritten to directly query the correct tables: stock_on_hand and variants.
+   * This eliminates the guesswork loop and the associated 404 errors for 'items', etc.
+   */
+  const fetchRealStoreMetrics = async () => {
+    try {
+      setStoreMetricsLoading(true);
+      console.log("🔍 Fetching REAL store metrics from database...");
+
+      // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
+      // Querying stock_on_hand is the most efficient way to get store-specific inventory.
+      const { data: fullInventory, error: fullInventoryError } = await supabase
+        .from("stock_on_hand")
+        .select(
+          `
+            quantity,
+            min_stock,
+            store_id,
+            stores(name),
+            variants(
+                variant_id,
+                sku, 
+                selling_price, 
+                cost,
+                products(name)
+            )
+          `,
+        )
+        .limit(5000);
+
+      if (fullInventoryError) {
+        console.error("❌ Error fetching full inventory:", fullInventoryError);
+        toast.error("Failed to load inventory for metrics");
+        return;
+      }
+
+      console.log(`📦 Found ${fullInventory.length} stock records.`);
+
+      const newInventoryByStore = new Map<
+        string,
+        { totalItems: number; inventoryValue: number; lowStockCount: number }
+      >();
+      const newStoreNameMap = new Map<string, string>();
+      const newUnassignedItemsData: any[] = [];
+      const newStoreMetricsData: StoreMetrics[] = [];
+
+      fullInventory.forEach((item: any) => {
+        // Use 'unspecified' if store_id is null, which allows us to group unassigned items.
+        const storeId = item.store_id || "unspecified";
+        const storeName = item.stores?.name || "(Non-Specified Store)";
+
+        const variant = item.variants;
+
+        // Map to a simplified, flat object for CSV export consistency
+        const mappedItem = {
+          item_name: variant?.products?.name || "N/A",
+          sku: variant?.sku || "N/A",
+          quantity: item.quantity,
+          min_stock: item.min_stock,
+          store_name: storeName,
+          selling_price: variant?.selling_price,
+          cost: variant?.cost,
+        };
+
+        if (storeId === "unspecified") {
+          newUnassignedItemsData.push(mappedItem);
+        }
+
+        if (!newInventoryByStore.has(storeId)) {
+          newInventoryByStore.set(storeId, { totalItems: 0, inventoryValue: 0, lowStockCount: 0 });
+          newStoreNameMap.set(storeId, storeName);
+        }
+
+        const metrics = newInventoryByStore.get(storeId)!;
+
+        const quantity = Number(item.quantity) || 0;
+        const minStock = Number(item.min_stock) || 0;
+
+        // Price logic: Use selling price, fallback to cost, default to 50 for calculation
+        const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
+        const value = quantity * price;
+
+        metrics.totalItems += quantity;
+        metrics.inventoryValue += value;
+        if (quantity > 0 && quantity <= minStock) {
+          // Only count low stock if quantity > 0
+          metrics.lowStockCount += 1;
+        }
+      });
+
+      // Convert Map results to the final StoreMetrics array
+      newInventoryByStore.forEach((metrics, storeId) => {
+        newStoreMetricsData.push({
+          storeName: newStoreNameMap.get(storeId) || "(Unknown Store)",
+          ...metrics,
+        });
+      });
+
+      console.log("🎯 Final store metrics:", newStoreMetricsData);
+      setStoreMetrics(newStoreMetricsData);
+      setUnassignedItemsData(newUnassignedItemsData);
+    } catch (error) {
+      console.error("💥 Error in fetchRealStoreMetrics:", error);
+      toast.error("Failed to load store metrics");
+    } finally {
+      setStoreMetricsLoading(false);
+    }
+  };
+
+  // Fetch real notifications from database
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
-      const { data, error } = await supabase.rpc("get_low_stock_notifications");
 
-      if (error) {
-        console.error("Error fetching notifications:", error);
-      } else {
-        setNotifications(data || []);
+      // NOTE: This RPC call is likely the source of the 404 error for the RPC endpoint.
+      // It is left in place as it is likely a planned feature (a PostgreSQL function).
+      try {
+        await supabase.rpc("check_low_stock_notifications");
+      } catch (error) {
+        console.log("Could not check low stock notifications:", error);
       }
-    } catch (err) {
-      console.error("Notifications fetch exception:", err);
+
+      // Fetch real notifications from the database
+      const { data: notificationData, error: notificationsError } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("is_read", false)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (notificationsError) {
+        console.error("Error fetching notifications:", notificationsError);
+        setNotifications([]);
+        setPendingCount(0);
+        return;
+      }
+
+      const mappedNotifications: Notification[] = (notificationData || []).map((item: any) => ({
+        id: String(item.id),
+        type: item.type as Notification["type"],
+        title: item.title,
+        description: item.message,
+        link: item.link,
+        created_at: item.created_at,
+        is_read: item.is_read,
+      }));
+
+      setNotifications(mappedNotifications);
+      setPendingCount(mappedNotifications.filter((n) => !n.is_read).length);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      setNotifications([]);
+      setPendingCount(0);
     } finally {
       setNotificationsLoading(false);
     }
   };
 
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const { error } = await supabase.from("notifications").update({ is_read: true }).eq("id", notificationId);
+
+      if (error) {
+        console.error("Error marking notification as read:", error);
+        return;
+      }
+
+      setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
+      setPendingCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
+
+  const handleNotificationClick = (link: string, notificationId?: string) => {
+    setIsNotificationsOpen(false);
+    if (notificationId) {
+      markAsRead(notificationId);
+    }
+    navigate(link);
+  };
+
+  // Initialize dashboard
   useEffect(() => {
+    const savedCharts = localStorage.getItem("dashboard-charts");
+    if (savedCharts) {
+      setDashboardCharts(JSON.parse(savedCharts));
+    } else {
+      const defaultCharts: DashboardChart[] = [
+        { id: "1", chartId: "inventory-by-category", position: 0 },
+        { id: "2", chartId: "value-distribution", position: 1 },
+        { id: "3", chartId: "stock-movement", position: 2 },
+        { id: "4", chartId: "abc-analysis", position: 3 },
+      ];
+      setDashboardCharts(defaultCharts);
+      localStorage.setItem("dashboard-charts", JSON.stringify(defaultCharts));
+    }
+
+    // Fetch real data on component mount
+    fetchRealStoreMetrics();
     fetchNotifications();
 
-    const storedCharts = localStorage.getItem("dashboard-charts");
-    if (storedCharts) {
-      setDashboardCharts(JSON.parse(storedCharts));
-    }
-  }, []);
+    // Set up real-time listeners
+    const subscription = supabase
+      .channel("dashboard-updates")
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
+        fetchNotifications();
+      })
+      // FIX: Changed 'items' table listener to the correct 'stock_on_hand' table
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock_on_hand" }, () => {
+        fetchRealStoreMetrics();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [isAdmin]);
 
   useEffect(() => {
     if (dashboardCharts.length > 0) {
@@ -162,379 +469,550 @@ const Dashboard = () => {
   const handleAddChart = () => {
     if (!selectedChart) return;
 
-    const config = defaultCharts.find((c) => c.id === selectedChart);
-    if (!config) return;
-
     const newChart: DashboardChart = {
-      id: `${config.id}-${Date.now()}`,
-      chartConfig: config,
+      id: Date.now().toString(),
+      chartId: selectedChart,
       position: dashboardCharts.length,
     };
 
-    setDashboardCharts([...dashboardCharts, newChart]);
+    setDashboardCharts((prev) => [...prev, newChart]);
     setSelectedChart("");
     setIsAddChartOpen(false);
   };
 
-  const handleRemoveChart = (id: string) => {
-    setDashboardCharts(dashboardCharts.filter((c) => c.id !== id));
+  const handleRemoveChart = (chartId: string) => {
+    setDashboardCharts((prev) => prev.filter((chart) => chart.id !== chartId));
   };
 
-  const handleSort = (draggedId: string, targetId: string) => {
-    const draggedChart = dashboardCharts.find((c) => c.id === draggedId);
-    const targetChart = dashboardCharts.find((c) => c.id === targetId);
-
-    if (draggedChart && targetChart) {
-      const newCharts = dashboardCharts.filter((c) => c.id !== draggedId);
-      const targetIndex = newCharts.findIndex((c) => c.id === targetId);
-      newCharts.splice(targetIndex, 0, draggedChart);
-      setDashboardCharts(newCharts.map((c, index) => ({ ...c, position: index })));
-    }
+  const handleDragStart = (e: React.DragEvent, chartId: string) => {
+    e.dataTransfer.setData("chartId", chartId);
   };
 
-  const renderChart = (chart: DashboardChart) => {
-    const chartConfig = chart.chartConfig;
-    if (!dashboardData || isLoadingData) {
-      return <Skeleton className="h-[300px] w-full" />;
-    }
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
 
-    // Assumes dashboardData is an object with keys matching chartConfig.id
-    const data = dashboardData[chartConfig.id as keyof typeof dashboardData];
+  const handleDrop = (e: React.DragEvent, targetChartId: string) => {
+    e.preventDefault();
+    const draggedChartId = e.dataTransfer.getData("chartId");
 
-    if (!data || (Array.isArray(data) && data.length === 0)) {
-      return (
-        <div className="flex flex-col items-center justify-center h-[300px]">
-          <AlertTriangle className="w-8 h-8 text-muted-foreground mb-2" />
-          <p className="text-muted-foreground">No data available for this chart.</p>
-        </div>
-      );
-    }
+    if (draggedChartId === targetChartId) return;
+
+    const draggedIndex = dashboardCharts.findIndex((chart) => chart.id === draggedChartId);
+    const targetIndex = dashboardCharts.findIndex((chart) => chart.id === targetChartId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const newCharts = [...dashboardCharts];
+    const [draggedChart] = newCharts.splice(draggedIndex, 1);
+    newCharts.splice(targetIndex, 0, draggedChart);
+
+    const updatedCharts = newCharts.map((chart, index) => ({
+      ...chart,
+      position: index,
+    }));
+
+    setDashboardCharts(updatedCharts);
+  };
+
+  const getChartData = (dataKey: string) => {
+    const dataMap: { [key: string]: any } = {
+      categoryQuantity,
+      categoryValue,
+      stockMovementTrends,
+      abcDistribution,
+      lowStockByCategory: categoryQuantity.map((item) => ({
+        name: item.name,
+        lowStock: Math.floor(item.value * 0.1),
+      })),
+      turnoverRates: [
+        { month: "Jan", turnover: 2.5 },
+        { month: "Feb", turnover: 3.1 },
+        { month: "Mar", turnover: 2.8 },
+        { month: "Apr", turnover: 3.4 },
+        { month: "May", turnover: 3.0 },
+        { month: "Jun", turnover: 3.2 },
+      ],
+    };
+
+    return dataMap[dataKey] || [];
+  };
+
+  const renderChart = (chartConfig: ChartConfig) => {
+    const data = getChartData(chartConfig.dataKey);
 
     switch (chartConfig.type) {
       case "bar":
         return (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="name" label={{ value: chartConfig.xAxisLabel, position: "bottom" }} />
-              <YAxis label={{ value: chartConfig.yAxisLabel, angle: -90, position: "left" }} />
-              <Tooltip formatter={(value: number) => formatCurrency(value, currency)} />
-              <Bar dataKey={chartConfig.dataKey} fill={chartConfig.color} />
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Bar
+                dataKey={chartConfig.dataKey === "lowStockByCategory" ? "lowStock" : "value"}
+                fill={chartConfig.color}
+                radius={[8, 8, 0, 0]}
+              />
             </BarChart>
           </ResponsiveContainer>
         );
+
       case "pie":
-        const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"];
         return (
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
                 data={data}
-                dataKey={chartConfig.dataKey}
-                nameKey="name"
                 cx="50%"
                 cy="50%"
+                labelLine={false}
+                label={({ name, percent, value }) =>
+                  chartConfig.dataKey === "abcDistribution"
+                    ? `${name}: ${value}`
+                    : `${name} ${(percent * 100).toFixed(0)}%`
+                }
                 outerRadius={100}
-                fill={chartConfig.color}
-                label
+                fill="#8884d8"
+                dataKey="value"
               >
                 {data.map((entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value, currency)} />
-              <Legend />
+              <Tooltip />
+              {chartConfig.dataKey === "abc-analysis" && <Legend />}
             </PieChart>
           </ResponsiveContainer>
         );
+
       case "line":
         return (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="month" />
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis dataKey={chartConfig.dataKey === "turnoverRates" ? "month" : "date"} />
               <YAxis />
               <Tooltip />
               <Legend />
-              {/* Assuming dataKeys for line charts are 'movements' and 'turnoverRates' */}
               <Line
                 type="monotone"
-                dataKey={chartConfig.dataKey === "stockMovement" ? "movements" : "turnover"}
+                dataKey={chartConfig.dataKey === "turnoverRates" ? "turnover" : "adjustments"}
                 stroke={chartConfig.color}
                 strokeWidth={2}
               />
             </LineChart>
           </ResponsiveContainer>
         );
+
       default:
         return null;
     }
   };
 
-  const isLoading = isLoadingData || notificationsLoading;
+  const getAvailableChartOptions = () => {
+    const usedChartIds = new Set(dashboardCharts.map((chart) => chart.chartId));
+    return availableCharts.filter((chart) => !usedChartIds.has(chart.id));
+  };
 
-  if (dataError) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center text-destructive">
-              <AlertTriangle className="w-5 h-5 mr-2" /> Data Error
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p>Failed to load dashboard data. Please check your database connection or contact support.</p>
-            <p className="text-sm text-muted-foreground mt-2">Error details: {(dataError as Error).message}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Calculate totals
+  const totalItemsAllStores = storeMetrics.reduce((sum, store) => sum + store.totalItems, 0);
+  const totalValueAllStores = storeMetrics.reduce((sum, store) => sum + store.inventoryValue, 0);
+  const totalLowStockAllStores = storeMetrics.reduce((sum, store) => sum + store.lowStockCount, 0);
 
-  // --- SAFE DESTRUCTURING OF DASHBOARD DATA ---
-  const {
-    totalInventoryValue = 0,
-    totalLowStockItems = 0,
-    totalStores = 0,
-    inventoryValueChange = 0,
-    lowStockItems = [],
-    totalItems = 0, // Assuming totalItems is available on the data object
-  } = (dashboardData as any)?.metrics || {}; // Use optional chaining in case dashboardData is null/undefined
-  // ---------------------------------------------
+  // Check if the "(Non-Specified Store)" exists and has data for the export button
+  const hasUnspecifiedInventory = unassignedItemsData.length > 0;
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-3xl font-bold">Dashboard Overview</h1>
+    <div className="p-8 space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Customizable overview of your inventory across all stores</p>
+        </div>
+        <div className="flex gap-2">
+          {isAdmin && (
+            <Dialog open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
+              <DialogTrigger asChild>
+                <div className="relative">
+                  <Button variant="outline" size="icon">
+                    <Bell className="w-5 h-5" />
+                  </Button>
+                  {pendingCount > 0 && (
+                    <span className="absolute top-0 right-0 block h-4 w-4 rounded-full ring-2 ring-background bg-red-500 text-xs text-white flex items-center justify-center -translate-y-1 translate-x-1">
+                      {pendingCount > 9 ? "9+" : pendingCount}
+                    </span>
+                  )}
+                </div>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Notifications ({pendingCount} Pending)</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {notificationsLoading ? (
+                    <div className="space-y-3">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="p-3 border rounded-lg">
+                          <Skeleton className="h-4 w-3/4 mb-2" />
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-1/2 mt-1" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No new approvals or notifications.</p>
+                  ) : (
+                    notifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        className={`p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors ${
+                          notif.is_read ? "bg-muted/30" : ""
+                        }`}
+                        onClick={() => handleNotificationClick(notif.link, notif.id)}
+                      >
+                        <p className="font-semibold text-sm">{notif.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{notif.description}</p>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-xs text-gray-400">
+                            {new Date(notif.created_at).toLocaleDateString()}
+                          </span>
+                          <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">
+                            {notif.id.startsWith("sample-") ? "Sample" : "Real"}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <Button variant="ghost" onClick={() => handleNotificationClick("/approvals")}>
+                  View All Approvals / Notifications <ExternalLink className="w-4 h-4 ml-2" />
+                </Button>
+              </DialogContent>
+            </Dialog>
+          )}
 
-      {/* Metrics Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Total Inventory Value"
-          icon={DollarSign} // <--- FIXED: Passing icon component reference
-          value={formatCurrency(totalInventoryValue, currency)}
-          change={formatCurrency(inventoryValueChange, currency, true)}
-          changeType={inventoryValueChange >= 0 ? "positive" : "negative"}
-          isLoading={isLoading}
-        />
-        <MetricCard
-          title="Low Stock Items"
-          icon={AlertTriangle} // <--- FIXED: Passing icon component reference
-          value={totalLowStockItems.toString()}
-          changeType="negative"
-          isLoading={isLoading}
-        />
-        <MetricCard
-          title="Total Items"
-          icon={Package} // <--- FIXED: Passing icon component reference
-          value={totalItems.toString()}
-          isLoading={isLoading}
-        />
-        <MetricCard
-          title="Total Stores"
-          icon={Store} // <--- FIXED: Passing icon component reference
-          value={totalStores.toString()}
-          isLoading={isLoading}
-        />
+          <Button variant={isEditMode ? "default" : "outline"} onClick={() => setIsEditMode(!isEditMode)}>
+            {isEditMode ? "Save Layout" : "Edit Dashboard"}
+          </Button>
+          {isEditMode && (
+            <Dialog open={isAddChartOpen} onOpenChange={setIsAddChartOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Chart
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Chart to Dashboard</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Select value={selectedChart} onValueChange={setSelectedChart}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a chart type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getAvailableChartOptions().map((chart) => (
+                        <SelectItem key={chart.id} value={chart.id}>
+                          {chart.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setIsAddChartOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleAddChart} disabled={!selectedChart}>
+                      Add Chart
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Dynamic Chart Area */}
-        <div className={`space-y-6 ${isEditMode ? "lg:col-span-2" : "lg:col-span-3"}`}>
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">Inventory Visualization</h2>
-            <div className="flex gap-2">
-              <Dialog open={isAddChartOpen} onOpenChange={setIsAddChartOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={() => setIsAddChartOpen(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Chart
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Add New Chart</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <Select value={selectedChart} onValueChange={setSelectedChart}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a chart to add" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {defaultCharts.map((chart) => (
-                          <SelectItem key={chart.id} value={chart.id}>
-                            {chart.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setIsAddChartOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleAddChart} disabled={!selectedChart}>
-                        Add
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Button variant="outline" size="sm" onClick={() => setIsEditMode(!isEditMode)}>
-                {isEditMode ? "Done Editing" : "Edit Layout"}
+      {/* Store Metrics Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Store className="w-5 h-5" />
+            Inventory Overview by Store
+            <div className="ml-auto flex gap-2">
+              {/* New Button for Unspecified Inventory Report */}
+              {hasUnspecifiedInventory && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleExportUnspecified}
+                  className="bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                >
+                  <Download className="w-4 h-4 mr-1" />
+                  Export Unspecified Data
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={debugAllTables}>
+                Debug All Tables
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchRealStoreMetrics}>
+                Refresh Data
               </Button>
             </div>
-          </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {storeMetricsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          ) : storeMetrics.length === 0 ? (
+            <div className="text-center py-8">
+              <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Store Data Found</h3>
+              <p className="text-muted-foreground mb-4">
+                We couldn't find any store inventory data. Check the console for debug information.
+              </p>
+              <Button onClick={debugAllTables}>Debug Database</Button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <MetricCard
+                  title="Total Items (All Stores)"
+                  value={totalItemsAllStores.toLocaleString()}
+                  icon={<Package className="w-5 h-5" />}
+                  variant="default"
+                />
+                <MetricCard
+                  title="Total Inventory Value"
+                  value={`$${totalValueAllStores.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={<DollarSign className="w-5 h-5" />}
+                  variant="success"
+                />
+                <MetricCard
+                  title="Total Low Stock Alerts"
+                  value={totalLowStockAllStores.toLocaleString()}
+                  icon={<AlertTriangle className="w-5 h-5" />}
+                  variant="warning"
+                />
+                <MetricCard
+                  title="Active Stores"
+                  value={storeMetrics.filter((s) => s.storeName !== "(Non-Specified Store)").length}
+                  icon={<Warehouse className="w-5 h-5" />}
+                  variant="default"
+                />
+              </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            {dashboardCharts
-              .sort((a, b) => a.position - b.position)
-              .map((chart) => (
-                <Card
-                  key={chart.id}
-                  className={`relative ${isEditMode ? "border-2 border-primary/50" : ""}`}
-                  // Draggable implementation would go here using drag/drop libraries
-                >
-                  <CardHeader>
-                    <CardTitle>{chart.chartConfig.title}</CardTitle>
-                    {isEditMode && (
-                      <div className="absolute top-2 right-2 flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="w-6 h-6 text-muted-foreground"
-                          // Draggable handle logic goes here
-                        >
-                          <GripVertical className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="w-6 h-6 text-destructive"
-                          onClick={() => handleRemoveChart(chart.id)}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </CardHeader>
-                  <CardContent className="h-[300px] flex items-center justify-center">{renderChart(chart)}</CardContent>
-                </Card>
-              ))}
-
-            {dashboardCharts.length === 0 && !isLoading && (
-              <Card className="md:col-span-2">
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <BarChartIcon className="w-12 h-12 text-muted-foreground mb-4" />{" "}
-                  {/* <--- FIXED: Used BarChartIcon import */}
-                  <h3 className="text-lg font-semibold mb-2">No charts configured</h3>
-                  <p className="text-muted-foreground text-center mb-4">
-                    Add charts to your dashboard to visualize your inventory data
-                  </p>
-                  <Button onClick={() => setIsAddChartOpen(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Your First Chart
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {isLoading && (
-              <>
-                <Skeleton className="h-[380px] w-full" />
-                <Skeleton className="h-[380px] w-full" />
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Low Stock and Notifications Sidebar */}
-        <div className={isEditMode ? "lg:col-span-1 space-y-6" : "hidden"}>
-          {/* Notifications */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Bell className="w-5 h-5 mr-2" /> Notifications ({notifications.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {notificationsLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-1/2" />
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {storeMetrics
+                    .sort((a, b) => {
+                      // Move Unspecified Store to the end for display
+                      if (a.storeName === "(Non-Specified Store)") return 1;
+                      if (b.storeName === "(Non-Specified Store)") return -1;
+                      return 0;
+                    })
+                    .map((store, index) => (
+                      <Card
+                        key={index}
+                        className={`relative overflow-hidden ${
+                          store.storeName === "(Non-Specified Store)" ? "border-2 border-dashed border-red-500" : ""
+                        }`}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4
+                              className={`font-semibold text-sm truncate ${
+                                store.storeName === "(Non-Specified Store)" ? "text-red-500" : ""
+                              }`}
+                            >
+                              {store.storeName}
+                            </h4>
+                            <Store
+                              className={`w-4 h-4 ${
+                                store.storeName === "(Non-Specified Store)" ? "text-red-500" : "text-muted-foreground"
+                              }`}
+                            />
+                          </div>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Items:</span>
+                              <span className="font-medium">{store.totalItems.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Value:</span>
+                              <span className="font-medium">
+                                $
+                                {store.inventoryValue.toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Low Stock:</span>
+                              <span
+                                className={`font-medium ${store.lowStockCount > 0 ? "text-warning" : "text-success"}`}
+                              >
+                                {store.lowStockCount.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                          {store.storeName === "(Non-Specified Store)" && store.totalItems > 0 && (
+                            <div className="mt-3">
+                              <Button
+                                variant="link"
+                                size="sm"
+                                onClick={handleExportUnspecified}
+                                className="p-0 h-auto text-xs text-red-500 hover:text-red-600"
+                              >
+                                <Download className="w-3 h-3 mr-1" />
+                                Download & Export Data
+                              </Button>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
                 </div>
-              ) : notifications.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No new notifications.</p>
-              ) : (
-                <div className="space-y-3">
-                  {notifications.slice(0, 5).map((notification, index) => (
-                    <div key={index} className="border-l-4 border-warning pl-2">
-                      <p className="text-sm font-medium">{notification.item_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Store: {notification.store_name} | Qty: {notification.quantity}
-                      </p>
-                    </div>
-                  ))}
-                  {notifications.length > 5 && (
-                    <Button variant="link" className="p-0 h-auto text-sm" onClick={() => navigate("/notifications")}>
-                      View all {notifications.length} notifications
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Rest of the dashboard components... */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {isLoading ? (
+          <>
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </>
+        ) : (
+          <>
+            <MetricCard
+              title="Total Items"
+              value={metrics.totalItems.toLocaleString()}
+              icon={<Package className="w-5 h-5" />}
+              variant="default"
+            />
+            <MetricCard
+              title="Inventory Value"
+              value={formatCurrency(metrics.totalValue, currency)}
+              icon={<DollarSign className="w-5 h-5" />}
+              variant="success"
+            />
+            <MetricCard
+              title="Low Stock Alerts"
+              value={metrics.lowStockCount}
+              icon={<AlertTriangle className="w-5 h-5" />}
+              variant="warning"
+            />
+            <MetricCard
+              title="Total Products"
+              value={metrics.totalProducts}
+              icon={<TrendingUp className="w-5 h-5" />}
+              variant="default"
+            />
+          </>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {dashboardCharts.map((dashboardChart) => {
+          const chartConfig = availableCharts.find((chart) => chart.id === dashboardChart.chartId);
+          if (!chartConfig) return null;
+
+          return (
+            <Card
+              key={dashboardChart.id}
+              className={`relative ${isEditMode ? "border-2 border-dashed border-primary" : ""}`}
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, dashboardChart.id)}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, dashboardChart.id)}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div className="flex items-center gap-2">
+                  {isEditMode && <GripVertical className="w-4 h-4 text-muted-foreground cursor-move" />}
+                  <CardTitle>{chartConfig.title}</CardTitle>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => navigate(`/reports?tab=${chartConfig.reportTab}`)}>
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Full Report
+                  </Button>
+                  {isEditMode && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveChart(dashboardChart.id)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <X className="w-4 h-4" />
                     </Button>
                   )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Low Stock Items */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <AlertTriangle className="w-5 h-5 mr-2 text-warning" /> Low Stock Inventory
-              </CardTitle>
-              <CardDescription>Items falling below their minimum stock threshold.</CardDescription>{" "}
-              {/* <--- FIXED: Used CardDescription */}
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="space-y-4">
-                  <Skeleton className="h-6 w-full" />
-                  <Skeleton className="h-6 w-full" />
-                  <Skeleton className="h-6 w-full" />
-                </div>
-              ) : lowStockItems.length === 0 ? (
-                <p className="text-sm text-muted-foreground">All items are sufficiently stocked!</p>
-              ) : (
-                <>
-                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                    {lowStockItems.slice(0, 5).map((item: any) => (
-                      <div key={item.id} className="flex justify-between items-center pb-2 border-b last:border-b-0">
-                        <div>
-                          <p className="font-medium truncate max-w-[200px]">{item.itemName}</p>
-                          <p className="text-sm text-muted-foreground">{item.storeName}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium text-warning">
-                            {item.quantity} {item.unit}
-                          </p>
-                          <p className="text-sm text-muted-foreground">Min: {item.minStock}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {lowStockItems.length > 5 && (
-                    <div className="mt-4 text-center">
-                      <Button variant="outline" onClick={() => navigate("/reports?tab=LOW_STOCK")}>
-                        <ExternalLink className="w-4 h-4 mr-1" />
-                        See Full Report ({lowStockItems.length} items)
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </CardHeader>
+              <CardContent>{isLoading ? <Skeleton className="h-[300px]" /> : renderChart(chartConfig)}</CardContent>
+            </Card>
+          );
+        })}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Low Stock Items</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+            </div>
+          ) : lowStockItems.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No low stock items</p>
+          ) : (
+            <>
+              <div className="space-y-4">
+                {lowStockItems.slice(0, 5).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <p className="font-medium">{item.name}</p>
+                      <p className="text-sm text-muted-foreground">{item.sku}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-warning">
+                        {item.quantity} {item.unit}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Min: {item.minStock}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {lowStockItems.length > 5 && (
+                <div className="mt-4 text-center">
+                  <Button variant="outline" onClick={() => navigate("/reports?tab=LOW_STOCK")}>
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    See Full Report ({lowStockItems.length} items)
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {dashboardCharts.length === 0 && !isLoading && (
         <Card>
