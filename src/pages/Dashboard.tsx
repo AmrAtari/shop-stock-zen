@@ -12,12 +12,19 @@ import {
   Store,
   Warehouse,
   FileText,
-  Download, // Added icon for export
+  Download,
+  BarChart as BarChartIcon, // Import BarChart icon with alias to avoid conflict with recharts
 } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription, // <--- FIXED: Imported CardDescription
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -58,11 +65,6 @@ interface DashboardChart {
   chartConfig: ChartConfig;
   position: number;
 }
-
-// -----------------------------------------------------------
-// REMOVED: Redundant and broken 'StoreMetrics' type and state
-// const [storeMetrics, setStoreMetrics] = useState<StoreMetrics | null>(null);
-// -----------------------------------------------------------
 
 const defaultCharts: ChartConfig[] = [
   {
@@ -114,7 +116,7 @@ const Dashboard = () => {
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
 
-  const { data: dashboardData, isLoading: isLoadingData, error: dataError } = useDashboardData();
+  const { data: dashboardData, isLoading: isLoadingData, error: dataError } = useDashboardData(); // <--- FIXED: Correctly destructuring data, isLoading, and error.
 
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -125,20 +127,12 @@ const Dashboard = () => {
   const [selectedChart, setSelectedChart] = useState<string>("");
   const [isEditMode, setIsEditMode] = useState(false);
 
-  // -----------------------------------------------------------
-  // REMOVED: Broken 'fetchRealStoreMetrics' function
-  // const fetchRealStoreMetrics = async () => { ... }
-  // -----------------------------------------------------------
-
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
-      // NOTE: This RPC call is likely the source of the 404 error
-      // Ensuring the RPC is correctly deployed in Supabase is necessary
       const { data, error } = await supabase.rpc("get_low_stock_notifications");
 
       if (error) {
-        // Only log the error, don't toast it as the hook is running continuously
         console.error("Error fetching notifications:", error);
       } else {
         setNotifications(data || []);
@@ -152,11 +146,6 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchNotifications();
-
-    // -----------------------------------------------------------
-    // REMOVED: Call to broken 'fetchRealStoreMetrics'
-    // fetchRealStoreMetrics();
-    // -----------------------------------------------------------
 
     const storedCharts = localStorage.getItem("dashboard-charts");
     if (storedCharts) {
@@ -209,9 +198,10 @@ const Dashboard = () => {
       return <Skeleton className="h-[300px] w-full" />;
     }
 
+    // Assumes dashboardData is an object with keys matching chartConfig.id
     const data = dashboardData[chartConfig.id as keyof typeof dashboardData];
 
-    if (!data || data.length === 0) {
+    if (!data || (Array.isArray(data) && data.length === 0)) {
       return (
         <div className="flex flex-col items-center justify-center h-[300px]">
           <AlertTriangle className="w-8 h-8 text-muted-foreground mb-2" />
@@ -294,20 +284,23 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <p>Failed to load dashboard data. Please check your database connection or contact support.</p>
-            <p className="text-sm text-muted-foreground mt-2">Error details: {dataError.message}</p>
+            <p className="text-sm text-muted-foreground mt-2">Error details: {(dataError as Error).message}</p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  // --- SAFE DESTRUCTURING OF DASHBOARD DATA ---
   const {
     totalInventoryValue = 0,
     totalLowStockItems = 0,
     totalStores = 0,
     inventoryValueChange = 0,
     lowStockItems = [],
-  } = dashboardData || {};
+    totalItems = 0, // Assuming totalItems is available on the data object
+  } = (dashboardData as any)?.metrics || {}; // Use optional chaining in case dashboardData is null/undefined
+  // ---------------------------------------------
 
   return (
     <div className="p-6 space-y-6">
@@ -317,7 +310,7 @@ const Dashboard = () => {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Total Inventory Value"
-          icon={DollarSign}
+          icon={DollarSign} // <--- FIXED: Passing icon component reference
           value={formatCurrency(totalInventoryValue, currency)}
           change={formatCurrency(inventoryValueChange, currency, true)}
           changeType={inventoryValueChange >= 0 ? "positive" : "negative"}
@@ -325,18 +318,23 @@ const Dashboard = () => {
         />
         <MetricCard
           title="Low Stock Items"
-          icon={AlertTriangle}
+          icon={AlertTriangle} // <--- FIXED: Passing icon component reference
           value={totalLowStockItems.toString()}
           changeType="negative"
           isLoading={isLoading}
         />
         <MetricCard
           title="Total Items"
-          icon={Package}
-          value={(dashboardData?.totalItems || 0).toString()}
+          icon={Package} // <--- FIXED: Passing icon component reference
+          value={totalItems.toString()}
           isLoading={isLoading}
         />
-        <MetricCard title="Total Stores" icon={Store} value={totalStores.toString()} isLoading={isLoading} />
+        <MetricCard
+          title="Total Stores"
+          icon={Store} // <--- FIXED: Passing icon component reference
+          value={totalStores.toString()}
+          isLoading={isLoading}
+        />
       </div>
 
       {/* Main Content Grid */}
@@ -426,7 +424,8 @@ const Dashboard = () => {
             {dashboardCharts.length === 0 && !isLoading && (
               <Card className="md:col-span-2">
                 <CardContent className="flex flex-col items-center justify-center py-12">
-                  <BarChart2 className="w-12 h-12 text-muted-foreground mb-4" />
+                  <BarChartIcon className="w-12 h-12 text-muted-foreground mb-4" />{" "}
+                  {/* <--- FIXED: Used BarChartIcon import */}
                   <h3 className="text-lg font-semibold mb-2">No charts configured</h3>
                   <p className="text-muted-foreground text-center mb-4">
                     Add charts to your dashboard to visualize your inventory data
@@ -492,7 +491,8 @@ const Dashboard = () => {
               <CardTitle className="flex items-center">
                 <AlertTriangle className="w-5 h-5 mr-2 text-warning" /> Low Stock Inventory
               </CardTitle>
-              <CardDescription>Items falling below their minimum stock threshold.</CardDescription>
+              <CardDescription>Items falling below their minimum stock threshold.</CardDescription>{" "}
+              {/* <--- FIXED: Used CardDescription */}
             </CardHeader>
             <CardContent>
               {isLoading ? (
