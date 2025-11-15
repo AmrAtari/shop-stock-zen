@@ -13,7 +13,7 @@ import { useTransferDetail, useAddTransferItems, useRemoveTransferItem, useUpdat
 import { useStores } from "@/hooks/useTransfers";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Download, CheckCircle, XCircle, Truck, Package, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, CheckCircle, XCircle, Truck, Package, Trash2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
@@ -295,9 +295,18 @@ const TransferDetail = () => {
             </Button>
           )}
           {isInTransit && (
-            <Button onClick={handleReceive}>
-              <Package className="mr-2 h-4 w-4" />
-              Receive & Update Stock
+            <Button onClick={handleReceive} disabled={receiveTransferMutation.isPending}>
+              {receiveTransferMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Receiving...
+                </>
+              ) : (
+                <>
+                  <Package className="mr-2 h-4 w-4" />
+                  Receive & Update Stock
+                </>
+              )}
             </Button>
           )}
         </div>

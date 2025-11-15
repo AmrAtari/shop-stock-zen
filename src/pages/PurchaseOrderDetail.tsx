@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator";
 import { usePurchaseOrderDetail } from "@/hooks/usePurchaseOrderDetail";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package } from "lucide-react";
+import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +28,7 @@ const PurchaseOrderDetail = () => {
   const queryClient = useQueryClient();
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
+  const [isReceiving, setIsReceiving] = useState(false);
 
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
@@ -161,6 +163,7 @@ const PurchaseOrderDetail = () => {
       return;
     }
 
+    setIsReceiving(true);
     try {
       console.log("Receiving PO to store:", po.store_id);
       let updatedCount = 0;
@@ -255,6 +258,8 @@ const PurchaseOrderDetail = () => {
         description: error?.message || "Failed to receive purchase order.",
         variant: "destructive",
       });
+    } finally {
+      setIsReceiving(false);
     }
   };
 
@@ -320,9 +325,18 @@ const PurchaseOrderDetail = () => {
             </>
           )}
           {po.status === "approved" && isAdmin && (
-            <Button onClick={handleReceive} variant="default">
-              <Package className="mr-2 h-4 w-4" />
-              Receive & Update Stock
+            <Button onClick={handleReceive} variant="default" disabled={isReceiving}>
+              {isReceiving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Receiving...
+                </>
+              ) : (
+                <>
+                  <Package className="mr-2 h-4 w-4" />
+                  Receive & Update Stock
+                </>
+              )}
             </Button>
           )}
         </div>
