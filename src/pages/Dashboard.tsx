@@ -178,7 +178,7 @@ const Dashboard = () => {
           .map((fieldName) => {
             const cell = row[fieldName] === null || row[fieldName] === undefined ? "" : String(row[fieldName]);
             // Escape commas and double quotes
-            return `\"${cell.replace(/\"/g, '\"\"')}\"`;
+            return `"${cell.replace(/"/g, '""')}"`;
           })
           .join(","),
       ),
@@ -210,9 +210,7 @@ const Dashboard = () => {
         "stores",
         "variants",
         "products",
-        "store_inventory", // Corrected table name based on PO logic
-        "stock_on_hand",
-        "items",
+        "store_inventory", // Confirmed table name
       ];
 
       for (const tableName of tables) {
@@ -235,7 +233,7 @@ const Dashboard = () => {
           }
           console.log(`\n`);
         } catch (err) {
-          console.log(`Table \"${tableName}\" doesn't exist or can't be accessed:`, err);
+          console.log(`Table "${tableName}" doesn't exist or can't be accessed:`, err);
         }
       }
     } catch (error) {
@@ -244,37 +242,34 @@ const Dashboard = () => {
   };
 
   /**
-   * FIX: The previous fix changing the table name caused a join error because the foreign keys changed.
-   * The join is now aligned with the successful query structure in 'useStoreInventory.tsx', which uses the 'items' table.
+   * FIX: The table name has been corrected from 'stock_on_hand' to 'store_inventory'.
    */
   const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
       console.log("🔍 Fetching REAL store metrics from database...");
 
-      // 1. Fetch combined inventory data (Stock, Store, Item details)
+      // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
       const { data: fullInventory, error: fullInventoryError } = await supabase
-        .from("store_inventory") // Table name confirmed by PO logic
+        .from("store_inventory") // *** FIX: Corrected table name to store_inventory ***
         .select(
           `
             quantity,
             min_stock,
             store_id,
             stores(name),
-            items!inner( // *** FIX: Changed join from variants to items ***
+            variants(
+                variant_id,
                 sku, 
-                name, // item name
-                category, 
-                cost_price, // Assuming cost field name is cost_price in items
-                selling_price // Assuming selling field name is selling_price in items
+                selling_price, 
+                cost,
+                products(name)
             )
           `,
         )
         .limit(5000);
 
       if (fullInventoryError) {
-        // This error check is what is catching the bug.
-        // If this toast appears, check the console for the full error object.
         console.error("❌ Error fetching full inventory:", fullInventoryError);
         toast.error("Failed to load inventory for metrics");
         return;
@@ -295,27 +290,17 @@ const Dashboard = () => {
         const storeId = item.store_id || "unspecified";
         const storeName = item.stores?.name || "(Non-Specified Store)";
 
-        const quantity = Number(item.quantity) || 0;
-
-        const itemDetails = item.items; // New variable for item details
-
-        // *** DEBUG LOGGING: Use the correct path for the item name ***
-        if (quantity > 0) {
-          console.log(
-            `[STOCK ASSIGNMENT DEBUG] Item: ${itemDetails?.name || itemDetails?.sku || "N/A"} (Qty: ${quantity}). Store ID found: ${item.store_id}. Store Name Assigned: ${storeName}`,
-          );
-        }
-        // **********************************
+        const variant = item.variants;
 
         // Map to a simplified, flat object for CSV export consistency
         const mappedItem = {
-          item_name: itemDetails?.name || "N/A",
-          sku: itemDetails?.sku || "N/A",
+          item_name: variant?.products?.name || "N/A",
+          sku: variant?.sku || "N/A",
           quantity: item.quantity,
           min_stock: item.min_stock,
           store_name: storeName,
-          selling_price: itemDetails?.selling_price,
-          cost: itemDetails?.cost_price, // Use new cost_price field
+          selling_price: variant?.selling_price,
+          cost: variant?.cost,
         };
 
         if (storeId === "unspecified") {
@@ -329,11 +314,11 @@ const Dashboard = () => {
 
         const metrics = newInventoryByStore.get(storeId)!;
 
+        const quantity = Number(item.quantity) || 0;
         const minStock = Number(item.min_stock) || 0;
 
         // Price logic: Use selling price, fallback to cost, default to 50 for calculation
-        // FIX: Ensure itemDetails is used for price access
-        const price = Number(itemDetails?.selling_price) || Number(itemDetails?.cost_price) || 50;
+        const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
         const value = quantity * price;
 
         metrics.totalItems += quantity;
@@ -462,7 +447,7 @@ const Dashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
         fetchNotifications();
       })
-      // FIX: Changed 'items' table listener to the correct 'store_inventory' table
+      // FIX: Changed table listener to the correct 'store_inventory' table
       .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, () => {
         fetchRealStoreMetrics();
       })
