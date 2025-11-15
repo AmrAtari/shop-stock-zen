@@ -77,13 +77,33 @@ serve(async (req) => {
       const { data: userRoles, error: rolesError } = await supabaseAdmin.from("user_roles").select("*");
       if (rolesError) throw rolesError;
 
-      // Combine user data with roles
+      // Get all user profiles with store info
+      const { data: userProfiles, error: profilesError } = await supabaseAdmin
+        .from("user_profiles")
+        .select(`
+          user_id,
+          username,
+          store_id,
+          stores:store_id (
+            name,
+            location
+          )
+        `);
+      if (profilesError) console.error("Profile fetch error:", profilesError);
+
+      // Combine user data with roles and profiles
       const users = authUsers.users.map((user) => {
         const userRole = userRoles?.find((r) => r.user_id === user.id);
+        const userProfile = userProfiles?.find((p) => p.user_id === user.id);
+        const store = userProfile?.stores?.[0]; // Access first store from array
         return {
           id: user.id,
           email: user.email,
+          username: userProfile?.username || user.email?.split('@')[0] || 'Unknown',
           role: userRole?.role || null,
+          store_id: userProfile?.store_id,
+          store_name: store?.name,
+          store_location: store?.location,
           created_at: user.created_at,
           last_sign_in_at: user.last_sign_in_at,
           email_confirmed_at: user.email_confirmed_at,
