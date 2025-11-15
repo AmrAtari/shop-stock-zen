@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ProductDialogNew } from "@/components/ProductDialogNew";
-import { FileImport } from "@/components/FileImport";
+import ProductDialog from "@/components/ProductDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import * as XLSX from "xlsx";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAggregatedInventory } from "@/hooks/useStoreInventoryView";
 import { Item } from "@/types/database";
+import { InventoryItem } from "@/types/inventory";
 
 interface StoreStock {
   store_id: string;
@@ -161,6 +164,110 @@ const InventoryPage: React.FC = () => {
       toast.success("Item deleted successfully");
       await invalidateInventoryData(queryClient);
     }
+  };
+
+  const handleSaveItem = async (item: any) => {
+    try {
+      if (editingItem) {
+        // Update existing item
+        const { error } = await supabase
+          .from("items")
+          .update({
+            name: item.name,
+            sku: item.sku,
+            price: item.sellingPrice,
+            cost: item.costPrice,
+            quantity: item.quantity,
+            min_stock: item.minStock,
+            unit: item.unit,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingItem.id);
+        
+        if (error) throw error;
+      } else {
+        // Create new item
+        const { error } = await supabase.from("items").insert({
+          name: item.name,
+          sku: item.sku,
+          price: item.sellingPrice,
+          cost: item.costPrice,
+          quantity: item.quantity,
+          min_stock: item.minStock,
+          unit: item.unit,
+        });
+        
+        if (error) throw error;
+      }
+      
+      await invalidateInventoryData(queryClient);
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleExportToExcel = () => {
+    const exportData = filteredInventory.map(item => ({
+      SKU: item.sku,
+      Name: item.name,
+      Supplier: item.supplier || "",
+      Category: item.category || "",
+      "Main Group": item.main_group || "",
+      Gender: item.gender || "",
+      Origin: item.origin || "",
+      Season: item.season || "",
+      Size: item.size || "",
+      Color: item.color || "",
+      Theme: item.theme || "",
+      Unit: item.unit || "",
+      "Stock Qty": item.quantity,
+      "On Order": item.on_order_quantity || 0,
+      "Min Stock": item.min_stock,
+      Cost: item.cost,
+      Price: item.price,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+    XLSX.writeFile(wb, `inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success("Inventory exported successfully");
+  };
+
+  const handleImportFromExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        // Import items
+        for (const row of jsonData as any[]) {
+          await supabase.from("items").upsert({
+            sku: row.SKU,
+            name: row.Name,
+            price: row.Price || 0,
+            cost: row.Cost || 0,
+            quantity: row["Stock Qty"] || 0,
+            min_stock: row["Min Stock"] || 0,
+            unit: row.Unit || "pcs",
+          });
+        }
+
+        await invalidateInventoryData(queryClient);
+        toast.success(`Imported ${jsonData.length} items successfully`);
+        setImportOpen(false);
+      } catch (error: any) {
+        toast.error(`Import failed: ${error.message}`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   if (isLoading) return <div className="p-8">Loading inventory...</div>;
@@ -451,25 +558,72 @@ const InventoryPage: React.FC = () => {
         endIndex={pagination.endIndex}
       />
 
-      <ProductDialogNew
+      <ProductDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        editingItem={editingItem}
-        isOpen={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        initialProductData={editingItem}
-        onSubmit={async (data) => {
-          // Handle submit
-          setDialogOpen(false);
-        }}
+        item={editingItem ? {
+          id: editingItem.id,
+          name: editingItem.name,
+          sku: editingItem.sku,
+          category: editingItem.category || "",
+          quantity: editingItem.quantity || 0,
+          minStock: editingItem.min_stock || 0,
+          unit: editingItem.unit || "pcs",
+          costPrice: editingItem.cost || 0,
+          sellingPrice: editingItem.price || 0,
+          supplier: editingItem.supplier || "",
+          lastRestocked: editingItem.last_restocked || "",
+          location: editingItem.location || "",
+        } : undefined}
+        onSave={handleSaveItem}
       />
-      <FileImport 
-        open={importOpen} 
-        onOpenChange={setImportOpen} 
-        onImportComplete={() => invalidateInventoryData(queryClient)}
-        onImportSuccess={() => {}}
-        isLoading={false}
-      />
+      
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import / Export Inventory</DialogTitle>
+          </DialogHeader>
+          
+          <Tabs defaultValue="export" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="export">Export</TabsTrigger>
+              <TabsTrigger value="import">Import</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="export" className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                Export your current inventory to an Excel file. This will include all {filteredInventory.length} filtered items.
+              </div>
+              <Button onClick={handleExportToExcel} className="w-full">
+                <Upload className="w-4 h-4 mr-2" />
+                Export to Excel
+              </Button>
+            </TabsContent>
+            
+            <TabsContent value="import" className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                Import inventory items from an Excel file. The file should have columns: SKU, Name, Price, Cost, Stock Qty, Min Stock, Unit.
+              </div>
+              <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                <Input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleImportFromExcel}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer">
+                  <div className="space-y-2">
+                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
+                    <div className="text-sm font-medium">Click to upload or drag and drop</div>
+                    <div className="text-xs text-muted-foreground">Excel or CSV files only</div>
+                  </div>
+                </label>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
