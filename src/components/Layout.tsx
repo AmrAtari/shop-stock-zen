@@ -11,6 +11,7 @@ import {
   Settings,
   Bot,
   Calculator,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,6 +35,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: t('common.dashboard'), href: "/", icon: LayoutDashboard },
     ...(isAdmin ? [{ name: t('common.configuration'), href: "/configuration", icon: Settings }] : []),
     { name: t('common.inventory'), href: "/inventory", icon: Package },
+    { name: "Physical Inventory", href: "/inventory/physical", icon: ClipboardList },
     { name: t('common.purchaseOrders'), href: "/purchase-orders", icon: ShoppingCart },
     { name: t('common.transfers'), href: "/transfers", icon: Store },
     { name: t('common.accounting'), href: "/accounting", icon: Calculator },
