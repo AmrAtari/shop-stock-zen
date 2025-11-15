@@ -87,8 +87,9 @@ const ProductDialog = ({ open, onOpenChange, item, onSave }: ProductDialogProps)
       const itemData = {
         name: formData.name,
         sku: formData.sku,
-        cost: Number(formData.cost),
-        price: Number(formData.price),
+        // Round cost and price to 2 decimal places
+        cost: Math.round(Number(formData.cost) * 100) / 100,
+        price: Math.round(Number(formData.price) * 100) / 100,
         min_stock: Number(formData.min_stock),
         unit: formData.unit,
         location: formData.location || null,

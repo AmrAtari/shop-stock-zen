@@ -63,9 +63,12 @@ export const POItemImport = ({ onImport, existingSkus }: POItemImportProps) => {
         // Use flexible column matching
         const sku = String(findValue(row, ['SKU', 'sku', 'item_code', 'itemcode', 'code', 'item_sku']) || "").trim();
         const quantity = parseFloat(findValue(row, ['Quantity', 'quantity', 'qty', 'amount', 'count']) || 0);
-        const costPrice = parseFloat(
-          findValue(row, ['Cost Price', 'costPrice', 'cost_price', 'Unit Price', 'unitPrice', 'unit_price', 'price', 'cost']) || 0
-        );
+        // Round cost price to 2 decimal places automatically
+        const costPrice = Math.round(
+          parseFloat(
+            findValue(row, ['Cost Price', 'costPrice', 'cost_price', 'Unit Price', 'unitPrice', 'unit_price', 'price', 'cost']) || 0
+          ) * 100
+        ) / 100;
 
         let status: "valid" | "warning" | "error" = "valid";
         let message = "";

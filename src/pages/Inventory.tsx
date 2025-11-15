@@ -225,8 +225,9 @@ const InventoryPage: React.FC = () => {
           await supabase.from("items").upsert({
             sku: row.SKU || row.sku,
             name: row.Name || row.name,
-            price: row.Price || row["Selling Price"] || row.price || 0,
-            cost: row.Cost || row["Cost Price"] || row.cost || 0,
+            // Round price and cost to 2 decimal places automatically
+            price: Math.round((row.Price || row["Selling Price"] || row.price || 0) * 100) / 100,
+            cost: Math.round((row.Cost || row["Cost Price"] || row.cost || 0) * 100) / 100,
             min_stock: row["Min Stock"] || row.min_stock || 0,
             unit: row.Unit || row.unit || "pcs",
             location: row.Location || row.location || null,
