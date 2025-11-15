@@ -210,7 +210,7 @@ const Dashboard = () => {
         "stores",
         "variants",
         "products",
-        "stock_on_hand", // Added correct table names
+        "store_inventory", // Using the correct inventory table name
       ];
 
       for (const tableName of tables) {
@@ -242,30 +242,31 @@ const Dashboard = () => {
   };
 
   /**
-   * FIX: Rewritten to directly query the correct tables: stock_on_hand and variants.
-   * This eliminates the guesswork loop and the associated 404 errors for 'items', etc.
+   * FIX: Modified to join store_inventory -> items -> variants to retrieve pricing data.
+   * This is the safest way to get the correct data without fixing Foreign Key issues.
    */
   const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
-      console.log("🔍 Fetching REAL store metrics from database...");
+      console.log("🔍 Fetching REAL store metrics from database via items -> variants join...");
 
-      // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
-      // Querying stock_on_hand is the most efficient way to get store-specific inventory.
+      // 1. Fetch combined inventory data using the nested join: store_inventory -> items -> variants
       const { data: fullInventory, error: fullInventoryError } = await supabase
-        .from("stock_on_hand")
+        .from("store_inventory") // Use the correct inventory table name
         .select(
           `
             quantity,
             min_stock,
             store_id,
             stores(name),
-            variants(
-                variant_id,
-                sku, 
-                selling_price, 
-                cost,
-                products(name)
+            items!inner(
+                name,
+                variants(
+                    sku, 
+                    selling_price, 
+                    cost,
+                    products(name)
+                )
             )
           `,
         )
@@ -292,17 +293,25 @@ const Dashboard = () => {
         const storeId = item.store_id || "unspecified";
         const storeName = item.stores?.name || "(Non-Specified Store)";
 
-        const variant = item.variants;
+        // CRITICAL FIX: Access the deeply nested variant data.
+        // item.items is the linked item row. item.items.variants is an array of variants linked to that item.
+        const variant = item.items?.variants?.[0];
+
+        // Safety check: if no variant or item data is available, skip this record
+        if (!item.items || !variant) {
+          console.warn(`Skipping inventory record due to missing Item/Variant data:`, item);
+          return;
+        }
 
         // Map to a simplified, flat object for CSV export consistency
         const mappedItem = {
-          item_name: variant?.products?.name || "N/A",
-          sku: variant?.sku || "N/A",
+          item_name: variant.products?.name || item.items.name || "N/A", // Use item name if product name is missing
+          sku: variant.sku || "N/A",
           quantity: item.quantity,
           min_stock: item.min_stock,
           store_name: storeName,
-          selling_price: variant?.selling_price,
-          cost: variant?.cost,
+          selling_price: variant.selling_price,
+          cost: variant.cost,
         };
 
         if (storeId === "unspecified") {
@@ -319,8 +328,8 @@ const Dashboard = () => {
         const quantity = Number(item.quantity) || 0;
         const minStock = Number(item.min_stock) || 0;
 
-        // Price logic: Use selling price, fallback to cost, default to 50 for calculation
-        const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
+        // CRITICAL FIX: Price logic now uses the data retrieved from the variants table
+        const price = Number(variant.selling_price) || Number(variant.cost) || 50;
         const value = quantity * price;
 
         metrics.totalItems += quantity;
@@ -449,8 +458,8 @@ const Dashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
         fetchNotifications();
       })
-      // FIX: Changed 'items' table listener to the correct 'stock_on_hand' table
-      .on("postgres_changes", { event: "*", schema: "public", table: "stock_on_hand" }, () => {
+      // FIX: Changed 'items' table listener to the correct 'store_inventory' table
+      .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, () => {
         fetchRealStoreMetrics();
       })
       .subscribe();
