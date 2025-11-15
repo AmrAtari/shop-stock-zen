@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Search, Edit, Trash2, Upload, Layers, Package } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Upload, Layers, Package, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,6 +137,11 @@ const InventoryPage: React.FC = () => {
     [filteredInventory, pagination.startIndex, pagination.endIndex],
   );
 
+  const lowStockCount = useMemo(
+    () => filteredInventory.filter(item => item.quantity <= item.min_stock).length,
+    [filteredInventory]
+  );
+
   const toggleSelectItem = (item: ItemWithStores) => {
     setSelectedItems((prev) =>
       prev.some((i) => i.id === item.id) ? prev.filter((i) => i.id !== item.id) : [...prev, item],
@@ -181,6 +186,18 @@ const InventoryPage: React.FC = () => {
           </Button>
         </div>
       </header>
+
+      {lowStockCount > 0 && (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-destructive" />
+          <div>
+            <p className="font-semibold text-destructive">Low Stock Alert</p>
+            <p className="text-sm text-muted-foreground">
+              {lowStockCount} item{lowStockCount !== 1 ? 's' : ''} below minimum stock level
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col gap-4">
@@ -353,8 +370,13 @@ const InventoryPage: React.FC = () => {
                   {item.stores.length > 0 ? (
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="link" size="sm" className="text-primary">
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className={item.quantity <= item.min_stock ? "text-destructive font-semibold" : "text-primary"}
+                        >
                           <Package className="w-3 h-3 mr-1" />
+                          {item.quantity <= item.min_stock && <AlertTriangle className="w-3 h-3 mr-1" />}
                           {item.quantity}
                         </Button>
                       </PopoverTrigger>
@@ -377,7 +399,10 @@ const InventoryPage: React.FC = () => {
                       </PopoverContent>
                     </Popover>
                   ) : (
-                    <span className="text-muted-foreground">{item.quantity}</span>
+                    <span className={item.quantity <= item.min_stock ? "text-destructive font-semibold flex items-center justify-end gap-1" : "text-muted-foreground"}>
+                      {item.quantity <= item.min_stock && <AlertTriangle className="w-3 h-3" />}
+                      {item.quantity}
+                    </span>
                   )}
                 </TableCell>
                 <TableCell className="text-right">
