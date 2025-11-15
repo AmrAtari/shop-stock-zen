@@ -23,6 +23,8 @@ import { useAggregatedInventory } from "@/hooks/useStoreInventoryView";
 import { Item } from "@/types/database";
 import { InventoryItem } from "@/types/inventory";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 interface StoreStock {
   store_id: string;
@@ -41,6 +43,8 @@ const ITEMS_PER_PAGE = 20;
 const InventoryPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -545,8 +549,8 @@ const InventoryPage: React.FC = () => {
                     {item.min_stock}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right">{item.cost ? item.cost.toFixed(2) : "-"}</TableCell>
-                <TableCell className="text-right font-semibold">{item.price ? item.price.toFixed(2) : "-"}</TableCell>
+                <TableCell className="text-right">{item.cost ? formatCurrency(item.cost, currency) : "-"}</TableCell>
+                <TableCell className="text-right font-semibold">{item.price ? formatCurrency(item.price, currency) : "-"}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     <Button
