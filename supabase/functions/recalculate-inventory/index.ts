@@ -147,7 +147,7 @@ serve(async (req) => {
         item_id: itemId,
         store_id: storeId,
         quantity: calculatedQty,
-        last_restocked: new Date().toISOString(),
+        qty_on_order: 0,
       });
     }
 
