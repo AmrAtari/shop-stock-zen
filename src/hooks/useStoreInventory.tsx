@@ -38,7 +38,7 @@ export const useStoreInventory = (storeId?: string) => {
             category, 
             brand, 
             unit,
-            // --- MODIFIED: Added inner join to fetch price/cost from variants ---
+            // --- FIXED QUERY: Use variants!inner for price/cost ---
             variants!inner(selling_price, cost) 
           ),
           stores!inner(name)
@@ -48,7 +48,7 @@ export const useStoreInventory = (storeId?: string) => {
         query = query.eq("store_id", storeId);
       }
 
-      // NOTE: Increasing limit to 5000 as seen in console logs
+      // Setting limit to 5000 as observed in logs
       const { data, error } = await query.limit(5000);
 
       if (error) {
@@ -63,7 +63,6 @@ export const useStoreInventory = (storeId?: string) => {
         quantity: item.quantity,
         min_stock: item.min_stock,
         last_restocked: item.last_restocked,
-        // sku is still on items table per original code
         sku: item.items.sku,
         item_name: item.items.name,
         store_name: item.stores.name,
@@ -71,7 +70,7 @@ export const useStoreInventory = (storeId?: string) => {
         brand: item.items.brand,
         unit: item.items.unit,
         // --- ADDED MAPPING FOR NEW FIELDS ---
-        // Assuming there is a single variant, or we only care about the first one
+        // Assuming the query returns an array of variants, and we use the first one
         selling_price: item.items.variants?.[0]?.selling_price || null,
         cost: item.items.variants?.[0]?.cost || null,
       }));
