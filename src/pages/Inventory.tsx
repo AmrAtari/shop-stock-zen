@@ -462,6 +462,7 @@ const InventoryPage: React.FC = () => {
               <TableHead>Unit</TableHead>
               <TableHead className="text-right">Stock Qty</TableHead>
               <TableHead className="text-right">On Order</TableHead>
+              <TableHead className="text-right">Total Available</TableHead>
               <TableHead className="text-right">Min Stock</TableHead>
               <TableHead className="text-right">Cost</TableHead>
               <TableHead className="text-right">Price</TableHead>
@@ -532,6 +533,11 @@ const InventoryPage: React.FC = () => {
                 <TableCell className="text-right">
                   <Badge variant="outline" className="font-mono">
                     {item.on_order_quantity || 0}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Badge variant="default" className="font-semibold">
+                    {(item.quantity || 0) + (item.on_order_quantity || 0)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
