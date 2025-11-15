@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import ProductDialog from "@/components/ProductDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
 import * as XLSX from "xlsx";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
@@ -21,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useAggregatedInventory } from "@/hooks/useStoreInventoryView";
 import { Item } from "@/types/database";
 import { InventoryItem } from "@/types/inventory";
+import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 
 interface StoreStock {
   store_id: string;
@@ -52,6 +54,7 @@ const InventoryPage: React.FC = () => {
   const [filterSeason, setFilterSeason] = useState("");
   const [filterColor, setFilterColor] = useState("");
   const [filterSize, setFilterSize] = useState("");
+  const [isProcessingImport, setIsProcessingImport] = useState(false);
 
   // Use aggregated inventory which correctly reflects store_inventory as source of truth
   const { data: rawInventory = [], isLoading, error } = useAggregatedInventory();
@@ -166,44 +169,9 @@ const InventoryPage: React.FC = () => {
     }
   };
 
-  const handleSaveItem = async (item: any) => {
-    try {
-      if (editingItem) {
-        // Update existing item
-        const { error } = await supabase
-          .from("items")
-          .update({
-            name: item.name,
-            sku: item.sku,
-            price: item.sellingPrice,
-            cost: item.costPrice,
-            quantity: item.quantity,
-            min_stock: item.minStock,
-            unit: item.unit,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", editingItem.id);
-        
-        if (error) throw error;
-      } else {
-        // Create new item
-        const { error } = await supabase.from("items").insert({
-          name: item.name,
-          sku: item.sku,
-          price: item.sellingPrice,
-          cost: item.costPrice,
-          quantity: item.quantity,
-          min_stock: item.minStock,
-          unit: item.unit,
-        });
-        
-        if (error) throw error;
-      }
-      
-      await invalidateInventoryData(queryClient);
-    } catch (error: any) {
-      toast.error(error.message);
-    }
+  const handleSaveItem = async () => {
+    await invalidateInventoryData(queryClient);
+    setEditingItem(null);
   };
 
   const handleExportToExcel = () => {
@@ -238,6 +206,7 @@ const InventoryPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsProcessingImport(true);
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
@@ -247,17 +216,27 @@ const InventoryPage: React.FC = () => {
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-        // Import items
+        // Import items with all attributes
         for (const row of jsonData as any[]) {
           await supabase.from("items").upsert({
-            sku: row.SKU,
-            name: row.Name,
-            price: row.Price || 0,
-            cost: row.Cost || 0,
-            quantity: row["Stock Qty"] || 0,
-            min_stock: row["Min Stock"] || 0,
-            unit: row.Unit || "pcs",
-          });
+            sku: row.SKU || row.sku,
+            name: row.Name || row.name,
+            price: row.Price || row["Selling Price"] || row.price || 0,
+            cost: row.Cost || row["Cost Price"] || row.cost || 0,
+            min_stock: row["Min Stock"] || row.min_stock || 0,
+            unit: row.Unit || row.unit || "pcs",
+            location: row.Location || row.location || null,
+            supplier: row.Supplier || row.supplier || null,
+            category: row.Category || row.category || null,
+            main_group: row["Main Group"] || row.Brand || row.main_group || null,
+            color: row.Color || row.color || null,
+            size: row.Size || row.size || null,
+            gender: row.Gender || row.gender || null,
+            origin: row.Origin || row.origin || null,
+            season: row.Season || row.season || null,
+            theme: row.Theme || row.theme || null,
+            pos_description: row["POS Description"] || row.pos_description || null,
+          }, { onConflict: "sku" });
         }
 
         await invalidateInventoryData(queryClient);
@@ -265,9 +244,47 @@ const InventoryPage: React.FC = () => {
         setImportOpen(false);
       } catch (error: any) {
         toast.error(`Import failed: ${error.message}`);
+      } finally {
+        setIsProcessingImport(false);
       }
     };
     reader.readAsArrayBuffer(file);
+  };
+
+  const handleGoogleSheetsImport = async (data: any[]) => {
+    try {
+      setIsProcessingImport(true);
+      // Import items with all attributes
+      for (const row of data) {
+        await supabase.from("items").upsert({
+          sku: row.SKU || row.sku,
+          name: row.Name || row.name,
+          price: row.Price || row["Selling Price"] || row.price || 0,
+          cost: row.Cost || row["Cost Price"] || row.cost || 0,
+          min_stock: row["Min Stock"] || row.min_stock || 0,
+          unit: row.Unit || row.unit || "pcs",
+          location: row.Location || row.location || null,
+          supplier: row.Supplier || row.supplier || null,
+          category: row.Category || row.category || null,
+          main_group: row["Main Group"] || row.Brand || row.main_group || null,
+          color: row.Color || row.color || null,
+          size: row.Size || row.size || null,
+          gender: row.Gender || row.gender || null,
+          origin: row.Origin || row.origin || null,
+          season: row.Season || row.season || null,
+          theme: row.Theme || row.theme || null,
+          pos_description: row["POS Description"] || row.pos_description || null,
+        }, { onConflict: "sku" });
+      }
+
+      await invalidateInventoryData(queryClient);
+      toast.success(`Imported ${data.length} items successfully`);
+      setImportOpen(false);
+    } catch (error: any) {
+      toast.error(`Import failed: ${error.message}`);
+    } finally {
+      setIsProcessingImport(false);
+    }
   };
 
   if (isLoading) return <div className="p-8">Loading inventory...</div>;
@@ -585,41 +602,59 @@ const InventoryPage: React.FC = () => {
           </DialogHeader>
           
           <Tabs defaultValue="export" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="export">Export</TabsTrigger>
-              <TabsTrigger value="import">Import</TabsTrigger>
+              <TabsTrigger value="excel">Excel Import</TabsTrigger>
+              <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
             </TabsList>
             
             <TabsContent value="export" className="space-y-4">
-              <div className="text-sm text-muted-foreground">
-                Export your current inventory to an Excel file. This will include all {filteredInventory.length} filtered items.
+              <div className="space-y-2">
+                <Label>Export to Excel</Label>
+                <p className="text-sm text-muted-foreground">
+                  Export your current inventory to an Excel file. This will include all {filteredInventory.length} filtered items.
+                </p>
+                <Button onClick={handleExportToExcel} className="w-full" variant="outline">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Export to Excel
+                </Button>
               </div>
-              <Button onClick={handleExportToExcel} className="w-full">
-                <Upload className="w-4 h-4 mr-2" />
-                Export to Excel
-              </Button>
             </TabsContent>
             
-            <TabsContent value="import" className="space-y-4">
-              <div className="text-sm text-muted-foreground">
-                Import inventory items from an Excel file. The file should have columns: SKU, Name, Price, Cost, Stock Qty, Min Stock, Unit.
+            <TabsContent value="excel" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="file-upload">Import from Excel File</Label>
+                <p className="text-sm text-muted-foreground">
+                  Import inventory items from an Excel file. The file should have columns for all item attributes (SKU, Name, Price, Cost, Min Stock, etc.)
+                </p>
+                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                  <Input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleImportFromExcel}
+                    className="hidden"
+                    id="file-upload"
+                    disabled={isProcessingImport}
+                  />
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <div className="space-y-2">
+                      <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
+                      <div className="text-sm font-medium">
+                        {isProcessingImport ? "Importing..." : "Click to upload or drag and drop"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Excel or CSV files only</div>
+                    </div>
+                  </label>
+                </div>
               </div>
-              <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                <Input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleImportFromExcel}
-                  className="hidden"
-                  id="file-upload"
-                />
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <div className="space-y-2">
-                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                    <div className="text-sm font-medium">Click to upload or drag and drop</div>
-                    <div className="text-xs text-muted-foreground">Excel or CSV files only</div>
-                  </div>
-                </label>
-              </div>
+            </TabsContent>
+
+            <TabsContent value="sheets" className="space-y-4">
+              <GoogleSheetsInput
+                onImport={handleGoogleSheetsImport}
+                isProcessing={isProcessingImport}
+                setIsProcessing={setIsProcessingImport}
+              />
             </TabsContent>
           </Tabs>
         </DialogContent>
