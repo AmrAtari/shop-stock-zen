@@ -53,7 +53,17 @@ serve(async (req) => {
 
     // --- ROUTING ADMIN ACTIONS ---
 
-    const body = req.method === "POST" || req.method === "PUT" ? await req.json() : {};
+    // Safely parse JSON body
+    let body: any = {};
+    if (req.method === "POST" || req.method === "PUT") {
+      try {
+        const text = await req.text();
+        body = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error("Failed to parse request body:", e);
+        body = {};
+      }
+    }
 
     // ----------------------------------------------------
     // A. List Users (Initial Path or explicit list)
