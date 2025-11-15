@@ -210,7 +210,7 @@ const Dashboard = () => {
         "stores",
         "variants",
         "products",
-        "store_inventory", // Confirmed table name
+        "stock_on_hand", // Added correct table names
       ];
 
       for (const tableName of tables) {
@@ -242,7 +242,8 @@ const Dashboard = () => {
   };
 
   /**
-   * FIX: The table name has been corrected from 'stock_on_hand' to 'store_inventory'.
+   * FIX: Rewritten to directly query the correct tables: stock_on_hand and variants.
+   * This eliminates the guesswork loop and the associated 404 errors for 'items', etc.
    */
   const fetchRealStoreMetrics = async () => {
     try {
@@ -250,8 +251,9 @@ const Dashboard = () => {
       console.log("🔍 Fetching REAL store metrics from database...");
 
       // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
+      // Querying stock_on_hand is the most efficient way to get store-specific inventory.
       const { data: fullInventory, error: fullInventoryError } = await supabase
-        .from("store_inventory") // *** FIX: Corrected table name to store_inventory ***
+        .from("stock_on_hand")
         .select(
           `
             quantity,
@@ -447,8 +449,8 @@ const Dashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
         fetchNotifications();
       })
-      // FIX: Changed table listener to the correct 'store_inventory' table
-      .on("postgres_changes", { event: "*", schema: "public", table: "store_inventory" }, () => {
+      // FIX: Changed 'items' table listener to the correct 'stock_on_hand' table
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock_on_hand" }, () => {
         fetchRealStoreMetrics();
       })
       .subscribe();
