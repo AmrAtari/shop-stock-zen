@@ -16,22 +16,31 @@ export interface StoreInventoryItem {
   category: string;
   brand: string | null;
   unit: string;
+  // --- ADDED PRICE/COST FIELDS ---
+  selling_price: number | null;
+  cost: number | null;
 }
 
 export const useStoreInventory = (storeId?: string) => {
   return useQuery({
     queryKey: ["store-inventory", storeId],
     queryFn: async (): Promise<StoreInventoryItem[]> => {
-      let query = supabase
-        .from("store_inventory")
-        .select(`
+      let query = supabase.from("store_inventory").select(`
           id,
           item_id,
           store_id,
           quantity,
           min_stock,
           last_restocked,
-          items!inner(sku, name, category, brand, unit),
+          items!inner(
+            sku, 
+            name, 
+            category, 
+            brand, 
+            unit,
+            // --- MODIFIED: Added inner join to fetch price/cost from variants ---
+            variants!inner(selling_price, cost) 
+          ),
           stores!inner(name)
         `);
 
@@ -39,7 +48,8 @@ export const useStoreInventory = (storeId?: string) => {
         query = query.eq("store_id", storeId);
       }
 
-      const { data, error } = await query;
+      // NOTE: Increasing limit to 5000 as seen in console logs
+      const { data, error } = await query.limit(5000);
 
       if (error) {
         console.error("Error fetching store inventory:", error);
@@ -53,12 +63,17 @@ export const useStoreInventory = (storeId?: string) => {
         quantity: item.quantity,
         min_stock: item.min_stock,
         last_restocked: item.last_restocked,
+        // sku is still on items table per original code
         sku: item.items.sku,
         item_name: item.items.name,
         store_name: item.stores.name,
         category: item.items.category,
         brand: item.items.brand,
         unit: item.items.unit,
+        // --- ADDED MAPPING FOR NEW FIELDS ---
+        // Assuming there is a single variant, or we only care about the first one
+        selling_price: item.items.variants?.[0]?.selling_price || null,
+        cost: item.items.variants?.[0]?.cost || null,
       }));
     },
     staleTime: 2 * 60 * 1000,
@@ -101,14 +116,12 @@ export const useUpdateStoreInventory = () => {
         if (updateError) throw updateError;
       } else {
         // Create new record
-        const { error: insertError } = await supabase
-          .from("store_inventory")
-          .insert({
-            item_id: itemId,
-            store_id: storeId,
-            quantity,
-            last_restocked: new Date().toISOString(),
-          });
+        const { error: insertError } = await supabase.from("store_inventory").insert({
+          item_id: itemId,
+          store_id: storeId,
+          quantity,
+          last_restocked: new Date().toISOString(),
+        });
 
         if (insertError) throw insertError;
       }
