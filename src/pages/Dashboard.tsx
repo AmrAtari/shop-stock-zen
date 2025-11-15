@@ -242,24 +242,30 @@ const Dashboard = () => {
   };
 
   /**
-   * FIX: Rewritten to directly query the correct tables: stock_on_hand and variants.
-   * This eliminates the guesswork loop and the associated 404 errors for 'items', etc.
+   * MODIFIED FIX: Rewritten to first query ALL stores and then merge inventory metrics.
+   * This ensures that stores with zero stock are still represented in the metrics array.
    */
   const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
       console.log("🔍 Fetching REAL store metrics from database...");
 
-      // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
-      // Querying stock_on_hand is the most efficient way to get store-specific inventory.
-      const { data: fullInventory, error: fullInventoryError } = await supabase
-        .from("stock_on_hand")
-        .select(
-          `
+      // 1. Fetch ALL active stores (ID and Name)
+      const { data: allStores, error: storesError } = await supabase.from("stores").select("id, name");
+
+      if (storesError) {
+        console.error("❌ Error fetching stores:", storesError);
+        toast.error("Failed to load store list");
+        return;
+      }
+
+      // 2. Fetch combined inventory data (Stock, Variant/Price, and Product Name details)
+      //    Removed the .limit(5000) to ensure ALL stock data is considered.
+      const { data: fullInventory, error: fullInventoryError } = await supabase.from("stock_on_hand").select(
+        `
             quantity,
             min_stock,
             store_id,
-            stores(name),
             variants(
                 variant_id,
                 sku, 
@@ -268,8 +274,7 @@ const Dashboard = () => {
                 products(name)
             )
           `,
-        )
-        .limit(5000);
+      ); // <-- REMOVED .limit(5000)
 
       if (fullInventoryError) {
         console.error("❌ Error fetching full inventory:", fullInventoryError);
@@ -279,20 +284,48 @@ const Dashboard = () => {
 
       console.log(`📦 Found ${fullInventory.length} stock records.`);
 
+      // Initialize the map with ALL fetched stores (ensures stores with 0 stock are included)
       const newInventoryByStore = new Map<
         string,
-        { totalItems: number; inventoryValue: number; lowStockCount: number }
+        { storeName: string; totalItems: number; inventoryValue: number; lowStockCount: number }
       >();
-      const newStoreNameMap = new Map<string, string>();
+
+      // Add all stores from the 'stores' table
+      allStores.forEach((store) => {
+        newInventoryByStore.set(store.id, {
+          storeName: store.name,
+          totalItems: 0,
+          inventoryValue: 0,
+          lowStockCount: 0,
+        });
+      });
+
+      // Also ensure the Non-Specified store is always represented
+      const unspecifiedStoreId = "unspecified";
+      const unspecifiedStoreName = "(Non-Specified Store)";
+      newInventoryByStore.set(unspecifiedStoreId, {
+        storeName: unspecifiedStoreName,
+        totalItems: 0,
+        inventoryValue: 0,
+        lowStockCount: 0,
+      });
+
       const newUnassignedItemsData: any[] = [];
-      const newStoreMetricsData: StoreMetrics[] = [];
+      const newStoreMetricsData: StoreMetrics[] = []; // This will be the final array
 
       fullInventory.forEach((item: any) => {
-        // Use 'unspecified' if store_id is null, which allows us to group unassigned items.
-        const storeId = item.store_id || "unspecified";
-        const storeName = item.stores?.name || "(Non-Specified Store)";
+        // Use 'unspecified' if store_id is null/undefined
+        const storeId = item.store_id || unspecifiedStoreId;
+
+        // If the store ID is not in our map, it means the stock record is pointing to an invalid/deleted store.
+        if (!newInventoryByStore.has(storeId)) {
+          // We can skip this record or handle it as unspecified if we didn't use the explicit check above.
+          // Since we added the unspecified check, this should only skip records pointing to truly bad IDs.
+          return;
+        }
 
         const variant = item.variants;
+        const metrics = newInventoryByStore.get(storeId)!;
 
         // Map to a simplified, flat object for CSV export consistency
         const mappedItem = {
@@ -300,21 +333,14 @@ const Dashboard = () => {
           sku: variant?.sku || "N/A",
           quantity: item.quantity,
           min_stock: item.min_stock,
-          store_name: storeName,
+          store_name: metrics.storeName, // Use the store name from the map
           selling_price: variant?.selling_price,
           cost: variant?.cost,
         };
 
-        if (storeId === "unspecified") {
+        if (storeId === unspecifiedStoreId) {
           newUnassignedItemsData.push(mappedItem);
         }
-
-        if (!newInventoryByStore.has(storeId)) {
-          newInventoryByStore.set(storeId, { totalItems: 0, inventoryValue: 0, lowStockCount: 0 });
-          newStoreNameMap.set(storeId, storeName);
-        }
-
-        const metrics = newInventoryByStore.get(storeId)!;
 
         const quantity = Number(item.quantity) || 0;
         const minStock = Number(item.min_stock) || 0;
@@ -332,10 +358,13 @@ const Dashboard = () => {
       });
 
       // Convert Map results to the final StoreMetrics array
-      newInventoryByStore.forEach((metrics, storeId) => {
+      // This loop now iterates over ALL stores that were initially added to the map.
+      newInventoryByStore.forEach((metrics) => {
         newStoreMetricsData.push({
-          storeName: newStoreNameMap.get(storeId) || "(Unknown Store)",
-          ...metrics,
+          storeName: metrics.storeName,
+          totalItems: metrics.totalItems,
+          inventoryValue: metrics.inventoryValue,
+          lowStockCount: metrics.lowStockCount,
         });
       });
 
