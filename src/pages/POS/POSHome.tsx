@@ -1,6 +1,6 @@
 // src/pos/POSHome.tsx
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard, Clock } from "lucide-react";
+import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard, Clock, Package } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -321,6 +321,10 @@ const POSHome = () => {
                     {Object.keys(holds).length}
                   </Badge>
                 )}
+              </Button>
+              <Button onClick={() => window.location.assign("/pos/transfers")} variant="outline" size="lg">
+                <Package className="h-4 w-4 mr-2" />
+                Transfers
               </Button>
               <Button onClick={() => window.location.assign("/pos/receipts")} variant="outline" size="lg">
                 <ReceiptIcon className="h-4 w-4 mr-2" />
