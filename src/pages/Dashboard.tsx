@@ -200,7 +200,7 @@ const Dashboard = () => {
     exportToCsv(unassignedItemsData, "Unspecified_Inventory_Report.csv");
   };
 
-  // Debug function to check ALL tables in your database
+  // Debug function to check ALL tables in your database (RETAINED FOR DEBUGGING IF NEEDED)
   const debugAllTables = async () => {
     console.log("=== COMPLETE DATABASE DEBUG ===");
 
@@ -242,8 +242,9 @@ const Dashboard = () => {
   };
 
   /**
-   * MODIFIED FIX: Rewritten to first query ALL stores and then merge inventory metrics.
-   * This ensures that stores with zero stock are still represented in the metrics array.
+   * FIX: Modified to fetch ALL store names FIRST and then merge inventory metrics.
+   * This ensures that all stores, even those with zero stock, are included in the breakdown.
+   * The .limit(5000) was removed from the inventory query to ensure data completeness.
    */
   const fetchRealStoreMetrics = async () => {
     try {
@@ -259,30 +260,9 @@ const Dashboard = () => {
         return;
       }
 
-      // 2. Fetch combined inventory data (Stock, Variant/Price, and Product Name details)
-      //    Removed the .limit(5000) to ensure ALL stock data is considered.
-      const { data: fullInventory, error: fullInventoryError } = await supabase.from("stock_on_hand").select(
-        `
-            quantity,
-            min_stock,
-            store_id,
-            variants(
-                variant_id,
-                sku, 
-                selling_price, 
-                cost,
-                products(name)
-            )
-          `,
-      ); // <-- REMOVED .limit(5000)
-
-      if (fullInventoryError) {
-        console.error("❌ Error fetching full inventory:", fullInventoryError);
-        toast.error("Failed to load inventory for metrics");
-        return;
-      }
-
-      console.log(`📦 Found ${fullInventory.length} stock records.`);
+      // Define special store IDs
+      const unspecifiedStoreId = "unspecified";
+      const unspecifiedStoreName = "(Non-Specified Store)";
 
       // Initialize the map with ALL fetched stores (ensures stores with 0 stock are included)
       const newInventoryByStore = new Map<
@@ -300,15 +280,40 @@ const Dashboard = () => {
         });
       });
 
-      // Also ensure the Non-Specified store is always represented
-      const unspecifiedStoreId = "unspecified";
-      const unspecifiedStoreName = "(Non-Specified Store)";
+      // Always ensure the Non-Specified store is represented
       newInventoryByStore.set(unspecifiedStoreId, {
         storeName: unspecifiedStoreName,
         totalItems: 0,
         inventoryValue: 0,
         lowStockCount: 0,
       });
+
+      // 2. Fetch combined inventory data (Stock, Variant/Price, and Product Name details)
+      //    The store name lookup is now done via the map initialized above,
+      //    which is more robust if the joined 'stores' table view is incomplete.
+      //    NOTE: Removed .limit(5000) to ensure ALL stock records are considered for metrics.
+      const { data: fullInventory, error: fullInventoryError } = await supabase.from("stock_on_hand").select(
+        `
+            quantity,
+            min_stock,
+            store_id,
+            variants(
+                variant_id,
+                sku, 
+                selling_price, 
+                cost,
+                products(name)
+            )
+          `,
+      );
+
+      if (fullInventoryError) {
+        console.error("❌ Error fetching full inventory:", fullInventoryError);
+        toast.error("Failed to load inventory for metrics");
+        return;
+      }
+
+      console.log(`📦 Found ${fullInventory.length} stock records.`);
 
       const newUnassignedItemsData: any[] = [];
       const newStoreMetricsData: StoreMetrics[] = []; // This will be the final array
@@ -317,15 +322,17 @@ const Dashboard = () => {
         // Use 'unspecified' if store_id is null/undefined
         const storeId = item.store_id || unspecifiedStoreId;
 
-        // If the store ID is not in our map, it means the stock record is pointing to an invalid/deleted store.
+        // If the store ID isn't in our map, skip it (it's pointing to a non-existent or deleted store ID)
         if (!newInventoryByStore.has(storeId)) {
-          // We can skip this record or handle it as unspecified if we didn't use the explicit check above.
-          // Since we added the unspecified check, this should only skip records pointing to truly bad IDs.
+          console.warn(`Stock record found for unknown store ID: ${item.store_id}`);
           return;
         }
 
         const variant = item.variants;
         const metrics = newInventoryByStore.get(storeId)!;
+
+        // Retrieve the correct store name from the pre-populated metrics object
+        const currentStoreName = metrics.storeName;
 
         // Map to a simplified, flat object for CSV export consistency
         const mappedItem = {
@@ -333,7 +340,7 @@ const Dashboard = () => {
           sku: variant?.sku || "N/A",
           quantity: item.quantity,
           min_stock: item.min_stock,
-          store_name: metrics.storeName, // Use the store name from the map
+          store_name: currentStoreName,
           selling_price: variant?.selling_price,
           cost: variant?.cost,
         };
@@ -358,7 +365,7 @@ const Dashboard = () => {
       });
 
       // Convert Map results to the final StoreMetrics array
-      // This loop now iterates over ALL stores that were initially added to the map.
+      // This iterates over all stores initialized at the start, ensuring they are all present.
       newInventoryByStore.forEach((metrics) => {
         newStoreMetricsData.push({
           storeName: metrics.storeName,
@@ -472,14 +479,14 @@ const Dashboard = () => {
     fetchRealStoreMetrics();
     fetchNotifications();
 
-    // Set up real-time listeners
+    // Set up real-time listeners for automatic refresh
     const subscription = supabase
       .channel("dashboard-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => {
         fetchNotifications();
       })
-      // FIX: Changed 'items' table listener to the correct 'stock_on_hand' table
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_on_hand" }, () => {
+        // This handles automatic refresh for stock movements (transfers, POs, etc.)
         fetchRealStoreMetrics();
       })
       .subscribe();
@@ -784,12 +791,7 @@ const Dashboard = () => {
                   Export Unspecified Data
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={debugAllTables}>
-                Debug All Tables
-              </Button>
-              <Button variant="outline" size="sm" onClick={fetchRealStoreMetrics}>
-                Refresh Data
-              </Button>
+              {/* REMOVED: Debug All Tables and Refresh Data buttons as requested */}
             </div>
           </CardTitle>
         </CardHeader>
@@ -806,9 +808,9 @@ const Dashboard = () => {
               <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No Store Data Found</h3>
               <p className="text-muted-foreground mb-4">
-                We couldn't find any store inventory data. Check the console for debug information.
+                We couldn't find any store inventory data. Please ensure your stores and stock are configured.
               </p>
-              <Button onClick={debugAllTables}>Debug Database</Button>
+              {/* Debug button is hidden from UI but left in code comments/function if manual debug is needed */}
             </div>
           ) : (
             <>
@@ -841,6 +843,7 @@ const Dashboard = () => {
 
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
+                {/* The new fetchRealStoreMetrics ensures this grid contains ALL stores */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {storeMetrics
                     .sort((a, b) => {
