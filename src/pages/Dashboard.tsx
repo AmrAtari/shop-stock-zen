@@ -244,36 +244,37 @@ const Dashboard = () => {
   };
 
   /**
-   * FIX: Rewritten to directly query the correct tables: store_inventory and variants.
-   * ADDED: Console logging to debug the specific store assignment error reported by the user.
+   * FIX: The previous fix changing the table name caused a join error because the foreign keys changed.
+   * The join is now aligned with the successful query structure in 'useStoreInventory.tsx', which uses the 'items' table.
    */
   const fetchRealStoreMetrics = async () => {
     try {
       setStoreMetricsLoading(true);
       console.log("🔍 Fetching REAL store metrics from database...");
 
-      // 1. Fetch combined inventory data (Stock, Store, Variant/Price, and Product Name details)
-      // Querying store_inventory is the most efficient way to get store-specific inventory, and matches the PO receipt logic.
+      // 1. Fetch combined inventory data (Stock, Store, Item details)
       const { data: fullInventory, error: fullInventoryError } = await supabase
-        .from("store_inventory") // *** CORRECTED TABLE NAME TO MATCH PO RECEIPT LOGIC ***
+        .from("store_inventory") // Table name confirmed by PO logic
         .select(
           `
             quantity,
             min_stock,
             store_id,
             stores(name),
-            variants(
-                variant_id,
+            items!inner( // *** FIX: Changed join from variants to items ***
                 sku, 
-                selling_price, 
-                cost,
-                products(name)
+                name, // item name
+                category, 
+                cost_price, // Assuming cost field name is cost_price in items
+                selling_price // Assuming selling field name is selling_price in items
             )
           `,
         )
         .limit(5000);
 
       if (fullInventoryError) {
+        // This error check is what is catching the bug.
+        // If this toast appears, check the console for the full error object.
         console.error("❌ Error fetching full inventory:", fullInventoryError);
         toast.error("Failed to load inventory for metrics");
         return;
@@ -296,25 +297,25 @@ const Dashboard = () => {
 
         const quantity = Number(item.quantity) || 0;
 
-        // *** NEW DEBUG LOGGING ADDED HERE ***
+        const itemDetails = item.items; // New variable for item details
+
+        // *** DEBUG LOGGING: Use the correct path for the item name ***
         if (quantity > 0) {
           console.log(
-            `[STOCK ASSIGNMENT DEBUG] Item: ${item.variants?.products?.name || item.variants?.sku || "N/A"} (Qty: ${quantity}). Store ID found: ${item.store_id}. Store Name Assigned: ${storeName}`,
+            `[STOCK ASSIGNMENT DEBUG] Item: ${itemDetails?.name || itemDetails?.sku || "N/A"} (Qty: ${quantity}). Store ID found: ${item.store_id}. Store Name Assigned: ${storeName}`,
           );
         }
         // **********************************
 
-        const variant = item.variants;
-
         // Map to a simplified, flat object for CSV export consistency
         const mappedItem = {
-          item_name: variant?.products?.name || "N/A",
-          sku: variant?.sku || "N/A",
+          item_name: itemDetails?.name || "N/A",
+          sku: itemDetails?.sku || "N/A",
           quantity: item.quantity,
           min_stock: item.min_stock,
           store_name: storeName,
-          selling_price: variant?.selling_price,
-          cost: variant?.cost,
+          selling_price: itemDetails?.selling_price,
+          cost: itemDetails?.cost_price, // Use new cost_price field
         };
 
         if (storeId === "unspecified") {
@@ -331,7 +332,8 @@ const Dashboard = () => {
         const minStock = Number(item.min_stock) || 0;
 
         // Price logic: Use selling price, fallback to cost, default to 50 for calculation
-        const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
+        // FIX: Ensure itemDetails is used for price access
+        const price = Number(itemDetails?.selling_price) || Number(itemDetails?.cost_price) || 50;
         const value = quantity * price;
 
         metrics.totalItems += quantity;
