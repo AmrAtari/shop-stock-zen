@@ -89,7 +89,10 @@ export const SystemSettingsProvider = ({ children }: { children: ReactNode }) =>
   };
 
   const formatCurrency = (amount: number): string => {
-    if (!settings) return `$${amount.toFixed(2)}`;
+    // Always round to 2 decimals to ensure consistent display
+    const roundedAmount = Math.round(amount * 100) / 100;
+    
+    if (!settings) return `$${roundedAmount.toFixed(2)}`;
 
     const currencySymbols: Record<string, string> = {
       USD: "$",
@@ -104,7 +107,7 @@ export const SystemSettingsProvider = ({ children }: { children: ReactNode }) =>
     };
 
     const symbol = currencySymbols[settings.currency] || settings.currency + " ";
-    return `${symbol}${amount.toFixed(2)}`;
+    return `${symbol}${roundedAmount.toFixed(2)}`;
   };
 
   useEffect(() => {

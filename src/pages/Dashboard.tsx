@@ -40,6 +40,8 @@ import {
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useNavigate } from "react-router-dom";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 interface ChartConfig {
   id: string;
@@ -137,6 +139,8 @@ const Dashboard = () => {
     useDashboardData();
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [isEditMode, setIsEditMode] = useState(false);
   const [dashboardCharts, setDashboardCharts] = useState<DashboardChart[]>([]);
   const [isAddChartOpen, setIsAddChartOpen] = useState(false);
@@ -904,7 +908,7 @@ const Dashboard = () => {
             />
             <MetricCard
               title="Inventory Value"
-              value={`$${metrics.totalValue.toFixed(2)}`}
+              value={formatCurrency(metrics.totalValue, currency)}
               icon={<DollarSign className="w-5 h-5" />}
               variant="success"
             />

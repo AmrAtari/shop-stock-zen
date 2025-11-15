@@ -27,7 +27,9 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
  */
 export function formatCurrency(amount: number, currencyCode: string = "USD", decimals: number = 2): string {
   const symbol = CURRENCY_SYMBOLS[currencyCode] || currencyCode + " ";
-  return `${symbol}${amount.toFixed(decimals)}`;
+  // Always round to 2 decimals to ensure consistent display
+  const roundedAmount = Math.round(amount * 100) / 100;
+  return `${symbol}${roundedAmount.toFixed(2)}`;
 }
 
 /**
