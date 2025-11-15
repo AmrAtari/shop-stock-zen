@@ -2,32 +2,35 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Search, Package, Plus, Send } from "lucide-react";
+import { ArrowLeft, Search, Package, Plus, Send, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { usePOS } from "./POSContext";
 import { useNavigate } from "react-router-dom";
 
-type StoreInventory = {
-  store_id: string;
-  store_name: string;
+type ItemWithStores = {
   item_id: string;
   item_name: string;
   sku: string;
-  quantity: number;
   price: number;
+  stores: Array<{
+    store_id: string;
+    store_name: string;
+    quantity: number;
+  }>;
 };
 
 type TransferItem = {
   item_id: string;
   item_name: string;
   sku: string;
+  from_store_id: string;
+  from_store_name: string;
   available_quantity: number;
   requested_quantity: number;
 };
@@ -37,68 +40,72 @@ const POSTransferRequest = () => {
   const queryClient = useQueryClient();
   const { storeId } = usePOS();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedStore, setSelectedStore] = useState<string>("");
   const [transferItems, setTransferItems] = useState<TransferItem[]>([]);
   const [showRequestDialog, setShowRequestDialog] = useState(false);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Fetch stores
-  const { data: stores = [] } = useQuery({
-    queryKey: ["stores"],
+  // Search items across all stores
+  const { data: searchResults = [], isLoading } = useQuery({
+    queryKey: ["item-search", searchTerm],
     queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("*").neq("id", storeId).order("name");
-      if (error) throw error;
-      return data;
-    },
-  });
+      if (!searchTerm || searchTerm.length < 2) return [];
 
-  // Fetch inventory from other stores
-  const { data: inventory = [], isLoading } = useQuery({
-    queryKey: ["other-store-inventory", selectedStore, searchTerm],
-    queryFn: async () => {
-      if (!selectedStore) return [];
-      
-      let query = supabase
+      // Get all store inventory matching search
+      const { data, error } = await supabase
         .from("store_inventory")
         .select(`
-          store_id,
           item_id,
+          store_id,
           quantity,
-          items!inner(id, name, sku, price)
+          items!inner(id, name, sku, price),
+          stores!inner(id, name)
         `)
-        .eq("store_id", selectedStore)
-        .gt("quantity", 0);
+        .neq("store_id", storeId)
+        .gt("quantity", 0)
+        .or(`items.name.ilike.%${searchTerm}%,items.sku.ilike.%${searchTerm}%`);
 
-      if (searchTerm) {
-        query = query.or(`items.name.ilike.%${searchTerm}%,items.sku.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
 
-      return (data || []).map((inv: any) => ({
-        store_id: inv.store_id,
-        item_id: inv.items.id,
-        item_name: inv.items.name,
-        sku: inv.items.sku,
-        quantity: inv.quantity,
-        price: inv.items.price,
-      })) as StoreInventory[];
+      // Group by item
+      const itemsMap = new Map<string, ItemWithStores>();
+      
+      (data || []).forEach((inv: any) => {
+        const itemId = inv.items.id;
+        if (!itemsMap.has(itemId)) {
+          itemsMap.set(itemId, {
+            item_id: itemId,
+            item_name: inv.items.name,
+            sku: inv.items.sku,
+            price: inv.items.price,
+            stores: [],
+          });
+        }
+        itemsMap.get(itemId)!.stores.push({
+          store_id: inv.stores.id,
+          store_name: inv.stores.name,
+          quantity: inv.quantity,
+        });
+      });
+
+      return Array.from(itemsMap.values());
     },
-    enabled: !!selectedStore,
+    enabled: searchTerm.length >= 2,
   });
 
-  const addToTransfer = (item: StoreInventory) => {
+  const addToTransfer = (item: ItemWithStores, storeId: string, storeName: string, qty: number) => {
+    const key = `${item.item_id}-${storeId}`;
     setTransferItems((prev) => {
-      const existing = prev.find((i) => i.item_id === item.item_id);
+      const existing = prev.find((i) => `${i.item_id}-${i.from_store_id}` === key);
       if (existing) {
-        if (existing.requested_quantity + 1 > item.quantity) {
+        if (existing.requested_quantity + 1 > qty) {
           toast.error("Cannot request more than available");
           return prev;
         }
         return prev.map((i) =>
-          i.item_id === item.item_id ? { ...i, requested_quantity: i.requested_quantity + 1 } : i
+          `${i.item_id}-${i.from_store_id}` === key
+            ? { ...i, requested_quantity: i.requested_quantity + 1 }
+            : i
         );
       }
       return [
@@ -107,65 +114,74 @@ const POSTransferRequest = () => {
           item_id: item.item_id,
           item_name: item.item_name,
           sku: item.sku,
-          available_quantity: item.quantity,
+          from_store_id: storeId,
+          from_store_name: storeName,
+          available_quantity: qty,
           requested_quantity: 1,
         },
       ];
     });
-    toast.success(`Added ${item.item_name} to transfer request`);
+    toast.success(`Added ${item.item_name} from ${storeName}`);
   };
 
-  const updateQuantity = (itemId: string, qty: number) => {
+  const updateQuantity = (itemId: string, storeId: string, qty: number) => {
     setTransferItems((prev) =>
       prev.map((i) =>
-        i.item_id === itemId
+        i.item_id === itemId && i.from_store_id === storeId
           ? { ...i, requested_quantity: Math.max(1, Math.min(qty, i.available_quantity)) }
           : i
       )
     );
   };
 
-  const removeItem = (itemId: string) => {
-    setTransferItems((prev) => prev.filter((i) => i.item_id !== itemId));
+  const removeItem = (itemId: string, storeId: string) => {
+    setTransferItems((prev) => prev.filter((i) => !(i.item_id === itemId && i.from_store_id === storeId)));
   };
 
   const createTransferMutation = useMutation({
     mutationFn: async () => {
-      if (!storeId || !selectedStore || transferItems.length === 0) {
+      if (!storeId || transferItems.length === 0) {
         throw new Error("Missing required data");
       }
 
-      // Generate transfer number
-      const { data: transferNumber } = await supabase.rpc("generate_transfer_number");
+      // Group items by source store
+      const storeGroups = new Map<string, TransferItem[]>();
+      transferItems.forEach((item) => {
+        if (!storeGroups.has(item.from_store_id)) {
+          storeGroups.set(item.from_store_id, []);
+        }
+        storeGroups.get(item.from_store_id)!.push(item);
+      });
 
-      // Create transfer
-      const { data: transfer, error: transferError } = await supabase
-        .from("transfers")
-        .insert({
-          transfer_number: transferNumber,
-          from_store_id: selectedStore,
-          to_store_id: storeId,
-          status: "requested",
-          reason,
-          notes,
-        })
-        .select()
-        .single();
+      // Create a transfer for each source store
+      for (const [fromStoreId, items] of storeGroups.entries()) {
+        const { data: transferNumber } = await supabase.rpc("generate_transfer_number");
 
-      if (transferError) throw transferError;
+        const { data: transfer, error: transferError } = await supabase
+          .from("transfers")
+          .insert({
+            transfer_number: transferNumber,
+            from_store_id: fromStoreId,
+            to_store_id: storeId,
+            status: "requested",
+            reason,
+            notes,
+          })
+          .select()
+          .single();
 
-      // Create transfer items
-      const { error: itemsError } = await supabase.from("transfer_items").insert(
-        transferItems.map((item) => ({
-          transfer_id: transfer.transfer_id,
-          item_id: item.item_id,
-          requested_quantity: item.requested_quantity,
-        }))
-      );
+        if (transferError) throw transferError;
 
-      if (itemsError) throw itemsError;
+        const { error: itemsError } = await supabase.from("transfer_items").insert(
+          items.map((item) => ({
+            transfer_id: transfer.transfer_id,
+            item_id: item.item_id,
+            requested_quantity: item.requested_quantity,
+          }))
+        );
 
-      return transfer;
+        if (itemsError) throw itemsError;
+      }
     },
     onSuccess: () => {
       toast.success("Transfer request created successfully");
@@ -205,149 +221,150 @@ const POSTransferRequest = () => {
             </Button>
             <div>
               <h1 className="text-2xl font-bold">Request Transfer</h1>
-              <p className="text-sm text-muted-foreground">Check other stores and request items</p>
+              <p className="text-sm text-muted-foreground">Search items and see which stores have them</p>
             </div>
           </div>
           {transferItems.length > 0 && (
             <Button onClick={() => setShowRequestDialog(true)}>
               <Send className="h-4 w-4 mr-2" />
-              Request Transfer ({transferItems.length})
+              Submit Request ({transferItems.length})
             </Button>
           )}
         </div>
 
-        {/* Store Selection */}
+        {/* Search */}
         <Card>
-          <CardHeader>
-            <CardTitle>Select Store</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Select value={selectedStore} onValueChange={setSelectedStore}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a store to view inventory" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store: any) => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name} {store.location && `- ${store.location}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <CardContent className="pt-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by item name or SKU (min 2 characters)..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
           </CardContent>
         </Card>
 
-        {selectedStore && (
-          <>
-            {/* Search */}
-            <Card>
-              <CardContent className="pt-6">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by name or SKU..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
+        {/* Search Results */}
+        {searchTerm.length >= 2 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Search Results</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Searching...</div>
+              ) : searchResults.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No items found in other stores
                 </div>
-              </CardContent>
-            </Card>
+              ) : (
+                <div className="space-y-4">
+                  {searchResults.map((item) => (
+                    <Card key={item.item_id}>
+                      <CardHeader>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle className="text-lg">{item.item_name}</CardTitle>
+                            <p className="text-sm text-muted-foreground font-mono">{item.sku}</p>
+                          </div>
+                          <Badge variant="secondary">${item.price.toFixed(2)}</Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Available in:</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {item.stores.map((store) => (
+                              <div
+                                key={store.store_id}
+                                className="flex items-center justify-between p-3 border rounded-lg"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Store className="h-4 w-4 text-muted-foreground" />
+                                  <div>
+                                    <p className="font-medium text-sm">{store.store_name}</p>
+                                    <p className="text-xs text-muted-foreground">Qty: {store.quantity}</p>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    addToTransfer(item, store.store_id, store.store_name, store.quantity)
+                                  }
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Inventory List */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Available Items</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">Loading inventory...</div>
-                ) : inventory.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No items found in this store
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Item Name</TableHead>
-                        <TableHead className="text-right">Available</TableHead>
-                        <TableHead className="text-right">Price</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {inventory.map((item) => (
-                        <TableRow key={item.item_id}>
-                          <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                          <TableCell>{item.item_name}</TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant="secondary">{item.quantity}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right">${item.price.toFixed(2)}</TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" onClick={() => addToTransfer(item)}>
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Transfer Items Cart */}
-            {transferItems.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    <Package className="inline h-5 w-5 mr-2" />
-                    Transfer Request Items ({transferItems.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Item Name</TableHead>
-                        <TableHead className="text-right">Available</TableHead>
-                        <TableHead className="text-right">Requested</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {transferItems.map((item) => (
-                        <TableRow key={item.item_id}>
-                          <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                          <TableCell>{item.item_name}</TableCell>
-                          <TableCell className="text-right">{item.available_quantity}</TableCell>
-                          <TableCell className="text-right">
-                            <Input
-                              type="number"
-                              min={1}
-                              max={item.available_quantity}
-                              value={item.requested_quantity}
-                              onChange={(e) => updateQuantity(item.item_id, parseInt(e.target.value) || 1)}
-                              className="w-20 text-right"
-                            />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="destructive" size="sm" onClick={() => removeItem(item.item_id)}>
-                              Remove
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
-          </>
+        {/* Transfer Items Cart */}
+        {transferItems.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <Package className="inline h-5 w-5 mr-2" />
+                Transfer Request Items ({transferItems.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Item Name</TableHead>
+                    <TableHead>From Store</TableHead>
+                    <TableHead className="text-right">Available</TableHead>
+                    <TableHead className="text-right">Requested</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transferItems.map((item) => (
+                    <TableRow key={`${item.item_id}-${item.from_store_id}`}>
+                      <TableCell className="font-mono text-sm">{item.sku}</TableCell>
+                      <TableCell>{item.item_name}</TableCell>
+                      <TableCell>{item.from_store_name}</TableCell>
+                      <TableCell className="text-right">{item.available_quantity}</TableCell>
+                      <TableCell className="text-right">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={item.available_quantity}
+                          value={item.requested_quantity}
+                          onChange={(e) =>
+                            updateQuantity(item.item_id, item.from_store_id, parseInt(e.target.value) || 1)
+                          }
+                          className="w-20 text-right"
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => removeItem(item.item_id, item.from_store_id)}
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
       </div>
 
@@ -374,6 +391,13 @@ const POSTransferRequest = () => {
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
               />
+            </div>
+            <div className="bg-muted p-4 rounded-lg text-sm">
+              <p className="font-medium mb-2">Summary:</p>
+              <p>
+                Requesting {transferItems.length} item(s) from{" "}
+                {new Set(transferItems.map((i) => i.from_store_name)).size} store(s)
+              </p>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowRequestDialog(false)}>
