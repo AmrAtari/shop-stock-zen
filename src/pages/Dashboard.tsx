@@ -242,10 +242,11 @@ const Dashboard = () => {
   };
 
   /**
-   * FIX: Modified to fetch ALL store names FIRST and then merge inventory metrics.
-   * This ensures that all stores, even those with zero stock, are included in the breakdown,
-   * making the sum match the global 'Total Items' metric.
-   * The .limit(5000) was removed from the inventory query to ensure data completeness.
+   * FIX: Re-examined logic to ensure correct stock assignment based on store_id.
+   * 1. Fetches all stores to create a robust map of store_id -> storeName/metrics.
+   * 2. Iterates over stock records, using the stock's store_id to look up the correct metrics object.
+   * This logic should prevent stock from being assigned to the wrong store.
+   * Added console logs for debugging stock assignment.
    */
   const fetchRealStoreMetrics = async () => {
     try {
@@ -266,6 +267,7 @@ const Dashboard = () => {
       const unspecifiedStoreName = "(Non-Specified Store)";
 
       // Initialize the map with ALL fetched stores (ensures stores with 0 stock are included)
+      // The key is the store ID, which is the only reliable link.
       const newInventoryByStore = new Map<
         string,
         { storeName: string; totalItems: number; inventoryValue: number; lowStockCount: number }
@@ -279,6 +281,7 @@ const Dashboard = () => {
           inventoryValue: 0,
           lowStockCount: 0,
         });
+        console.log(`Store Initialized: ID=${store.id}, Name='${store.name}'`);
       });
 
       // Always ensure the Non-Specified store is represented
@@ -290,7 +293,6 @@ const Dashboard = () => {
       });
 
       // 2. Fetch combined inventory data (Stock, Variant/Price, and Product Name details)
-      //    NOTE: Removed .limit(5000) to ensure ALL stock records are considered for metrics.
       const { data: fullInventory, error: fullInventoryError } = await supabase.from("stock_on_hand").select(
         `
             quantity,
@@ -315,53 +317,52 @@ const Dashboard = () => {
       console.log(`📦 Found ${fullInventory.length} stock records.`);
 
       const newUnassignedItemsData: any[] = [];
-      const newStoreMetricsData: StoreMetrics[] = []; // This will be the final array
+      const newStoreMetricsData: StoreMetrics[] = [];
 
       fullInventory.forEach((item: any) => {
         // Use 'unspecified' if store_id is null/undefined
-        const storeId = item.store_id || unspecifiedStoreId;
+        const stockStoreId = item.store_id || unspecifiedStoreId;
 
-        // If the store ID isn't in our map, use the unspecified key
-        if (!newInventoryByStore.has(storeId)) {
-          // This is for stock records pointing to a store_id that doesn't exist in the stores table.
-          // We treat it as unspecified to ensure stock is counted.
-          if (storeId !== unspecifiedStoreId) {
+        let storeIdToUse = stockStoreId;
+
+        // If the store ID isn't in our map (and it's not the 'unspecified' default),
+        // it means the stock record points to a non-existent store ID. Group it as Unspecified.
+        if (!newInventoryByStore.has(stockStoreId)) {
+          if (stockStoreId !== unspecifiedStoreId) {
             console.warn(`Stock record found for unknown store ID: ${item.store_id}. Grouping as Unspecified.`);
           }
-          // Ensure the unspecified key exists if it was created on-the-fly
-          if (!newInventoryByStore.has(unspecifiedStoreId)) {
-            newInventoryByStore.set(unspecifiedStoreId, {
-              storeName: unspecifiedStoreName,
-              totalItems: 0,
-              inventoryValue: 0,
-              lowStockCount: 0,
-            });
-          }
+          storeIdToUse = unspecifiedStoreId;
         }
 
-        const metrics = newInventoryByStore.get(storeId)!;
+        const metrics = newInventoryByStore.get(storeIdToUse)!;
 
         const variant = item.variants;
-        // Retrieve the correct store name from the pre-populated metrics object
         const currentStoreName = metrics.storeName;
+
+        const quantity = Number(item.quantity) || 0;
+        const minStock = Number(item.min_stock) || 0;
+
+        // Log the assignment for debugging the user's report
+        if (quantity > 0) {
+          console.log(
+            `Processing Stock: SKU=${variant?.sku || "N/A"}, Qty=${quantity}, Assigned Store: ID=${storeIdToUse}, Name='${currentStoreName}'`,
+          );
+        }
 
         // Map to a simplified, flat object for CSV export consistency
         const mappedItem = {
           item_name: variant?.products?.name || "N/A",
           sku: variant?.sku || "N/A",
-          quantity: item.quantity,
-          min_stock: item.min_stock,
+          quantity: quantity,
+          min_stock: minStock,
           store_name: currentStoreName,
           selling_price: variant?.selling_price,
           cost: variant?.cost,
         };
 
-        if (storeId === unspecifiedStoreId) {
+        if (storeIdToUse === unspecifiedStoreId) {
           newUnassignedItemsData.push(mappedItem);
         }
-
-        const quantity = Number(item.quantity) || 0;
-        const minStock = Number(item.min_stock) || 0;
 
         // Price logic: Use selling price, fallback to cost, default to 50 for calculation
         const price = Number(variant?.selling_price) || Number(variant?.cost) || 50;
@@ -376,11 +377,10 @@ const Dashboard = () => {
       });
 
       // Convert Map results to the final StoreMetrics array
-      // This iterates over all stores initialized at the start, ensuring they are all present.
       newInventoryByStore.forEach((metrics) => {
-        // Only push to the final array if the store was in the initial list OR has actual stock
-        // (to prevent having metrics for stores with zero stock *unless* they were explicitly loaded).
-        // Since we initialized the map with all stores, this is simpler:
+        // Filter out stores that were initialized but have 0 items, 0 value, 0 low stock, AND are NOT the unspecified store
+        // Rationale: Keep all stores for a complete breakdown, even if 0, for consistency.
+        // The previous logic was to always push all, let's stick to that for a complete picture.
         newStoreMetricsData.push({
           storeName: metrics.storeName,
           totalItems: metrics.totalItems,
@@ -400,7 +400,7 @@ const Dashboard = () => {
     }
   };
 
-  // Fetch real notifications from database
+  // Fetch real notifications from database (Function body kept for completeness, no changes here)
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
@@ -675,7 +675,10 @@ const Dashboard = () => {
   const hasUnspecifiedInventory = unassignedItemsData.length > 0;
 
   return (
-    <div className="p-8 space-y-8">
+    // FIX 2: Ensure the main dashboard container can scroll if content overflows.
+    // This is generally handled by the layout component wrapping this, but adding overflow-y-auto here
+    // as a safeguard if the surrounding structure is too restrictive.
+    <div className="p-8 space-y-8 h-full overflow-y-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
@@ -805,7 +808,7 @@ const Dashboard = () => {
                   Export Unspecified Data
                 </Button>
               )}
-              {/* REMOVED: Debug All Tables and Refresh Data buttons as requested */}
+              {/* Removed Debug All Tables and Refresh Data buttons as requested */}
             </div>
           </CardTitle>
         </CardHeader>
@@ -824,7 +827,6 @@ const Dashboard = () => {
               <p className="text-muted-foreground mb-4">
                 We couldn't find any store inventory data. Please ensure your stores and stock are configured.
               </p>
-              {/* Debug button is hidden from UI but left in code comments/function if manual debug is needed */}
             </div>
           ) : (
             <>
@@ -857,7 +859,7 @@ const Dashboard = () => {
 
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
-                {/* The new fetchRealStoreMetrics ensures this grid contains ALL stores */}
+                {/* The fetchRealStoreMetrics ensures this grid contains ALL stores */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {storeMetrics
                     .sort((a, b) => {
