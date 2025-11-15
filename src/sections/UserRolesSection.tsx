@@ -57,16 +57,31 @@ export default function UserRolesSection({ isAdmin }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Email</TableHead>
+              <TableHead>Username</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>Assigned Store</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {users.map((user) => (
               <TableRow key={user.id}>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>{user.role}</TableCell>
+                <TableCell className="font-medium">{user.username}</TableCell>
+                <TableCell>
+                  <span className="capitalize">{user.role?.replace('_', ' ')}</span>
+                </TableCell>
+                <TableCell>
+                  {user.store_name ? (
+                    <div className="text-sm">
+                      <div>{user.store_name}</div>
+                      {user.store_location && (
+                        <div className="text-muted-foreground">{user.store_location}</div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">No store assigned</span>
+                  )}
+                </TableCell>
                 <TableCell className="text-right">
                   <Button size="sm" variant="outline" onClick={() => handleEditPermissions(user)} disabled={!isAdmin}>
                     <Edit2 className="w-4 h-4" />

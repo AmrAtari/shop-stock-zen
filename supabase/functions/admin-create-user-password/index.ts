@@ -13,22 +13,30 @@ serve(async (req) => {
   }
 
   try {
-    console.log("Creating user with password...");
-    const { userId, password, role } = await req.json();
-    console.log("Received data:", { userId, role });
+    console.log("Creating user with username and password...");
+    const { username, password, role, storeId } = await req.json();
+    console.log("Received data:", { username, role, storeId });
+
+    // Validate inputs
+    if (!username || !password || !role) {
+      throw new Error("Username, password, and role are required");
+    }
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")! // important: use service role key
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Generate email from username (internal use only)
+    const email = `${username.toLowerCase().replace(/\s+/g, '')}@internal.system`;
 
     // 1️⃣ Create the user in Supabase Auth
     console.log("Creating user in Supabase Auth...");
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email: `${userId}@yourdomain.com`,
+      email,
       password,
       email_confirm: true,
-      user_metadata: { role },
+      user_metadata: { role, username },
     });
 
     if (error) {
@@ -36,9 +44,9 @@ serve(async (req) => {
       throw error;
     }
 
-    console.log("User created in Auth, now adding role...");
+    console.log("User created in Auth, now adding role and profile...");
     
-    // 2️⃣ Add a record in your "user_roles" table
+    // 2️⃣ Add a record in "user_roles" table
     const { error: roleError } = await supabaseAdmin.from("user_roles").insert({
       user_id: data.user?.id,
       role,
@@ -49,7 +57,19 @@ serve(async (req) => {
       throw roleError;
     }
 
-    console.log("User created successfully!");
+    // 3️⃣ Create user profile with username and store
+    const { error: profileError } = await supabaseAdmin.from("user_profiles").insert({
+      user_id: data.user?.id,
+      username,
+      store_id: storeId || null,
+    });
+
+    if (profileError) {
+      console.error("Profile creation error:", profileError);
+      throw profileError;
+    }
+
+    console.log("User created successfully with profile!");
     return new Response(
       JSON.stringify({ 
         success: true,
