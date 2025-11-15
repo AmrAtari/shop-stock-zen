@@ -212,16 +212,13 @@ const useSystemSettings = () => {
     setIsSavingSettings(true);
     try {
       // Get the current settings row
-      const { data: currentSettings } = await supabase
-        .from("system_settings")
-        .select("id")
-        .maybeSingle();
+      const { data: currentSettings } = await supabase.from("system_settings").select("id").maybeSingle();
 
       if (!currentSettings) {
-        toast({ 
-          title: "Error", 
-          description: "No system settings found. Please contact administrator.", 
-          variant: "destructive" 
+        toast({
+          title: "Error",
+          description: "No system settings found. Please contact administrator.",
+          variant: "destructive",
         });
         return;
       }
@@ -241,7 +238,7 @@ const useSystemSettings = () => {
 
       if (error) throw error;
       toast({ title: "Success", description: "System settings saved successfully!", variant: "default" });
-      
+
       // Reload to confirm
       await loadGeneralSettings();
     } catch (error: any) {
@@ -1437,12 +1434,14 @@ const Configuration = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-3xl font-bold">System Configuration</h1>
-      <p className="text-gray-500">Manage users, core inventory data models, and global application settings.</p>
+    <div className="w-full">
+      <div className="p-6 space-y-6">
+        <h1 className="text-3xl font-bold">System Configuration</h1>
+        <p className="text-gray-500">Manage users, core inventory data models, and global application settings.</p>
+      </div>
 
       <Tabs defaultValue="organizational-structure" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 h-full">
+        <TabsList className="grid w-full grid-cols-6 h-full sticky top-0 z-10 bg-white border-b">
           <TabsTrigger value="organizational-structure" className="h-full">
             <Factory className="w-4 h-4 mr-2" /> Org Structure
           </TabsTrigger>
@@ -1463,18 +1462,18 @@ const Configuration = () => {
           </TabsTrigger>
         </TabsList>
 
-        {/* 1. Organizational Structure Tab */}
-        <TabsContent value="organizational-structure">
+        {/* 1. Organizational Structure Tab - FIX APPLIED HERE */}
+        <TabsContent value="organizational-structure" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
           <OrganizationalStructure dynamicCurrencies={dynamicCurrencies} />
         </TabsContent>
 
-        {/* 2. Workflow and Business Rules Tab */}
-        <TabsContent value="workflow">
+        {/* 2. Workflow and Business Rules Tab - FIX APPLIED HERE */}
+        <TabsContent value="workflow" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
           <WorkflowRules />
         </TabsContent>
 
-        {/* 3. System Defaults Tab (ERP IMPLEMENTATION) */}
-        <TabsContent value="general">
+        {/* 3. System Defaults Tab (ERP IMPLEMENTATION) - FIX APPLIED HERE */}
+        <TabsContent value="general" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
           <Card>
             <CardHeader>
               <CardTitle>System Defaults (ERP Basis)</CardTitle>
@@ -1603,8 +1602,8 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* 4. User Roles Tab */}
-        <TabsContent value="user-roles">
+        {/* 4. User Roles Tab - FIX APPLIED HERE */}
+        <TabsContent value="user-roles" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -1678,8 +1677,8 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* 5. Stock Attributes Tab */}
-        <TabsContent value="attributes">
+        {/* 5. Stock Attributes Tab - FIX APPLIED HERE */}
+        <TabsContent value="attributes" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -1723,8 +1722,8 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* 6. Direct DB Access Tab */}
-        <TabsContent value="db-access">
+        {/* 6. Direct DB Access Tab - FIX APPLIED HERE */}
+        <TabsContent value="db-access" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
           {isAdmin ? (
             <DatabaseAdminPanel />
           ) : (
