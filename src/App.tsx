@@ -20,7 +20,7 @@ import Configuration from "./pages/Configuration";
 import Duplicates from "./pages/Duplicates";
 import Transfers from "./pages/Transfers";
 import TransferDetail from "./pages/TransferDetail";
-import PhysicalInventory from "./pages/PhysicalInventory";
+import PhysicalInventoryDashboard from "./pages/PhysicalInventoryDashboard";
 import PhysicalInventoryNew from "./pages/PhysicalInventoryNew";
 import PhysicalInventoryDetail from "./pages/PhysicalInventoryDetail";
 import Notifications from "./pages/Notifications";
@@ -152,7 +152,7 @@ const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <Layout>
-                    <PhysicalInventory />
+                    <PhysicalInventoryDashboard />
                   </Layout>
                 </ProtectedRoute>
               }

@@ -593,6 +593,111 @@ export type Database = {
         }
         Relationships: []
       }
+      physical_inventory_counts: {
+        Row: {
+          counted_at: string | null
+          counted_by: string | null
+          counted_quantity: number
+          created_at: string | null
+          id: string
+          item_id: string
+          notes: string | null
+          session_id: string
+          status: string
+          system_quantity: number
+          updated_at: string | null
+          variance: number | null
+          variance_percentage: number | null
+        }
+        Insert: {
+          counted_at?: string | null
+          counted_by?: string | null
+          counted_quantity?: number
+          created_at?: string | null
+          id?: string
+          item_id: string
+          notes?: string | null
+          session_id: string
+          status?: string
+          system_quantity?: number
+          updated_at?: string | null
+          variance?: number | null
+          variance_percentage?: number | null
+        }
+        Update: {
+          counted_at?: string | null
+          counted_by?: string | null
+          counted_quantity?: number
+          created_at?: string | null
+          id?: string
+          item_id?: string
+          notes?: string | null
+          session_id?: string
+          status?: string
+          system_quantity?: number
+          updated_at?: string | null
+          variance?: number | null
+          variance_percentage?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_report"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "physical_inventory_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       physical_inventory_sessions: {
         Row: {
           completed_at: string | null
