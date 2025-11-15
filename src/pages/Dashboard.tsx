@@ -243,7 +243,8 @@ const Dashboard = () => {
 
   /**
    * FIX: Modified to fetch ALL store names FIRST and then merge inventory metrics.
-   * This ensures that all stores, even those with zero stock, are included in the breakdown.
+   * This ensures that all stores, even those with zero stock, are included in the breakdown,
+   * making the sum match the global 'Total Items' metric.
    * The .limit(5000) was removed from the inventory query to ensure data completeness.
    */
   const fetchRealStoreMetrics = async () => {
@@ -289,8 +290,6 @@ const Dashboard = () => {
       });
 
       // 2. Fetch combined inventory data (Stock, Variant/Price, and Product Name details)
-      //    The store name lookup is now done via the map initialized above,
-      //    which is more robust if the joined 'stores' table view is incomplete.
       //    NOTE: Removed .limit(5000) to ensure ALL stock records are considered for metrics.
       const { data: fullInventory, error: fullInventoryError } = await supabase.from("stock_on_hand").select(
         `
@@ -322,15 +321,27 @@ const Dashboard = () => {
         // Use 'unspecified' if store_id is null/undefined
         const storeId = item.store_id || unspecifiedStoreId;
 
-        // If the store ID isn't in our map, skip it (it's pointing to a non-existent or deleted store ID)
+        // If the store ID isn't in our map, use the unspecified key
         if (!newInventoryByStore.has(storeId)) {
-          console.warn(`Stock record found for unknown store ID: ${item.store_id}`);
-          return;
+          // This is for stock records pointing to a store_id that doesn't exist in the stores table.
+          // We treat it as unspecified to ensure stock is counted.
+          if (storeId !== unspecifiedStoreId) {
+            console.warn(`Stock record found for unknown store ID: ${item.store_id}. Grouping as Unspecified.`);
+          }
+          // Ensure the unspecified key exists if it was created on-the-fly
+          if (!newInventoryByStore.has(unspecifiedStoreId)) {
+            newInventoryByStore.set(unspecifiedStoreId, {
+              storeName: unspecifiedStoreName,
+              totalItems: 0,
+              inventoryValue: 0,
+              lowStockCount: 0,
+            });
+          }
         }
 
-        const variant = item.variants;
         const metrics = newInventoryByStore.get(storeId)!;
 
+        const variant = item.variants;
         // Retrieve the correct store name from the pre-populated metrics object
         const currentStoreName = metrics.storeName;
 
@@ -367,6 +378,9 @@ const Dashboard = () => {
       // Convert Map results to the final StoreMetrics array
       // This iterates over all stores initialized at the start, ensuring they are all present.
       newInventoryByStore.forEach((metrics) => {
+        // Only push to the final array if the store was in the initial list OR has actual stock
+        // (to prevent having metrics for stores with zero stock *unless* they were explicitly loaded).
+        // Since we initialized the map with all stores, this is simpler:
         newStoreMetricsData.push({
           storeName: metrics.storeName,
           totalItems: metrics.totalItems,
