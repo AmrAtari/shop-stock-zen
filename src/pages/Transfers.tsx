@@ -14,35 +14,58 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
-import { useTransfers } from "@/hooks/useTransfers";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { queryKeys } from "@/hooks/queryKeys";
 
-// Inventory transaction type
-interface InventoryTransaction {
-  sku: string;
-  quantity_change: number;
-  reason: string;
-  reference_id?: string;
-  created_at?: string;
+// --- Types ---
+interface Transfer {
+  id: string;
+  transfer_number: string;
+  from_store_id: string;
+  to_store_id: string;
+  created_at: string;
+  status: string;
+  total_items: number;
+  reason?: string;
+  notes?: string;
 }
 
-// --- useStores hook defined inside this file ---
-const useStores = () => {
-  return useQuery({
+interface Store {
+  id: string;
+  name: string;
+}
+
+// --- Hooks ---
+const useTransfers = (searchTerm = "", statusFilter = "all") =>
+  useQuery({
+    queryKey: queryKeys.transfers.list(searchTerm, statusFilter),
+    queryFn: async () => {
+      let query = supabase.from("transfers").select("*").order("created_at", { ascending: false });
+
+      if (searchTerm) query = query.ilike("transfer_number", `%${searchTerm}%`);
+      if (statusFilter !== "all") query = query.eq("status", statusFilter);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as Transfer[];
+    },
+  });
+
+const useStores = () =>
+  useQuery({
     queryKey: queryKeys.stores.all,
     queryFn: async () => {
       const { data, error } = await supabase.from("stores").select("*").order("name");
       if (error) throw error;
-      return data || [];
+      return data as Store[];
     },
   });
-};
 
+// --- Page ---
 const Transfers = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -68,9 +91,17 @@ const Transfers = () => {
     initialPage: 1,
   });
 
-  const paginatedTransfers = useMemo(() => {
-    return transfers.slice(pagination.startIndex, pagination.endIndex);
-  }, [transfers, pagination.startIndex, pagination.endIndex]);
+  const paginatedTransfers = useMemo(
+    () => transfers.slice(pagination.startIndex, pagination.endIndex),
+    [transfers, pagination.startIndex, pagination.endIndex],
+  );
+
+  // --- Helpers ---
+  const getStoreName = (storeId: string | null) => {
+    if (!storeId) return "N/A";
+    const store = stores.find((s) => s.id === storeId);
+    return store?.name || storeId;
+  };
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -88,19 +119,12 @@ const Transfers = () => {
     }
   };
 
-  const getStoreName = (storeId: string | null) => {
-    if (!storeId) return "N/A";
-    const store = stores.find((s) => s.id === storeId);
-    return store?.name || storeId;
-  };
-
-  // Create new transfer
+  // --- Create Transfer ---
   const handleCreateTransfer = async () => {
     if (!formData.from_store_id || !formData.to_store_id) {
       toast.error("Please select both stores");
       return;
     }
-
     if (formData.from_store_id === formData.to_store_id) {
       toast.error("Source and destination stores must be different");
       return;
@@ -118,7 +142,7 @@ const Transfers = () => {
           to_store_id: formData.to_store_id,
           created_at: formData.transfer_date.toISOString(),
           status: "pending",
-          total_items: 0,
+          total_items: 0, // initial total items
           reason: formData.reason || null,
           notes: formData.notes || null,
         })
@@ -138,16 +162,16 @@ const Transfers = () => {
         notes: "",
       });
 
-      if (data) {
-        navigate(`/transfers/${data.id}`);
-      }
+      if (data) navigate(`/transfers/${data.id}`);
     } catch (error: any) {
-      toast.error("Failed to create transfer: " + error.message);
+      console.error("Failed to create transfer:", error);
+      toast.error("Failed to create transfer");
     } finally {
       setIsCreating(false);
     }
   };
 
+  // --- Delete Transfer ---
   const handleDelete = async (id: string, transferNumber: string) => {
     if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
 
@@ -162,9 +186,8 @@ const Transfers = () => {
     }
   };
 
-  if (isLoading) {
-    return <div className="p-8">Loading...</div>;
-  }
+  // --- Render ---
+  if (isLoading) return <div className="p-8">Loading...</div>;
 
   return (
     <div className="p-8 space-y-6">
@@ -174,8 +197,7 @@ const Transfers = () => {
           <p className="text-muted-foreground mt-1">Manage transfers between stores</p>
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Transfer
+          <Plus className="w-4 h-4 mr-2" /> New Transfer
         </Button>
       </div>
 
@@ -272,7 +294,7 @@ const Transfers = () => {
         </CardContent>
       </Card>
 
-      {/* Create Transfer Modal */}
+      {/* --- Create Transfer Modal --- */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -338,7 +360,7 @@ const Transfers = () => {
                     selected={formData.transfer_date}
                     onSelect={(date) => date && setFormData({ ...formData, transfer_date: date })}
                     initialFocus
-                    className={cn("p-3 pointer-events-auto")}
+                    className="p-3 pointer-events-auto"
                   />
                 </PopoverContent>
               </Popover>
@@ -365,6 +387,7 @@ const Transfers = () => {
               />
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
