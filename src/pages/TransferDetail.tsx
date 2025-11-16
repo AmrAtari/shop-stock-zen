@@ -30,6 +30,7 @@ const TransferDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  // Data hooks
   const { data, isLoading } = useTransferDetail(id || "");
   const { data: stores } = useStores();
   const { isAdmin } = useIsAdmin();
@@ -92,11 +93,9 @@ const TransferDetail: React.FC = () => {
     },
   });
 
-  if (isLoading) {
-    return <div className="p-8">Loading...</div>;
-  }
+  if (isLoading) return <div className="p-8">Loading...</div>;
 
-  if (!data) {
+  if (!data)
     return (
       <div className="p-8 text-center py-12">
         <p className="text-muted-foreground">Transfer not found</p>
@@ -105,7 +104,6 @@ const TransferDetail: React.FC = () => {
         </Button>
       </div>
     );
-  }
 
   const { transfer, items } = data;
 
@@ -145,7 +143,10 @@ const TransferDetail: React.FC = () => {
         { Field: "Transfer Number", Value: transfer.transfer_number },
         { Field: "From Store", Value: getStoreName(transfer.from_store_id) },
         { Field: "To Store", Value: getStoreName(transfer.to_store_id) },
-        { Field: "Transfer Date", Value: new Date(transfer.transfer_date || transfer.created_at).toLocaleDateString() },
+        {
+          Field: "Transfer Date",
+          Value: transfer.transfer_date ? new Date(transfer.transfer_date).toLocaleDateString() : "",
+        },
         { Field: "Status", Value: transfer.status },
         { Field: "Reason", Value: transfer.reason || "" },
         {},
@@ -167,13 +168,12 @@ const TransferDetail: React.FC = () => {
     }
   }, [transfer, items, getStoreName]);
 
+  // Handlers (add, remove, approve, reject, receive) - all using transfer.transfer_id
   const handleItemSelect = useCallback(
     async (selectedItems: Array<{ item: any; quantity: number }>) => {
       if (!transfer?.transfer_id) return;
-      if (!selectedItems || selectedItems.length === 0) {
-        toast.error("No items selected");
-        return;
-      }
+      if (!selectedItems || selectedItems.length === 0) return toast.error("No items selected");
+
       try {
         await addItemsMutation.mutateAsync({
           transferId: transfer.transfer_id,
@@ -210,10 +210,8 @@ const TransferDetail: React.FC = () => {
 
   const handleApprove = useCallback(async () => {
     if (!transfer?.transfer_id) return;
-    if (transfer.status !== "pending") {
-      toast.error("Cannot approve this transfer");
-      return;
-    }
+    if (transfer.status !== "pending") return toast.error("Cannot approve this transfer");
+
     try {
       await updateStatusMutation.mutateAsync({
         transferId: transfer.transfer_id,
@@ -229,10 +227,8 @@ const TransferDetail: React.FC = () => {
 
   const handleMarkInTransit = useCallback(async () => {
     if (!transfer?.transfer_id) return;
-    if (transfer.status !== "approved") {
-      toast.error("Only approved transfers can be marked in transit");
-      return;
-    }
+    if (transfer.status !== "approved") return toast.error("Only approved transfers can be marked in transit");
+
     try {
       await updateStatusMutation.mutateAsync({
         transferId: transfer.transfer_id,
@@ -247,14 +243,8 @@ const TransferDetail: React.FC = () => {
 
   const handleReceive = useCallback(async () => {
     if (!transfer?.transfer_id) return;
-    if (transfer.status === "received") {
-      toast.error("Transfer already received.");
-      return;
-    }
-    if (transfer.status !== "in_transit") {
-      toast.error("Transfer must be in transit to receive.");
-      return;
-    }
+    if (transfer.status !== "in_transit") return toast.error("Transfer must be in transit to receive");
+
     try {
       await receiveTransferMutation.mutateAsync({
         transferId: transfer.transfer_id,
@@ -271,10 +261,8 @@ const TransferDetail: React.FC = () => {
 
   const handleReject = useCallback(async () => {
     if (!transfer?.transfer_id) return;
-    if (transfer.status !== "pending") {
-      toast.error("Only pending transfers can be rejected");
-      return;
-    }
+    if (transfer.status !== "pending") return toast.error("Only pending transfers can be rejected");
+
     try {
       await updateStatusMutation.mutateAsync({
         transferId: transfer.transfer_id,
@@ -287,11 +275,190 @@ const TransferDetail: React.FC = () => {
     }
   }, [updateStatusMutation, transfer]);
 
-  // ...Render JSX remains mostly unchanged, just ensure transfer.transfer_id is used in mutations
   return (
     <div className="p-8 space-y-6">
-      {/* Page content JSX here (same as your original) */}
-      {/* Just replace all transfer.id → transfer.transfer_id */}
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/transfers")}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Transfer Voucher</h1>
+            <p className="text-muted-foreground mt-1">{transfer.transfer_number}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportExcel} disabled={isMutating({})}>
+            <Download className="mr-2 h-4 w-4" /> Export Excel
+          </Button>
+
+          {isPending && isAdmin && (
+            <>
+              <Button onClick={handleApprove} disabled={isMutating(updateStatusMutation)}>
+                <CheckCircle className="mr-2 h-4 w-4" /> Approve
+              </Button>
+              <Button onClick={handleReject} variant="destructive" disabled={isMutating(updateStatusMutation)}>
+                <XCircle className="mr-2 h-4 w-4" /> Reject
+              </Button>
+            </>
+          )}
+
+          {isApproved && isAdmin && (
+            <Button onClick={handleMarkInTransit} disabled={isMutating(updateStatusMutation)}>
+              <Truck className="mr-2 h-4 w-4" /> Mark In Transit
+            </Button>
+          )}
+
+          {isInTransit && (
+            <Button onClick={handleReceive} disabled={isMutating(receiveTransferMutation)}>
+              {isMutating(receiveTransferMutation) ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Receiving...
+                </>
+              ) : (
+                <>
+                  <Package className="mr-2 h-4 w-4" /> Receive & Update Stock
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <div className="space-y-1">
+              <CardTitle className="text-2xl">{transfer.transfer_number}</CardTitle>
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                <span>
+                  Transfer Date: {transfer.transfer_date ? format(new Date(transfer.transfer_date), "PPP") : "-"}
+                </span>
+                {transfer.reason && <span>• Reason: {transfer.reason}</span>}
+              </div>
+            </div>
+            <Badge variant={(getStatusVariant(transfer.status) as any) ?? "secondary"} className="text-lg px-4 py-2">
+              {String(transfer.status).toUpperCase().replace("_", " ")}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* Store Info */}
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-semibold mb-2">Source Store</h3>
+              <p className="text-lg">{getStoreName(transfer.from_store_id)}</p>
+            </div>
+            <div>
+              <h3 className="font-semibold mb-2">Destination Store</h3>
+              <p className="text-lg">{getStoreName(transfer.to_store_id)}</p>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Reason / Notes */}
+          {transfer.reason && (
+            <div>
+              <h3 className="font-semibold mb-2">Reason</h3>
+              <p className="text-muted-foreground">{transfer.reason}</p>
+            </div>
+          )}
+
+          {transfer.notes && (
+            <div>
+              <h3 className="font-semibold mb-2">Notes</h3>
+              <p className="text-muted-foreground whitespace-pre-line">{transfer.notes}</p>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Items */}
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold">Transfer Items ({items.length})</h3>
+              {canEdit && (
+                <Button onClick={() => setShowAddItems((s) => !s)} disabled={isMutating(addItemsMutation)}>
+                  {showAddItems ? "Hide" : "Add Items"}
+                </Button>
+              )}
+            </div>
+
+            {showAddItems && canEdit && (
+              <Tabs defaultValue="select" className="mb-6">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="select">Select from Inventory</TabsTrigger>
+                  <TabsTrigger value="scan">Barcode Scanner</TabsTrigger>
+                  <TabsTrigger value="import">Import Excel</TabsTrigger>
+                </TabsList>
+                <TabsContent value="select" className="mt-4">
+                  <TransferItemSelector items={inventoryItems || []} onSelect={handleItemSelect} />
+                </TabsContent>
+                <TabsContent value="scan" className="mt-4">
+                  <TransferBarcodeScanner
+                    onScan={handleItemSelect}
+                    onLookupSku={async (sku) => inventoryItems.find((i) => i.sku === sku) || null}
+                  />
+                </TabsContent>
+                <TabsContent value="import" className="mt-4">
+                  <TransferItemImport
+                    onImport={handleItemSelect}
+                    existingSkus={inventoryItems.map((i) => i.sku) || []}
+                  />
+                </TabsContent>
+              </Tabs>
+            )}
+
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Item Name</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    {canEdit && <TableHead className="w-12"></TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={canEdit ? 5 : 4} className="text-center text-muted-foreground">
+                        No items added yet
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    items.map((item: any, index: number) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell className="font-mono text-sm">{item.sku}</TableCell>
+                        <TableCell>{item.item_name}</TableCell>
+                        <TableCell>{item.quantity}</TableCell>
+                        {canEdit && (
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveItem(item.id)}
+                              disabled={isMutating(removeItemMutation)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
