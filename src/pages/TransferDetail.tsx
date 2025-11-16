@@ -110,3 +110,4 @@ export const TransferDetailPage = () => {
     </div>
   );
 };
+export default TransferDetailPage;
