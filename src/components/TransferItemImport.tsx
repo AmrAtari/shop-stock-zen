@@ -207,3 +207,4 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
     </div>
   );
 };
+export type { ImportedItem };
