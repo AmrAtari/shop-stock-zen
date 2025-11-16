@@ -1,3 +1,4 @@
+// src/components/TransferItemImport.tsx
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,7 +22,7 @@ interface TransferItemImportProps {
   existingSkus: string[];
 }
 
-export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps) => {
+const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps) => {
   const [importedItems, setImportedItems] = useState<ImportedItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
@@ -126,16 +127,14 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
                 </span>
               </Button>
             </label>
-            <div className="text-sm text-muted-foreground">Expected columns: SKU, Quantity (optional: Item Name)</div>
+            <div className="text-sm text-muted-foreground">
+              Expected columns: SKU, Quantity (optional: Item Name)
+            </div>
           </div>
         </TabsContent>
 
         <TabsContent value="sheets">
-          <GoogleSheetsInput
-            onImport={handleGoogleSheetsImport}
-            isProcessing={isProcessing}
-            setIsProcessing={setIsProcessing}
-          />
+          <GoogleSheetsInput onImport={handleGoogleSheetsImport} isProcessing={isProcessing} setIsProcessing={setIsProcessing} />
         </TabsContent>
       </Tabs>
 
@@ -186,25 +185,4 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
                     </TableCell>
                     <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                     <TableCell>{item.itemName || "-"}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{item.message || "-"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setImportedItems([])}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmImport} disabled={stats.valid + stats.warnings === 0}>
-              Import {stats.valid + stats.warnings} Valid Items
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-export type { ImportedItem };
+                    <TableCe
