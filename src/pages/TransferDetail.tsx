@@ -8,14 +8,17 @@ import {
   useUpdateTransferStatus,
   useReceiveTransfer,
 } from "@/hooks/useTransferDetail";
-// 🛠️ FIX APPLIED HERE: Changed TransferItemImport to a default import
 import TransferItemImport, { ImportedItem } from "@/components/TransferItemImport";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-// NOTE: Assuming TransferBarcodeScanner and TransferItemSelector are imported later
-// import { TransferBarcodeScanner } from "@/components/TransferBarcodeScanner";
-// import { TransferItemSelector } from "@/components/TransferItemSelector";
+import { Transfer, TransferItem } from "@/types/database"; // Assuming this import exists
+
+// 🛠️ FIX APPLIED HERE: Define an extended type locally to satisfy TypeScript
+interface EnhancedTransfer extends Transfer {
+  from_store_name: string;
+  to_store_name: string;
+}
 
 export const TransferDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -31,57 +34,59 @@ export const TransferDetailPage = () => {
 
   if (isLoading || !data) return <div>Loading...</div>;
 
+  // Assert the transfer data to the extended type
   const { transfer, items } = data;
+  const enhancedTransfer = transfer as EnhancedTransfer;
 
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
-      transferId: transfer.transfer_id,
+      transferId: enhancedTransfer.transfer_id,
       items: newItems.map((i) => ({ sku: i.sku, itemName: i.itemName || "", quantity: i.quantity })),
     });
   };
 
   const handleRemoveItem = (itemId: string) => {
     // Only allow removal if the transfer is not yet shipped or received
-    if (["shipped", "received"].includes(transfer.status)) {
+    if (["shipped", "received"].includes(enhancedTransfer.status)) {
       toast.error("Cannot remove items from a shipped or received transfer.");
       return;
     }
-    removeItemMutation.mutate({ transferId: transfer.transfer_id, itemId });
+    removeItemMutation.mutate({ transferId: enhancedTransfer.transfer_id, itemId });
   };
 
   const handleUpdateStatus = (status: "approved" | "shipped") => {
-    updateStatusMutation.mutate({ transferId: transfer.transfer_id, status });
+    updateStatusMutation.mutate({ transferId: enhancedTransfer.transfer_id, status });
   };
 
   const handleReceiveTransfer = () => {
-    receiveMutation.mutate({ transferId: transfer.transfer_id });
+    receiveMutation.mutate({ transferId: enhancedTransfer.transfer_id });
   };
 
   return (
     <div className="space-y-6 p-6">
-      <h1 className="text-3xl font-bold">Transfer #{transfer.transfer_number}</h1>
+      <h1 className="text-3xl font-bold">Transfer #{enhancedTransfer.transfer_number}</h1>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="font-medium">From Store:</p>
-          <p>{transfer.from_store_name || "N/A"}</p>
+          {/* These properties now exist on enhancedTransfer */}
+          <p>{enhancedTransfer.from_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">To Store:</p>
-          <p>{transfer.to_store_name || "N/A"}</p>
+          <p>{enhancedTransfer.to_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">Status:</p>
-          <p className="font-semibold capitalize">{transfer.status}</p>
+          <p className="font-semibold capitalize">{enhancedTransfer.status}</p>
         </div>
         <div>
           <p className="font-medium">Total Items:</p>
-          <p>{transfer.total_items || 0}</p>
+          <p>{enhancedTransfer.total_items || 0}</p>
         </div>
       </div>
 
-      {/* Transfer Item Management Components (Now loading correctly) */}
+      {/* Transfer Item Management Components */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Assuming TransferItemSelector and TransferBarcodeScanner are also implemented */}
         <TransferItemImport onImport={handleAddItems} existingSkus={[]} />
         {/* <TransferItemSelector ... /> */}
         {/* <TransferBarcodeScanner ... /> */}
@@ -110,8 +115,7 @@ export const TransferDetailPage = () => {
                       variant="destructive"
                       size="sm"
                       onClick={() => handleRemoveItem(item.id)}
-                      // Disable button if transfer is shipped or received
-                      disabled={["shipped", "received"].includes(transfer.status)}
+                      disabled={["shipped", "received"].includes(enhancedTransfer.status)}
                     >
                       Remove
                     </Button>
@@ -124,13 +128,13 @@ export const TransferDetailPage = () => {
       )}
 
       <div className="flex gap-2 pt-4">
-        <Button onClick={() => handleUpdateStatus("approved")} disabled={transfer.status !== "pending"}>
+        <Button onClick={() => handleUpdateStatus("approved")} disabled={enhancedTransfer.status !== "pending"}>
           Approve
         </Button>
-        <Button onClick={() => handleUpdateStatus("shipped")} disabled={transfer.status !== "approved"}>
+        <Button onClick={() => handleUpdateStatus("shipped")} disabled={enhancedTransfer.status !== "approved"}>
           Ship
         </Button>
-        <Button onClick={handleReceiveTransfer} disabled={transfer.status !== "shipped"}>
+        <Button onClick={handleReceiveTransfer} disabled={enhancedTransfer.status !== "shipped"}>
           Receive
         </Button>
       </div>
