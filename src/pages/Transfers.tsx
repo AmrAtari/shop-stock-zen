@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Eye, Trash2, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,24 +14,21 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useTransfers } from "@/hooks/useTransfers";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { queryKeys } from "@/hooks/queryKeys";
 
-// --- Types ---
-interface Transfer {
-  id: string;
-  transfer_number: string;
-  from_store_id: string;
-  to_store_id: string;
-  created_at: string;
-  status: string;
-  total_items: number;
-  reason?: string;
-  notes?: string;
+// Define inventory transaction type
+interface InventoryTransaction {
+  sku: string;
+  quantity_change: number;
+  reason: string;
+  reference_id?: string;
+  created_at?: string;
 }
 
 interface Store {
@@ -39,33 +36,6 @@ interface Store {
   name: string;
 }
 
-// --- Hooks ---
-const useTransfers = (searchTerm = "", statusFilter = "all") =>
-  useQuery({
-    queryKey: queryKeys.transfers.list(searchTerm, statusFilter),
-    queryFn: async () => {
-      let query = supabase.from("transfers").select("*").order("created_at", { ascending: false });
-
-      if (searchTerm) query = query.ilike("transfer_number", `%${searchTerm}%`);
-      if (statusFilter !== "all") query = query.eq("status", statusFilter);
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as Transfer[];
-    },
-  });
-
-const useStores = () =>
-  useQuery({
-    queryKey: queryKeys.stores.all,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("*").order("name");
-      if (error) throw error;
-      return data as Store[];
-    },
-  });
-
-// --- Page ---
 const Transfers = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -82,8 +52,9 @@ const Transfers = () => {
     notes: "",
   });
 
+  const [stores, setStores] = useState<Store[]>([]);
+
   const { data: transfers = [], isLoading } = useTransfers(searchTerm, statusFilter);
-  const { data: stores = [] } = useStores();
 
   const pagination = usePagination({
     totalItems: transfers.length,
@@ -91,12 +62,23 @@ const Transfers = () => {
     initialPage: 1,
   });
 
-  const paginatedTransfers = useMemo(
-    () => transfers.slice(pagination.startIndex, pagination.endIndex),
-    [transfers, pagination.startIndex, pagination.endIndex],
-  );
+  const paginatedTransfers = useMemo(() => {
+    return transfers.slice(pagination.startIndex, pagination.endIndex);
+  }, [transfers, pagination.startIndex, pagination.endIndex]);
 
-  // --- Helpers ---
+  // Fetch stores manually (since useStores doesn't exist)
+  useEffect(() => {
+    const fetchStores = async () => {
+      const { data, error } = await supabase.from("stores").select("*").order("name");
+      if (error) {
+        toast.error("Failed to fetch stores");
+      } else {
+        setStores(data);
+      }
+    };
+    fetchStores();
+  }, []);
+
   const getStoreName = (storeId: string | null) => {
     if (!storeId) return "N/A";
     const store = stores.find((s) => s.id === storeId);
@@ -119,12 +101,26 @@ const Transfers = () => {
     }
   };
 
-  // --- Create Transfer ---
+  const handleDelete = async (id: string, transferNumber: string) => {
+    if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
+
+    try {
+      const { error } = await supabase.from("transfers").delete().eq("id", id);
+      if (error) throw error;
+
+      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+      toast.success("Transfer deleted");
+    } catch (error) {
+      toast.error("Failed to delete transfer");
+    }
+  };
+
   const handleCreateTransfer = async () => {
     if (!formData.from_store_id || !formData.to_store_id) {
       toast.error("Please select both stores");
       return;
     }
+
     if (formData.from_store_id === formData.to_store_id) {
       toast.error("Source and destination stores must be different");
       return;
@@ -142,17 +138,18 @@ const Transfers = () => {
           to_store_id: formData.to_store_id,
           created_at: formData.transfer_date.toISOString(),
           status: "pending",
-          total_items: 0, // initial total items
+          total_items: 0,
           reason: formData.reason || null,
           notes: formData.notes || null,
         })
-        .select()
+        .select("id") // return the new transfer ID
         .single();
 
       if (error) throw error;
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
       toast.success("Transfer created successfully");
+
       setIsCreateModalOpen(false);
       setFormData({
         from_store_id: "",
@@ -162,31 +159,17 @@ const Transfers = () => {
         notes: "",
       });
 
-      if (data) navigate(`/transfers/${data.id}`);
+      // Navigate to the add items page for this transfer
+      if (data?.id) {
+        navigate(`/transfers/${data.id}`);
+      }
     } catch (error: any) {
-      console.error("Failed to create transfer:", error);
-      toast.error("Failed to create transfer");
+      toast.error("Failed to create transfer: " + error.message);
     } finally {
       setIsCreating(false);
     }
   };
 
-  // --- Delete Transfer ---
-  const handleDelete = async (id: string, transferNumber: string) => {
-    if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
-
-    try {
-      const { error } = await supabase.from("transfers").delete().eq("id", id);
-      if (error) throw error;
-
-      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      toast.success("Transfer deleted");
-    } catch (error: any) {
-      toast.error("Failed to delete transfer");
-    }
-  };
-
-  // --- Render ---
   if (isLoading) return <div className="p-8">Loading...</div>;
 
   return (
@@ -294,12 +277,12 @@ const Transfers = () => {
         </CardContent>
       </Card>
 
-      {/* --- Create Transfer Modal --- */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Create New Transfer</DialogTitle>
           </DialogHeader>
+
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="from_store">From Store</Label>
@@ -360,7 +343,7 @@ const Transfers = () => {
                     selected={formData.transfer_date}
                     onSelect={(date) => date && setFormData({ ...formData, transfer_date: date })}
                     initialFocus
-                    className="p-3 pointer-events-auto"
+                    className={cn("p-3 pointer-events-auto")}
                   />
                 </PopoverContent>
               </Popover>
