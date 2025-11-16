@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Eye, Trash2, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,6 @@ import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-// Define inventory transaction type
 interface InventoryTransaction {
   sku: string;
   quantity_change: number;
@@ -39,7 +38,6 @@ interface Store {
 const Transfers = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -52,9 +50,17 @@ const Transfers = () => {
     notes: "",
   });
 
-  const [stores, setStores] = useState<Store[]>([]);
-
   const { data: transfers = [], isLoading } = useTransfers(searchTerm, statusFilter);
+
+  // Fetch stores directly since you don't have useStores hook
+  const [stores, setStores] = useState<Store[]>([]);
+  useState(() => {
+    supabase
+      .from("stores")
+      .select("*")
+      .order("name")
+      .then(({ data }) => data && setStores(data));
+  });
 
   const pagination = usePagination({
     totalItems: transfers.length,
@@ -65,25 +71,6 @@ const Transfers = () => {
   const paginatedTransfers = useMemo(() => {
     return transfers.slice(pagination.startIndex, pagination.endIndex);
   }, [transfers, pagination.startIndex, pagination.endIndex]);
-
-  // Fetch stores manually (since useStores doesn't exist)
-  useEffect(() => {
-    const fetchStores = async () => {
-      const { data, error } = await supabase.from("stores").select("*").order("name");
-      if (error) {
-        toast.error("Failed to fetch stores");
-      } else {
-        setStores(data);
-      }
-    };
-    fetchStores();
-  }, []);
-
-  const getStoreName = (storeId: string | null) => {
-    if (!storeId) return "N/A";
-    const store = stores.find((s) => s.id === storeId);
-    return store?.name || storeId;
-  };
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -101,18 +88,10 @@ const Transfers = () => {
     }
   };
 
-  const handleDelete = async (id: string, transferNumber: string) => {
-    if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
-
-    try {
-      const { error } = await supabase.from("transfers").delete().eq("id", id);
-      if (error) throw error;
-
-      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      toast.success("Transfer deleted");
-    } catch (error) {
-      toast.error("Failed to delete transfer");
-    }
+  const getStoreName = (storeId: string | null) => {
+    if (!storeId) return "N/A";
+    const store = stores.find((s) => s.id === storeId);
+    return store?.name || storeId;
   };
 
   const handleCreateTransfer = async () => {
@@ -136,20 +115,19 @@ const Transfers = () => {
           transfer_number: transferNumber,
           from_store_id: formData.from_store_id,
           to_store_id: formData.to_store_id,
-          created_at: formData.transfer_date.toISOString(),
+          transfer_date: formData.transfer_date.toISOString(),
           status: "pending",
           total_items: 0,
           reason: formData.reason || null,
           notes: formData.notes || null,
         })
-        .select("id") // return the new transfer ID
+        .select("transfer_id") // ✅ Use PK column
         .single();
 
       if (error) throw error;
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
       toast.success("Transfer created successfully");
-
       setIsCreateModalOpen(false);
       setFormData({
         from_store_id: "",
@@ -159,14 +137,29 @@ const Transfers = () => {
         notes: "",
       });
 
-      // Navigate to the add items page for this transfer
-      if (data?.id) {
-        navigate(`/transfers/${data.id}`);
+      // Navigate to the transfer detail page (items selection)
+      if (data) {
+        navigate(`/transfers/${data.transfer_id}`);
       }
     } catch (error: any) {
+      console.error("Failed to create transfer:", error);
       toast.error("Failed to create transfer: " + error.message);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleDelete = async (transfer_id: number, transferNumber: string) => {
+    if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
+
+    try {
+      const { error } = await supabase.from("transfers").delete().eq("transfer_id", transfer_id);
+      if (error) throw error;
+
+      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+      toast.success("Transfer deleted");
+    } catch (error: any) {
+      toast.error("Failed to delete transfer");
     }
   };
 
@@ -180,7 +173,8 @@ const Transfers = () => {
           <p className="text-muted-foreground mt-1">Manage transfers between stores</p>
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" /> New Transfer
+          <Plus className="w-4 h-4 mr-2" />
+          New Transfer
         </Button>
       </div>
 
@@ -193,22 +187,8 @@ const Transfers = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-xs"
             />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="in_transit">In Transit</SelectItem>
-                <SelectItem value="received">Received</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
-
         <CardContent>
           <Table>
             <TableHeader>
@@ -217,7 +197,6 @@ const Transfers = () => {
                 <TableHead>From Store</TableHead>
                 <TableHead>To Store</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Items</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -225,32 +204,37 @@ const Transfers = () => {
             <TableBody>
               {paginatedTransfers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     No transfers found
                   </TableCell>
                 </TableRow>
               ) : (
                 paginatedTransfers.map((transfer) => (
-                  <TableRow key={transfer.id}>
+                  <TableRow key={transfer.transfer_id}>
                     <TableCell className="font-medium">{transfer.transfer_number}</TableCell>
                     <TableCell>{getStoreName(transfer.from_store_id)}</TableCell>
                     <TableCell>{getStoreName(transfer.to_store_id)}</TableCell>
                     <TableCell>
                       <Badge variant={getStatusVariant(transfer.status)}>
-                        {transfer.status.replace("_", " ").toUpperCase()}
+                        {transfer.status?.replace("_", " ").toUpperCase()}
                       </Badge>
                     </TableCell>
-                    <TableCell>{transfer.total_items}</TableCell>
-                    <TableCell>{format(new Date(transfer.created_at), "PP")}</TableCell>
+                    <TableCell>
+                      {transfer.transfer_date ? format(new Date(transfer.transfer_date), "PP") : "-"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => navigate(`/transfers/${transfer.id}`)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => navigate(`/transfers/${transfer.transfer_id}`)}
+                        >
                           <Eye className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDelete(transfer.id, transfer.transfer_number)}
+                          onClick={() => handleDelete(transfer.transfer_id, transfer.transfer_number)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -277,12 +261,12 @@ const Transfers = () => {
         </CardContent>
       </Card>
 
+      {/* Create Transfer Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Create New Transfer</DialogTitle>
           </DialogHeader>
-
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="from_store">From Store</Label>
@@ -370,7 +354,6 @@ const Transfers = () => {
               />
             </div>
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
