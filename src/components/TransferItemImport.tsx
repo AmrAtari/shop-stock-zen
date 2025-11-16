@@ -8,7 +8,7 @@ import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 
-interface ImportedItem {
+export interface ImportedItem {
   sku: string;
   itemName?: string;
   quantity: number;
@@ -28,30 +28,30 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
 
   const processImportData = (jsonData: any[]) => {
     const items: ImportedItem[] = jsonData.map((row: any) => {
-        const sku = String(row.SKU || row.sku || "").trim();
-        const quantity = parseFloat(row.Quantity || row.quantity || 0);
+      const sku = String(row.SKU || row.sku || "").trim();
+      const quantity = parseFloat(row.Quantity || row.quantity || 0);
 
-        let status: "valid" | "warning" | "error" = "valid";
-        let message = "";
+      let status: "valid" | "warning" | "error" = "valid";
+      let message = "";
 
-        if (!sku) {
-          status = "error";
-          message = "Missing SKU";
-        } else if (!existingSkus.includes(sku)) {
-          status = "warning";
-          message = "SKU not found in inventory";
-        }
+      if (!sku) {
+        status = "error";
+        message = "Missing SKU";
+      } else if (!existingSkus.includes(sku)) {
+        status = "warning";
+        message = "SKU not found in inventory";
+      }
 
-        if (quantity <= 0) {
-          status = "error";
-          message = message ? `${message}; Invalid quantity` : "Invalid quantity";
-        }
+      if (quantity <= 0) {
+        status = "error";
+        message = message ? `${message}; Invalid quantity` : "Invalid quantity";
+      }
 
-        return {
-          sku,
-          itemName: String(row["Item Name"] || row.itemName || row.name || ""),
-          quantity,
-          status,
+      return {
+        sku,
+        itemName: String(row["Item Name"] || row.itemName || row.name || ""),
+        quantity,
+        status,
         message,
       };
     });
@@ -107,7 +107,7 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
           <TabsTrigger value="file">Upload File</TabsTrigger>
           <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="file" className="space-y-4">
           <div className="flex items-center gap-4">
             <input
@@ -126,14 +126,12 @@ export const TransferItemImport = ({ onImport, existingSkus }: TransferItemImpor
                 </span>
               </Button>
             </label>
-            <div className="text-sm text-muted-foreground">
-              Expected columns: SKU, Quantity (optional: Item Name)
-            </div>
+            <div className="text-sm text-muted-foreground">Expected columns: SKU, Quantity (optional: Item Name)</div>
           </div>
         </TabsContent>
-        
+
         <TabsContent value="sheets">
-          <GoogleSheetsInput 
+          <GoogleSheetsInput
             onImport={handleGoogleSheetsImport}
             isProcessing={isProcessing}
             setIsProcessing={setIsProcessing}
