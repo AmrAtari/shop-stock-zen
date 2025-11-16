@@ -2369,6 +2369,13 @@ export type Database = {
             referencedRelation: "transfers"
             referencedColumns: ["transfer_id"]
           },
+          {
+            foreignKeyName: "transfer_items_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "v_transfers_report"
+            referencedColumns: ["transfer_id"]
+          },
         ]
       }
       transfers: {
@@ -3147,6 +3154,51 @@ export type Database = {
           {
             foreignKeyName: "store_inventory_store_id_fkey"
             columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_transfers_report: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          from_store_id: string | null
+          from_store_location: string | null
+          from_store_name: string | null
+          notes: string | null
+          reason: string | null
+          received_at: string | null
+          received_by: string | null
+          request_date: string | null
+          requested_by: string | null
+          shipped_at: string | null
+          shipped_by: string | null
+          status: string | null
+          to_store_id: string | null
+          to_store_location: string | null
+          to_store_name: string | null
+          total_approved_quantity: number | null
+          total_items: number | null
+          total_received_quantity: number | null
+          total_requested_quantity: number | null
+          total_shipped_quantity: number | null
+          transfer_date: string | null
+          transfer_id: number | null
+          transfer_number: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transfers_from_store_id_fkey"
+            columns: ["from_store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_to_store_id_fkey"
+            columns: ["to_store_id"]
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
