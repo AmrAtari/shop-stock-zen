@@ -17,27 +17,41 @@ import { usePagination } from "@/hooks/usePagination";
 import { useTransfers } from "@/hooks/useTransfers";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-interface FormData {
-  from_store_id: string;
-  to_store_id: string;
-  transfer_date: Date;
+// Inventory transaction type
+interface InventoryTransaction {
+  sku: string;
+  quantity_change: number;
   reason: string;
-  notes: string;
+  reference_id?: string;
+  created_at?: string;
 }
+
+// --- useStores hook defined inside this file ---
+const useStores = () => {
+  return useQuery({
+    queryKey: queryKeys.stores.all,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("stores").select("*").order("name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+};
 
 const Transfers = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState({
     from_store_id: "",
     to_store_id: "",
     transfer_date: new Date(),
@@ -46,7 +60,7 @@ const Transfers = () => {
   });
 
   const { data: transfers = [], isLoading } = useTransfers(searchTerm, statusFilter);
-  const { data: stores = [] } = useTransfers().useStores(); // use the same hook file
+  const { data: stores = [] } = useStores();
 
   const pagination = usePagination({
     totalItems: transfers.length,
@@ -80,9 +94,10 @@ const Transfers = () => {
     return store?.name || storeId;
   };
 
+  // Create new transfer
   const handleCreateTransfer = async () => {
     if (!formData.from_store_id || !formData.to_store_id) {
-      toast.error("Please select both source and destination stores");
+      toast.error("Please select both stores");
       return;
     }
 
@@ -91,13 +106,7 @@ const Transfers = () => {
       return;
     }
 
-    if (!stores.find((s) => s.id === formData.from_store_id) || !stores.find((s) => s.id === formData.to_store_id)) {
-      toast.error("Invalid store selected");
-      return;
-    }
-
     setIsCreating(true);
-
     try {
       const transferNumber = `TRF-${String(transfers.length + 1).padStart(5, "0")}`;
 
@@ -133,10 +142,23 @@ const Transfers = () => {
         navigate(`/transfers/${data.id}`);
       }
     } catch (error: any) {
-      console.error("Create transfer error:", error);
-      toast.error("Failed to create transfer: " + (error.message || ""));
+      toast.error("Failed to create transfer: " + error.message);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleDelete = async (id: string, transferNumber: string) => {
+    if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
+
+    try {
+      const { error } = await supabase.from("transfers").delete().eq("id", id);
+      if (error) throw error;
+
+      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+      toast.success("Transfer deleted");
+    } catch (error: any) {
+      toast.error("Failed to delete transfer");
     }
   };
 
@@ -181,6 +203,7 @@ const Transfers = () => {
             </Select>
           </div>
         </CardHeader>
+
         <CardContent>
           <Table>
             <TableHeader>
@@ -222,17 +245,7 @@ const Transfers = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={async () => {
-                            if (!confirm(`Are you sure you want to delete ${transfer.transfer_number}?`)) return;
-                            try {
-                              const { error } = await supabase.from("transfers").delete().eq("id", transfer.id);
-                              if (error) throw error;
-                              await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-                              toast.success("Transfer deleted");
-                            } catch (err: any) {
-                              toast.error("Failed to delete transfer: " + err.message);
-                            }
-                          }}
+                          onClick={() => handleDelete(transfer.id, transfer.transfer_number)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -270,7 +283,7 @@ const Transfers = () => {
               <Label htmlFor="from_store">From Store</Label>
               <Select
                 value={formData.from_store_id}
-                onValueChange={(value) => setFormData({ ...formData, from_store_id: value || "" })}
+                onValueChange={(value) => setFormData({ ...formData, from_store_id: value })}
               >
                 <SelectTrigger id="from_store">
                   <SelectValue placeholder="Select source store" />
@@ -289,7 +302,7 @@ const Transfers = () => {
               <Label htmlFor="to_store">To Store</Label>
               <Select
                 value={formData.to_store_id}
-                onValueChange={(value) => setFormData({ ...formData, to_store_id: value || "" })}
+                onValueChange={(value) => setFormData({ ...formData, to_store_id: value })}
               >
                 <SelectTrigger id="to_store">
                   <SelectValue placeholder="Select destination store" />
@@ -325,7 +338,7 @@ const Transfers = () => {
                     selected={formData.transfer_date}
                     onSelect={(date) => date && setFormData({ ...formData, transfer_date: date })}
                     initialFocus
-                    className="p-3 pointer-events-auto"
+                    className={cn("p-3 pointer-events-auto")}
                   />
                 </PopoverContent>
               </Popover>
@@ -356,7 +369,7 @@ const Transfers = () => {
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateTransfer} disabled={isCreating || stores.length === 0}>
+            <Button onClick={handleCreateTransfer} disabled={isCreating}>
               {isCreating ? "Creating..." : "Create Transfer"}
             </Button>
           </DialogFooter>
