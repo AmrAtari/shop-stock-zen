@@ -34,7 +34,7 @@ const TransferDetail: React.FC = () => {
       if (!transfer?.id) return;
       try {
         await addItemsMutation.mutateAsync({
-          transferId: transfer.id,
+          transfer.transfer_id: transfer.transfer_id,
           items: importedItems.map((i) => ({
             sku: i.sku,
             itemName: i.item_name || i.sku,
@@ -56,7 +56,7 @@ const TransferDetail: React.FC = () => {
     async (itemId: string) => {
       if (!transfer?.id) return;
       try {
-        await removeItemMutation.mutateAsync({ itemId, transferId: transfer.id });
+        await removeItemMutation.mutateAsync({ itemId, transferId: transfer.transfer_id });
         toast.success("Item removed");
       } catch (err) {
         console.error(err);
@@ -69,7 +69,7 @@ const TransferDetail: React.FC = () => {
   const handleApprove = async () => {
     if (!transfer?.id) return;
     try {
-      await updateStatusMutation.mutateAsync({ transferId: transfer.id, status: "approved" });
+      await updateStatusMutation.mutateAsync({ transferId: transfer.transfer_id, status: "approved" });
       toast.success("Transfer approved");
     } catch (err) {
       console.error(err);
@@ -81,7 +81,7 @@ const TransferDetail: React.FC = () => {
     if (!transfer?.id) return;
     try {
       await receiveMutation.mutateAsync({
-        transferId: transfer.id,
+        transferId: transfer.transfer_id,
         items,
         fromStoreId: transfer.from_store_id,
         toStoreId: transfer.to_store_id,
