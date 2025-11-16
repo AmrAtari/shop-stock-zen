@@ -12,9 +12,9 @@ import TransferItemImport, { ImportedItem } from "@/components/TransferItemImpor
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Transfer, TransferItem } from "@/types/database"; // Assuming this import exists
+import { Transfer, TransferItem } from "@/types/database";
 
-// 🛠️ FIX APPLIED HERE: Define an extended type locally to satisfy TypeScript
+// Define an extended type locally to satisfy TypeScript
 interface EnhancedTransfer extends Transfer {
   from_store_name: string;
   to_store_name: string;
@@ -22,9 +22,10 @@ interface EnhancedTransfer extends Transfer {
 
 export const TransferDetailPage = () => {
   const { id } = useParams<{ id: string }>();
-  const transferId = Number(id); // Ensure it's a number
+  const transferId = Number(id);
   const { data, isLoading } = useTransferDetail(transferId);
 
+  // These now correctly hold the mutation objects, fixing the 'mutate does not exist on type void' errors
   const addItemsMutation = useAddTransferItems();
   const removeItemMutation = useRemoveTransferItem();
   const updateStatusMutation = useUpdateTransferStatus();
@@ -34,32 +35,31 @@ export const TransferDetailPage = () => {
 
   if (isLoading || !data) return <div>Loading...</div>;
 
-  // Assert the transfer data to the extended type
   const { transfer, items } = data;
   const enhancedTransfer = transfer as EnhancedTransfer;
 
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
+      // Now valid
       transferId: enhancedTransfer.transfer_id,
       items: newItems.map((i) => ({ sku: i.sku, itemName: i.itemName || "", quantity: i.quantity })),
     });
   };
 
   const handleRemoveItem = (itemId: string) => {
-    // Only allow removal if the transfer is not yet shipped or received
     if (["shipped", "received"].includes(enhancedTransfer.status)) {
       toast.error("Cannot remove items from a shipped or received transfer.");
       return;
     }
-    removeItemMutation.mutate({ transferId: enhancedTransfer.transfer_id, itemId });
+    removeItemMutation.mutate({ transferId: enhancedTransfer.transfer_id, itemId }); // Now valid
   };
 
   const handleUpdateStatus = (status: "approved" | "shipped") => {
-    updateStatusMutation.mutate({ transferId: enhancedTransfer.transfer_id, status });
+    updateStatusMutation.mutate({ transferId: enhancedTransfer.transfer_id, status }); // Now valid
   };
 
   const handleReceiveTransfer = () => {
-    receiveMutation.mutate({ transferId: enhancedTransfer.transfer_id });
+    receiveMutation.mutate({ transferId: enhancedTransfer.transfer_id }); // Now valid
   };
 
   return (
@@ -68,7 +68,6 @@ export const TransferDetailPage = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="font-medium">From Store:</p>
-          {/* These properties now exist on enhancedTransfer */}
           <p>{enhancedTransfer.from_store_name || "N/A"}</p>
         </div>
         <div>
@@ -85,11 +84,8 @@ export const TransferDetailPage = () => {
         </div>
       </div>
 
-      {/* Transfer Item Management Components */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <TransferItemImport onImport={handleAddItems} existingSkus={[]} />
-        {/* <TransferItemSelector ... /> */}
-        {/* <TransferBarcodeScanner ... /> */}
       </div>
 
       <h2 className="text-2xl font-semibold mt-8">Items ({items.length})</h2>
