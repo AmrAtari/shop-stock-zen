@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, AlertCircle, CheckCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { GoogleSheetsInput } from "@/components/GoogleSheetsInput"; // NOTE: Implementation of this is assumed to exist
+import { GoogleSheetsInput } from "@/components/GoogleSheetsInput"; // NOTE: Now correctly imported
 
 export interface ImportedItem {
   sku: string;
@@ -105,7 +105,7 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
   };
 
   const handleSheetsData = (jsonData: any[]) => {
-    setIsProcessing(true);
+    // setIsProcessing(true); // Handled by GoogleSheetsInput internally
     processImportData(jsonData);
   };
 
@@ -143,7 +143,12 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
           </Button>
         </TabsContent>
         <TabsContent value="sheets" className="mt-4">
-          <GoogleSheetsInput onImport={handleSheetsData} disabled={isProcessing} />
+          {/* 🛠️ FIX APPLIED HERE: Passed the correct props based on GoogleSheetsInput.tsx */}
+          <GoogleSheetsInput
+            onImport={handleSheetsData}
+            isProcessing={isProcessing}
+            setIsProcessing={setIsProcessing}
+          />
         </TabsContent>
       </Tabs>
 
@@ -203,7 +208,7 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
                     </TableCell>
                     <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                     <TableCell>{item.itemName || "-"}</TableCell>
-                    {/* 🛠️ FIX APPLIED HERE: Completed the truncated TableCell */}
+                    {/* Syntax error fix applied here */}
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.message || "-"}</TableCell>
                   </TableRow>
@@ -217,4 +222,4 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
   );
 };
 
-export default TransferItemImport; // IMPORTANT: Exported as default
+export default TransferItemImport;
