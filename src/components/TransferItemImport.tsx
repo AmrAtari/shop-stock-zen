@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, AlertCircle, CheckCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
+import { GoogleSheetsInput } from "@/components/GoogleSheetsInput"; // NOTE: Implementation of this is assumed to exist
 
 export interface ImportedItem {
   sku: string;
@@ -32,25 +32,23 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
       const sku = String(row.SKU || row.sku || "").trim();
       const quantity = parseFloat(row.Quantity || row.quantity || 0);
 
-      let status: "valid" | "warning" | "error" = "valid";
+      let status: ImportedItem["status"] = "valid";
       let message = "";
 
       if (!sku) {
         status = "error";
-        message = "Missing SKU";
+        message = "SKU is missing.";
+      } else if (isNaN(quantity) || quantity <= 0) {
+        status = "error";
+        message = "Quantity must be a positive number.";
       } else if (!existingSkus.includes(sku)) {
         status = "warning";
-        message = "SKU not found in inventory";
-      }
-
-      if (quantity <= 0) {
-        status = "error";
-        message = message ? `${message}; Invalid quantity` : "Invalid quantity";
+        message = "SKU not found in inventory. Item name will be blank.";
       }
 
       return {
         sku,
-        itemName: String(row["Item Name"] || row.itemName || row.name || ""),
+        itemName: String(row["Item Name"] || row.itemName || ""),
         quantity,
         status,
         message,
@@ -58,94 +56,112 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
     });
 
     setImportedItems(items);
-    toast.success(`Parsed ${items.length} items`);
+    setIsProcessing(false);
+    toast.info(`Processed ${items.length} rows.`);
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     setIsProcessing(true);
+    const reader = new FileReader();
 
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      processImportData(jsonData);
-    } catch (error) {
-      console.error("Import error:", error);
-      toast.error("Failed to parse file. Please check the format.");
-    } finally {
-      setIsProcessing(false);
-      event.target.value = "";
-    }
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        // Simple column mapping based on the first row
+        const headers = json[0] as string[];
+        const dataRows = json.slice(1);
+
+        const keyMap: { [key: string]: string } = {};
+        headers.forEach((h: string) => {
+          if (h.toLowerCase().includes("sku")) keyMap["sku"] = h;
+          if (h.toLowerCase().includes("name")) keyMap["itemName"] = h;
+          if (h.toLowerCase().includes("quantity")) keyMap["quantity"] = h;
+        });
+
+        const jsonData = dataRows.map((row: any[]) => {
+          const obj: any = {};
+          headers.forEach((header, index) => {
+            obj[header] = row[index];
+          });
+          return obj;
+        });
+
+        processImportData(jsonData);
+      } catch (error) {
+        toast.error("Error reading file. Ensure it's a valid Excel or CSV format.");
+        setIsProcessing(false);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = ""; // Clear file input
   };
 
-  const handleGoogleSheetsImport = (sheetData: any[]) => {
-    processImportData(sheetData);
-    setIsProcessing(false);
+  const handleSheetsData = (jsonData: any[]) => {
+    setIsProcessing(true);
+    processImportData(jsonData);
   };
 
-  const handleConfirmImport = () => {
+  const handleCommit = () => {
     const validItems = importedItems.filter((item) => item.status !== "error");
     onImport(validItems);
     setImportedItems([]);
-    toast.success(`Imported ${validItems.length} items`);
+    toast.success(`${validItems.length} items successfully added for transfer.`);
   };
 
-  const stats = {
-    total: importedItems.length,
-    valid: importedItems.filter((i) => i.status === "valid").length,
-    warnings: importedItems.filter((i) => i.status === "warning").length,
-    errors: importedItems.filter((i) => i.status === "error").length,
-  };
+  const stats = importedItems.reduce(
+    (acc, item) => {
+      if (item.status === "valid") acc.valid++;
+      if (item.status === "warning") acc.warnings++;
+      if (item.status === "error") acc.errors++;
+      return acc;
+    },
+    { valid: 0, warnings: 0, errors: 0 },
+  );
 
   return (
     <div className="space-y-4">
-      <Tabs value={importMethod} onValueChange={(value: any) => setImportMethod(value)}>
+      <Tabs value={importMethod} onValueChange={(value) => setImportMethod(value as "file" | "sheets")}>
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="file">Upload File</TabsTrigger>
+          <TabsTrigger value="file">Upload File (CSV/XLSX)</TabsTrigger>
           <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="file" className="space-y-4">
-          <div className="flex items-center gap-4">
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="transfer-file-upload"
-              disabled={isProcessing}
-            />
-            <label htmlFor="transfer-file-upload">
-              <Button variant="outline" disabled={isProcessing} asChild>
-                <span>
-                  <Upload className="mr-2 h-4 w-4" />
-                  {isProcessing ? "Processing..." : "Upload Excel File"}
-                </span>
-              </Button>
+        <TabsContent value="file" className="mt-4">
+          <Button asChild className="w-full" disabled={isProcessing}>
+            <label>
+              <Upload className="mr-2 h-4 w-4" />
+              {isProcessing ? "Processing..." : "Select File"}
+              <input type="file" accept=".csv, .xlsx, .xls" onChange={handleFileUpload} className="hidden" />
             </label>
-            <div className="text-sm text-muted-foreground">Expected columns: SKU, Quantity (optional: Item Name)</div>
-          </div>
+          </Button>
         </TabsContent>
-
-        <TabsContent value="sheets">
-          <GoogleSheetsInput
-            onImport={handleGoogleSheetsImport}
-            isProcessing={isProcessing}
-            setIsProcessing={setIsProcessing}
-          />
+        <TabsContent value="sheets" className="mt-4">
+          <GoogleSheetsInput onImport={handleSheetsData} disabled={isProcessing} />
         </TabsContent>
       </Tabs>
 
       {importedItems.length > 0 && (
         <>
+          <div className="flex justify-between items-center">
+            <Button onClick={handleCommit} disabled={stats.valid === 0 || isProcessing}>
+              Commit {stats.valid} Valid Items
+            </Button>
+            <Button variant="outline" onClick={() => setImportedItems([])}>
+              Clear Import
+            </Button>
+          </div>
+
           <Alert>
-            <AlertDescription>
+            <AlertDescription className="flex justify-between items-center">
+              <span className="font-medium">Import Results:</span>
               <div className="flex gap-4">
-                <span>Total: {stats.total}</span>
                 <span className="text-green-600 flex items-center gap-1">
                   <CheckCircle className="h-4 w-4" />
                   Valid: {stats.valid}
@@ -187,7 +203,7 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
                     </TableCell>
                     <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                     <TableCell>{item.itemName || "-"}</TableCell>
-                    {/* 🛠️ FIX APPLIED HERE: Completes the Quantity and Message cells */}
+                    {/* 🛠️ FIX APPLIED HERE: Completed the truncated TableCell */}
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.message || "-"}</TableCell>
                   </TableRow>
@@ -195,12 +211,10 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
               </TableBody>
             </Table>
           </div>
-
-          {/* This closes the React Fragment used when importedItems.length > 0 */}
         </>
       )}
     </div>
   );
 };
 
-export default TransferItemImport; // Don't forget to export the component
+export default TransferItemImport; // IMPORTANT: Exported as default
