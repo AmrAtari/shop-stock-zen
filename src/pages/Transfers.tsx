@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Eye, Trash2, Package, ArrowRightLeft, CalendarIcon } from "lucide-react";
+import { Plus, Eye, Trash2, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,7 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaginationControls } from "@/components/PaginationControls";
 import { usePagination } from "@/hooks/usePagination";
-import { useTransfers, useStores } from "@/hooks/useTransfers";
+import { useTransfers } from "@/hooks/useTransfers";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,13 +22,12 @@ import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-// Define the inventory transaction type
-interface InventoryTransaction {
-  sku: string;
-  quantity_change: number;
+interface FormData {
+  from_store_id: string;
+  to_store_id: string;
+  transfer_date: Date;
   reason: string;
-  reference_id?: string;
-  created_at?: string;
+  notes: string;
 }
 
 const Transfers = () => {
@@ -38,7 +37,7 @@ const Transfers = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     from_store_id: "",
     to_store_id: "",
     transfer_date: new Date(),
@@ -47,7 +46,7 @@ const Transfers = () => {
   });
 
   const { data: transfers = [], isLoading } = useTransfers(searchTerm, statusFilter);
-  const { data: stores = [] } = useStores();
+  const { data: stores = [] } = useTransfers().useStores(); // use the same hook file
 
   const pagination = usePagination({
     totalItems: transfers.length,
@@ -58,113 +57,6 @@ const Transfers = () => {
   const paginatedTransfers = useMemo(() => {
     return transfers.slice(pagination.startIndex, pagination.endIndex);
   }, [transfers, pagination.startIndex, pagination.endIndex]);
-
-  // NEW: Function to update inventory when transfer is received
-  const updateInventoryFromTransfer = async (transferId: string) => {
-    try {
-      // Get transfer items
-      const { data: transferItems, error: itemsError } = await supabase
-        .from("transfer_items")
-        .select("*")
-        .eq("transfer_id", transferId);
-
-      if (itemsError) throw itemsError;
-
-      if (!transferItems || transferItems.length === 0) {
-        throw new Error("No items found in transfer");
-      }
-
-      // Update inventory for each transfer item
-      for (const item of transferItems) {
-        // Get current quantity
-        const { data: currentItem, error: fetchError } = await supabase
-          .from("items")
-          .select("quantity")
-          .eq("sku", item.sku)
-          .single();
-
-        if (fetchError) {
-          console.error("Failed to fetch current item:", fetchError);
-          throw new Error(`Failed to fetch item ${item.sku}`);
-        }
-
-        // Update inventory quantity (add to destination)
-        const { error: updateError } = await supabase
-          .from("items")
-          .update({
-            quantity: (currentItem.quantity || 0) + item.quantity,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("sku", item.sku);
-
-        if (updateError) {
-          console.error("Failed to update inventory for item:", item.sku, updateError);
-          throw new Error(`Failed to update inventory for ${item.sku}`);
-        }
-
-        // Create inventory transaction record - using type assertion to avoid TypeScript errors
-        const transactionData: InventoryTransaction = {
-          sku: item.sku,
-          quantity_change: item.quantity,
-          reason: "transfer_received",
-          reference_id: transferId,
-          created_at: new Date().toISOString(),
-        };
-
-        // Use type assertion to bypass TypeScript check for the table name
-        const { error: transactionError } = await supabase
-          .from("inventory_transactions" as any)
-          .insert(transactionData);
-
-        if (transactionError) {
-          console.error("Failed to create transaction record:", transactionError);
-          // Don't throw here as the main update succeeded
-        }
-      }
-
-      // Update transfer status to received
-      const { error: statusError } = await supabase
-        .from("transfers")
-        .update({ status: "received" })
-        .eq("id", transferId);
-
-      if (statusError) throw statusError;
-
-      toast.success("Transfer completed and inventory updated");
-    } catch (error: any) {
-      console.error("Transfer inventory update error:", error);
-      throw error;
-    }
-  };
-
-  const handleDelete = async (id: string, transferNumber: string) => {
-    if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
-
-    try {
-      const { error } = await supabase.from("transfers").delete().eq("id", id);
-      if (error) throw error;
-
-      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      toast.success("Transfer deleted");
-    } catch (error: any) {
-      toast.error("Failed to delete transfer");
-    }
-  };
-
-  // NEW: Function to mark transfer as received and update inventory
-  const handleReceiveTransfer = async (transferId: string, transferNumber: string) => {
-    if (!confirm(`Mark ${transferNumber} as received and update inventory?`)) return;
-
-    try {
-      await updateInventoryFromTransfer(transferId);
-
-      // Invalidate queries to refresh data
-      await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      await invalidateInventoryData(queryClient);
-    } catch (error: any) {
-      toast.error("Failed to receive transfer: " + error.message);
-    }
-  };
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -190,7 +82,7 @@ const Transfers = () => {
 
   const handleCreateTransfer = async () => {
     if (!formData.from_store_id || !formData.to_store_id) {
-      toast.error("Please select both stores");
+      toast.error("Please select both source and destination stores");
       return;
     }
 
@@ -199,7 +91,13 @@ const Transfers = () => {
       return;
     }
 
+    if (!stores.find((s) => s.id === formData.from_store_id) || !stores.find((s) => s.id === formData.to_store_id)) {
+      toast.error("Invalid store selected");
+      return;
+    }
+
     setIsCreating(true);
+
     try {
       const transferNumber = `TRF-${String(transfers.length + 1).padStart(5, "0")}`;
 
@@ -231,12 +129,12 @@ const Transfers = () => {
         notes: "",
       });
 
-      // Navigate to the transfer detail page to add items
       if (data) {
         navigate(`/transfers/${data.id}`);
       }
     } catch (error: any) {
-      toast.error("Failed to create transfer");
+      console.error("Create transfer error:", error);
+      toast.error("Failed to create transfer: " + (error.message || ""));
     } finally {
       setIsCreating(false);
     }
@@ -321,19 +219,20 @@ const Transfers = () => {
                         <Button variant="ghost" size="icon" onClick={() => navigate(`/transfers/${transfer.id}`)}>
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {transfer.status === "in_transit" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleReceiveTransfer(transfer.id, transfer.transfer_number)}
-                          >
-                            Receive
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDelete(transfer.id, transfer.transfer_number)}
+                          onClick={async () => {
+                            if (!confirm(`Are you sure you want to delete ${transfer.transfer_number}?`)) return;
+                            try {
+                              const { error } = await supabase.from("transfers").delete().eq("id", transfer.id);
+                              if (error) throw error;
+                              await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+                              toast.success("Transfer deleted");
+                            } catch (err: any) {
+                              toast.error("Failed to delete transfer: " + err.message);
+                            }
+                          }}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -360,6 +259,7 @@ const Transfers = () => {
         </CardContent>
       </Card>
 
+      {/* Create Transfer Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -370,7 +270,7 @@ const Transfers = () => {
               <Label htmlFor="from_store">From Store</Label>
               <Select
                 value={formData.from_store_id}
-                onValueChange={(value) => setFormData({ ...formData, from_store_id: value })}
+                onValueChange={(value) => setFormData({ ...formData, from_store_id: value || "" })}
               >
                 <SelectTrigger id="from_store">
                   <SelectValue placeholder="Select source store" />
@@ -389,7 +289,7 @@ const Transfers = () => {
               <Label htmlFor="to_store">To Store</Label>
               <Select
                 value={formData.to_store_id}
-                onValueChange={(value) => setFormData({ ...formData, to_store_id: value })}
+                onValueChange={(value) => setFormData({ ...formData, to_store_id: value || "" })}
               >
                 <SelectTrigger id="to_store">
                   <SelectValue placeholder="Select destination store" />
@@ -425,7 +325,7 @@ const Transfers = () => {
                     selected={formData.transfer_date}
                     onSelect={(date) => date && setFormData({ ...formData, transfer_date: date })}
                     initialFocus
-                    className={cn("p-3 pointer-events-auto")}
+                    className="p-3 pointer-events-auto"
                   />
                 </PopoverContent>
               </Popover>
@@ -456,7 +356,7 @@ const Transfers = () => {
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateTransfer} disabled={isCreating}>
+            <Button onClick={handleCreateTransfer} disabled={isCreating || stores.length === 0}>
               {isCreating ? "Creating..." : "Create Transfer"}
             </Button>
           </DialogFooter>
