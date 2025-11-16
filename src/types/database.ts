@@ -147,7 +147,7 @@ export interface StockAdjustment {
 }
 
 export interface Transfer {
-  id: string;
+  transfer_id: number; // primary key in DB
   transfer_number: string;
   from_store_id: string | null;
   to_store_id: string | null;
@@ -157,4 +157,12 @@ export interface Transfer {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  transfer_date: string | null; // timestamp from DB
+  approved_by?: string | null;
+  shipped_by?: string | null;
+  received_by?: string | null;
+  request_date?: string | null;
+  approved_at?: string | null;
+  shipped_at?: string | null;
+  received_at?: string | null;
 }
