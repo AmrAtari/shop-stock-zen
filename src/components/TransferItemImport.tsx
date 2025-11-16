@@ -5,11 +5,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, AlertCircle, CheckCircle } from "lucide-react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx"; // <--- Explicit import/use of XLSX is correct
 import { toast } from "sonner";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 
-// ... (Interface definitions remain the same) ...
 export interface ImportedItem {
   sku: string;
   itemName?: string;
@@ -24,17 +23,36 @@ interface TransferItemImportProps {
 }
 
 const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps) => {
-  const [importedItems, setImportedItems] = useState<ImportedItem[]>([]);
+  const [importedItems, setImportedItems] = useState<ImportedItem[]>([]); // Initial state type is now explicit
   const [isProcessing, setIsProcessing] = useState(false);
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
 
-  // ... (processImportData, handleFileUpload, handleCommit, stats calculation functions remain the same) ...
   const processImportData = (jsonData: any[]) => {
-    // ... (logic) ...
+    // FIX TS2322: Ensures jsonData is correctly mapped to ImportedItem[]
     const items: ImportedItem[] = jsonData.map((row: any) => {
-      // ... (logic) ...
+      const sku = String(row.SKU || row.sku || "").trim();
+      const quantity = parseFloat(row.Quantity || row.quantity || 0);
+
+      let status: ImportedItem["status"] = "valid";
+      let message = "";
+
+      if (!sku) {
+        status = "error";
+        message = "SKU is missing.";
+      } else if (isNaN(quantity) || quantity <= 0) {
+        status = "error";
+        message = "Quantity must be a positive number.";
+      } else if (!existingSkus.includes(sku)) {
+        status = "warning";
+        message = "SKU not found in inventory. Item name will be blank.";
+      }
+
       return {
-        // ... (data) ...
+        sku,
+        itemName: String(row["Item Name"] || row.itemName || ""),
+        quantity,
+        status,
+        message,
       };
     });
 
@@ -44,15 +62,44 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // ... (logic) ...
-    // Note: The logic for XLSX parsing goes here.
-    // ...
-    reader.readAsArrayBuffer(file);
+    const file = e.target.files?.[0]; // Renamed 'file' for clarity (was already correct)
+    if (!file) return;
+
+    setIsProcessing(true);
+    const reader = new FileReader(); // FIX TS2304: reader is now correctly defined
+
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        // Simple column mapping based on the first row
+        const headers = json[0] as string[];
+        const dataRows = json.slice(1);
+
+        const jsonData = dataRows.map((row: any[]) => {
+          const obj: any = {};
+          headers.forEach((header, index) => {
+            obj[header] = row[index];
+          });
+          return obj;
+        });
+
+        processImportData(jsonData);
+      } catch (error) {
+        toast.error("Error reading file. Ensure it's a valid Excel or CSV format.");
+        setIsProcessing(false);
+      }
+    };
+    reader.readAsArrayBuffer(file); // FIX TS2552: uses the locally scoped 'file' variable
     e.target.value = ""; // Clear file input
   };
 
   const handleSheetsData = (jsonData: any[]) => {
-    // setIsProcessing(true); // Removed as GoogleSheetsInput handles this internally
+    // setIsProcessing handled by GoogleSheetsInput internally
     processImportData(jsonData);
   };
 
@@ -109,7 +156,29 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
             </Button>
           </div>
 
-          <Alert>{/* ... (Alert Description for stats remains the same) ... */}</Alert>
+          <Alert>
+            <AlertDescription className="flex justify-between items-center">
+              <span className="font-medium">Import Results:</span>
+              <div className="flex gap-4">
+                <span className="text-green-600 flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4" />
+                  Valid: {stats.valid}
+                </span>
+                {stats.warnings > 0 && (
+                  <span className="text-yellow-600 flex items-center gap-1">
+                    <AlertCircle className="h-4 w-4" />
+                    Warnings: {stats.warnings}
+                  </span>
+                )}
+                {stats.errors > 0 && (
+                  <span className="text-red-600 flex items-center gap-1">
+                    <AlertCircle className="h-4 w-4" />
+                    Errors: {stats.errors}
+                  </span>
+                )}
+              </div>
+            </AlertDescription>
+          </Alert>
 
           <div className="border rounded-lg max-h-[400px] overflow-auto">
             <Table>
