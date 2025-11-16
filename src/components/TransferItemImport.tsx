@@ -185,4 +185,4 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
                     </TableCell>
                     <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                     <TableCell>{item.itemName || "-"}</TableCell>
-                  <TableCell>
+                
