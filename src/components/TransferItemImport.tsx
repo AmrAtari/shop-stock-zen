@@ -127,14 +127,16 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
                 </span>
               </Button>
             </label>
-            <div className="text-sm text-muted-foreground">
-              Expected columns: SKU, Quantity (optional: Item Name)
-            </div>
+            <div className="text-sm text-muted-foreground">Expected columns: SKU, Quantity (optional: Item Name)</div>
           </div>
         </TabsContent>
 
         <TabsContent value="sheets">
-          <GoogleSheetsInput onImport={handleGoogleSheetsImport} isProcessing={isProcessing} setIsProcessing={setIsProcessing} />
+          <GoogleSheetsInput
+            onImport={handleGoogleSheetsImport}
+            isProcessing={isProcessing}
+            setIsProcessing={setIsProcessing}
+          />
         </TabsContent>
       </Tabs>
 
@@ -185,4 +187,20 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
                     </TableCell>
                     <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                     <TableCell>{item.itemName || "-"}</TableCell>
-                
+                    {/* 🛠️ FIX APPLIED HERE: Completes the Quantity and Message cells */}
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.message || "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* This closes the React Fragment used when importedItems.length > 0 */}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default TransferItemImport; // Don't forget to export the component
