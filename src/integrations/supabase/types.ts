@@ -2650,6 +2650,42 @@ export type Database = {
           },
         ]
       }
+      workflow_rules: {
+        Row: {
+          condition_type: string
+          created_at: string
+          document_type: string
+          id: string
+          is_active: boolean
+          name: string
+          required_approver_role: Database["public"]["Enums"]["app_role"]
+          threshold_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          condition_type: string
+          created_at?: string
+          document_type: string
+          id?: string
+          is_active?: boolean
+          name: string
+          required_approver_role: Database["public"]["Enums"]["app_role"]
+          threshold_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          condition_type?: string
+          created_at?: string
+          document_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          required_approver_role?: Database["public"]["Enums"]["app_role"]
+          threshold_value?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       items_with_current_price: {
