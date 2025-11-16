@@ -1,9 +1,13 @@
-// src/hooks/useTransferDetail.tsx
+// src/hooks/useTransferDetail.tsx (Full File Replacement)
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { queryKeys, invalidateInventoryData } from "./queryKeys";
-import { Transfer, TransferItem } from "@/types/database";
+import { queryKeys, invalidateInventoryData } from "./queryKeys"; // Assuming queryKeys and invalidateInventoryData exist
+import { Transfer, TransferItem } from "@/types/database"; // Assuming these types exist
+import { toast } from "sonner"; // Using toast here for the mutations
 
+// ------------------
+// 1. Fetch Transfer Detail
+// ------------------
 export const useTransferDetail = (transferId: number | null) => {
   return useQuery({
     queryKey: queryKeys.transfers.detail(String(transferId)),
@@ -12,7 +16,13 @@ export const useTransferDetail = (transferId: number | null) => {
 
       const { data: transfer, error: transferError } = await supabase
         .from("transfers")
-        .select("*")
+        .select(
+          `
+          *,
+          from_store:from_store_id (name),
+          to_store:to_store_id (name)
+        `,
+        )
         .eq("transfer_id", transferId)
         .maybeSingle();
 
@@ -21,18 +31,28 @@ export const useTransferDetail = (transferId: number | null) => {
 
       const { data: items, error: itemsError } = await supabase
         .from("transfer_items")
-        .select("*")
+        .select("id, sku, item_name, quantity")
         .eq("transfer_id", transferId)
         .order("created_at");
 
       if (itemsError) throw itemsError;
 
-      return { transfer: transfer as Transfer, items: (items || []) as TransferItem[] };
+      return {
+        transfer: {
+          ...transfer,
+          from_store_name: (transfer.from_store as any)?.name,
+          to_store_name: (transfer.to_store as any)?.name,
+        } as Transfer,
+        items: (items || []) as TransferItem[],
+      };
     },
     enabled: !!transferId,
   });
 };
 
+// ------------------
+// 2. Add Transfer Items
+// ------------------
 export const useAddTransferItems = () => {
   const queryClient = useQueryClient();
 
@@ -59,19 +79,128 @@ export const useAddTransferItems = () => {
 
       if (error) throw error;
 
+      // Recalculate total items
       const { data: allItems } = await supabase.from("transfer_items").select("quantity").eq("transfer_id", transferId);
-
       const totalItems = allItems?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
-
       await supabase.from("transfers").update({ total_items: totalItems }).eq("transfer_id", transferId);
 
       return data;
     },
     onSuccess: (_, variables) => {
+      toast.success("Items added to transfer successfully.");
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+    },
+    onError: (error) => {
+      toast.error(`Failed to add items: ${error.message}`);
     },
   });
 };
 
-// ... similar fixes for useRemoveTransferItem, useUpdateTransferStatus, useReceiveTransfer
+// ------------------
+// 3. Remove Transfer Item (FIX TS2305)
+// ------------------
+export const useRemoveTransferItem = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transferId, itemId }: { transferId: number; itemId: string }) => {
+      // 1. Delete the item from the transfer
+      const { error } = await supabase.from("transfer_items").delete().eq("id", itemId);
+      if (error) throw error;
+
+      // 2. Recalculate and update the total_items count on the main transfer record
+      const { data: allItems } = await supabase.from("transfer_items").select("quantity").eq("transfer_id", transferId);
+      const totalItems = allItems?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+      await supabase.from("transfers").update({ total_items: totalItems }).eq("transfer_id", transferId);
+
+      return true;
+    },
+    onSuccess: (data, variables) => {
+      toast.success("Item removed from transfer.");
+      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+    },
+    onError: (error) => {
+      toast.error(`Failed to remove item: ${error.message}`);
+    },
+  });
+};
+
+// ------------------
+// 4. Update Transfer Status (FIX TS2305)
+// ------------------
+export const useUpdateTransferStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ transferId, status }: { transferId: number; status: string }) => {
+      const updatePayload: { status: string; approved_at?: string; shipped_at?: string } = { status };
+      const now = new Date().toISOString();
+
+      if (status === "approved") {
+        updatePayload.approved_at = now;
+      } else if (status === "shipped") {
+        updatePayload.shipped_at = now;
+      }
+
+      const { data, error } = await supabase
+        .from("transfers")
+        .update(updatePayload)
+        .eq("transfer_id", transferId)
+        .select()
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      toast.success(`Transfer status updated to ${variables.status}.`);
+      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+    },
+    onError: (error) => {
+      toast.error(`Failed to update status: ${error.message}`);
+    },
+  });
+};
+
+// ------------------
+// 5. Receive Transfer (FIX TS2305)
+// ------------------
+export const useReceiveTransfer = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ transferId }: { transferId: number }) => {
+      // 1. Update transfer status to 'received' and set timestamp
+      const { error: updateError } = await supabase
+        .from("transfers")
+        .update({ status: "received", received_at: new Date().toISOString() })
+        .eq("transfer_id", transferId);
+
+      if (updateError) throw updateError;
+
+      // NOTE: Inventory Logic should be here.
+      // E.g., const { data: transferDetails } = await supabase.from('transfers').select('*').eq('transfer_id', transferId).single();
+      // Then, fetch all items for that transfer:
+      // const { data: items } = await supabase.from('transfer_items').select('*').eq('transfer_id', transferId);
+      // Loop through items and update stock in the destination store (transferDetails.to_store_id).
+
+      // *** IMPORTANT: You need to add your actual inventory update logic here. ***
+      // For demonstration, we assume the status update is the only operation.
+
+      return { message: "Transfer received and status updated." };
+    },
+    onSuccess: (data, variables) => {
+      toast.success("Transfer received successfully. Status updated.");
+      // Invalidate all relevant caches (Transfers list and details)
+      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+      // You may also want to invalidate your inventory data here:
+      // invalidateInventoryData(queryClient);
+    },
+    onError: (error) => {
+      toast.error(`Failed to receive transfer: ${error.message}`);
+    },
+  });
+};
