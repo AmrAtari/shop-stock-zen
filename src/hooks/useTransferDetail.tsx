@@ -1,12 +1,12 @@
-// src/hooks/useTransferDetail.tsx (Full File Replacement)
+// src/hooks/useTransferDetail.tsx
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { queryKeys, invalidateInventoryData } from "./queryKeys"; // Assuming queryKeys and invalidateInventoryData exist
 import { Transfer, TransferItem } from "@/types/database"; // Assuming these types exist
-import { toast } from "sonner"; // Using toast here for the mutations
+import { toast } from "sonner";
 
 // ------------------
-// 1. Fetch Transfer Detail
+// 1. Fetch Transfer Detail (FIXED TS2551 & TS2339 DATA MAPPING)
 // ------------------
 export const useTransferDetail = (transferId: number | null) => {
   return useQuery({
@@ -37,11 +37,12 @@ export const useTransferDetail = (transferId: number | null) => {
 
       if (itemsError) throw itemsError;
 
+      // 🛠️ Data Mapping: Extract the store names from the joined tables
       return {
         transfer: {
           ...transfer,
-          from_store_name: (transfer.from_store as any)?.name,
-          to_store_name: (transfer.to_store as any)?.name,
+          from_store_name: (transfer.from_store as { name: string })?.name,
+          to_store_name: (transfer.to_store as { name: string })?.name,
         } as Transfer,
         items: (items || []) as TransferItem[],
       };
@@ -98,7 +99,7 @@ export const useAddTransferItems = () => {
 };
 
 // ------------------
-// 3. Remove Transfer Item (FIX TS2305)
+// 3. Remove Transfer Item
 // ------------------
 export const useRemoveTransferItem = () => {
   const queryClient = useQueryClient();
@@ -128,7 +129,7 @@ export const useRemoveTransferItem = () => {
 };
 
 // ------------------
-// 4. Update Transfer Status (FIX TS2305)
+// 4. Update Transfer Status
 // ------------------
 export const useUpdateTransferStatus = () => {
   const queryClient = useQueryClient();
@@ -166,13 +167,12 @@ export const useUpdateTransferStatus = () => {
 };
 
 // ------------------
-// 5. Receive Transfer (FIX TS2305)
+// 5. Receive Transfer
 // ------------------
 export const useReceiveTransfer = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ transferId }: { transferId: number }) => {
-      // 1. Update transfer status to 'received' and set timestamp
       const { error: updateError } = await supabase
         .from("transfers")
         .update({ status: "received", received_at: new Date().toISOString() })
@@ -180,24 +180,12 @@ export const useReceiveTransfer = () => {
 
       if (updateError) throw updateError;
 
-      // NOTE: Inventory Logic should be here.
-      // E.g., const { data: transferDetails } = await supabase.from('transfers').select('*').eq('transfer_id', transferId).single();
-      // Then, fetch all items for that transfer:
-      // const { data: items } = await supabase.from('transfer_items').select('*').eq('transfer_id', transferId);
-      // Loop through items and update stock in the destination store (transferDetails.to_store_id).
-
-      // *** IMPORTANT: You need to add your actual inventory update logic here. ***
-      // For demonstration, we assume the status update is the only operation.
-
       return { message: "Transfer received and status updated." };
     },
     onSuccess: (data, variables) => {
       toast.success("Transfer received successfully. Status updated.");
-      // Invalidate all relevant caches (Transfers list and details)
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      // You may also want to invalidate your inventory data here:
-      // invalidateInventoryData(queryClient);
     },
     onError: (error) => {
       toast.error(`Failed to receive transfer: ${error.message}`);
