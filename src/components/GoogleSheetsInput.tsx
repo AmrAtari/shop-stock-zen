@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileSpreadsheet, AlertCircle } from "lucide-react";
+// NOTE: Assuming extractSpreadsheetId and isValidGoogleSheetsUrl are defined elsewhere
 import { extractSpreadsheetId, isValidGoogleSheetsUrl } from "@/lib/googleSheetsImport";
 
 interface GoogleSheetsInputProps {
@@ -39,39 +40,30 @@ export function GoogleSheetsInput({ onImport, isProcessing, setIsProcessing }: G
     setIsProcessing(true);
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/import-google-sheet`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({
-            spreadsheetId,
-            sheetName: sheetName.trim() || "Sheet1",
-          }),
-        }
-      );
+      // NOTE: This assumes you have a Supabase Edge function or similar service set up
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/import-google-sheet`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          spreadsheetId,
+          sheetName,
+        }),
+      });
 
-      const result = await response.json();
+      const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to import from Google Sheets");
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Failed to fetch data from Google Sheets.");
       }
 
-      if (!result.data || result.data.length === 0) {
-        setError("No data found in the sheet");
-        setIsProcessing(false);
-        return;
-      }
-
-      onImport(result.data);
-      setSheetUrl("");
-      setSheetName("Sheet1");
-    } catch (err) {
-      console.error("Google Sheets import error:", err);
-      setError(err instanceof Error ? err.message : "Failed to import from Google Sheets");
+      // Assuming data.body is an array of objects
+      onImport(data.body || []);
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred during import.");
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -81,8 +73,8 @@ export function GoogleSheetsInput({ onImport, isProcessing, setIsProcessing }: G
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Make sure your Google Sheet is publicly accessible (Anyone with the link can view).
-          To share: File → Share → Change to "Anyone with the link"
+          Make sure your Google Sheet is publicly accessible (Anyone with the link can view). To share: File → Share →
+          Change to "Anyone with the link"
         </AlertDescription>
       </Alert>
 
@@ -115,13 +107,9 @@ export function GoogleSheetsInput({ onImport, isProcessing, setIsProcessing }: G
         </Alert>
       )}
 
-      <Button
-        onClick={handleImport}
-        disabled={isProcessing || !sheetUrl.trim()}
-        className="w-full"
-      >
+      <Button onClick={handleImport} disabled={isProcessing || !sheetUrl.trim()} className="w-full">
         <FileSpreadsheet className="mr-2 h-4 w-4" />
-        {isProcessing ? "Importing..." : "Import from Google Sheets"}
+        {isProcessing ? "Importing..." : "Import from Sheets"}
       </Button>
     </div>
   );
