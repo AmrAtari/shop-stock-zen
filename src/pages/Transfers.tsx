@@ -1,3 +1,5 @@
+// src/pages/Transfers.tsx
+
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Eye, Trash2, CalendarIcon } from "lucide-react";
@@ -22,15 +24,21 @@ import { queryKeys, invalidateInventoryData } from "@/hooks/queryKeys";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-interface InventoryTransaction {
-  sku: string;
-  quantity_change: number;
-  reason: string;
-  reference_id?: string;
+// Updated Transfer type
+export interface Transfer {
+  transfer_id: number;
+  transfer_number: string;
+  from_store_id: string;
+  to_store_id: string;
+  transfer_date: string;
+  status?: string;
+  total_items?: number;
+  reason?: string | null;
+  notes?: string | null;
   created_at?: string;
 }
 
-interface Store {
+export interface Store {
   id: string;
   name: string;
 }
@@ -38,6 +46,7 @@ interface Store {
 const Transfers = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -52,15 +61,12 @@ const Transfers = () => {
 
   const { data: transfers = [], isLoading } = useTransfers(searchTerm, statusFilter);
 
-  // Fetch stores directly since you don't have useStores hook
+  // Load stores directly (you may replace this with a hook if available)
   const [stores, setStores] = useState<Store[]>([]);
-  useState(() => {
-    supabase
-      .from("stores")
-      .select("*")
-      .order("name")
-      .then(({ data }) => data && setStores(data));
-  });
+  useMemo(async () => {
+    const { data } = await supabase.from("stores").select("*").order("name");
+    if (data) setStores(data as Store[]);
+  }, []);
 
   const pagination = usePagination({
     totalItems: transfers.length,
@@ -99,7 +105,6 @@ const Transfers = () => {
       toast.error("Please select both stores");
       return;
     }
-
     if (formData.from_store_id === formData.to_store_id) {
       toast.error("Source and destination stores must be different");
       return;
@@ -121,7 +126,7 @@ const Transfers = () => {
           reason: formData.reason || null,
           notes: formData.notes || null,
         })
-        .select("transfer_id") // ✅ Use PK column
+        .select()
         .single();
 
       if (error) throw error;
@@ -137,25 +142,22 @@ const Transfers = () => {
         notes: "",
       });
 
-      // Navigate to the transfer detail page (items selection)
+      // Navigate to the transfer items page
       if (data) {
         navigate(`/transfers/${data.transfer_id}`);
       }
     } catch (error: any) {
-      console.error("Failed to create transfer:", error);
       toast.error("Failed to create transfer: " + error.message);
     } finally {
       setIsCreating(false);
     }
   };
 
-  const handleDelete = async (transfer_id: number, transferNumber: string) => {
+  const handleDelete = async (transferId: number, transferNumber: string) => {
     if (!confirm(`Are you sure you want to delete ${transferNumber}?`)) return;
-
     try {
-      const { error } = await supabase.from("transfers").delete().eq("transfer_id", transfer_id);
+      const { error } = await supabase.from("transfers").delete().eq("transfer_id", transferId);
       if (error) throw error;
-
       await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
       toast.success("Transfer deleted");
     } catch (error: any) {
@@ -187,6 +189,19 @@ const Transfers = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-xs"
             />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="in_transit">In Transit</SelectItem>
+                <SelectItem value="received">Received</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -197,6 +212,7 @@ const Transfers = () => {
                 <TableHead>From Store</TableHead>
                 <TableHead>To Store</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Items</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -204,24 +220,23 @@ const Transfers = () => {
             <TableBody>
               {paginatedTransfers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No transfers found
                   </TableCell>
                 </TableRow>
               ) : (
                 paginatedTransfers.map((transfer) => (
                   <TableRow key={transfer.transfer_id}>
-                    <TableCell className="font-medium">{transfer.transfer_number}</TableCell>
+                    <TableCell>{transfer.transfer_number}</TableCell>
                     <TableCell>{getStoreName(transfer.from_store_id)}</TableCell>
                     <TableCell>{getStoreName(transfer.to_store_id)}</TableCell>
                     <TableCell>
-                      <Badge variant={getStatusVariant(transfer.status)}>
-                        {transfer.status?.replace("_", " ").toUpperCase()}
+                      <Badge variant={getStatusVariant(transfer.status || "")}>
+                        {(transfer.status || "").replace("_", " ").toUpperCase()}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      {transfer.transfer_date ? format(new Date(transfer.transfer_date), "PP") : "-"}
-                    </TableCell>
+                    <TableCell>{transfer.total_items || 0}</TableCell>
+                    <TableCell>{format(new Date(transfer.transfer_date), "PP")}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button
@@ -261,7 +276,6 @@ const Transfers = () => {
         </CardContent>
       </Card>
 
-      {/* Create Transfer Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
