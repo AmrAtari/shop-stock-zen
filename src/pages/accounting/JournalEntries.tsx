@@ -33,8 +33,8 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // Now that ON DELETE CASCADE is set in the database,
-      // we only need this single command to delete the parent entry.
+      // The database is now configured with ON DELETE CASCADE,
+      // so this single command handles the deletion of the entry and all its lines.
       const { error } = await supabase.from("journal_entries").delete().eq("id", id);
       if (error) throw error;
 
@@ -51,10 +51,11 @@ const JournalEntries = () => {
         return [];
       });
 
-      // We skip queryClient.invalidateQueries to prevent the race condition
+      // No queryClient.invalidateQueries is needed, preventing the "reappear" race condition.
     },
     onError: (err: any) => {
-      toast.error(err.message || "Error deleting journal entry. Check your database configuration.");
+      // This should now only fire for true database errors (e.g., connection issues)
+      toast.error(err.message || "Error deleting journal entry.");
     },
   });
 
@@ -78,6 +79,7 @@ const JournalEntries = () => {
     return variants[status] || "default";
   };
 
+  // Filtered list logic combining search and status filter
   const filteredEntries = journalEntries?.filter((entry: any) => {
     const matchesSearch =
       entry.entry_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
