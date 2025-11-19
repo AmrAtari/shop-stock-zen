@@ -29,25 +29,27 @@ interface EnhancedTransfer extends Transfer {
 export const TransferDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const transferId = Number(id);
+
+  // Always run the detail hook
   const { data, isLoading } = useTransferDetail(transferId);
 
+  // derive enhancedTransfer safely (may be undefined initially)
+  const enhancedTransfer = data?.transfer as EnhancedTransfer | undefined;
+
+  // Always run mutations (hooks)
   const addItemsMutation = useAddTransferItems();
   const removeItemMutation = useRemoveTransferItem();
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  if (isLoading || !data) return <div>Loading...</div>;
-
-  const { transfer, items } = data;
-  const enhancedTransfer = transfer as EnhancedTransfer;
-
-  // Fetch items with store-specific quantities from source store
+  // Always run the items query hook — enabled only when we have the store id
   const { data: allItems = [] } = useQuery<Item[]>({
-    queryKey: ["items-for-transfer", enhancedTransfer.from_store_id],
+    queryKey: ["items-for-transfer", enhancedTransfer?.from_store_id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("store_inventory")
-        .select(`
+        .select(
+          `
           quantity,
           items!inner(
             id,
@@ -56,12 +58,13 @@ export const TransferDetailPage = () => {
             unit,
             category_name:categories!items_category_fkey(name)
           )
-        `)
-        .eq("store_id", enhancedTransfer.from_store_id)
+        `,
+        )
+        .eq("store_id", enhancedTransfer?.from_store_id)
         .gt("quantity", 0);
-      
+
       if (error) throw error;
-      
+
       // Map the data to include the resolved category name and store quantity
       return (data || []).map((inv: any) => ({
         id: inv.items.id,
@@ -72,30 +75,41 @@ export const TransferDetailPage = () => {
         category: inv.items.category_name?.name || "Uncategorized",
       })) as Item[];
     },
-    enabled: !!enhancedTransfer.from_store_id,
+    enabled: !!enhancedTransfer?.from_store_id,
   });
+
+  // Now it's safe to conditionally return UI (after all hooks were registered)
+  if (isLoading || !data) return <div>Loading...</div>;
+
+  const { transfer, items } = data;
+  const transferTyped = transfer as EnhancedTransfer;
 
   // Get existing SKUs for import validation
   const existingSkus = allItems.map((item) => item.sku);
 
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
-      transferId: enhancedTransfer.transfer_id,
+      transferId: transferTyped.transfer_id,
       items: newItems.map((i) => ({ sku: i.sku, itemName: i.itemName || "", quantity: i.quantity })),
     });
   };
 
   const handleBarcodeScanned = async (scannedItems: Array<{ sku: string; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: enhancedTransfer.transfer_id,
+      transferId: transferTyped.transfer_id,
       items: scannedItems.map((i) => ({ sku: i.sku, itemName: "", quantity: i.quantity })),
     });
   };
 
   const handleManualSelection = (selectedItems: Array<{ item: Item; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: enhancedTransfer.transfer_id,
-      items: selectedItems.map((i) => ({ sku: i.item.sku, itemName: i.item.name, quantity: i.quantity, itemId: i.item.id })),
+      transferId: transferTyped.transfer_id,
+      items: selectedItems.map((i) => ({
+        sku: i.item.sku,
+        itemName: i.item.name,
+        quantity: i.quantity,
+        itemId: i.item.id,
+      })),
     });
   };
 
@@ -105,40 +119,40 @@ export const TransferDetailPage = () => {
   };
 
   const handleRemoveItem = (itemId: string) => {
-    if (["shipped", "received"].includes(enhancedTransfer.status)) {
+    if (["shipped", "received"].includes(transferTyped.status)) {
       toast.error("Cannot remove items from a shipped or received transfer.");
       return;
     }
-    removeItemMutation.mutate({ transferId: enhancedTransfer.transfer_id, itemId }); // Now valid
+    removeItemMutation.mutate({ transferId: transferTyped.transfer_id, itemId });
   };
 
   const handleUpdateStatus = (status: "approved" | "shipped") => {
-    updateStatusMutation.mutate({ transferId: enhancedTransfer.transfer_id, status }); // Now valid
+    updateStatusMutation.mutate({ transferId: transferTyped.transfer_id, status });
   };
 
   const handleReceiveTransfer = () => {
-    receiveMutation.mutate({ transferId: enhancedTransfer.transfer_id }); // Now valid
+    receiveMutation.mutate({ transferId: transferTyped.transfer_id });
   };
 
   return (
     <div className="space-y-6 p-6">
-      <h1 className="text-3xl font-bold">Transfer #{enhancedTransfer.transfer_number}</h1>
+      <h1 className="text-3xl font-bold">Transfer #{transferTyped.transfer_number}</h1>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="font-medium">From Store:</p>
-          <p>{enhancedTransfer.from_store_name || "N/A"}</p>
+          <p>{transferTyped.from_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">To Store:</p>
-          <p>{enhancedTransfer.to_store_name || "N/A"}</p>
+          <p>{transferTyped.to_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">Status:</p>
-          <p className="font-semibold capitalize">{enhancedTransfer.status}</p>
+          <p className="font-semibold capitalize">{transferTyped.status}</p>
         </div>
         <div>
           <p className="font-medium">Total Items:</p>
-          <p>{enhancedTransfer.total_items || 0}</p>
+          <p>{transferTyped.total_items || 0}</p>
         </div>
       </div>
 
@@ -195,7 +209,7 @@ export const TransferDetailPage = () => {
                       variant="destructive"
                       size="sm"
                       onClick={() => handleRemoveItem(item.id)}
-                      disabled={["shipped", "received"].includes(enhancedTransfer.status)}
+                      disabled={["shipped", "received"].includes(transferTyped.status)}
                     >
                       Remove
                     </Button>
@@ -208,17 +222,18 @@ export const TransferDetailPage = () => {
       )}
 
       <div className="flex gap-2 pt-4">
-        <Button onClick={() => handleUpdateStatus("approved")} disabled={enhancedTransfer.status !== "pending"}>
+        <Button onClick={() => handleUpdateStatus("approved")} disabled={transferTyped.status !== "pending"}>
           Approve
         </Button>
-        <Button onClick={() => handleUpdateStatus("shipped")} disabled={enhancedTransfer.status !== "approved"}>
+        <Button onClick={() => handleUpdateStatus("shipped")} disabled={transferTyped.status !== "approved"}>
           Ship
         </Button>
-        <Button onClick={handleReceiveTransfer} disabled={enhancedTransfer.status !== "shipped"}>
+        <Button onClick={handleReceiveTransfer} disabled={transferTyped.status !== "shipped"}>
           Receive
         </Button>
       </div>
     </div>
   );
 };
+
 export default TransferDetailPage;
