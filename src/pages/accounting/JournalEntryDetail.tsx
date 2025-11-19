@@ -3,23 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft, FileText, CheckCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
+  const queryClient = useQueryClient();
 
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("journal_entries")
-        .select("*")
-        .eq("id", id)
-        .single();
-      
+      const { data, error } = await supabase.from("journal_entries").select("*").eq("id", id).single();
+
       if (error) throw error;
       return data;
     },
@@ -30,15 +28,45 @@ const JournalEntryDetail = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("journal_entry_lines")
-        .select(`
+        .select(
+          `
           *,
           account:accounts(account_code, account_name)
-        `)
+        `,
+        )
         .eq("journal_entry_id", id)
         .order("created_at", { ascending: true });
-      
+
       if (error) throw error;
       return data;
+    },
+  });
+
+  // New mutation to post the journal entry
+  const postEntryMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error("Journal Entry ID is missing.");
+
+      const { error } = await supabase
+        .from("journal_entries")
+        .update({
+          status: "posted",
+          // Use current timestamp for posted_at
+          posted_at: new Date().toISOString(),
+          posted_by: "system_user", // Placeholder - replace with actual user ID
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Journal Entry has been posted successfully.");
+      // Invalidate both the detail and the list queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ["journal_entry", id] });
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to post journal entry.");
     },
   });
 
@@ -90,10 +118,23 @@ const JournalEntryDetail = () => {
             <p className="text-muted-foreground">{entry?.description}</p>
           </div>
         </div>
-        <Button variant="outline">
-          <FileText className="w-4 h-4 mr-2" />
-          Print Entry
-        </Button>
+
+        {/* ACTION BUTTONS */}
+        <div className="flex gap-2">
+          {/* POST BUTTON (Only visible if status is draft) */}
+          {entry?.status === "draft" && (
+            <Button onClick={() => postEntryMutation.mutate()} disabled={postEntryMutation.isPending}>
+              <CheckCheck className="w-4 h-4 mr-2" />
+              {postEntryMutation.isPending ? "Posting..." : "Post Entry"}
+            </Button>
+          )}
+
+          <Button variant="outline">
+            <FileText className="w-4 h-4 mr-2" />
+            Print Entry
+          </Button>
+        </div>
+        {/* END ACTION BUTTONS */}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -110,9 +151,7 @@ const JournalEntryDetail = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Status</p>
-              <Badge variant={getStatusBadge(entry?.status || "") as any}>
-                {entry?.status}
-              </Badge>
+              <Badge variant={getStatusBadge(entry?.status || "") as any}>{entry?.status}</Badge>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Type</p>
@@ -154,11 +193,13 @@ const JournalEntryDetail = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Difference</p>
-              <p className={`font-semibold ${
-                Math.abs((entry?.total_debit || 0) - (entry?.total_credit || 0)) < 0.01 
-                  ? "text-green-600" 
-                  : "text-red-600"
-              }`}>
+              <p
+                className={`font-semibold ${
+                  Math.abs((entry?.total_debit || 0) - (entry?.total_credit || 0)) < 0.01
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
                 ${Math.abs((entry?.total_debit || 0) - (entry?.total_credit || 0)).toFixed(2)}
               </p>
             </div>
@@ -184,27 +225,23 @@ const JournalEntryDetail = () => {
             <TableBody>
               {lines?.map((line: any) => (
                 <TableRow key={line.id}>
-                  <TableCell className="font-mono font-semibold">
-                    {line.account?.account_code}
-                  </TableCell>
+                  <TableCell className="font-mono font-semibold">{line.account?.account_code}</TableCell>
                   <TableCell>{line.account?.account_name}</TableCell>
                   <TableCell className="max-w-md truncate">{line.description}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {line.debit > 0 ? `$${line.debit.toFixed(2)}` : "—"}
+                    {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {line.credit > 0 ? `$${line.credit.toFixed(2)}` : "—"}
+                    {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : "—"}
                   </TableCell>
                 </TableRow>
               ))}
               <TableRow className="font-bold bg-muted/50">
-                <TableCell colSpan={3} className="text-right">Totals:</TableCell>
-                <TableCell className="text-right font-mono">
-                  ${entry?.total_debit?.toFixed(2) || "0.00"}
+                <TableCell colSpan={3} className="text-right">
+                  Totals:
                 </TableCell>
-                <TableCell className="text-right font-mono">
-                  ${entry?.total_credit?.toFixed(2) || "0.00"}
-                </TableCell>
+                <TableCell className="text-right font-mono">${entry?.total_debit?.toFixed(2) || "0.00"}</TableCell>
+                <TableCell className="text-right font-mono">${entry?.total_credit?.toFixed(2) || "0.00"}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
