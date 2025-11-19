@@ -7,86 +7,113 @@ import {
   useRemoveTransferItem,
   useUpdateTransferStatus,
   useReceiveTransfer,
+  TransferableItem, // Explicitly importing the type for use in component logic
 } from "@/hooks/useTransferDetail";
-import { TransferItemSelector, TransferSelectorItem } from "@/components/TransferItemSelector";
-import { TransferItemImport } from "@/components/TransferItemImport";
+
+// FIX 1: Correcting the imports to handle named exports (TransferItemImport and ImportedItem)
+import { TransferItemImport, ImportedItem } from "@/components/TransferItemImport";
+
 import { TransferBarcodeScanner } from "@/components/TransferBarcodeScanner";
+// We only need the component here, the item type is TransferableItem from the hook
+import { TransferItemSelector } from "@/components/TransferItemSelector";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { Transfer, TransferItem } from "@/types/database";
+
+// Interface to satisfy TS2551/TS2339 by ensuring the fields exist for the UI
+interface EnhancedTransfer extends Transfer {
+  from_store_name: string;
+  to_store_name: string;
+}
 
 export const TransferDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const transferId = Number(id);
 
   const { data, isLoading } = useTransferDetail(transferId);
-  const enhancedTransfer = data?.transfer as Transfer | undefined;
-  const items = data?.items || [];
+  // FIX 2: Casting data?.transfer to EnhancedTransfer to resolve TS2551/TS2339
+  const enhancedTransfer = data?.transfer as EnhancedTransfer | undefined;
+  const { items: transferItems = [] } = data || {};
 
   const addItemsMutation = useAddTransferItems();
   const removeItemMutation = useRemoveTransferItem();
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  // Convert store_inventory -> TransferSelectorItem for selector
-  const { data: allItems = [] } = useQuery<TransferSelectorItem[]>({
-    queryKey: ["items-for-transfer", enhancedTransfer?.from_store_id],
+  // fetch available items from store_inventory
+  const { data: availableItems = [] } = useQuery<TransferableItem[]>({
+    queryKey: ["store-inventory", enhancedTransfer?.from_store_id],
     queryFn: async () => {
-      if (!enhancedTransfer?.from_store_id) return [];
-      const { data: inv, error } = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/store_inventory?select=quantity,items(id,sku,name,unit,category)&store_id=eq.${enhancedTransfer.from_store_id}&quantity=gt.0`,
-      ).then((r) => r.json());
+      const { data, error } = await supabase
+        .from("store_inventory")
+        .select(
+          `
+            quantity,
+            items!inner(
+              id, sku, name, unit, categories!items_category_fkey(name)
+            )
+          `,
+        )
+        .eq("store_id", enhancedTransfer?.from_store_id)
+        .gt("quantity", 0);
+
       if (error) throw error;
-      return inv.map((i: any) => ({
-        id: i.items.id,
-        sku: i.items.sku,
-        name: i.items.name,
-        unit: i.items.unit,
-        quantity: i.quantity,
-        category: i.items.category?.name || null,
+
+      return (data || []).map((inv: any) => ({
+        id: inv.items.id,
+        sku: inv.items.sku,
+        name: inv.items.name,
+        unit: inv.items.unit,
+        quantity: inv.quantity,
+        category: inv.items.categories?.name || "Uncategorized",
       }));
     },
     enabled: !!enhancedTransfer?.from_store_id,
   });
 
-  if (isLoading || !data) return <div>Loading...</div>;
+  const existingSkus = availableItems.map((i) => i.sku);
 
-  const handleAddItems = (newItems: Array<{ item: TransferSelectorItem; quantity: number }>) => {
+  const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
       transferId: transferId,
       items: newItems.map((i) => ({
+        sku: i.sku,
+        itemName: i.itemName || "",
+        quantity: i.quantity,
+      })),
+    });
+  };
+
+  // FIX 3: Using TransferableItem from the hook ensures compatibility with the data source (availableItems)
+  const handleManualSelection = (selectedItems: Array<{ item: TransferableItem; quantity: number }>) => {
+    addItemsMutation.mutate({
+      transferId,
+      items: selectedItems.map((i) => ({
         sku: i.item.sku,
         itemName: i.item.name,
         quantity: i.quantity,
+        item_id: i.item.id,
       })),
     });
   };
 
   const handleRemoveItem = (itemId: string) => {
     if (["shipped", "received"].includes(enhancedTransfer?.status || "")) {
-      toast.error("Cannot remove items from shipped or received transfer.");
+      toast.error("Cannot remove items from a shipped or received transfer.");
       return;
     }
     removeItemMutation.mutate({ transferId, itemId });
   };
 
-  const handleUpdateStatus = (status: "approved" | "shipped") => {
-    updateStatusMutation.mutate({ transferId, status });
-  };
-
-  const handleReceiveTransfer = () => {
-    receiveMutation.mutate({ transferId });
-  };
-
-  const existingSkus = allItems.map((i) => i.sku);
+  if (isLoading || !data) return <div>Loading...</div>;
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold">Transfer #{enhancedTransfer?.transfer_number}</h1>
-
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="font-medium">From Store:</p>
@@ -107,66 +134,59 @@ export const TransferDetailPage = () => {
       </div>
 
       <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">Add Items to Transfer</h2>
+        <h2 className="text-xl font-semibold mb-4">Add Items</h2>
         <Tabs defaultValue="manual" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="manual">Manual Selection</TabsTrigger>
-            <TabsTrigger value="barcode">Barcode Scanner</TabsTrigger>
-            <TabsTrigger value="excel">Excel Import</TabsTrigger>
-            <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="barcode">Barcode</TabsTrigger>
+            <TabsTrigger value="excel">Excel</TabsTrigger>
+            <TabsTrigger value="sheets">Sheets</TabsTrigger>
           </TabsList>
 
           <TabsContent value="manual" className="mt-4">
-            <TransferItemSelector items={allItems} onSelect={handleAddItems} />
+            <TransferItemSelector items={availableItems} onSelect={handleManualSelection} />
           </TabsContent>
 
           <TabsContent value="barcode" className="mt-4">
             <TransferBarcodeScanner
-              onScan={(scannedItems) =>
-                handleAddItems(scannedItems.map((i) => ({ item: { ...i, name: i.name }, quantity: i.quantity })))
+              onScan={(scanned) =>
+                addItemsMutation.mutate({
+                  transferId,
+                  items: scanned.map((i) => ({ sku: i.sku, itemName: "", quantity: i.quantity })),
+                })
               }
               onLookupSku={async (sku) => {
-                const found = allItems.find((i) => i.sku === sku);
-                return found ? { name: found.name } : null;
+                const item = availableItems.find((i) => i.sku === sku);
+                return item ? { name: item.name } : null;
               }}
             />
           </TabsContent>
 
           <TabsContent value="excel" className="mt-4">
-            <TransferItemImport
-              onImport={(items) =>
-                handleAddItems(items.map((i) => ({ item: { ...i, name: i.itemName }, quantity: i.quantity })))
-              }
-              existingSkus={existingSkus}
-            />
+            <TransferItemImport onImport={handleAddItems} existingSkus={existingSkus} />
           </TabsContent>
 
           <TabsContent value="sheets" className="mt-4">
-            <TransferItemImport
-              onImport={(items) =>
-                handleAddItems(items.map((i) => ({ item: { ...i, name: i.itemName }, quantity: i.quantity })))
-              }
-              existingSkus={existingSkus}
-            />
+            <TransferItemImport onImport={handleAddItems} existingSkus={existingSkus} />
           </TabsContent>
         </Tabs>
       </Card>
 
-      <h2 className="text-2xl font-semibold mt-8">Transfer Items ({items.length})</h2>
-      {items.length > 0 && (
+      <h2 className="text-2xl font-semibold mt-8">Transfer Items ({transferItems.length})</h2>
+      {transferItems.length > 0 && (
         <div className="border rounded-lg overflow-auto max-h-[400px]">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>SKU</TableHead>
-                <TableHead>Item Name</TableHead>
+                <TableHead>Name</TableHead>
                 <TableHead>Requested Qty</TableHead>
                 <TableHead>Received Qty</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => (
+              {transferItems.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                   <TableCell>{item.item_name}</TableCell>
@@ -174,10 +194,10 @@ export const TransferDetailPage = () => {
                   <TableCell>{item.received_quantity}</TableCell>
                   <TableCell>
                     <Button
-                      variant="destructive"
                       size="sm"
-                      onClick={() => handleRemoveItem(item.id)}
+                      variant="destructive"
                       disabled={["shipped", "received"].includes(enhancedTransfer?.status || "")}
+                      onClick={() => handleRemoveItem(item.id)}
                     >
                       Remove
                     </Button>
@@ -190,13 +210,22 @@ export const TransferDetailPage = () => {
       )}
 
       <div className="flex gap-2 pt-4">
-        <Button onClick={() => handleUpdateStatus("approved")} disabled={enhancedTransfer?.status !== "pending"}>
+        <Button
+          onClick={() => updateStatusMutation.mutate({ transferId, status: "approved" })}
+          disabled={enhancedTransfer?.status !== "pending"}
+        >
           Approve
         </Button>
-        <Button onClick={() => handleUpdateStatus("shipped")} disabled={enhancedTransfer?.status !== "approved"}>
+        <Button
+          onClick={() => updateStatusMutation.mutate({ transferId, status: "shipped" })}
+          disabled={enhancedTransfer?.status !== "approved"}
+        >
           Ship
         </Button>
-        <Button onClick={handleReceiveTransfer} disabled={enhancedTransfer?.status !== "shipped"}>
+        <Button
+          onClick={() => receiveMutation.mutate({ transferId })}
+          disabled={enhancedTransfer?.status !== "shipped"}
+        >
           Receive
         </Button>
       </div>
