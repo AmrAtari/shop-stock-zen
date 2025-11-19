@@ -15,7 +15,7 @@ const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const queryClient = useQueryClient();
 
-  // 1. Fetching journal entries
+  // Fetch journal entries
   const { data: journalEntries, isLoading } = useQuery({
     queryKey: ["journal_entries"],
     queryFn: async () => {
@@ -28,19 +28,18 @@ const JournalEntries = () => {
     },
   });
 
-  // 2. Mutation for deletion
+  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("journal_entries").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
       toast.success("Journal entry deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
-    onError: (error: any) => {
-      console.error("Error deleting journal entry:", error);
-      toast.error("Error deleting journal entry");
+    onError: (err: any) => {
+      toast.error(err.message || "Error deleting journal entry");
     },
   });
 
@@ -79,7 +78,7 @@ const JournalEntries = () => {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 w-full">
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -106,10 +105,10 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading || deleteMutation.isLoading ? (
+              {isLoading || deleteMutation.status === "loading" ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.isLoading ? "Deleting..." : "Loading..."}
+                    {deleteMutation.status === "loading" ? "Deleting..." : "Loading..."}
                   </TableCell>
                 </TableRow>
               ) : filteredEntries?.length === 0 ? (
@@ -119,7 +118,7 @@ const JournalEntries = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredEntries?.map((entry: any) => (
+                filteredEntries.map((entry: any) => (
                   <TableRow key={entry.id}>
                     <TableCell className="font-mono font-semibold">{entry.entry_number}</TableCell>
                     <TableCell>{format(new Date(entry.entry_date), "MMM dd, yyyy")}</TableCell>
@@ -148,7 +147,7 @@ const JournalEntries = () => {
                         size="icon"
                         title="Delete"
                         onClick={() => handleDelete(entry.id)}
-                        disabled={deleteMutation.isLoading}
+                        disabled={deleteMutation.status === "loading"}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
