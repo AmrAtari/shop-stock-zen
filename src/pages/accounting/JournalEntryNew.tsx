@@ -9,15 +9,6 @@ import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-// ✅ Simple UUID generator to avoid 'uuid' dependency
-const generateUUID = () => {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-};
-
 interface Store {
   id: string;
   name: string;
@@ -57,23 +48,20 @@ const JournalEntryNew = () => {
     },
   });
 
-  // Save Journal Entry
+  // Save Journal Entry mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedStore || journalLines.length === 0) {
-        throw new Error("No store selected or no items generated");
-      }
+      if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
       // Find inventory account for the selected store
       const { data: accountData } = await supabase
         .from("accounts")
         .select("*")
-        .ilike("account_name", `%Inventory%${selectedStore}%`)
+        .ilike("account_name", `%Inventory%`)
+        .eq("is_active", true)
         .maybeSingle();
 
-      if (!accountData) {
-        throw new Error("Inventory account not found for this store");
-      }
+      if (!accountData) throw new Error("Inventory account not found");
 
       // Find Retained Earnings account
       const { data: retainedAccount } = await supabase
@@ -82,15 +70,12 @@ const JournalEntryNew = () => {
         .eq("account_name", "Retained Earnings")
         .maybeSingle();
 
-      if (!retainedAccount) {
-        throw new Error("Retained Earnings account not found");
-      }
+      if (!retainedAccount) throw new Error("Retained Earnings account not found");
 
-      const journalEntryId = generateUUID();
+      const journalEntryId = crypto.randomUUID();
       const entryNumber = `JE-${Date.now()}`;
       const entryDate = new Date().toISOString();
 
-      // Calculate totals
       const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
       const totalCredit = journalLines.reduce((sum, line) => sum + line.credit_amount, 0);
 
@@ -100,7 +85,7 @@ const JournalEntryNew = () => {
           id: journalEntryId,
           entry_number: entryNumber,
           entry_date: entryDate,
-          description: `Opening Stock for ${selectedStore}`,
+          description: `Opening Stock for ${stores?.find((s) => s.id === selectedStore)?.name}`,
           entry_type: "manual",
           status: "draft",
           total_debit: totalDebit,
@@ -113,9 +98,10 @@ const JournalEntryNew = () => {
       const linesToInsert = journalLines.map((line, index) => ({
         ...line,
         journal_entry_id: journalEntryId,
-        account_id: accountData.id,
         line_number: index + 1,
+        account_id: accountData.id,
       }));
+
       const { error: lineError } = await supabase.from("journal_entry_lines").insert(linesToInsert);
       if (lineError) throw lineError;
 
@@ -135,12 +121,12 @@ const JournalEntryNew = () => {
   const handleGenerate = async () => {
     if (!selectedStore) return toast.error("Please select a store");
     setIsGenerating(true);
+
     try {
       const { data: inventoryItems } = await supabase
         .from("store_inventory")
-        .select("id, item_id, quantity, items(sku, name, cost)")
-        .eq("store_id", selectedStore)
-        .order("id", { ascending: true });
+        .select("item_id, quantity, items(sku, name, cost)")
+        .eq("store_id", selectedStore);
 
       if (!inventoryItems || inventoryItems.length === 0) {
         toast.error("No inventory items found for this store");
@@ -149,8 +135,8 @@ const JournalEntryNew = () => {
       }
 
       const lines: JournalLine[] = inventoryItems.map((inv: any, index: number) => ({
-        id: generateUUID(),
-        account_id: "", // set later during save
+        id: crypto.randomUUID(),
+        account_id: "", // Will set during save
         item_id: inv.item_id,
         description: `Opening Stock: ${inv.items.sku} - ${inv.items.name}`,
         debit_amount: inv.quantity * inv.items.cost,
@@ -171,7 +157,7 @@ const JournalEntryNew = () => {
       <h1 className="text-3xl font-bold">New Journal Entry</h1>
 
       <Card>
-        <CardHeader className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <CardHeader className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <Select value={selectedStore} onValueChange={setSelectedStore}>
               <SelectTrigger className="w-60">
@@ -179,7 +165,7 @@ const JournalEntryNew = () => {
               </SelectTrigger>
               <SelectContent>
                 {stores?.map((store) => (
-                  <SelectItem key={store.id} value={store.name}>
+                  <SelectItem key={store.id} value={store.id}>
                     {store.name}
                   </SelectItem>
                 ))}
@@ -191,7 +177,6 @@ const JournalEntryNew = () => {
           </div>
           <Button onClick={() => saveMutation.mutate()}>Save Journal Entry</Button>
         </CardHeader>
-
         <CardContent className="p-0">
           <div className="overflow-x-auto max-h-[500px]">
             <Table className="min-w-[900px]">
