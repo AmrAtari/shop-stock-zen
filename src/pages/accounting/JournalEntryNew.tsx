@@ -53,24 +53,29 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
-      // Find Inventory account
-      const { data: inventoryAccount } = await supabase
+      // Find Inventory account dynamically using ORDER and LIMIT(1)
+      const { data: accountsData } = await supabase
         .from("accounts")
         .select("id")
-        .ilike("account_name", `%Inventory%`)
+        .ilike("account_name", `%Inventory%`) // Back to dynamic search
         .eq("is_active", true)
-        .maybeSingle();
+        .order("account_code", { ascending: true }) // Sort by code (lowest first)
+        .limit(1); // Only take the top result
 
-      if (!inventoryAccount) throw new Error("Inventory account not found");
+      const inventoryAccount = accountsData?.[0]; // Get the first account found
+
+      if (!inventoryAccount) {
+        throw new Error("Inventory account not found. Check if an active account exists with 'Inventory' in the name.");
+      }
 
       // Find Retained Earnings account
-      const { data: retainedAccount } = await supabase
+      const { data: retainedAccountData } = await supabase
         .from("accounts")
         .select("id")
         .eq("account_name", "Retained Earnings")
         .maybeSingle();
 
-      if (!retainedAccount) throw new Error("Retained Earnings account not found");
+      if (!retainedAccountData) throw new Error("Retained Earnings account not found.");
 
       // Calculate Total Debit from the generated lines (Inventory Asset Debits)
       const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
@@ -78,11 +83,11 @@ const JournalEntryNew = () => {
       // CRITICAL ADDITION: Create the Balancing Credit Line to Retained Earnings
       const retainedEarningsCreditLine: JournalLine = {
         id: crypto.randomUUID(),
-        account_id: retainedAccount.id, // Use the Retained Earnings account ID
+        account_id: retainedAccountData.id,
         item_id: "",
         description: `Opening Stock (Credit to Retained Earnings)`,
         debit_amount: 0,
-        credit_amount: totalDebit, // Credit amount equals total Debit
+        credit_amount: totalDebit,
         store_id: selectedStore,
         line_number: journalLines.length + 1,
       };
@@ -124,8 +129,7 @@ const JournalEntryNew = () => {
         ...line,
         journal_entry_id: journalEntryId,
         line_number: index + 1,
-        // Set the Inventory account ID for debit lines, Retained Earnings ID for the credit line
-        // The Retained Earnings line already has its account_id set in finalLines.
+        // Use the found Inventory account ID for the debit lines
         account_id: line.account_id || inventoryAccount.id,
       }));
 
@@ -173,7 +177,6 @@ const JournalEntryNew = () => {
         line_number: index + 1,
       }));
 
-      // Set the journal lines to only the debit lines initially. The credit line is added during save.
       setJournalLines(debitLines);
       toast.success("Inventory lines generated. Press 'Save' to complete the entry.");
     } catch (err: any) {
