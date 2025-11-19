@@ -6,15 +6,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Eye, Edit, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Import useMutation and useQueryClient
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const queryClient = useQueryClient(); // Initialize query client
+  const queryClient = useQueryClient();
 
-  // 1. Fetching Data
+  // Fetch all journal entries
   const { data: journalEntries, isLoading } = useQuery({
     queryKey: ["journal_entries"],
     queryFn: async () => {
@@ -28,26 +28,18 @@ const JournalEntries = () => {
     },
   });
 
-  // 2. Mutation for Deletion
+  // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async (id: string) => {
       const { error } = await supabase.from("journal_entries").delete().eq("id", id);
-
       if (error) throw error;
     },
     onSuccess: () => {
-      // Invalidate and refetch the journal_entries query to update the UI
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
-      console.log("Journal entry deleted successfully.");
-      // Optional: Add a toast notification here
-    },
-    onError: (error) => {
-      console.error("Error deleting journal entry:", error);
-      // Optional: Add a toast notification for error
     },
   });
 
-  const handleDelete = (id: number) => {
+  const handleDelete = (id: string) => {
     if (window.confirm("Are you sure you want to delete this journal entry?")) {
       deleteMutation.mutate(id);
     }
@@ -80,7 +72,7 @@ const JournalEntries = () => {
         </Link>
       </div>
 
-      <Card>
+      <Card className="overflow-x-auto">
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="flex-1 relative">
@@ -94,78 +86,75 @@ const JournalEntries = () => {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Entry #</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Debit</TableHead>
-                <TableHead>Credit</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading || deleteMutation.isPending ? (
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table className="min-w-[900px]">
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.isPending ? "Deleting..." : "Loading..."}
-                  </TableCell>
+                  <TableHead>Entry #</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Debit</TableHead>
+                  <TableHead>Credit</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : filteredEntries?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center">
-                    No journal entries found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredEntries?.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="font-mono font-semibold">{entry.entry_number}</TableCell>
-                    <TableCell>{format(new Date(entry.entry_date), "MMM dd, yyyy")}</TableCell>
-                    <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{entry.entry_type}</Badge>
-                    </TableCell>
-                    <TableCell className="font-mono">${entry.total_debit?.toFixed(2) || "0.00"}</TableCell>
-                    <TableCell className="font-mono">${entry.total_credit?.toFixed(2) || "0.00"}</TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadge(entry.status) as any}>{entry.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right flex justify-end gap-1">
-                      {" "}
-                      {/* Update Actions Cell */}
-                      {/* View Button */}
-                      <Link to={`/accounting/journal-entries/${entry.id}`}>
-                        <Button variant="ghost" size="icon" title="View">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                      {/* Edit Button - Assuming the edit route is similar to view */}
-                      <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
-                        <Button variant="ghost" size="icon" title="Edit">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                      {/* Delete Button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Delete"
-                        onClick={() => handleDelete(entry.id)}
-                        disabled={deleteMutation.isPending} // Disable while deletion is in progress
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </Button>
+              </TableHeader>
+              <TableBody>
+                {isLoading || deleteMutation.isPending ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center">
+                      {deleteMutation.isPending ? "Deleting..." : "Loading..."}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : filteredEntries?.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center">
+                      No journal entries found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredEntries.map((entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="font-mono font-semibold">{entry.entry_number}</TableCell>
+                      <TableCell>{format(new Date(entry.entry_date), "MMM dd, yyyy")}</TableCell>
+                      <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{entry.entry_type}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono">${entry.total_debit?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell className="font-mono">${entry.total_credit?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadge(entry.status) as any}>{entry.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right flex justify-end gap-1">
+                        <Link to={`/accounting/journal-entries/${entry.id}`}>
+                          <Button variant="ghost" size="icon" title="View">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
+                          <Button variant="ghost" size="icon" title="Edit">
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Delete"
+                          onClick={() => handleDelete(entry.id)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
