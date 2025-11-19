@@ -1,3 +1,4 @@
+// src/pages/TransferDetail.tsx
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -17,18 +18,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Transfer, TransferItem } from "@/types/database";
+import { Transfer, TransferItem, Item } from "@/types/database";
 
-// Local type for items we actually display in selection
-interface TransferableItem {
-  id: string;
-  sku: string;
-  name: string;
-  unit: string;
-  quantity: number;
-  category: string;
-}
-
+// Extended Transfer type to include store names
 interface EnhancedTransfer extends Transfer {
   from_store_name: string;
   to_store_name: string;
@@ -38,16 +30,18 @@ export const TransferDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const transferId = Number(id);
 
+  // Fetch transfer detail
   const { data, isLoading } = useTransferDetail(transferId);
   const enhancedTransfer = data?.transfer as EnhancedTransfer | undefined;
-  const { transfer, items } = data || { transfer: null, items: [] };
 
+  // Mutation hooks
   const addItemsMutation = useAddTransferItems();
   const removeItemMutation = useRemoveTransferItem();
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  const { data: allItems = [] } = useQuery<TransferableItem[]>({
+  // Fetch items from store_inventory (subset of Item fields)
+  const { data: allItems = [] } = useQuery<Partial<Item>[]>({
     queryKey: ["items-for-transfer", enhancedTransfer?.from_store_id],
     queryFn: async () => {
       if (!enhancedTransfer?.from_store_id) return [];
@@ -62,7 +56,7 @@ export const TransferDetailPage = () => {
             sku,
             name,
             unit,
-            categories!items_category_fkey(name)
+            category_name:categories!items_category_fkey(name)
           )
         `,
         )
@@ -77,7 +71,7 @@ export const TransferDetailPage = () => {
         name: inv.items.name,
         unit: inv.items.unit,
         quantity: inv.quantity,
-        category: inv.items.categories?.name || "Uncategorized",
+        category: inv.items.category_name?.name || "Uncategorized",
       }));
     },
     enabled: !!enhancedTransfer?.from_store_id,
@@ -85,82 +79,89 @@ export const TransferDetailPage = () => {
 
   if (isLoading || !data) return <div>Loading...</div>;
 
+  const { transfer, items } = data;
+  const transferTyped = transfer as EnhancedTransfer;
+
   const existingSkus = allItems.map((item) => item.sku);
 
+  // Add items from import
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
-      transferId: transfer.transfer_id,
+      transferId: transferTyped.transfer_id,
       items: newItems.map((i) => ({
         sku: i.sku,
-        itemName: i.itemName || i.sku, // optional placeholder
+        itemName: i.itemName || "",
         quantity: i.quantity,
       })),
     });
   };
 
-  const handleBarcodeScanned = async (scannedItems: Array<{ sku: string; quantity: number }>) => {
+  // Barcode scanned items
+  const handleBarcodeScanned = (scannedItems: Array<{ sku: string; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: transfer.transfer_id,
+      transferId: transferTyped.transfer_id,
       items: scannedItems.map((i) => ({
         sku: i.sku,
-        itemName: allItems.find((a) => a.sku === i.sku)?.name || i.sku,
+        itemName: "", // can be empty
         quantity: i.quantity,
       })),
     });
   };
 
-  const handleManualSelection = (selectedItems: Array<{ item: TransferableItem; quantity: number }>) => {
+  // Manual selection from table
+  const handleManualSelection = (selectedItems: Array<{ item: Partial<Item>; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: transfer.transfer_id,
+      transferId: transferTyped.transfer_id,
       items: selectedItems.map((i) => ({
-        sku: i.item.sku,
-        itemName: i.item.name,
+        sku: i.item.sku!,
+        itemName: i.item.name || "",
         quantity: i.quantity,
         itemId: i.item.id,
       })),
     });
   };
 
-  const lookupSku = async (sku: string) => {
+  // Lookup SKU for barcode scanner
+  const lookupSku = async (sku: string): Promise<{ name: string } | null> => {
     const item = allItems.find((i) => i.sku === sku);
-    return item ? { name: item.name } : null;
+    return item ? { name: item.name! } : null;
   };
 
   const handleRemoveItem = (itemId: string) => {
-    if (["shipped", "received"].includes(transfer.status)) {
+    if (["shipped", "received"].includes(transferTyped.status)) {
       toast.error("Cannot remove items from a shipped or received transfer.");
       return;
     }
-    removeItemMutation.mutate({ transferId: transfer.transfer_id, itemId });
+    removeItemMutation.mutate({ transferId: transferTyped.transfer_id, itemId });
   };
 
   const handleUpdateStatus = (status: "approved" | "shipped") => {
-    updateStatusMutation.mutate({ transferId: transfer.transfer_id, status });
+    updateStatusMutation.mutate({ transferId: transferTyped.transfer_id, status });
   };
 
   const handleReceiveTransfer = () => {
-    receiveMutation.mutate({ transferId: transfer.transfer_id });
+    receiveMutation.mutate({ transferId: transferTyped.transfer_id });
   };
 
   return (
     <div className="space-y-6 p-6">
-      <h1 className="text-3xl font-bold">Transfer #{transfer.transfer_number}</h1>
+      <h1 className="text-3xl font-bold">Transfer #{transferTyped.transfer_number}</h1>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="font-medium">From Store:</p>
-          <p>{enhancedTransfer?.from_store_name || "N/A"}</p>
+          <p>{transferTyped.from_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">To Store:</p>
-          <p>{enhancedTransfer?.to_store_name || "N/A"}</p>
+          <p>{transferTyped.to_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">Status:</p>
-          <p className="font-semibold capitalize">{transfer.status}</p>
+          <p className="font-semibold capitalize">{transferTyped.status}</p>
         </div>
         <div>
           <p className="font-medium">Total Items:</p>
-          <p>{transfer.total_items || 0}</p>
+          <p>{transferTyped.total_items || 0}</p>
         </div>
       </div>
 
@@ -217,7 +218,7 @@ export const TransferDetailPage = () => {
                       variant="destructive"
                       size="sm"
                       onClick={() => handleRemoveItem(item.id)}
-                      disabled={["shipped", "received"].includes(transfer.status)}
+                      disabled={["shipped", "received"].includes(transferTyped.status)}
                     >
                       Remove
                     </Button>
@@ -230,13 +231,13 @@ export const TransferDetailPage = () => {
       )}
 
       <div className="flex gap-2 pt-4">
-        <Button onClick={() => handleUpdateStatus("approved")} disabled={transfer.status !== "pending"}>
+        <Button onClick={() => handleUpdateStatus("approved")} disabled={transferTyped.status !== "pending"}>
           Approve
         </Button>
-        <Button onClick={() => handleUpdateStatus("shipped")} disabled={transfer.status !== "approved"}>
+        <Button onClick={() => handleUpdateStatus("shipped")} disabled={transferTyped.status !== "approved"}>
           Ship
         </Button>
-        <Button onClick={handleReceiveTransfer} disabled={transfer.status !== "shipped"}>
+        <Button onClick={handleReceiveTransfer} disabled={transferTyped.status !== "shipped"}>
           Receive
         </Button>
       </div>
