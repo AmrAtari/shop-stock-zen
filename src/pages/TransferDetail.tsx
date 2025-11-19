@@ -1,6 +1,6 @@
-// src/pages/TransferDetail.tsx
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   useTransferDetail,
   useAddTransferItems,
@@ -9,10 +9,16 @@ import {
   useReceiveTransfer,
 } from "@/hooks/useTransferDetail";
 import TransferItemImport, { ImportedItem } from "@/components/TransferItemImport";
+import { TransferBarcodeScanner } from "@/components/TransferBarcodeScanner";
+import { TransferItemSelector } from "@/components/TransferItemSelector";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { Transfer, TransferItem } from "@/types/database";
+import { Item } from "@/types/database";
 
 // Define an extended type locally to satisfy TypeScript
 interface EnhancedTransfer extends Transfer {
@@ -25,25 +31,53 @@ export const TransferDetailPage = () => {
   const transferId = Number(id);
   const { data, isLoading } = useTransferDetail(transferId);
 
-  // These now correctly hold the mutation objects, fixing the 'mutate does not exist on type void' errors
   const addItemsMutation = useAddTransferItems();
   const removeItemMutation = useRemoveTransferItem();
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  const [importedItems, setImportedItems] = useState<ImportedItem[]>([]);
+  // Fetch all items for selection
+  const { data: allItems = [] } = useQuery<Item[]>({
+    queryKey: ["items"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("items").select("*").order("name");
+      if (error) throw error;
+      return data as Item[];
+    },
+  });
 
   if (isLoading || !data) return <div>Loading...</div>;
 
   const { transfer, items } = data;
   const enhancedTransfer = transfer as EnhancedTransfer;
 
+  // Get existing SKUs for import validation
+  const existingSkus = allItems.map((item) => item.sku);
+
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
-      // Now valid
       transferId: enhancedTransfer.transfer_id,
       items: newItems.map((i) => ({ sku: i.sku, itemName: i.itemName || "", quantity: i.quantity })),
     });
+  };
+
+  const handleBarcodeScanned = async (scannedItems: Array<{ sku: string; quantity: number }>) => {
+    addItemsMutation.mutate({
+      transferId: enhancedTransfer.transfer_id,
+      items: scannedItems.map((i) => ({ sku: i.sku, itemName: "", quantity: i.quantity })),
+    });
+  };
+
+  const handleManualSelection = (selectedItems: Array<{ item: Item; quantity: number }>) => {
+    addItemsMutation.mutate({
+      transferId: enhancedTransfer.transfer_id,
+      items: selectedItems.map((i) => ({ sku: i.item.sku, itemName: i.item.name, quantity: i.quantity, itemId: i.item.id })),
+    });
+  };
+
+  const lookupSku = async (sku: string): Promise<{ name: string } | null> => {
+    const item = allItems.find((i) => i.sku === sku);
+    return item ? { name: item.name } : null;
   };
 
   const handleRemoveItem = (itemId: string) => {
@@ -84,11 +118,35 @@ export const TransferDetailPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <TransferItemImport onImport={handleAddItems} existingSkus={[]} />
-      </div>
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold mb-4">Add Items to Transfer</h2>
+        <Tabs defaultValue="manual" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="manual">Manual Selection</TabsTrigger>
+            <TabsTrigger value="barcode">Barcode Scanner</TabsTrigger>
+            <TabsTrigger value="excel">Excel Import</TabsTrigger>
+            <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
+          </TabsList>
 
-      <h2 className="text-2xl font-semibold mt-8">Items ({items.length})</h2>
+          <TabsContent value="manual" className="mt-4">
+            <TransferItemSelector items={allItems} onSelect={handleManualSelection} />
+          </TabsContent>
+
+          <TabsContent value="barcode" className="mt-4">
+            <TransferBarcodeScanner onScan={handleBarcodeScanned} onLookupSku={lookupSku} />
+          </TabsContent>
+
+          <TabsContent value="excel" className="mt-4">
+            <TransferItemImport onImport={handleAddItems} existingSkus={existingSkus} />
+          </TabsContent>
+
+          <TabsContent value="sheets" className="mt-4">
+            <TransferItemImport onImport={handleAddItems} existingSkus={existingSkus} />
+          </TabsContent>
+        </Tabs>
+      </Card>
+
+      <h2 className="text-2xl font-semibold mt-8">Transfer Items ({items.length})</h2>
       {items.length > 0 && (
         <div className="border rounded-lg overflow-auto max-h-[400px]">
           <Table>
@@ -96,16 +154,18 @@ export const TransferDetailPage = () => {
               <TableRow>
                 <TableHead>SKU</TableHead>
                 <TableHead>Item Name</TableHead>
-                <TableHead>Quantity</TableHead>
+                <TableHead>Requested Qty</TableHead>
+                <TableHead>Received Qty</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => (
+              {items.map((item: any) => (
                 <TableRow key={item.id}>
-                  <TableCell>{item.sku}</TableCell>
+                  <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                   <TableCell>{item.item_name}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>{item.requested_quantity || 0}</TableCell>
+                  <TableCell>{item.received_quantity || 0}</TableCell>
                   <TableCell>
                     <Button
                       variant="destructive"
