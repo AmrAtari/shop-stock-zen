@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { format } from "date-fns";
 
 interface Store {
   id: string;
@@ -13,168 +12,153 @@ interface Store {
 
 interface Item {
   id: string;
-  sku: string;
   name: string;
   cost: number;
 }
 
-interface StoreInventoryRow {
+interface StoreInventory {
   item_id: string;
-  store_id: string;
   quantity: number;
-  item: Item;
 }
 
 interface Account {
   id: string;
-  account_code: string;
   account_name: string;
   account_type: string;
 }
 
-interface JournalEntryLine {
-  account_id: string;
-  description: string;
-  debit_amount: number;
-  credit_amount: number;
-  store_id?: string;
-  item_id?: string;
-}
-
 const JournalEntryNew: React.FC = () => {
   const [stores, setStores] = useState<Store[]>([]);
-  const [selectedStore, setSelectedStore] = useState<string>("");
-  const [inventory, setInventory] = useState<StoreInventoryRow[]>([]);
+  const [selectedStore, setSelectedStore] = useState<Store | null>(null);
+  const [items, setItems] = useState<Item[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [entryDate, setEntryDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
-  const [description, setDescription] = useState<string>("");
-  const [lines, setLines] = useState<JournalEntryLine[]>([]);
+  const [journalLines, setJournalLines] = useState<any[]>([]);
+  const [description, setDescription] = useState("");
+  const [entryDate, setEntryDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
-  // Load stores
   useEffect(() => {
-    supabase
-      .from("stores")
-      .select("id, name")
-      .order("name")
-      .then(({ data, error }) => {
-        if (error) toast.error(error.message);
-        else setStores(data || []);
-      });
+    fetchStores();
+    fetchAccounts();
+    fetchItems();
   }, []);
 
-  // Load accounts
-  useEffect(() => {
-    supabase
-      .from("accounts")
-      .select("*")
-      .then(({ data, error }) => {
-        if (error) toast.error(error.message);
-        else setAccounts(data || []);
-      });
-  }, []);
-
-  // Load inventory per store
-  useEffect(() => {
-    if (!selectedStore) return;
-    supabase
-      .from("store_inventory")
-      .select("*, item:items(id, sku, name, cost)")
-      .eq("store_id", selectedStore)
-      .then(({ data, error }) => {
-        if (error) toast.error(error.message);
-        else setInventory(data || []);
-      });
-  }, [selectedStore]);
-
-  const generateOpeningStock = async () => {
-    if (!selectedStore) return toast.error("Please select a store first.");
-
-    const inventoryAccount = accounts.find((a) => a.account_type === "inventory");
-    const retainedEarningsAccount = accounts.find((a) => a.account_type === "retained_earnings");
-
-    if (!inventoryAccount || !retainedEarningsAccount) {
-      return toast.error("Inventory or Retained Earnings account not found");
-    }
-
-    if (!inventory || inventory.length === 0) {
-      return toast.error("No inventory items found for this store");
-    }
-
-    const newLines: JournalEntryLine[] = inventory.map((row) => ({
-      account_id: inventoryAccount.id,
-      description: `Opening stock for ${row.item.name} (${row.item.sku})`,
-      debit_amount: Number(row.quantity) * Number(row.item.cost),
-      credit_amount: 0,
-      store_id: row.store_id,
-      item_id: row.item_id,
-    }));
-
-    // Retained Earnings line (credit total)
-    const totalDebit = newLines.reduce((sum, l) => sum + l.debit_amount, 0);
-    newLines.push({
-      account_id: retainedEarningsAccount.id,
-      description: `Offset Opening Stock for ${stores.find((s) => s.id === selectedStore)?.name}`,
-      debit_amount: 0,
-      credit_amount: totalDebit,
-    });
-
-    setLines(newLines);
-    toast.success("Opening stock journal lines generated successfully");
+  // Fetch all stores
+  const fetchStores = async () => {
+    const { data, error } = await supabase.from("stores").select("*");
+    if (error) return toast.error(error.message);
+    setStores(data || []);
   };
 
-  const saveJournalEntry = async () => {
-    if (!description) return toast.error("Please fill entry description");
-    if (lines.length === 0) return toast.error("No journal lines to save");
+  // Fetch all items (for cost info)
+  const fetchItems = async () => {
+    const { data, error } = await supabase.from("items").select("*");
+    if (error) return toast.error(error.message);
+    setItems(data || []);
+  };
 
-    // Insert into journal_entries
+  // Fetch all accounts
+  const fetchAccounts = async () => {
+    const { data, error } = await supabase.from("accounts").select("*");
+    if (error) return toast.error(error.message);
+    setAccounts(data || []);
+  };
+
+  // Generate Opening Stock Journal
+  const handleGenerateOpeningStock = async () => {
+    if (!selectedStore) return toast.error("Please select a store first");
+
+    // Find Inventory account for the selected store
+    const inventoryAccount = accounts.find(
+      (a) =>
+        a.account_type.toLowerCase() === "asset" &&
+        a.account_name.toLowerCase().includes("inventory") &&
+        a.account_name.toLowerCase().includes(selectedStore.name.toLowerCase()),
+    );
+    if (!inventoryAccount) return toast.error("Inventory account for this store not found");
+
+    // Find Retained Earnings account
+    const retainedEarningsAccount = accounts.find(
+      (a) => a.account_type.toLowerCase() === "equity" && a.account_name.toLowerCase().includes("retained earnings"),
+    );
+    if (!retainedEarningsAccount) return toast.error("Retained Earnings account not found");
+
+    // Fetch store inventory for selected store
+    const { data: storeInventoryData, error } = await supabase
+      .from("store_inventory")
+      .select("*")
+      .eq("store_id", selectedStore.id);
+    if (error) return toast.error(error.message);
+    if (!storeInventoryData || storeInventoryData.length === 0)
+      return toast.error("No inventory items found for this store");
+
+    // Build journal lines
+    const lines = storeInventoryData.map((inv: StoreInventory) => {
+      const item = items.find((i) => i.id === inv.item_id);
+      const cost = item?.cost || 0;
+      return {
+        account_id: inventoryAccount.id,
+        item_id: inv.item_id,
+        description: `Opening Stock - ${item?.name || inv.item_id}`,
+        debit_amount: inv.quantity * cost,
+        credit_amount: 0,
+        store_id: selectedStore.id,
+      };
+    });
+
+    // Add Retained Earnings line (total credit)
+    const totalDebit = lines.reduce((sum, l) => sum + l.debit_amount, 0);
+    lines.push({
+      account_id: retainedEarningsAccount.id,
+      description: "Opening Stock Adjustment",
+      debit_amount: 0,
+      credit_amount: totalDebit,
+      store_id: selectedStore.id,
+    });
+
+    setJournalLines(lines);
+    toast.success(`Generated opening stock journal with ${lines.length} lines`);
+  };
+
+  // Save Journal Entry
+  const handleSaveJournalEntry = async () => {
+    if (journalLines.length === 0) return toast.error("No journal lines to save");
+
+    // Create journal entry
     const { data: entry, error: entryError } = await supabase
       .from("journal_entries")
-      .insert({
-        entry_date: entryDate,
-        description,
-        entry_type: "opening_stock",
-        status: "draft",
-      })
+      .insert([{ entry_date: entryDate, description }])
       .select()
       .single();
+    if (entryError) return toast.error(entryError.message);
 
-    if (entryError || !entry) return toast.error(entryError?.message || "Failed to create journal entry");
-
-    // Insert lines
-    const { error: linesError } = await supabase.from("journal_entry_lines").insert(
-      lines.map((l) => ({
-        journal_entry_id: entry.id,
-        account_id: l.account_id,
-        description: l.description,
-        debit_amount: l.debit_amount,
-        credit_amount: l.credit_amount,
-        store_id: l.store_id || null,
-        item_id: l.item_id || null,
-      })),
-    );
-
+    // Add journal lines
+    const linesToInsert = journalLines.map((line) => ({
+      journal_entry_id: entry.id,
+      ...line,
+    }));
+    const { error: linesError } = await supabase.from("journal_entry_lines").insert(linesToInsert);
     if (linesError) return toast.error(linesError.message);
 
     toast.success("Journal entry saved successfully");
-    setLines([]);
+    setJournalLines([]);
     setDescription("");
   };
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-6 p-6">
       <h1 className="text-2xl font-bold">New Journal Entry</h1>
 
-      <div className="flex gap-4">
-        <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Entry Date</label>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block mb-1 font-medium">Entry Date</label>
           <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
         </div>
 
-        <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Store</label>
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
+        <div>
+          <label className="block mb-1 font-medium">Store</label>
+          <Select onValueChange={(val) => setSelectedStore(stores.find((s) => s.id === val) || null)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select Store" />
+              <SelectValue placeholder="Select a store" />
             </SelectTrigger>
             <SelectContent>
               {stores.map((store) => (
@@ -185,45 +169,44 @@ const JournalEntryNew: React.FC = () => {
             </SelectContent>
           </Select>
         </div>
+
+        <div className="md:col-span-2">
+          <label className="block mb-1 font-medium">Description</label>
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium mb-1">Description</label>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-
-      <div className="flex gap-2">
-        <Button onClick={generateOpeningStock}>Generate Opening Stock</Button>
-        <Button onClick={saveJournalEntry} variant="secondary">
+      <div className="flex gap-2 mt-4">
+        <Button onClick={handleGenerateOpeningStock}>Generate Opening Stock</Button>
+        <Button onClick={handleSaveJournalEntry} variant="secondary">
           Save Journal Entry
         </Button>
       </div>
 
-      {lines.length > 0 && (
-        <div className="mt-4 border rounded p-4">
-          <h2 className="font-semibold mb-2">Journal Lines Preview</h2>
-          <table className="w-full table-auto border-collapse">
+      {journalLines.length > 0 && (
+        <div className="mt-6">
+          <h2 className="font-semibold mb-2">Journal Lines</h2>
+          <table className="w-full border">
             <thead>
-              <tr className="border-b">
-                <th className="text-left p-2">Account</th>
-                <th className="text-left p-2">Description</th>
-                <th className="text-right p-2">Debit</th>
-                <th className="text-right p-2">Credit</th>
-                <th className="text-left p-2">Store</th>
-                <th className="text-left p-2">Item</th>
+              <tr className="bg-gray-100">
+                <th className="p-2 border">Account</th>
+                <th className="p-2 border">Description</th>
+                <th className="p-2 border text-right">Debit</th>
+                <th className="p-2 border text-right">Credit</th>
               </tr>
             </thead>
             <tbody>
-              {lines.map((line, idx) => (
-                <tr key={idx} className="border-b">
-                  <td className="p-2">{accounts.find((a) => a.id === line.account_id)?.account_name || "-"}</td>
-                  <td className="p-2">{line.description}</td>
-                  <td className="p-2 text-right">{line.debit_amount.toFixed(2)}</td>
-                  <td className="p-2 text-right">{line.credit_amount.toFixed(2)}</td>
-                  <td className="p-2">{stores.find((s) => s.id === line.store_id)?.name || "-"}</td>
-                  <td className="p-2">{inventory.find((i) => i.item_id === line.item_id)?.item.name || "-"}</td>
-                </tr>
-              ))}
+              {journalLines.map((line, idx) => {
+                const account = accounts.find((a) => a.id === line.account_id);
+                return (
+                  <tr key={idx} className="border-b">
+                    <td className="p-2 border">{account?.account_name}</td>
+                    <td className="p-2 border">{line.description}</td>
+                    <td className="p-2 border text-right">{line.debit_amount.toFixed(2)}</td>
+                    <td className="p-2 border text-right">{line.credit_amount.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
