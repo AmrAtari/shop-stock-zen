@@ -4,15 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Eye } from "lucide-react";
+import { Plus, Search, Eye, Edit, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Import useMutation and useQueryClient
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const queryClient = useQueryClient(); // Initialize query client
 
+  // 1. Fetching Data
   const { data: journalEntries, isLoading } = useQuery({
     queryKey: ["journal_entries"],
     queryFn: async () => {
@@ -20,11 +22,36 @@ const JournalEntries = () => {
         .from("journal_entries")
         .select("*")
         .order("entry_date", { ascending: false });
-      
+
       if (error) throw error;
       return data;
     },
   });
+
+  // 2. Mutation for Deletion
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase.from("journal_entries").delete().eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Invalidate and refetch the journal_entries query to update the UI
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
+      console.log("Journal entry deleted successfully.");
+      // Optional: Add a toast notification here
+    },
+    onError: (error) => {
+      console.error("Error deleting journal entry:", error);
+      // Optional: Add a toast notification for error
+    },
+  });
+
+  const handleDelete = (id: number) => {
+    if (window.confirm("Are you sure you want to delete this journal entry?")) {
+      deleteMutation.mutate(id);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
@@ -38,7 +65,7 @@ const JournalEntries = () => {
   const filteredEntries = journalEntries?.filter(
     (entry) =>
       entry.entry_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      entry.description.toLowerCase().includes(searchTerm.toLowerCase())
+      entry.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
@@ -82,13 +109,17 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {isLoading || deleteMutation.isPending ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">Loading...</TableCell>
+                  <TableCell colSpan={8} className="text-center">
+                    {deleteMutation.isPending ? "Deleting..." : "Loading..."}
+                  </TableCell>
                 </TableRow>
               ) : filteredEntries?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">No journal entries found</TableCell>
+                  <TableCell colSpan={8} className="text-center">
+                    No journal entries found
+                  </TableCell>
                 </TableRow>
               ) : (
                 filteredEntries?.map((entry) => (
@@ -102,16 +133,33 @@ const JournalEntries = () => {
                     <TableCell className="font-mono">${entry.total_debit?.toFixed(2) || "0.00"}</TableCell>
                     <TableCell className="font-mono">${entry.total_credit?.toFixed(2) || "0.00"}</TableCell>
                     <TableCell>
-                      <Badge variant={getStatusBadge(entry.status) as any}>
-                        {entry.status}
-                      </Badge>
+                      <Badge variant={getStatusBadge(entry.status) as any}>{entry.status}</Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right flex justify-end gap-1">
+                      {" "}
+                      {/* Update Actions Cell */}
+                      {/* View Button */}
                       <Link to={`/accounting/journal-entries/${entry.id}`}>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" title="View">
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
+                      {/* Edit Button - Assuming the edit route is similar to view */}
+                      <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
+                        <Button variant="ghost" size="icon" title="Edit">
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </Link>
+                      {/* Delete Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Delete"
+                        onClick={() => handleDelete(entry.id)}
+                        disabled={deleteMutation.isPending} // Disable while deletion is in progress
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
