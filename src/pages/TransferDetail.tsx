@@ -17,32 +17,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Transfer, TransferItem } from "@/types/database";
-import { Item } from "@/types/database";
+import { Transfer, TransferItem, Item } from "@/types/database";
 
-// Define an extended type locally to satisfy TypeScript
+// Extended type for enhanced store names
 interface EnhancedTransfer extends Transfer {
   from_store_name: string;
   to_store_name: string;
 }
 
-export const TransferDetailPage = () => {
+const TransferDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const transferId = Number(id);
 
-  // Always run the detail hook
+  // Fetch transfer detail
   const { data, isLoading } = useTransferDetail(transferId);
-
-  // derive enhancedTransfer safely (may be undefined initially)
   const enhancedTransfer = data?.transfer as EnhancedTransfer | undefined;
+  const items = data?.items || [];
 
-  // Always run mutations (hooks)
+  // Mutations
   const addItemsMutation = useAddTransferItems();
   const removeItemMutation = useRemoveTransferItem();
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  // Always run the items query hook — enabled only when we have the store id
+  // Fetch all items from source store
   const { data: allItems = [] } = useQuery<Item[]>({
     queryKey: ["items-for-transfer", enhancedTransfer?.from_store_id],
     queryFn: async () => {
@@ -65,51 +63,41 @@ export const TransferDetailPage = () => {
 
       if (error) throw error;
 
-      // Map the data to include the resolved category name and store quantity
       return (data || []).map((inv: any) => ({
         id: inv.items.id,
         sku: inv.items.sku,
         name: inv.items.name,
         unit: inv.items.unit,
-        quantity: inv.quantity, // Store-specific quantity
+        quantity: inv.quantity,
         category: inv.items.category_name?.name || "Uncategorized",
       })) as Item[];
     },
     enabled: !!enhancedTransfer?.from_store_id,
   });
 
-  // Now it's safe to conditionally return UI (after all hooks were registered)
   if (isLoading || !data) return <div>Loading...</div>;
 
-  const { transfer, items } = data;
-  const transferTyped = transfer as EnhancedTransfer;
+  const existingSkus = allItems.map((i) => i.sku);
 
-  // Get existing SKUs for import validation
-  const existingSkus = allItems.map((item) => item.sku);
-
+  // Handlers
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
-      transferId: transferTyped.transfer_id,
-      items: newItems.map((i) => ({ sku: i.sku, itemName: i.itemName || "", quantity: i.quantity })),
+      transferId: transferId,
+      items: newItems.map((i) => ({ sku: i.sku, quantity: i.quantity })),
     });
   };
 
   const handleBarcodeScanned = async (scannedItems: Array<{ sku: string; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: transferTyped.transfer_id,
-      items: scannedItems.map((i) => ({ sku: i.sku, itemName: "", quantity: i.quantity })),
+      transferId: transferId,
+      items: scannedItems.map((i) => ({ sku: i.sku, quantity: i.quantity })),
     });
   };
 
   const handleManualSelection = (selectedItems: Array<{ item: Item; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: transferTyped.transfer_id,
-      items: selectedItems.map((i) => ({
-        sku: i.item.sku,
-        itemName: i.item.name,
-        quantity: i.quantity,
-        itemId: i.item.id,
-      })),
+      transferId: transferId,
+      items: selectedItems.map((i) => ({ sku: i.item.sku, quantity: i.quantity })),
     });
   };
 
@@ -119,40 +107,41 @@ export const TransferDetailPage = () => {
   };
 
   const handleRemoveItem = (itemId: string) => {
-    if (["shipped", "received"].includes(transferTyped.status)) {
+    if (["shipped", "received"].includes(enhancedTransfer?.status || "")) {
       toast.error("Cannot remove items from a shipped or received transfer.");
       return;
     }
-    removeItemMutation.mutate({ transferId: transferTyped.transfer_id, itemId });
+    removeItemMutation.mutate({ transferId, itemId });
   };
 
   const handleUpdateStatus = (status: "approved" | "shipped") => {
-    updateStatusMutation.mutate({ transferId: transferTyped.transfer_id, status });
+    updateStatusMutation.mutate({ transferId, status });
   };
 
   const handleReceiveTransfer = () => {
-    receiveMutation.mutate({ transferId: transferTyped.transfer_id });
+    receiveMutation.mutate({ transferId });
   };
 
   return (
     <div className="space-y-6 p-6">
-      <h1 className="text-3xl font-bold">Transfer #{transferTyped.transfer_number}</h1>
+      <h1 className="text-3xl font-bold">Transfer #{enhancedTransfer?.transfer_number}</h1>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="font-medium">From Store:</p>
-          <p>{transferTyped.from_store_name || "N/A"}</p>
+          <p>{enhancedTransfer?.from_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">To Store:</p>
-          <p>{transferTyped.to_store_name || "N/A"}</p>
+          <p>{enhancedTransfer?.to_store_name || "N/A"}</p>
         </div>
         <div>
           <p className="font-medium">Status:</p>
-          <p className="font-semibold capitalize">{transferTyped.status}</p>
+          <p className="font-semibold capitalize">{enhancedTransfer?.status}</p>
         </div>
         <div>
           <p className="font-medium">Total Items:</p>
-          <p>{transferTyped.total_items || 0}</p>
+          <p>{enhancedTransfer?.total_items || 0}</p>
         </div>
       </div>
 
@@ -198,10 +187,12 @@ export const TransferDetailPage = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item: any) => (
+              {items.map((item: TransferItem & { item_name: string }) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                  <TableCell>{item.item_name}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {item.item_id ? allItems.find((i) => i.id === item.item_id)?.sku : "-"}
+                  </TableCell>
+                  <TableCell>{item.item_id ? allItems.find((i) => i.id === item.item_id)?.name : "-"}</TableCell>
                   <TableCell>{item.requested_quantity || 0}</TableCell>
                   <TableCell>{item.received_quantity || 0}</TableCell>
                   <TableCell>
@@ -209,7 +200,7 @@ export const TransferDetailPage = () => {
                       variant="destructive"
                       size="sm"
                       onClick={() => handleRemoveItem(item.id)}
-                      disabled={["shipped", "received"].includes(transferTyped.status)}
+                      disabled={["shipped", "received"].includes(enhancedTransfer?.status || "")}
                     >
                       Remove
                     </Button>
@@ -222,13 +213,13 @@ export const TransferDetailPage = () => {
       )}
 
       <div className="flex gap-2 pt-4">
-        <Button onClick={() => handleUpdateStatus("approved")} disabled={transferTyped.status !== "pending"}>
+        <Button onClick={() => handleUpdateStatus("approved")} disabled={enhancedTransfer?.status !== "pending"}>
           Approve
         </Button>
-        <Button onClick={() => handleUpdateStatus("shipped")} disabled={transferTyped.status !== "approved"}>
+        <Button onClick={() => handleUpdateStatus("shipped")} disabled={enhancedTransfer?.status !== "approved"}>
           Ship
         </Button>
-        <Button onClick={handleReceiveTransfer} disabled={transferTyped.status !== "shipped"}>
+        <Button onClick={handleReceiveTransfer} disabled={enhancedTransfer?.status !== "shipped"}>
           Receive
         </Button>
       </div>
