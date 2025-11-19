@@ -163,7 +163,7 @@ const JournalEntries = () => {
                           size="icon"
                           title="Delete"
                           onClick={() => handleDelete(entry.id)}
-                          disabled={deleteMutation.isLoading} // ✅ fix isLoading usage
+                          disabled={deleteMutation.status === "loading"} // ✅ fix isLoading usage
                         >
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>
