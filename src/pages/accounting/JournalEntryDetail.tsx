@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry with Joins (Cleaned up select string)
+  // 1. Fetch Journal Entry with Correct Joins
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -22,8 +22,8 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:profiles(full_name),
-          poster:profiles(full_name)
+          creator:user_profiles(username), // FIXED: Using user_profiles and username
+          poster:user_profiles(username)   // FIXED: Using user_profiles and username
         `,
         )
         .eq("id", id)
@@ -57,7 +57,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 3. POSTING MUTATION: Contains the fix for the UUID error
+  // 3. POSTING MUTATION: Fix for "invalid input syntax for type uuid: "system_user""
   const postMutation = useMutation({
     mutationFn: async () => {
       // Basic check before posting
@@ -73,14 +73,14 @@ const JournalEntryDetail = () => {
       if (userError || !user?.id) {
         throw new Error("User not authenticated. Please log in to post entries.");
       }
-      const postedById = user.id; // This is the user's UUID
+      const postedById = user.id;
 
       // Update the journal entry status and set posted_by to the user's UUID
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
           status: "posted",
-          posted_by: postedById, // Correctly assigns the UUID
+          posted_by: postedById,
           posted_at: new Date().toISOString(),
         })
         .eq("id", id);
@@ -122,7 +122,8 @@ const JournalEntryDetail = () => {
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
           This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
-          Please check your Supabase RLS SELECT policies on `journal_entries` and `profiles` tables.
+          Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are set to `USING (true)` for
+          authenticated users.
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
@@ -181,12 +182,13 @@ const JournalEntryDetail = () => {
           <p>
             <span className="font-semibold">Type:</span> {entry.entry_type}
           </p>
+          {/* Displaying creator/poster names from joins */}
           <p>
-            <span className="font-semibold">Created By:</span> {entry.creator?.full_name || "N/A"}
+            <span className="font-semibold">Created By:</span> {entry.creator?.username || "N/A"}
           </p>
           {entry.status === "posted" && (
             <p>
-              <span className="font-semibold">Posted By:</span> {entry.poster?.full_name || "N/A"}
+              <span className="font-semibold">Posted By:</span> {entry.poster?.username || "N/A"}
               <span className="ml-4 font-semibold">Posted At:</span>{" "}
               {entry.posted_at ? format(new Date(entry.posted_at), "MMM dd, yyyy h:mm a") : "N/A"}
             </p>
@@ -230,7 +232,7 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {/* Note: Use debit_amount/credit_amount from your table structure */}
+                      {/* Note: Based on your schema, we use debit_amount/credit_amount */}
                       {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
