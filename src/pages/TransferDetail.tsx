@@ -89,7 +89,8 @@ export const TransferDetailPage = () => {
         sku: i.item.sku,
         itemName: i.item.name,
         quantity: i.quantity,
-        itemId: i.item.id,
+        // FIX: The key was changed from 'itemId' to 'item_id'
+        item_id: i.item.id,
       })),
     });
   };
