@@ -7,11 +7,11 @@ import {
   useRemoveTransferItem,
   useUpdateTransferStatus,
   useReceiveTransfer,
-  TransferableItem, // FIX 1: Import TransferableItem from the hook file
+  TransferableItem, // This is now correctly exported from the hook file
 } from "@/hooks/useTransferDetail";
 
-// FIX 2: Corrected imports to use named exports for the component and its type
-import { TransferItemImport, ImportedItem } from "@/components/TransferItemImport";
+// FIX: Changed to default import for TransferItemImport, keeping ImportedItem as named (TS2614)
+import TransferItemImport, { ImportedItem } from "@/components/TransferItemImport";
 
 import { TransferBarcodeScanner } from "@/components/TransferBarcodeScanner";
 import { TransferItemSelector } from "@/components/TransferItemSelector";
