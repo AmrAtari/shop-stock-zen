@@ -31,23 +31,30 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // NOTE: Typically, journal entry deletion should be restricted by RLS or status (e.g., only drafts can be deleted).
-      const { error } = await supabase.from("journal_entries").delete().eq("id", id);
-      if (error) throw error;
+      // 1. Delete associated lines first (CRITICAL for non-cascading FKs)
+      const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
+      if (lineError) throw lineError;
+
+      // 2. Delete the main journal entry
+      const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
+      if (entryError) throw entryError;
     },
     onSuccess: () => {
       toast.success("Journal entry deleted successfully");
-      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] }); // Re-fetch the list
     },
     onError: (err: any) => {
-      toast.error(err.message || "Error deleting journal entry");
+      toast.error(err.message || "Error deleting journal entry. Ensure all related data is removed.");
     },
   });
 
-  const handleDelete = (id: string) => {
-    // You may want to add a check here: if (entry.status === "posted") return toast.error("Posted entries cannot be deleted.");
-    if (window.confirm("Are you sure you want to delete this journal entry?")) {
-      deleteMutation.mutate(id);
+  const handleDelete = (entry: any) => {
+    if (entry.status === "posted") {
+      toast.error("Posted entries cannot be deleted. They must be reversed.");
+      return;
+    }
+    if (window.confirm(`Are you sure you want to delete the draft entry #${entry.entry_number}?`)) {
+      deleteMutation.mutate(entry.id);
     }
   };
 
@@ -107,6 +114,7 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {/* FIX: Use isPending for loading check */}
               {isLoading || deleteMutation.isPending ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
@@ -139,17 +147,21 @@ const JournalEntries = () => {
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
-                      <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
-                        <Button variant="ghost" size="icon" title="Edit">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </Link>
+                      {/* Only allow editing of drafts */}
+                      {entry.status === "draft" && (
+                        <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
+                          <Button variant="ghost" size="icon" title="Edit">
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
                         title="Delete"
-                        onClick={() => handleDelete(entry.id)}
-                        disabled={deleteMutation.isPending || entry.status === "posted"} // Disable deletion of posted entries
+                        // Pass the whole entry object to handleDelete for status check
+                        onClick={() => handleDelete(entry)}
+                        disabled={deleteMutation.isPending || entry.status !== "draft"} // Only allow deletion of drafts
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
