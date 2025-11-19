@@ -7,7 +7,16 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { v4 as uuidv4 } from "uuid";
+import { format } from "date-fns";
+
+// ✅ Simple UUID generator to avoid 'uuid' dependency
+const generateUUID = () => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 
 interface Store {
   id: string;
@@ -48,18 +57,23 @@ const JournalEntryNew = () => {
     },
   });
 
-  // Save journal entry mutation
+  // Save Journal Entry
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
+      if (!selectedStore || journalLines.length === 0) {
+        throw new Error("No store selected or no items generated");
+      }
 
-      // Find inventory account for store
+      // Find inventory account for the selected store
       const { data: accountData } = await supabase
         .from("accounts")
         .select("*")
         .ilike("account_name", `%Inventory%${selectedStore}%`)
         .maybeSingle();
-      if (!accountData) throw new Error("Inventory account not found for this store");
+
+      if (!accountData) {
+        throw new Error("Inventory account not found for this store");
+      }
 
       // Find Retained Earnings account
       const { data: retainedAccount } = await supabase
@@ -67,12 +81,16 @@ const JournalEntryNew = () => {
         .select("*")
         .eq("account_name", "Retained Earnings")
         .maybeSingle();
-      if (!retainedAccount) throw new Error("Retained Earnings account not found");
 
-      const journalEntryId = uuidv4();
+      if (!retainedAccount) {
+        throw new Error("Retained Earnings account not found");
+      }
+
+      const journalEntryId = generateUUID();
       const entryNumber = `JE-${Date.now()}`;
       const entryDate = new Date().toISOString();
 
+      // Calculate totals
       const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
       const totalCredit = journalLines.reduce((sum, line) => sum + line.credit_amount, 0);
 
@@ -113,7 +131,7 @@ const JournalEntryNew = () => {
     },
   });
 
-  // Generate opening stock
+  // Generate Opening Stock
   const handleGenerate = async () => {
     if (!selectedStore) return toast.error("Please select a store");
     setIsGenerating(true);
@@ -131,8 +149,8 @@ const JournalEntryNew = () => {
       }
 
       const lines: JournalLine[] = inventoryItems.map((inv: any, index: number) => ({
-        id: uuidv4(),
-        account_id: "", // will be set during save
+        id: generateUUID(),
+        account_id: "", // set later during save
         item_id: inv.item_id,
         description: `Opening Stock: ${inv.items.sku} - ${inv.items.name}`,
         debit_amount: inv.quantity * inv.items.cost,
@@ -153,7 +171,7 @@ const JournalEntryNew = () => {
       <h1 className="text-3xl font-bold">New Journal Entry</h1>
 
       <Card>
-        <CardHeader className="flex justify-between items-center">
+        <CardHeader className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
             <Select value={selectedStore} onValueChange={setSelectedStore}>
               <SelectTrigger className="w-60">
@@ -161,7 +179,7 @@ const JournalEntryNew = () => {
               </SelectTrigger>
               <SelectContent>
                 {stores?.map((store) => (
-                  <SelectItem key={store.id} value={store.id}>
+                  <SelectItem key={store.id} value={store.name}>
                     {store.name}
                   </SelectItem>
                 ))}
@@ -173,6 +191,7 @@ const JournalEntryNew = () => {
           </div>
           <Button onClick={() => saveMutation.mutate()}>Save Journal Entry</Button>
         </CardHeader>
+
         <CardContent className="p-0">
           <div className="overflow-x-auto max-h-[500px]">
             <Table className="min-w-[900px]">
