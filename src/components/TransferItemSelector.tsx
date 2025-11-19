@@ -4,24 +4,37 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search } from "lucide-react";
-import { Item } from "@/types/database";
+
+// We define the shape of the item we need here locally.
+// This matches the 'TransferableItem' passed from the parent page.
+export interface TransferSelectorItem {
+  id: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  quantity: number;
+  unit?: string | null;
+}
 
 interface TransferItemSelectorProps {
-  items: Item[];
-  onSelect: (items: Array<{ item: Item; quantity: number }>) => void;
+  items: TransferSelectorItem[];
+  onSelect: (items: Array<{ item: TransferSelectorItem; quantity: number }>) => void;
 }
 
 export const TransferItemSelector = ({ items, onSelect }: TransferItemSelectorProps) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedItems, setSelectedItems] = useState<Map<string, { item: Item; quantity: number }>>(new Map());
+  // Updated state type to use the lighter interface
+  const [selectedItems, setSelectedItems] = useState<Map<string, { item: TransferSelectorItem; quantity: number }>>(
+    new Map(),
+  );
 
   const filteredItems = items.filter(
     (item) =>
       item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  const handleToggle = (item: Item) => {
+  const handleToggle = (item: TransferSelectorItem) => {
     const newSelected = new Map(selectedItems);
     if (newSelected.has(item.id)) {
       newSelected.delete(item.id);
@@ -75,14 +88,11 @@ export const TransferItemSelector = ({ items, onSelect }: TransferItemSelectorPr
             {filteredItems.map((item) => (
               <TableRow key={item.id}>
                 <TableCell>
-                  <Checkbox
-                    checked={selectedItems.has(item.id)}
-                    onCheckedChange={() => handleToggle(item)}
-                  />
+                  <Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => handleToggle(item)} />
                 </TableCell>
                 <TableCell className="font-mono text-sm">{item.sku}</TableCell>
                 <TableCell>{item.name}</TableCell>
-                <TableCell>{item.category}</TableCell>
+                <TableCell>{item.category || "Uncategorized"}</TableCell>
                 <TableCell>{item.quantity}</TableCell>
                 <TableCell>
                   {selectedItems.has(item.id) ? (
