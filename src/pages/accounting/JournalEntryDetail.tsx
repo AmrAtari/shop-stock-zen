@@ -1,25 +1,32 @@
-// This is the updated JournalEntryDetail (1).tsx with fixes
-
-import { useParams, Link, useNavigate } from "react-router-dom"; // Added useNavigate
+import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FileText, CheckCheck, Trash2 } from "lucide-react"; // Added CheckCheck, Trash2
+import { ArrowLeft, FileText, CheckCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Added useMutation, useQueryClient
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Import useMutation and useQueryClient
 import { format } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "sonner"; // Import toast for notifications
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
+  const queryClient = useQueryClient(); // Initialize QueryClient
 
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("journal_entries").select("*").eq("id", id).single();
+      const { data, error } = await supabase
+        .from("journal_entries")
+        .select(
+          `
+          *,
+          creator:profiles(full_name),
+          poster:profiles(full_name)
+        `,
+        ) // Select creator and poster names if you have a 'profiles' table
+        .eq("id", id)
+        .single();
 
       if (error) throw error;
       return data;
@@ -45,25 +52,43 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // Mutation to post the journal entry
-  const postEntryMutation = useMutation({
+  // --- POSTING MUTATION: Fix for "invalid input syntax for type uuid: "system_user"" ---
+  const postMutation = useMutation({
     mutationFn: async () => {
-      if (!id) throw new Error("Journal Entry ID is missing.");
+      // Basic check before posting
+      if (entry?.total_debit !== entry?.total_credit) {
+        throw new Error(
+          "Journal entry is unbalanced ($" + (entry.total_debit - entry.total_credit).toFixed(2) + "). Cannot post.",
+        );
+      }
 
-      const { error } = await supabase
+      // 1. Get the current authenticated user's UUID
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user?.id) {
+        throw new Error("User not authenticated. Please log in to post entries.");
+      }
+      const postedById = user.id;
+
+      // 2. Update the journal entry status and set posted_by to the user's UUID
+      const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
           status: "posted",
+          posted_by: postedById, // <<< FIX: This correctly uses the user's UUID
           posted_at: new Date().toISOString(),
-          posted_by: "system_user", // Placeholder - replace with actual user ID
         })
         .eq("id", id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
+      return id;
     },
     onSuccess: () => {
-      toast.success("Journal Entry has been posted successfully.");
-      // Invalidate both detail and list views to update status
+      toast.success(`Journal Entry #${entry?.entry_number} successfully posted!`);
+      // Invalidate queries to refresh the detail page and the main list
       queryClient.invalidateQueries({ queryKey: ["journal_entry", id] });
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
@@ -71,50 +96,7 @@ const JournalEntryDetail = () => {
       toast.error(err.message || "Failed to post journal entry.");
     },
   });
-
-  // Mutation to delete the journal entry
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!id) throw new Error("Journal Entry ID is missing.");
-
-      // 1. Delete associated lines first (CRITICAL)
-      const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
-      if (lineError) throw lineError;
-
-      // 2. Delete the main journal entry
-      const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
-      if (entryError) throw entryError;
-
-      return id; // Return the deleted ID
-    },
-    onSuccess: (deletedId) => {
-      toast.success("Journal Entry deleted successfully.");
-
-      // MANUAL CACHE UPDATE: Filter the deleted item out of the list cache
-      queryClient.setQueryData(["journal_entries"], (oldData: any[] | undefined) => {
-        if (oldData) {
-          return oldData.filter((entry: any) => entry.id !== deletedId);
-        }
-        return [];
-      });
-
-      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
-      navigate("/accounting/journal-entries"); // Redirect after successful deletion
-    },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to delete journal entry.");
-    },
-  });
-
-  const handleDelete = () => {
-    if (entry?.status !== "draft") {
-      toast.error("Only draft entries can be deleted.");
-      return;
-    }
-    if (window.confirm(`Are you sure you want to delete the draft entry #${entry.entry_number}?`)) {
-      deleteMutation.mutate();
-    }
-  };
+  // ---------------------------------------------------------------------------------
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
@@ -125,176 +107,120 @@ const JournalEntryDetail = () => {
     return variants[status] || "default";
   };
 
-  const getTypeBadge = (type: string) => {
-    const variants: Record<string, string> = {
-      manual: "outline",
-      pos_sale: "default",
-      purchase_order: "secondary",
-      inventory_adjustment: "outline",
-    };
-    return variants[type] || "outline";
-  };
+  const isBalanced = entry?.total_debit === entry?.total_credit;
 
-  if (entryLoading || linesLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Link to="/accounting/journal-entries">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-          </Link>
-          <h1 className="text-3xl font-bold">Loading...</h1>
-        </div>
-      </div>
-    );
+  if (entryLoading) {
+    return <div>Loading journal entry details...</div>;
+  }
+
+  if (!entry) {
+    return <div>Journal entry not found.</div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link to="/accounting/journal-entries">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-4 h-4" />
+      <div className="flex justify-between items-center">
+        <Link to="/accounting/journal-entries">
+          <Button variant="outline">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to List
+          </Button>
+        </Link>
+        <div className="flex gap-2">
+          {entry.status === "draft" && (
+            <Button
+              onClick={() => postMutation.mutate()}
+              disabled={postMutation.isPending || !isBalanced}
+              variant="default"
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <CheckCheck className="w-4 h-4 mr-2" />
+              {postMutation.isPending ? "Posting..." : "Post Entry"}
+            </Button>
+          )}
+          <Link to={`/accounting/journal-entries/${id}/edit`}>
+            <Button variant="outline" disabled={entry.status !== "draft"}>
+              <FileText className="w-4 h-4 mr-2" />
+              Edit
             </Button>
           </Link>
-          <div>
-            <h1 className="text-3xl font-bold">{entry?.entry_number}</h1>
-            <p className="text-muted-foreground">{entry?.description}</p>
-          </div>
         </div>
-
-        {/* ACTION BUTTONS */}
-        <div className="flex gap-2">
-          {/* POST & DELETE BUTTONS (Only visible if status is draft) */}
-          {entry?.status === "draft" && (
-            <>
-              <Button
-                variant="destructive"
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-                title="Delete Draft Entry"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                {deleteMutation.isPending ? "Deleting..." : "Delete Draft"}
-              </Button>
-              <Button onClick={() => postEntryMutation.mutate()} disabled={postEntryMutation.isPending}>
-                <CheckCheck className="w-4 h-4 mr-2" />
-                {postEntryMutation.isPending ? "Posting..." : "Post Entry"}
-              </Button>
-            </>
-          )}
-
-          <Button variant="outline">
-            <FileText className="w-4 h-4 mr-2" />
-            Print Entry
-          </Button>
-        </div>
-        {/* END ACTION BUTTONS */}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Entry Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Date</p>
-              <p className="font-semibold">
-                {entry?.entry_date ? format(new Date(entry.entry_date), "MMM dd, yyyy") : "N/A"}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Status</p>
-              <Badge variant={getStatusBadge(entry?.status || "") as any}>{entry?.status}</Badge>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Type</p>
-              <Badge variant={getTypeBadge(entry?.entry_type || "") as any}>
-                {entry?.entry_type?.replace(/_/g, " ")}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Reference</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Reference Type</p>
-              <p className="font-semibold">{entry?.reference_type || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Reference ID</p>
-              <p className="font-mono text-xs">{entry?.reference_id || "N/A"}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Totals</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Total Debit</p>
-              <p className="font-semibold text-lg">${entry?.total_debit?.toFixed(2) || "0.00"}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Credit</p>
-              <p className="font-semibold text-lg">${entry?.total_credit?.toFixed(2) || "0.00"}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Difference</p>
-              <p
-                className={`font-semibold ${
-                  Math.abs((entry?.total_debit || 0) - (entry?.total_credit || 0)) < 0.01
-                    ? "text-green-600"
-                    : "text-red-600"
-                }`}
-              >
-                ${Math.abs((entry?.total_debit || 0) - (entry?.total_credit || 0)).toFixed(2)}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Journal Entry Lines</CardTitle>
+        <CardHeader className="flex flex-row justify-between items-start">
+          <div>
+            <CardTitle>Journal Entry #{entry.entry_number}</CardTitle>
+            <p className="text-sm text-muted-foreground">Date: {format(new Date(entry.entry_date), "MMM dd, yyyy")}</p>
+          </div>
+          <Badge variant={getStatusBadge(entry.status) as any} className="text-lg py-1 px-3">
+            {entry.status}
+          </Badge>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4 text-sm">
+          <p>
+            <span className="font-semibold">Description:</span> {entry.description}
+          </p>
+          <p>
+            <span className="font-semibold">Type:</span> {entry.entry_type}
+          </p>
+          <p>
+            <span className="font-semibold">Created By:</span> {entry.creator?.full_name || "N/A"}
+          </p>
+          {entry.status === "posted" && (
+            <p>
+              <span className="font-semibold">Posted By:</span> {entry.poster?.full_name || "N/A"}
+              <span className="ml-4 font-semibold">Posted At:</span>{" "}
+              {entry.posted_at ? format(new Date(entry.posted_at), "MMM dd, yyyy h:mm a") : "N/A"}
+            </p>
+          )}
+          {!isBalanced && entry.status === "draft" && (
+            <div className="text-red-600 font-bold border-l-4 border-red-600 pl-3">
+              Warning: Entry is Unbalanced! Debit: ${entry?.total_debit?.toFixed(2) || "0.00"}, Credit: $
+              {entry?.total_credit?.toFixed(2) || "0.00"}. Balance Difference: $
+              {Math.abs(entry.total_debit - entry.total_credit).toFixed(2)}.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Entry Lines</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Account Code</TableHead>
-                <TableHead>Account Name</TableHead>
-                <TableHead>Description</TableHead>
+                <TableHead className="w-[100px]">Code</TableHead>
+                <TableHead>Account</TableHead>
+                <TableHead className="w-1/3">Description</TableHead>
                 <TableHead className="text-right">Debit</TableHead>
                 <TableHead className="text-right">Credit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {lines?.map((line: any) => (
-                <TableRow key={line.id}>
-                  <TableCell className="font-mono font-semibold">{line.account?.account_code}</TableCell>
-                  <TableCell>{line.account?.account_name}</TableCell>
-                  <TableCell className="max-w-md truncate">{line.description}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {/* FIX: Using line.debit_amount instead of line.debit */}
-                    {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {/* FIX: Using line.credit_amount instead of line.credit */}
-                    {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : "—"}
+              {linesLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center">
+                    Loading lines...
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                lines?.map((line: any) => (
+                  <TableRow key={line.id}>
+                    <TableCell className="font-mono font-semibold">{line.account?.account_code}</TableCell>
+                    <TableCell>{line.account?.account_name}</TableCell>
+                    <TableCell className="max-w-md truncate">{line.description}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
               <TableRow className="font-bold bg-muted/50">
                 <TableCell colSpan={3} className="text-right">
                   Totals:
