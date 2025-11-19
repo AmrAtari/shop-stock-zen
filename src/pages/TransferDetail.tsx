@@ -36,30 +36,44 @@ export const TransferDetailPage = () => {
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  // Fetch all items with resolved category names
-  const { data: allItems = [] } = useQuery<Item[]>({
-    queryKey: ["items"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("items")
-        .select(`
-          *,
-          category_name:categories!items_category_fkey(name)
-        `)
-        .order("name");
-      if (error) throw error;
-      // Map the data to include the resolved category name
-      return (data || []).map((item: any) => ({
-        ...item,
-        category: item.category_name?.name || item.category || "Uncategorized",
-      })) as Item[];
-    },
-  });
-
   if (isLoading || !data) return <div>Loading...</div>;
 
   const { transfer, items } = data;
   const enhancedTransfer = transfer as EnhancedTransfer;
+
+  // Fetch items with store-specific quantities from source store
+  const { data: allItems = [] } = useQuery<Item[]>({
+    queryKey: ["items-for-transfer", enhancedTransfer.from_store_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("store_inventory")
+        .select(`
+          quantity,
+          items!inner(
+            id,
+            sku,
+            name,
+            unit,
+            category_name:categories!items_category_fkey(name)
+          )
+        `)
+        .eq("store_id", enhancedTransfer.from_store_id)
+        .gt("quantity", 0);
+      
+      if (error) throw error;
+      
+      // Map the data to include the resolved category name and store quantity
+      return (data || []).map((inv: any) => ({
+        id: inv.items.id,
+        sku: inv.items.sku,
+        name: inv.items.name,
+        unit: inv.items.unit,
+        quantity: inv.quantity, // Store-specific quantity
+        category: inv.items.category_name?.name || "Uncategorized",
+      })) as Item[];
+    },
+    enabled: !!enhancedTransfer.from_store_id,
+  });
 
   // Get existing SKUs for import validation
   const existingSkus = allItems.map((item) => item.sku);
