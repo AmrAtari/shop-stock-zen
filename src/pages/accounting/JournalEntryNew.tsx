@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -49,12 +48,19 @@ const JournalEntryNew: React.FC = () => {
       });
   }, []);
 
-  // Fetch accounts (Inventory & Retained Earnings)
+  // Fetch all accounts (Inventory + Retained Earnings)
   useEffect(() => {
     supabase
       .from("accounts")
       .select("*")
-      .in("account_name", ["Inventory", "Retained Earnings"])
+      .in("account_name", [
+        "Retained Earnings",
+        "Inventory Hebron",
+        "Inventory Ramallah",
+        "Inventory Jenin",
+        "Inventory Main Warehouse",
+        "Inventory Lacasa",
+      ])
       .then(({ data, error }) => {
         if (error) toast.error(error.message);
         else setAccounts(data || []);
@@ -67,7 +73,6 @@ const JournalEntryNew: React.FC = () => {
     setIsGenerating(true);
 
     try {
-      // Fetch inventory for store
       const { data: inventoryData, error } = await supabase
         .from("store_inventory")
         .select("item_id, quantity, items(name, sku, cost)")
@@ -99,15 +104,20 @@ const JournalEntryNew: React.FC = () => {
     }
   };
 
+  // Get store-specific Inventory account
+  const getInventoryAccountForStore = (storeName: string) => {
+    return accounts.find((a) => a.account_name.includes(storeName));
+  };
+
   // Save journal entry
   const saveJournalEntry = async () => {
     if (inventoryRows.length === 0) return toast.error("No inventory items to save.");
-    const inventoryAccount = accounts.find((a) => a.account_name === "Inventory");
-    const retainedEarningsAccount = accounts.find((a) => a.account_name === "Retained Earnings");
 
-    if (!inventoryAccount || !retainedEarningsAccount) {
-      return toast.error("Inventory or Retained Earnings account not found.");
-    }
+    const retainedEarningsAccount = accounts.find((a) => a.account_name === "Retained Earnings");
+    if (!retainedEarningsAccount) return toast.error("Retained Earnings account not found.");
+
+    const inventoryAccount = getInventoryAccountForStore(stores.find((s) => s.id === selectedStore)?.name || "");
+    if (!inventoryAccount) return toast.error(`Inventory account not found for this store.`);
 
     setIsSaving(true);
 
@@ -128,7 +138,7 @@ const JournalEntryNew: React.FC = () => {
       if (entryError || !journalEntry) throw entryError || new Error("Failed to create journal entry");
 
       // Insert journal entry lines
-      const lines = inventoryRows.map((row) => ({
+      const lines = inventoryRows.map((row, index) => ({
         journal_entry_id: journalEntry.id,
         store_id: row.store_id,
         item_id: row.item_id,
@@ -136,9 +146,10 @@ const JournalEntryNew: React.FC = () => {
         description: `Opening Stock: ${row.sku} - ${row.item_name}`,
         debit_amount: row.quantity * row.cost,
         credit_amount: 0,
+        line_number: index + 1,
       }));
 
-      // Add retained earnings line (credit)
+      // Retained earnings line (credit)
       lines.push({
         journal_entry_id: journalEntry.id,
         store_id: selectedStore,
@@ -147,6 +158,7 @@ const JournalEntryNew: React.FC = () => {
         description: "Offset Opening Stock",
         debit_amount: 0,
         credit_amount: lines.reduce((sum, l) => sum + l.debit_amount, 0),
+        line_number: lines.length + 1,
       });
 
       const { error: linesError } = await supabase.from("journal_entry_lines").insert(lines);
