@@ -34,30 +34,54 @@ const JournalEntryNew = () => {
   const { data: accounts } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("accounts")
-        .select("*")
-        .eq("is_active", true)
-        .order("account_code");
-      
+      const { data, error } = await supabase.from("accounts").select("*").eq("is_active", true).order("account_code");
       if (error) throw error;
       return data;
     },
   });
 
+  const { data: stores } = useQuery({
+    queryKey: ["stores"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("stores").select("*");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const addLine = () => {
+    setLines([
+      ...lines,
+      {
+        id: Date.now().toString(),
+        account_id: "",
+        description: "",
+        debit: 0,
+        credit: 0,
+      },
+    ]);
+  };
+
+  const removeLine = (id: string) => {
+    if (lines.length > 2) {
+      setLines(lines.filter((line) => line.id !== id));
+    }
+  };
+
+  const updateLine = (id: string, field: keyof JournalLine, value: any) => {
+    setLines(lines.map((line) => (line.id === id ? { ...line, [field]: value } : line)));
+  };
+
+  const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
+  const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
+  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
+
   const createEntry = useMutation({
     mutationFn: async () => {
-      const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
-      const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
+      if (!isBalanced) throw new Error("Debits and credits must be equal");
 
-      if (Math.abs(totalDebit - totalCredit) > 0.01) {
-        throw new Error("Debits and credits must be equal");
-      }
-
-      // Get entry number from function
-      const { data: entryNumberData, error: entryNumberError } = await supabase
-        .rpc('generate_journal_entry_number');
-      
+      // Get entry number
+      const { data: entryNumberData, error: entryNumberError } = await supabase.rpc("generate_journal_entry_number");
       if (entryNumberError) throw entryNumberError;
 
       const { data: entry, error: entryError } = await supabase
@@ -69,7 +93,7 @@ const JournalEntryNew = () => {
           entry_type: "manual",
           total_debit: totalDebit,
           total_credit: totalCredit,
-          status: "draft",
+          status: "posted",
         })
         .select()
         .single();
@@ -77,8 +101,8 @@ const JournalEntryNew = () => {
       if (entryError) throw entryError;
 
       const lineInserts = lines
-        .filter(line => line.account_id && (line.debit > 0 || line.credit > 0))
-        .map(line => ({
+        .filter((line) => line.account_id && (line.debit > 0 || line.credit > 0))
+        .map((line) => ({
           journal_entry_id: entry.id,
           account_id: line.account_id,
           description: line.description,
@@ -86,9 +110,7 @@ const JournalEntryNew = () => {
           credit: line.credit || 0,
         }));
 
-      const { error: linesError } = await supabase
-        .from("journal_entry_lines")
-        .insert(lineInserts);
+      const { error: linesError } = await supabase.from("journal_entry_lines").insert(lineInserts);
 
       if (linesError) throw linesError;
 
@@ -104,31 +126,62 @@ const JournalEntryNew = () => {
     },
   });
 
-  const addLine = () => {
-    setLines([...lines, { 
-      id: Date.now().toString(), 
-      account_id: "", 
-      description: "", 
-      debit: 0, 
-      credit: 0 
-    }]);
-  };
+  // Generate Opening Stock
+  const generateOpeningStock = async () => {
+    try {
+      if (!stores || !accounts) return;
 
-  const removeLine = (id: string) => {
-    if (lines.length > 2) {
-      setLines(lines.filter(line => line.id !== id));
+      // Map store inventory accounts
+      const storeInventoryAccountMap: Record<string, string> = {};
+      stores.forEach((store) => {
+        const account = accounts.find((a) => a.account_name.includes(store.name));
+        if (account) storeInventoryAccountMap[store.id] = account.id;
+      });
+
+      // Fetch items
+      const { data: items } = await supabase.from("items").select("store_id, quantity, cost");
+
+      // Calculate stock per store
+      const stockPerStore: Record<string, number> = {};
+      items?.forEach((item) => {
+        if (!stockPerStore[item.store_id]) stockPerStore[item.store_id] = 0;
+        stockPerStore[item.store_id] += item.quantity * item.cost;
+      });
+
+      // Prepare journal lines
+      const openingLines: JournalLine[] = Object.keys(stockPerStore).map((store_id) => ({
+        id: Date.now().toString() + store_id,
+        account_id: storeInventoryAccountMap[store_id],
+        description: `Opening stock for ${stores.find((s) => s.id === store_id)?.name}`,
+        debit: stockPerStore[store_id],
+        credit: 0,
+      }));
+
+      // Add credit line (Retained Earnings)
+      const { data: retained } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("account_name", "Retained Earnings")
+        .single();
+
+      const totalDebit = openingLines.reduce((sum, l) => sum + l.debit, 0);
+
+      openingLines.push({
+        id: Date.now().toString() + "credit",
+        account_id: retained?.id || "",
+        description: "Opening Balance",
+        debit: 0,
+        credit: totalDebit,
+      });
+
+      setLines(openingLines);
+
+      toast.success("Opening stock generated successfully. Review and Save.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Failed to generate opening stock");
     }
   };
-
-  const updateLine = (id: string, field: keyof JournalLine, value: any) => {
-    setLines(lines.map(line => 
-      line.id === id ? { ...line, [field]: value } : line
-    ));
-  };
-
-  const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
-  const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
-  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   return (
     <div className="space-y-6">
@@ -141,10 +194,15 @@ const JournalEntryNew = () => {
           </Link>
           <h1 className="text-3xl font-bold">New Journal Entry</h1>
         </div>
-        <Button onClick={() => createEntry.mutate()} disabled={!isBalanced || createEntry.isPending}>
-          <Save className="w-4 h-4 mr-2" />
-          {createEntry.isPending ? "Saving..." : "Save Entry"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={generateOpeningStock}>
+            Generate Opening Stock
+          </Button>
+          <Button onClick={() => createEntry.mutate()} disabled={!isBalanced || createEntry.isPending}>
+            <Save className="w-4 h-4 mr-2" />
+            {createEntry.isPending ? "Saving..." : "Save Entry"}
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -155,11 +213,7 @@ const JournalEntryNew = () => {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Entry Date</Label>
-              <Input
-                type="date"
-                value={entryDate}
-                onChange={(e) => setEntryDate(e.target.value)}
-              />
+              <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
@@ -199,10 +253,7 @@ const JournalEntryNew = () => {
               {lines.map((line) => (
                 <TableRow key={line.id}>
                   <TableCell>
-                    <Select
-                      value={line.account_id}
-                      onValueChange={(value) => updateLine(line.id, "account_id", value)}
-                    >
+                    <Select value={line.account_id} onValueChange={(value) => updateLine(line.id, "account_id", value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select account" />
                       </SelectTrigger>
@@ -259,7 +310,9 @@ const JournalEntryNew = () => {
                 </TableRow>
               ))}
               <TableRow className="font-bold bg-muted/50">
-                <TableCell colSpan={2} className="text-right">Totals:</TableCell>
+                <TableCell colSpan={2} className="text-right">
+                  Totals:
+                </TableCell>
                 <TableCell className={totalDebit !== totalCredit ? "text-red-600" : ""}>
                   ${totalDebit.toFixed(2)}
                 </TableCell>
@@ -271,9 +324,7 @@ const JournalEntryNew = () => {
             </TableBody>
           </Table>
           {!isBalanced && (
-            <p className="text-sm text-red-600 mt-2">
-              Entry is not balanced. Debits and credits must be equal.
-            </p>
+            <p className="text-sm text-red-600 mt-2">Entry is not balanced. Debits and credits must be equal.</p>
           )}
         </CardContent>
       </Card>
