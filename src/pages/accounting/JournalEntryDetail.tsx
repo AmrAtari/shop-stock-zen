@@ -1,11 +1,13 @@
-import { useParams, Link, useNavigate } from "react-router-dom";
+// This is the updated JournalEntryDetail (1).tsx with fixes
+
+import { useParams, Link, useNavigate } from "react-router-dom"; // Added useNavigate
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FileText, CheckCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, CheckCheck, Trash2 } from "lucide-react"; // Added CheckCheck, Trash2
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Added useMutation, useQueryClient
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -75,7 +77,7 @@ const JournalEntryDetail = () => {
     mutationFn: async () => {
       if (!id) throw new Error("Journal Entry ID is missing.");
 
-      // 1. Delete associated lines first (CRITICAL for non-cascading FKs)
+      // 1. Delete associated lines first (CRITICAL)
       const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
       if (lineError) throw lineError;
 
@@ -284,11 +286,11 @@ const JournalEntryDetail = () => {
                   <TableCell>{line.account?.account_name}</TableCell>
                   <TableCell className="max-w-md truncate">{line.description}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {/* Correctly uses debit_amount */}
+                    {/* FIX: Using line.debit_amount instead of line.debit */}
                     {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {/* Correctly uses credit_amount */}
+                    {/* FIX: Using line.credit_amount instead of line.credit */}
                     {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : "—"}
                   </TableCell>
                 </TableRow>
