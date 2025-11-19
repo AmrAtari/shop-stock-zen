@@ -1,11 +1,10 @@
-// src/components/TransferItemImport.tsx
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, AlertCircle, CheckCircle } from "lucide-react";
-import * as XLSX from "xlsx"; // <--- Explicit import/use of XLSX is correct
+import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { GoogleSheetsInput } from "@/components/GoogleSheetsInput";
 
@@ -27,29 +26,50 @@ const TransferItemImport = ({ onImport, existingSkus }: TransferItemImportProps)
   const [isProcessing, setIsProcessing] = useState(false);
   const [importMethod, setImportMethod] = useState<"file" | "sheets">("file");
 
+  // Normalize column names for flexible matching
+  const normalizeKey = (key: string): string => {
+    return key.toLowerCase().replace(/[_\s-]+/g, '');
+  };
+
+  // Find value from row with flexible column name matching
+  const findValue = (row: any, possibleNames: string[]): any => {
+    const normalizedRow: Record<string, any> = {};
+    
+    Object.keys(row).forEach(key => {
+      normalizedRow[normalizeKey(key)] = row[key];
+    });
+
+    for (const name of possibleNames) {
+      const normalizedName = normalizeKey(name);
+      if (normalizedRow[normalizedName] !== undefined) {
+        return normalizedRow[normalizedName];
+      }
+    }
+    return undefined;
+  };
+
   const processImportData = (jsonData: any[]) => {
-    // FIX TS2322: Ensures jsonData is correctly mapped to ImportedItem[]
     const items: ImportedItem[] = jsonData.map((row: any) => {
-      const sku = String(row.SKU || row.sku || "").trim();
-      const quantity = parseFloat(row.Quantity || row.quantity || 0);
+      const sku = String(findValue(row, ['SKU', 'sku', 'item_code', 'itemcode', 'code']) || "").trim();
+      const quantity = parseFloat(findValue(row, ['Quantity', 'quantity', 'qty', 'amount', 'count']) || 0);
 
       let status: ImportedItem["status"] = "valid";
       let message = "";
 
       if (!sku) {
         status = "error";
-        message = "SKU is missing.";
+        message = "SKU is missing";
       } else if (isNaN(quantity) || quantity <= 0) {
         status = "error";
-        message = "Quantity must be a positive number.";
+        message = "Quantity must be a positive number";
       } else if (!existingSkus.includes(sku)) {
         status = "warning";
-        message = "SKU not found in inventory. Item name will be blank.";
+        message = "SKU not found in inventory";
       }
 
       return {
         sku,
-        itemName: String(row["Item Name"] || row.itemName || ""),
+        itemName: String(findValue(row, ['Item Name', 'itemName', 'item_name', 'name', 'product_name']) || ""),
         quantity,
         status,
         message,

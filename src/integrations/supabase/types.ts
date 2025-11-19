@@ -2394,6 +2394,7 @@ export type Database = {
           shipped_by: string | null
           status: string | null
           to_store_id: string
+          total_items: number | null
           transfer_date: string | null
           transfer_id: number
           transfer_number: string | null
@@ -2413,6 +2414,7 @@ export type Database = {
           shipped_by?: string | null
           status?: string | null
           to_store_id: string
+          total_items?: number | null
           transfer_date?: string | null
           transfer_id?: number
           transfer_number?: string | null
@@ -2432,6 +2434,7 @@ export type Database = {
           shipped_by?: string | null
           status?: string | null
           to_store_id?: string
+          total_items?: number | null
           transfer_date?: string | null
           transfer_id?: number
           transfer_number?: string | null

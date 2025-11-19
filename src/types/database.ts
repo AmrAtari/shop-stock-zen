@@ -97,15 +97,15 @@ export interface PurchaseOrderItem {
 // ADDED: Resolves error in useTransferDetail.tsx
 export interface TransferItem {
   id: string;
-  transfer_id: string;
+  transfer_id: number;
   item_id: string;
   sku: string;
-  name: string;
-  // NEW: Added item_name to resolve the TransferDetail.tsx errors
   item_name: string;
-  size: string | null;
-  quantity: number;
-  status: "pending" | "sent" | "received"; // Status of the item within the transfer
+  requested_quantity: number;
+  approved_quantity: number | null;
+  shipped_quantity: number | null;
+  received_quantity: number;
+  notes: string | null;
   created_at: string;
 }
 
