@@ -213,7 +213,7 @@ const JournalEntryNew = () => {
     },
     onSuccess: (entry) => {
       toast.success("Journal entry created successfully");
-      queryClient.invalidateQueries(["journal_entries"]);
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
       navigate(`/accounting/journal-entries/${entry.id}`);
     },
     onError: (error: any) => {
