@@ -1,43 +1,27 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency } from "@/lib/formatters";
-
-interface Store {
-  id: string;
-  name: string;
-}
 
 interface InventoryRow {
   item_id: string;
   sku: string;
   item_name: string;
-  store_id: string;
   quantity: number;
   cost: number;
+  store_id: string;
 }
 
-interface Account {
-  id: string;
-  account_name: string;
-  account_code: string;
-  account_type: string;
-}
-
-const JournalEntryNew: React.FC = () => {
-  const [stores, setStores] = useState<Store[]>([]);
-  const [selectedStore, setSelectedStore] = useState("");
+const JournalEntryNew = () => {
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
+  const [selectedStore, setSelectedStore] = useState<string>("");
   const [inventoryRows, setInventoryRows] = useState<InventoryRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Fetch stores
-  React.useEffect(() => {
+  // Load stores
+  useEffect(() => {
     supabase
       .from("stores")
-      .select("id, name")
+      .select("*")
       .then(({ data, error }) => {
         if (error) toast.error(error.message);
         else setStores(data || []);
@@ -45,50 +29,40 @@ const JournalEntryNew: React.FC = () => {
   }, []);
 
   // Generate Opening Stock
-  const handleGenerateOpeningStock = async () => {
-    if (!selectedStore) {
-      toast.error("Please select a store");
-      return;
-    }
+  const handleGenerate = async () => {
+    if (!selectedStore) return toast.error("Select a store first");
     setLoading(true);
     try {
-      // Get inventory for this store
-      const { data: inventory, error: invError } = await supabase
+      const { data: items, error } = await supabase
         .from("store_inventory")
-        .select(
-          `
-          item_id,
-          quantity,
-          qty_on_order,
-          items(sku, name, cost)
-        `,
-        )
+        .select(`*, items(*)`)
         .eq("store_id", selectedStore);
 
-      if (invError) throw invError;
+      if (error) throw error;
 
-      if (!inventory || inventory.length === 0) {
-        toast.error("No inventory items found for this store");
-        setInventoryRows([]);
-        return;
-      }
-
-      const rows: InventoryRow[] = inventory.map((i: any) => ({
-        item_id: i.item_id,
-        sku: i.items.sku,
-        item_name: i.items.name,
-        store_id: selectedStore,
-        quantity: i.quantity || 0,
-        cost: i.items.cost || 0,
+      const rows: InventoryRow[] = (items || []).map((row: any) => ({
+        item_id: row.item_id,
+        sku: row.items.sku,
+        item_name: row.items.name,
+        quantity: Number(row.quantity),
+        cost: Number(row.items.cost),
+        store_id: row.store_id,
       }));
 
+      if (rows.length === 0) toast.error("No inventory items found");
       setInventoryRows(rows);
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (err: any) {
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // Compute total Debit per row
+  const computeDebit = (row: InventoryRow) => row.quantity * row.cost;
+
+  // Compute total Debit for the whole table
+  const totalDebit = inventoryRows.reduce((sum, row) => sum + computeDebit(row), 0);
 
   // Save Journal Entry
   const handleSave = async () => {
@@ -97,7 +71,7 @@ const JournalEntryNew: React.FC = () => {
 
     setLoading(true);
     try {
-      // Fetch Inventory and Retained Earnings accounts
+      // Fetch Inventory & Retained Earnings accounts
       const { data: accountsData, error: accountsError } = await supabase
         .from("accounts")
         .select("*")
@@ -129,17 +103,14 @@ const JournalEntryNew: React.FC = () => {
 
       if (entryError) throw entryError;
 
-      // Compute total debit
-      const totalDebit = inventoryRows.reduce((sum, row) => sum + row.quantity * row.cost, 0);
-
-      // Prepare lines
+      // Insert journal lines
       const lines = inventoryRows.map((row, index) => ({
         journal_entry_id: journalEntry.id,
         store_id: row.store_id,
         item_id: row.item_id,
         account_id: inventoryAccount.id,
         description: `Opening Stock: ${row.sku} - ${row.item_name}`,
-        debit_amount: row.quantity * row.cost,
+        debit_amount: computeDebit(row),
         credit_amount: 0,
         line_number: index + 1,
       }));
@@ -156,7 +127,6 @@ const JournalEntryNew: React.FC = () => {
         line_number: lines.length + 1,
       });
 
-      // Insert lines
       const { error: linesError } = await supabase.from("journal_entry_lines").insert(lines);
       if (linesError) throw linesError;
 
@@ -171,52 +141,56 @@ const JournalEntryNew: React.FC = () => {
   };
 
   return (
-    <div className="p-6 max-h-screen overflow-auto space-y-6">
-      <div className="flex items-center gap-4">
-        <Select value={selectedStore} onValueChange={setSelectedStore}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select Store" />
-          </SelectTrigger>
-          <SelectContent>
-            {stores.map((store) => (
-              <SelectItem key={store.id} value={store.id}>
-                {store.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button onClick={handleGenerateOpeningStock} disabled={loading}>
+    <div className="p-4 max-h-screen overflow-auto">
+      <h2 className="text-xl font-bold mb-4">Opening Stock</h2>
+
+      <div className="mb-4 flex gap-2">
+        <select className="border p-2 rounded" value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)}>
+          <option value="">Select Store</option>
+          {stores.map((store) => (
+            <option key={store.id} value={store.id}>
+              {store.name}
+            </option>
+          ))}
+        </select>
+        <button className="btn btn-primary" onClick={handleGenerate} disabled={loading}>
           Generate Opening Stock
-        </Button>
-        <Button onClick={handleSave} disabled={loading || inventoryRows.length === 0}>
-          Save Journal Entry
-        </Button>
+        </button>
+        <button className="btn btn-success" onClick={handleSave} disabled={loading || inventoryRows.length === 0}>
+          Save
+        </button>
       </div>
 
       {inventoryRows.length > 0 && (
-        <div className="border rounded-lg overflow-auto max-h-[500px]">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Item Name</TableHead>
-                <TableHead>Quantity</TableHead>
-                <TableHead>Cost</TableHead>
-                <TableHead>Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {inventoryRows.map((row) => (
-                <TableRow key={row.item_id}>
-                  <TableCell>{row.sku}</TableCell>
-                  <TableCell>{row.item_name}</TableCell>
-                  <TableCell>{row.quantity}</TableCell>
-                  <TableCell>{formatCurrency(row.cost)}</TableCell>
-                  <TableCell>{formatCurrency(row.quantity * row.cost)}</TableCell>
-                </TableRow>
+        <div className="overflow-auto max-h-[60vh] border rounded">
+          <table className="min-w-full table-auto border-collapse">
+            <thead>
+              <tr>
+                <th className="border p-2">SKU</th>
+                <th className="border p-2">Item Name</th>
+                <th className="border p-2">Quantity</th>
+                <th className="border p-2">Cost</th>
+                <th className="border p-2">Debit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inventoryRows.map((row, idx) => (
+                <tr key={idx}>
+                  <td className="border p-2">{row.sku}</td>
+                  <td className="border p-2">{row.item_name}</td>
+                  <td className="border p-2">{row.quantity}</td>
+                  <td className="border p-2">{row.cost.toFixed(2)}</td>
+                  <td className="border p-2">{computeDebit(row).toFixed(2)}</td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+              <tr className="font-bold">
+                <td className="border p-2" colSpan={4}>
+                  Total
+                </td>
+                <td className="border p-2">{totalDebit.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </div>
