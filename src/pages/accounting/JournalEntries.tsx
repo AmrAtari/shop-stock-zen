@@ -35,7 +35,7 @@ const JournalEntries = () => {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Journal entry deleted successfully");
+      toast.success("Journal entry deleted");
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
     onError: (err: any) => {
@@ -90,8 +90,8 @@ const JournalEntries = () => {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <Table>
+        <CardContent className="overflow-x-auto max-h-[600px]">
+          <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Entry #</TableHead>
@@ -105,10 +105,10 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading || deleteMutation.isLoading ? (
+              {isLoading || deleteMutation.isPending ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.isLoading ? "Deleting..." : "Loading..."}
+                    {deleteMutation.isPending ? "Deleting..." : "Loading..."}
                   </TableCell>
                 </TableRow>
               ) : filteredEntries?.length === 0 ? (
@@ -118,7 +118,7 @@ const JournalEntries = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredEntries.map((entry) => (
+                filteredEntries?.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="font-mono font-semibold">{entry.entry_number}</TableCell>
                     <TableCell>{format(new Date(entry.entry_date), "MMM dd, yyyy")}</TableCell>
@@ -147,7 +147,7 @@ const JournalEntries = () => {
                         size="icon"
                         title="Delete"
                         onClick={() => handleDelete(entry.id)}
-                        disabled={deleteMutation.isLoading}
+                        disabled={deleteMutation.isPending}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
