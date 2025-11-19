@@ -1,3 +1,5 @@
+// This is the updated JournalEntries (4).tsx with fixes
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,11 +33,11 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // 1. Delete associated lines first (CRITICAL)
+      // FIX 1: Delete associated lines first (Required for database integrity)
       const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
       if (lineError) throw lineError;
 
-      // 2. Delete the main journal entry
+      // Delete the main journal entry
       const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
       if (entryError) throw entryError;
 
@@ -44,7 +46,7 @@ const JournalEntries = () => {
     onSuccess: (deletedId) => {
       toast.success("Journal entry deleted successfully");
 
-      // FIX: MANUAL CACHE UPDATE to force UI removal
+      // MANUAL CACHE UPDATE: Force UI removal
       queryClient.setQueryData(["journal_entries"], (oldData: any[] | undefined) => {
         if (oldData) {
           return oldData.filter((entry: any) => entry.id !== deletedId);
@@ -52,21 +54,17 @@ const JournalEntries = () => {
         return [];
       });
 
-      // CRITICAL CHANGE: Removed queryClient.invalidateQueries here to prevent the re-fetch race condition.
-      // The manual update is sufficient for immediate list accuracy.
+      // Removed redundant invalidateQueries to prevent race condition.
     },
     onError: (err: any) => {
-      const errorMessage = err.message.includes("foreign key constraint")
-        ? "Error: Failed to delete related lines or entry. Check database constraints."
-        : err.message || "Error deleting journal entry.";
-
-      toast.error(errorMessage);
+      toast.error(err.message || "Error deleting journal entry. Check if entry lines are attached.");
     },
   });
 
+  // FIX 2: Updated handleDelete to check status and pass entry object
   const handleDelete = (entry: any) => {
-    if (entry.status === "posted") {
-      toast.error("Posted entries cannot be deleted. They must be reversed.");
+    if (entry.status !== "draft") {
+      toast.error("Only draft entries can be deleted.");
       return;
     }
     if (window.confirm(`Are you sure you want to delete the draft entry #${entry.entry_number}?`)) {
@@ -130,6 +128,7 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {/* FIX 3: Use isPending for the loading check */}
               {isLoading || deleteMutation.isPending ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
@@ -162,6 +161,7 @@ const JournalEntries = () => {
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
+                      {/* Only allow editing of drafts */}
                       {entry.status === "draft" && (
                         <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
                           <Button variant="ghost" size="icon" title="Edit">
@@ -174,7 +174,7 @@ const JournalEntries = () => {
                         size="icon"
                         title="Delete"
                         onClick={() => handleDelete(entry)}
-                        disabled={deleteMutation.isPending || entry.status !== "draft"}
+                        disabled={deleteMutation.isPending || entry.status !== "draft"} // Disable if deleting or not a draft
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
