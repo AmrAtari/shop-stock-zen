@@ -4,7 +4,6 @@ import { queryKeys } from "./queryKeys";
 import { Transfer, TransferItem } from "@/types/database";
 import { toast } from "sonner";
 
-// FIX: Ensure 'export' is present to resolve TS2305 in TransferDetail.tsx
 export type TransferableItem = {
   id: string;
   sku: string;
@@ -38,7 +37,7 @@ export const useTransferDetail = (transferId: number | null) => {
       if (transferError) throw transferError;
       if (!transfer) throw new Error("Transfer not found");
 
-      // Select the item_id column explicitly AND perform an aliased join
+      // FIX: Removed comments from the .select() template string to prevent 400 Bad Request error
       const { data: rawItems, error: itemsError } = await supabase
         .from("transfer_items")
         .select(
@@ -47,8 +46,7 @@ export const useTransferDetail = (transferId: number | null) => {
             transfer_id,
             requested_quantity,
             received_quantity,
-            item_id, // Select the foreign key
-            // Join the items table via the item_id foreign key relationship
+            item_id, 
             item_details:item_id!inner(sku, name) 
           `,
         )
