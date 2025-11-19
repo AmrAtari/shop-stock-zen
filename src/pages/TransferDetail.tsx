@@ -19,7 +19,6 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Transfer, TransferItem, Item } from "@/types/database";
 
-// Extended type for enhanced store names
 interface EnhancedTransfer extends Transfer {
   from_store_name: string;
   to_store_name: string;
@@ -29,22 +28,19 @@ const TransferDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const transferId = Number(id);
 
-  // Fetch transfer detail
   const { data, isLoading } = useTransferDetail(transferId);
   const enhancedTransfer = data?.transfer as EnhancedTransfer | undefined;
-  const items = data?.items || [];
+  const { items = [] } = data || {};
 
-  // Mutations
   const addItemsMutation = useAddTransferItems();
   const removeItemMutation = useRemoveTransferItem();
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  // Fetch all items from source store
   const { data: allItems = [] } = useQuery<Item[]>({
     queryKey: ["items-for-transfer", enhancedTransfer?.from_store_id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: inventory, error } = await supabase
         .from("store_inventory")
         .select(
           `
@@ -63,59 +59,39 @@ const TransferDetailPage = () => {
 
       if (error) throw error;
 
-      return (data || []).map((inv: any) => ({
+      return (inventory || []).map((inv: any) => ({
         id: inv.items.id,
         sku: inv.items.sku,
         name: inv.items.name,
         unit: inv.items.unit,
         quantity: inv.quantity,
         category: inv.items.category_name?.name || "Uncategorized",
-      })) as Item[];
+      }));
     },
     enabled: !!enhancedTransfer?.from_store_id,
   });
 
   if (isLoading || !data) return <div>Loading...</div>;
 
-  const existingSkus = allItems.map((i) => i.sku);
-
-  // Handlers
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
       transferId,
-      items: newItems.map((i) => ({
-        sku: i.sku,
-        itemName: "", // Required for TS, not inserted into DB
-        quantity: i.quantity,
-      })),
+      items: newItems.map((i) => ({ sku: i.sku, itemName: "", quantity: i.quantity })),
     });
   };
 
-  const handleBarcodeScanned = async (scannedItems: Array<{ sku: string; quantity: number }>) => {
+  const handleBarcodeScanned = (scannedItems: Array<{ sku: string; quantity: number }>) => {
     addItemsMutation.mutate({
       transferId,
-      items: scannedItems.map((i) => ({
-        sku: i.sku,
-        itemName: "", // Required for TS
-        quantity: i.quantity,
-      })),
+      items: scannedItems.map((i) => ({ sku: i.sku, itemName: "", quantity: i.quantity })),
     });
   };
 
   const handleManualSelection = (selectedItems: Array<{ item: Item; quantity: number }>) => {
     addItemsMutation.mutate({
       transferId,
-      items: selectedItems.map((i) => ({
-        sku: i.item.sku,
-        itemName: "", // Required for TS
-        quantity: i.quantity,
-      })),
+      items: selectedItems.map((i) => ({ sku: i.item.sku, itemName: "", quantity: i.quantity })),
     });
-  };
-
-  const lookupSku = async (sku: string): Promise<{ name: string } | null> => {
-    const item = allItems.find((i) => i.sku === sku);
-    return item ? { name: item.name } : null;
   };
 
   const handleRemoveItem = (itemId: string) => {
@@ -130,9 +106,7 @@ const TransferDetailPage = () => {
     updateStatusMutation.mutate({ transferId, status });
   };
 
-  const handleReceiveTransfer = () => {
-    receiveMutation.mutate({ transferId });
-  };
+  const handleReceiveTransfer = () => receiveMutation.mutate({ transferId });
 
   return (
     <div className="space-y-6 p-6">
@@ -172,15 +146,21 @@ const TransferDetailPage = () => {
           </TabsContent>
 
           <TabsContent value="barcode" className="mt-4">
-            <TransferBarcodeScanner onScan={handleBarcodeScanned} onLookupSku={lookupSku} />
+            <TransferBarcodeScanner
+              onScan={handleBarcodeScanned}
+              onLookupSku={(sku) => {
+                const item = allItems.find((i) => i.sku === sku);
+                return item ? { name: item.name } : null;
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="excel" className="mt-4">
-            <TransferItemImport onImport={handleAddItems} existingSkus={existingSkus} />
+            <TransferItemImport onImport={handleAddItems} existingSkus={allItems.map((i) => i.sku)} />
           </TabsContent>
 
           <TabsContent value="sheets" className="mt-4">
-            <TransferItemImport onImport={handleAddItems} existingSkus={existingSkus} />
+            <TransferItemImport onImport={handleAddItems} existingSkus={allItems.map((i) => i.sku)} />
           </TabsContent>
         </Tabs>
       </Card>
@@ -199,27 +179,24 @@ const TransferDetailPage = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item: TransferItem & { item_name?: string }) => {
-                const itemDetails = allItems.find((i) => i.id === item.item_id);
-                return (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-sm">{itemDetails?.sku || "-"}</TableCell>
-                    <TableCell>{itemDetails?.name || "-"}</TableCell>
-                    <TableCell>{item.requested_quantity || 0}</TableCell>
-                    <TableCell>{item.received_quantity || 0}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleRemoveItem(item.id)}
-                        disabled={["shipped", "received"].includes(enhancedTransfer?.status || "")}
-                      >
-                        Remove
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {items.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="font-mono text-sm">{item.sku}</TableCell>
+                  <TableCell>{item.item_name}</TableCell>
+                  <TableCell>{item.requested_quantity || 0}</TableCell>
+                  <TableCell>{item.received_quantity || 0}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleRemoveItem(item.id)}
+                      disabled={["shipped", "received"].includes(enhancedTransfer?.status || "")}
+                    >
+                      Remove
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>
