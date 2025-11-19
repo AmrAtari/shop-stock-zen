@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  // State for the new status filter
   const [statusFilter, setStatusFilter] = useState("all");
   const queryClient = useQueryClient();
 
@@ -34,23 +33,40 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // 1. CRITICAL FIX: Explicitly delete associated lines first (overrides database config issues)
+      // 1. CRITICAL: Force Delete associated lines first. This is required
+      //    since the database ON DELETE CASCADE is not reliably working for you.
       const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
 
       if (lineError) {
-        console.error("Failed to delete journal lines:", lineError.message);
-        // We throw the error but try to provide helpful context
-        throw new Error(`Failed to delete lines for ${id}. DB Error: ${lineError.message}`);
+        // Do not throw here unless absolutely necessary; let the main delete attempt proceed.
+        console.error("Warning: Failed to delete journal lines before main entry.", lineError);
       }
 
-      // 2. Delete the main journal entry
-      const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
+      // 2. Delete the main journal entry and explicitly check the row count
+      const { count, error: entryError } = await supabase
+        .from("journal_entries")
+        .delete({ count: "exact" }) // Crucial for catching silent RLS failures
+        .eq("id", id);
+
       if (entryError) {
-        // This should only fail if the lines were NOT deleted, or for permissions
         throw entryError;
       }
 
-      return id; // Return the deleted ID for cache update
+      // 3. ULTIMATE CHECK: If 0 rows were deleted, the delete failed silently (e.g., RLS denied access)
+      if (count === 0) {
+        // Throw a specific error if the status is 'draft', suggesting an RLS failure
+        const entryToDelete = journalEntries?.find((e) => e.id === id);
+
+        if (entryToDelete && entryToDelete.status === "draft") {
+          throw new Error(
+            "Deletion failed: Could not find or delete the entry. Check your Row Level Security (RLS) policy for the 'journal_entries' table. Ensure you are the 'created_by' user.",
+          );
+        } else {
+          throw new Error(`Deletion failed: Entry was not found or already deleted.`);
+        }
+      }
+
+      return id;
     },
     onSuccess: (deletedId) => {
       toast.success("Journal entry permanently deleted successfully");
@@ -64,11 +80,7 @@ const JournalEntries = () => {
       });
     },
     onError: (err: any) => {
-      // Provide a clear error message to the user
-      const errorMessage = err.message.includes("Foreign key")
-        ? "Error: Deletion failed due to database constraint. Lines still exist."
-        : err.message || "Error deleting journal entry.";
-      toast.error(errorMessage);
+      toast.error(err.message || "An unknown error occurred during deletion.");
     },
   });
 
@@ -190,6 +202,7 @@ const JournalEntries = () => {
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
+                      {/* Only allow editing of drafts */}
                       {entry.status === "draft" && (
                         <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
                           <Button variant="ghost" size="icon" title="Edit">
