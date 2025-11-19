@@ -31,6 +31,7 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      // NOTE: Typically, journal entry deletion should be restricted by RLS or status (e.g., only drafts can be deleted).
       const { error } = await supabase.from("journal_entries").delete().eq("id", id);
       if (error) throw error;
     },
@@ -44,6 +45,7 @@ const JournalEntries = () => {
   });
 
   const handleDelete = (id: string) => {
+    // You may want to add a check here: if (entry.status === "posted") return toast.error("Posted entries cannot be deleted.");
     if (window.confirm("Are you sure you want to delete this journal entry?")) {
       deleteMutation.mutate(id);
     }
@@ -105,10 +107,10 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading || deleteMutation.status === "loading" ? (
+              {isLoading || deleteMutation.isPending ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.status === "loading" ? "Deleting..." : "Loading..."}
+                    {deleteMutation.isPending ? "Deleting..." : "Loading..."}
                   </TableCell>
                 </TableRow>
               ) : filteredEntries?.length === 0 ? (
@@ -147,7 +149,7 @@ const JournalEntries = () => {
                         size="icon"
                         title="Delete"
                         onClick={() => handleDelete(entry.id)}
-                        disabled={deleteMutation.status === "loading"}
+                        disabled={deleteMutation.isPending || entry.status === "posted"} // Disable deletion of posted entries
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
