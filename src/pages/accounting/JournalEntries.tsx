@@ -1,5 +1,3 @@
-// This is the updated JournalEntries (4).tsx with fixes
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,9 +10,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  // State for the new status filter
+  const [statusFilter, setStatusFilter] = useState("all");
   const queryClient = useQueryClient();
 
   // Fetch journal entries
@@ -33,20 +34,20 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // FIX 1: Delete associated lines first (Required for database integrity)
+      // 1. CRITICAL FIX: Delete associated lines first (Foreign Key Constraint)
       const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
       if (lineError) throw lineError;
 
-      // Delete the main journal entry
+      // 2. Delete the main journal entry
       const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
       if (entryError) throw entryError;
 
-      return id; // Return the deleted ID
+      return id; // Return the deleted ID for cache update
     },
     onSuccess: (deletedId) => {
-      toast.success("Journal entry deleted successfully");
+      toast.success("Journal entry permanently deleted successfully");
 
-      // MANUAL CACHE UPDATE: Force UI removal
+      // FIX 2: Manual cache update to remove the item instantly and permanently (no re-fetch race)
       queryClient.setQueryData(["journal_entries"], (oldData: any[] | undefined) => {
         if (oldData) {
           return oldData.filter((entry: any) => entry.id !== deletedId);
@@ -54,20 +55,21 @@ const JournalEntries = () => {
         return [];
       });
 
-      // Removed redundant invalidateQueries to prevent race condition.
+      // Note: No invalidateQueries needed here.
     },
     onError: (err: any) => {
-      toast.error(err.message || "Error deleting journal entry. Check if entry lines are attached.");
+      toast.error(err.message || "Error deleting journal entry. Check database constraints.");
     },
   });
 
-  // FIX 2: Updated handleDelete to check status and pass entry object
+  // Updated handleDelete to check status and pass the entry object
   const handleDelete = (entry: any) => {
+    // Only allow deletion of drafts
     if (entry.status !== "draft") {
       toast.error("Only draft entries can be deleted.");
       return;
     }
-    if (window.confirm(`Are you sure you want to delete the draft entry #${entry.entry_number}?`)) {
+    if (window.confirm(`Are you sure you want to permanently delete the draft entry #${entry.entry_number}?`)) {
       deleteMutation.mutate(entry.id);
     }
   };
@@ -81,11 +83,16 @@ const JournalEntries = () => {
     return variants[status] || "default";
   };
 
-  const filteredEntries = journalEntries?.filter(
-    (entry: any) =>
+  // Filtered list logic combining search and status filter
+  const filteredEntries = journalEntries?.filter((entry: any) => {
+    const matchesSearch =
       entry.entry_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      entry.description.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+      entry.description.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || entry.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="space-y-6">
@@ -111,6 +118,20 @@ const JournalEntries = () => {
                 className="pl-8"
               />
             </div>
+
+            {/* NEW STATUS FILTER */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="posted">Posted</SelectItem>
+                <SelectItem value="reversed">Reversed</SelectItem>
+              </SelectContent>
+            </Select>
+            {/* END NEW STATUS FILTER */}
           </div>
         </CardHeader>
         <CardContent>
@@ -128,7 +149,7 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* FIX 3: Use isPending for the loading check */}
+              {/* FIX 3: Use deleteMutation.isPending for the loading check */}
               {isLoading || deleteMutation.isPending ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
