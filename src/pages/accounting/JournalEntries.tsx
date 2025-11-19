@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  // State for the new status filter
   const [statusFilter, setStatusFilter] = useState("all");
   const queryClient = useQueryClient();
 
@@ -34,20 +33,17 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // 1. CRITICAL FIX: Delete associated lines first (Foreign Key Constraint)
-      const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
-      if (lineError) throw lineError;
-
-      // 2. Delete the main journal entry
-      const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
-      if (entryError) throw entryError;
+      // Now that ON DELETE CASCADE is set in the database,
+      // we only need this single command to delete the parent entry.
+      const { error } = await supabase.from("journal_entries").delete().eq("id", id);
+      if (error) throw error;
 
       return id; // Return the deleted ID for cache update
     },
     onSuccess: (deletedId) => {
       toast.success("Journal entry permanently deleted successfully");
 
-      // FIX 2: Manual cache update to remove the item instantly and permanently (no re-fetch race)
+      // Manual cache update: Instantly removes the item from the list UI
       queryClient.setQueryData(["journal_entries"], (oldData: any[] | undefined) => {
         if (oldData) {
           return oldData.filter((entry: any) => entry.id !== deletedId);
@@ -55,14 +51,13 @@ const JournalEntries = () => {
         return [];
       });
 
-      // Note: No invalidateQueries needed here.
+      // We skip queryClient.invalidateQueries to prevent the race condition
     },
     onError: (err: any) => {
-      toast.error(err.message || "Error deleting journal entry. Check database constraints.");
+      toast.error(err.message || "Error deleting journal entry. Check your database configuration.");
     },
   });
 
-  // Updated handleDelete to check status and pass the entry object
   const handleDelete = (entry: any) => {
     // Only allow deletion of drafts
     if (entry.status !== "draft") {
@@ -83,7 +78,6 @@ const JournalEntries = () => {
     return variants[status] || "default";
   };
 
-  // Filtered list logic combining search and status filter
   const filteredEntries = journalEntries?.filter((entry: any) => {
     const matchesSearch =
       entry.entry_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -119,7 +113,7 @@ const JournalEntries = () => {
               />
             </div>
 
-            {/* NEW STATUS FILTER */}
+            {/* STATUS FILTER */}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by Status" />
@@ -131,7 +125,7 @@ const JournalEntries = () => {
                 <SelectItem value="reversed">Reversed</SelectItem>
               </SelectContent>
             </Select>
-            {/* END NEW STATUS FILTER */}
+            {/* END STATUS FILTER */}
           </div>
         </CardHeader>
         <CardContent>
@@ -149,7 +143,6 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* FIX 3: Use deleteMutation.isPending for the loading check */}
               {isLoading || deleteMutation.isPending ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
@@ -182,7 +175,6 @@ const JournalEntries = () => {
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
-                      {/* Only allow editing of drafts */}
                       {entry.status === "draft" && (
                         <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
                           <Button variant="ghost" size="icon" title="Edit">
@@ -195,7 +187,7 @@ const JournalEntries = () => {
                         size="icon"
                         title="Delete"
                         onClick={() => handleDelete(entry)}
-                        disabled={deleteMutation.isPending || entry.status !== "draft"} // Disable if deleting or not a draft
+                        disabled={deleteMutation.isPending || entry.status !== "draft"}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
