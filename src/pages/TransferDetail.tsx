@@ -7,14 +7,13 @@ import {
   useRemoveTransferItem,
   useUpdateTransferStatus,
   useReceiveTransfer,
-  TransferableItem, // Explicitly importing the type for use in component logic
+  TransferableItem, // FIX 1: Import TransferableItem from the hook file
 } from "@/hooks/useTransferDetail";
 
-// FIX 1: Correcting the imports to handle named exports (TransferItemImport and ImportedItem)
+// FIX 2: Corrected imports to use named exports for the component and its type
 import { TransferItemImport, ImportedItem } from "@/components/TransferItemImport";
 
 import { TransferBarcodeScanner } from "@/components/TransferBarcodeScanner";
-// We only need the component here, the item type is TransferableItem from the hook
 import { TransferItemSelector } from "@/components/TransferItemSelector";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,7 +23,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Transfer, TransferItem } from "@/types/database";
 
-// Interface to satisfy TS2551/TS2339 by ensuring the fields exist for the UI
+// Interface to allow access to joined store names
 interface EnhancedTransfer extends Transfer {
   from_store_name: string;
   to_store_name: string;
@@ -35,7 +34,7 @@ export const TransferDetailPage = () => {
   const transferId = Number(id);
 
   const { data, isLoading } = useTransferDetail(transferId);
-  // FIX 2: Casting data?.transfer to EnhancedTransfer to resolve TS2551/TS2339
+  // Casting data?.transfer to EnhancedTransfer
   const enhancedTransfer = data?.transfer as EnhancedTransfer | undefined;
   const { items: transferItems = [] } = data || {};
 
@@ -88,7 +87,7 @@ export const TransferDetailPage = () => {
     });
   };
 
-  // FIX 3: Using TransferableItem from the hook ensures compatibility with the data source (availableItems)
+  // Using TransferableItem from the hook to match the data source (availableItems)
   const handleManualSelection = (selectedItems: Array<{ item: TransferableItem; quantity: number }>) => {
     addItemsMutation.mutate({
       transferId,
