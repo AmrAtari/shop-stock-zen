@@ -1,22 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatCurrency } from "@/lib/formatters";
 
 interface Store {
   id: string;
   name: string;
 }
 
-interface StoreInventoryRow {
-  store_id: string;
-  store_name: string;
+interface InventoryRow {
   item_id: string;
-  item_name: string;
   sku: string;
+  item_name: string;
+  store_id: string;
   quantity: number;
   cost: number;
 }
@@ -30,114 +29,110 @@ interface Account {
 
 const JournalEntryNew: React.FC = () => {
   const [stores, setStores] = useState<Store[]>([]);
-  const [selectedStore, setSelectedStore] = useState<string>("");
-  const [inventoryRows, setInventoryRows] = useState<StoreInventoryRow[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [selectedStore, setSelectedStore] = useState("");
+  const [inventoryRows, setInventoryRows] = useState<InventoryRow[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Fetch stores
-  useEffect(() => {
+  React.useEffect(() => {
     supabase
       .from("stores")
       .select("id, name")
-      .order("name")
       .then(({ data, error }) => {
         if (error) toast.error(error.message);
         else setStores(data || []);
       });
   }, []);
 
-  // Fetch all accounts (Inventory + Retained Earnings)
-  useEffect(() => {
-    supabase
-      .from("accounts")
-      .select("*")
-      .in("account_name", [
-        "Retained Earnings",
-        "Inventory Hebron",
-        "Inventory Ramallah",
-        "Inventory Jenin",
-        "Inventory Main Warehouse",
-        "Inventory Lacasa",
-      ])
-      .then(({ data, error }) => {
-        if (error) toast.error(error.message);
-        else setAccounts(data || []);
-      });
-  }, []);
-
-  // Generate Opening Stock for selected store
-  const generateOpeningStock = async () => {
-    if (!selectedStore) return toast.error("Please select a store first.");
-    setIsGenerating(true);
-
+  // Generate Opening Stock
+  const handleGenerateOpeningStock = async () => {
+    if (!selectedStore) {
+      toast.error("Please select a store");
+      return;
+    }
+    setLoading(true);
     try {
-      const { data: inventoryData, error } = await supabase
+      // Get inventory for this store
+      const { data: inventory, error: invError } = await supabase
         .from("store_inventory")
-        .select("item_id, quantity, items(name, sku, cost)")
+        .select(
+          `
+          item_id,
+          quantity,
+          qty_on_order,
+          items(sku, name, cost)
+        `,
+        )
         .eq("store_id", selectedStore);
 
-      if (error) throw error;
-      if (!inventoryData || inventoryData.length === 0) {
-        toast.error("No inventory items found for this store.");
+      if (invError) throw invError;
+
+      if (!inventory || inventory.length === 0) {
+        toast.error("No inventory items found for this store");
         setInventoryRows([]);
         return;
       }
 
-      const rows: StoreInventoryRow[] = inventoryData.map((row: any) => ({
+      const rows: InventoryRow[] = inventory.map((i: any) => ({
+        item_id: i.item_id,
+        sku: i.items.sku,
+        item_name: i.items.name,
         store_id: selectedStore,
-        store_name: stores.find((s) => s.id === selectedStore)?.name || "",
-        item_id: row.item_id,
-        item_name: row.items?.name || "",
-        sku: row.items?.sku || "",
-        quantity: row.quantity,
-        cost: row.items?.cost || 0,
+        quantity: i.quantity || 0,
+        cost: i.items.cost || 0,
       }));
 
       setInventoryRows(rows);
-      toast.success(`Loaded ${rows.length} items for ${rows[0]?.store_name}`);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (error: any) {
+      toast.error(error.message);
     } finally {
-      setIsGenerating(false);
+      setLoading(false);
     }
   };
 
-  // Get store-specific Inventory account
-  const getInventoryAccountForStore = (storeName: string) => {
-    return accounts.find((a) => a.account_name.includes(storeName));
-  };
+  // Save Journal Entry
+  const handleSave = async () => {
+    if (!selectedStore) return toast.error("No store selected");
+    if (inventoryRows.length === 0) return toast.error("No inventory items to save");
 
-  // Save journal entry
-  const saveJournalEntry = async () => {
-    if (inventoryRows.length === 0) return toast.error("No inventory items to save.");
-
-    const retainedEarningsAccount = accounts.find((a) => a.account_name === "Retained Earnings");
-    if (!retainedEarningsAccount) return toast.error("Retained Earnings account not found.");
-
-    const inventoryAccount = getInventoryAccountForStore(stores.find((s) => s.id === selectedStore)?.name || "");
-    if (!inventoryAccount) return toast.error(`Inventory account not found for this store.`);
-
-    setIsSaving(true);
-
+    setLoading(true);
     try {
+      // Fetch Inventory and Retained Earnings accounts
+      const { data: accountsData, error: accountsError } = await supabase
+        .from("accounts")
+        .select("*")
+        .in("account_name", ["Inventory", "Retained Earnings"]);
+
+      if (accountsError) throw accountsError;
+
+      const inventoryAccount = accountsData.find((a) => a.account_name === "Inventory");
+      const retainedEarningsAccount = accountsData.find((a) => a.account_name === "Retained Earnings");
+
+      if (!inventoryAccount || !retainedEarningsAccount) {
+        toast.error("Inventory or Retained Earnings account not found");
+        return;
+      }
+
       // Insert journal entry
+      const entryNumber = `JE-${Date.now()}`;
       const { data: journalEntry, error: entryError } = await supabase
         .from("journal_entries")
-        .insert([
-          {
-            entry_number: `JE-${Date.now()}`,
-            entry_date: new Date().toISOString(),
-            description: `Opening Stock for ${stores.find((s) => s.id === selectedStore)?.name || ""}`,
-          },
-        ])
-        .select("*")
+        .insert({
+          entry_number: entryNumber,
+          entry_date: new Date().toISOString(),
+          description: `Opening Stock for ${stores.find((s) => s.id === selectedStore)?.name}`,
+          entry_type: "manual",
+          status: "draft",
+        })
+        .select()
         .single();
 
-      if (entryError || !journalEntry) throw entryError || new Error("Failed to create journal entry");
+      if (entryError) throw entryError;
 
-      // Insert journal entry lines
+      // Compute total debit
+      const totalDebit = inventoryRows.reduce((sum, row) => sum + row.quantity * row.cost, 0);
+
+      // Prepare lines
       const lines = inventoryRows.map((row, index) => ({
         journal_entry_id: journalEntry.id,
         store_id: row.store_id,
@@ -149,7 +144,7 @@ const JournalEntryNew: React.FC = () => {
         line_number: index + 1,
       }));
 
-      // Retained earnings line (credit)
+      // Retained Earnings line
       lines.push({
         journal_entry_id: journalEntry.id,
         store_id: selectedStore,
@@ -157,27 +152,27 @@ const JournalEntryNew: React.FC = () => {
         account_id: retainedEarningsAccount.id,
         description: "Offset Opening Stock",
         debit_amount: 0,
-        credit_amount: lines.reduce((sum, l) => sum + l.debit_amount, 0),
+        credit_amount: totalDebit,
         line_number: lines.length + 1,
       });
 
+      // Insert lines
       const { error: linesError } = await supabase.from("journal_entry_lines").insert(lines);
       if (linesError) throw linesError;
 
-      toast.success("Journal entry saved successfully!");
+      toast.success("Journal Entry saved successfully");
       setInventoryRows([]);
-    } catch (err: any) {
-      toast.error(err.message);
+      setSelectedStore("");
+    } catch (error: any) {
+      toast.error(error.message);
     } finally {
-      setIsSaving(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="p-6 h-[90vh] flex flex-col">
-      <h1 className="text-2xl font-bold mb-4">Generate Opening Stock</h1>
-
-      <div className="flex gap-3 mb-4">
+    <div className="p-6 max-h-screen overflow-auto space-y-6">
+      <div className="flex items-center gap-4">
         <Select value={selectedStore} onValueChange={setSelectedStore}>
           <SelectTrigger>
             <SelectValue placeholder="Select Store" />
@@ -190,41 +185,40 @@ const JournalEntryNew: React.FC = () => {
             ))}
           </SelectContent>
         </Select>
-
-        <Button onClick={generateOpeningStock} disabled={isGenerating}>
-          {isGenerating ? "Loading..." : "Generate Opening Stock"}
+        <Button onClick={handleGenerateOpeningStock} disabled={loading}>
+          Generate Opening Stock
         </Button>
-        <Button onClick={saveJournalEntry} disabled={isSaving || inventoryRows.length === 0}>
-          {isSaving ? "Saving..." : "Save Journal Entry"}
+        <Button onClick={handleSave} disabled={loading || inventoryRows.length === 0}>
+          Save Journal Entry
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 border rounded-lg overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>SKU</TableHead>
-              <TableHead>Item Name</TableHead>
-              <TableHead>Store</TableHead>
-              <TableHead className="text-right">Quantity</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
-              <TableHead className="text-right">Total Value</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {inventoryRows.map((row) => (
-              <TableRow key={`${row.item_id}-${row.store_id}`}>
-                <TableCell>{row.sku}</TableCell>
-                <TableCell>{row.item_name}</TableCell>
-                <TableCell>{row.store_name}</TableCell>
-                <TableCell className="text-right">{row.quantity}</TableCell>
-                <TableCell className="text-right">{row.cost.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{(row.quantity * row.cost).toFixed(2)}</TableCell>
+      {inventoryRows.length > 0 && (
+        <div className="border rounded-lg overflow-auto max-h-[500px]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>SKU</TableHead>
+                <TableHead>Item Name</TableHead>
+                <TableHead>Quantity</TableHead>
+                <TableHead>Cost</TableHead>
+                <TableHead>Total</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </ScrollArea>
+            </TableHeader>
+            <TableBody>
+              {inventoryRows.map((row) => (
+                <TableRow key={row.item_id}>
+                  <TableCell>{row.sku}</TableCell>
+                  <TableCell>{row.item_name}</TableCell>
+                  <TableCell>{row.quantity}</TableCell>
+                  <TableCell>{formatCurrency(row.cost)}</TableCell>
+                  <TableCell>{formatCurrency(row.quantity * row.cost)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 };
