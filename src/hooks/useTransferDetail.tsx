@@ -38,21 +38,46 @@ export const useTransferDetail = (transferId: number | null) => {
       if (transferError) throw transferError;
       if (!transfer) throw new Error("Transfer not found");
 
-      const { data: items, error: itemsError } = await supabase
+      // FIX: Update select to join the 'items' table and alias the fields.
+      const { data: rawItems, error: itemsError } = await supabase
         .from("transfer_items")
-        .select("*")
+        .select(
+          `
+            id,
+            transfer_id,
+            item_id,
+            requested_quantity,
+            received_quantity,
+            // Join the items table via item_id foreign key and retrieve sku and name
+            item_data:items!inner(sku, name) 
+          `,
+        )
         .eq("transfer_id", transferId)
         .order("created_at");
 
       if (itemsError) throw itemsError;
 
+      // FIX: Map the raw results to flatten the nested item_data into the expected fields (sku, item_name).
+      const items = (rawItems || []).map((ti: any) => ({
+        id: ti.id,
+        transfer_id: ti.transfer_id,
+        item_id: ti.item_id,
+        requested_quantity: ti.requested_quantity,
+        received_quantity: ti.received_quantity,
+        // Populate the missing fields from the joined table data
+        sku: ti.item_data?.sku || ti.sku || "N/A", 
+        item_name: ti.item_data?.name || ti.item_name || "N/A",
+      })) as TransferItem[];
+
+      const enhancedTransfer = {
+        ...transfer,
+        from_store_name: (transfer as any).from_store.name,
+        to_store_name: (transfer as any).to_store.name,
+      } as Transfer & { from_store_name: string; to_store_name: string };
+
       return {
-        transfer: {
-          ...transfer,
-          from_store_name: transfer.from_store?.name || "",
-          to_store_name: transfer.to_store?.name || "",
-        } as Transfer,
-        items: (items || []) as TransferItem[],
+        transfer: enhancedTransfer,
+        items,
       };
     },
     enabled: !!transferId,
@@ -71,47 +96,49 @@ export const useAddTransferItems = () => {
       items,
     }: {
       transferId: number;
-      items: Array<{ sku: string; itemName: string; quantity: number; itemId?: string }>;
+      items: Array<{ sku?: string; itemName?: string; quantity: number; item_id?: string }>;
     }) => {
+      // Fetch item IDs for SKUs if item_id is not provided (e.g., from Import or Barcode)
       const itemsToInsert = await Promise.all(
         items.map(async (item) => {
-          let itemId = item.itemId;
+          let resolvedItemId = item.item_id;
 
-          if (!itemId) {
-            const { data: itemData } = await supabase.from("items").select("id").eq("sku", item.sku).maybeSingle();
-
-            itemId = itemData?.id;
+          if (!resolvedItemId && item.sku) {
+            const { data: itemData, error } = await supabase
+              .from("items")
+              .select("id, name")
+              .eq("sku", item.sku)
+              .maybeSingle();
+            
+            if (error) throw error;
+            resolvedItemId = itemData?.id;
           }
 
-          if (!itemId) throw new Error(`Item with SKU ${item.sku} not found`);
+          if (!resolvedItemId) {
+            toast.error(`Could not find item with SKU: ${item.sku}`);
+            return null;
+          }
 
           return {
             transfer_id: transferId,
-            item_id: itemId,
+            item_id: resolvedItemId,
             requested_quantity: item.quantity,
+            // Only save the foreign key. sku and item_name will be retrieved via join.
           };
         }),
-      );
+      ).then((res) => res.filter((i) => i !== null));
 
-      const { data, error } = await supabase.from("transfer_items").insert(itemsToInsert).select();
+      if (itemsToInsert.length === 0) throw new Error("No valid items to add.");
+
+      const { error } = await supabase.from("transfer_items").insert(itemsToInsert as any);
+
       if (error) throw error;
 
-      // Recalculate total_items
-      const { data: allItems } = await supabase
-        .from("transfer_items")
-        .select("requested_quantity")
-        .eq("transfer_id", transferId);
-
-      const totalItems = allItems?.reduce((sum, i) => sum + (i.requested_quantity || 0), 0) || 0;
-
-      await supabase.from("transfers").update({ total_items: totalItems }).eq("transfer_id", transferId);
-
-      return data;
+      return { message: "Items added" };
     },
     onSuccess: (_, variables) => {
-      toast.success("Items added to transfer successfully.");
+      toast.success("Items added successfully!");
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
     },
     onError: (error: any) => {
       toast.error(`Failed to add items: ${error.message}`);
@@ -128,24 +155,14 @@ export const useRemoveTransferItem = () => {
   return useMutation({
     mutationFn: async ({ transferId, itemId }: { transferId: number; itemId: string }) => {
       const { error } = await supabase.from("transfer_items").delete().eq("id", itemId);
+
       if (error) throw error;
 
-      // Recalculate total_items
-      const { data: allItems } = await supabase
-        .from("transfer_items")
-        .select("requested_quantity")
-        .eq("transfer_id", transferId);
-
-      const totalItems = allItems?.reduce((sum, i) => sum + (i.requested_quantity || 0), 0) || 0;
-
-      await supabase.from("transfers").update({ total_items: totalItems }).eq("transfer_id", transferId);
-
-      return true;
+      return { message: "Item removed" };
     },
     onSuccess: (_, variables) => {
-      toast.success("Item removed from transfer.");
+      toast.success("Item removed successfully!");
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
     },
     onError: (error: any) => {
       toast.error(`Failed to remove item: ${error.message}`);
@@ -160,28 +177,22 @@ export const useUpdateTransferStatus = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ transferId, status }: { transferId: number; status: string }) => {
-      const now = new Date().toISOString();
-      const updatePayload: any = { status };
-      if (status === "approved") updatePayload.approved_at = now;
-      if (status === "shipped") updatePayload.shipped_at = now;
-
-      const { data, error } = await supabase
+    mutationFn: async ({ transferId, status }: { transferId: number; status: Transfer["status"] }) => {
+      const { error } = await supabase
         .from("transfers")
-        .update(updatePayload)
-        .eq("transfer_id", transferId)
-        .select()
-        .maybeSingle();
+        .update({ status })
+        .eq("transfer_id", transferId);
+
       if (error) throw error;
-      return data;
+
+      return { message: `Transfer status updated to ${status}` };
     },
     onSuccess: (_, variables) => {
-      toast.success(`Transfer status updated to ${variables.status}`);
+      toast.success(`Transfer marked as ${variables.status}`);
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
     },
     onError: (error: any) => {
-      toast.error(`Failed to update status: ${error.message}`);
+      toast.error(`Failed to update transfer status: ${error.message}`);
     },
   });
 };
@@ -220,7 +231,7 @@ export const useReceiveTransfer = () => {
       toast.success("Transfer received successfully");
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
+      queryClient.invalidateQueries({ queryKey: [\"store-inventory\"] });
     },
     onError: (error: any) => {
       toast.error(`Failed to receive transfer: ${error.message}`);
