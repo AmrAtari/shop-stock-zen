@@ -31,15 +31,18 @@ const JournalEntryNew = () => {
     { id: "2", account_id: "", description: "", debit: 0, credit: 0 },
   ]);
 
+  // Fetch active accounts
   const { data: accounts } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => {
       const { data, error } = await supabase.from("accounts").select("*").eq("is_active", true).order("account_code");
+
       if (error) throw error;
       return data;
     },
   });
 
+  // Fetch stores
   const { data: stores } = useQuery({
     queryKey: ["stores"],
     queryFn: async () => {
@@ -49,38 +52,16 @@ const JournalEntryNew = () => {
     },
   });
 
-  const addLine = () => {
-    setLines([
-      ...lines,
-      {
-        id: Date.now().toString(),
-        account_id: "",
-        description: "",
-        debit: 0,
-        credit: 0,
-      },
-    ]);
-  };
-
-  const removeLine = (id: string) => {
-    if (lines.length > 2) {
-      setLines(lines.filter((line) => line.id !== id));
-    }
-  };
-
-  const updateLine = (id: string, field: keyof JournalLine, value: any) => {
-    setLines(lines.map((line) => (line.id === id ? { ...line, [field]: value } : line)));
-  };
-
-  const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
-  const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
-  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
-
+  // Create journal entry mutation
   const createEntry = useMutation({
     mutationFn: async () => {
-      if (!isBalanced) throw new Error("Debits and credits must be equal");
+      const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
+      const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
 
-      // Get entry number
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        throw new Error("Debits and credits must be equal");
+      }
+
       const { data: entryNumberData, error: entryNumberError } = await supabase.rpc("generate_journal_entry_number");
       if (entryNumberError) throw entryNumberError;
 
@@ -93,7 +74,7 @@ const JournalEntryNew = () => {
           entry_type: "manual",
           total_debit: totalDebit,
           total_credit: totalCredit,
-          status: "posted",
+          status: "draft",
         })
         .select()
         .single();
@@ -126,6 +107,37 @@ const JournalEntryNew = () => {
     },
   });
 
+  // Add new line
+  const addLine = () => {
+    setLines([
+      ...lines,
+      {
+        id: Date.now().toString(),
+        account_id: "",
+        description: "",
+        debit: 0,
+        credit: 0,
+      },
+    ]);
+  };
+
+  // Remove line
+  const removeLine = (id: string) => {
+    if (lines.length > 2) {
+      setLines(lines.filter((line) => line.id !== id));
+    }
+  };
+
+  // Update line field
+  const updateLine = (id: string, field: keyof JournalLine, value: any) => {
+    setLines(lines.map((line) => (line.id === id ? { ...line, [field]: value } : line)));
+  };
+
+  // Totals
+  const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
+  const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
+  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
+
   // Generate Opening Stock
   const generateOpeningStock = async () => {
     try {
@@ -138,17 +150,23 @@ const JournalEntryNew = () => {
         if (account) storeInventoryAccountMap[store.id] = account.id;
       });
 
-      // Fetch items
+      // Fetch items with store_id, quantity, cost
       const { data: items } = await supabase.from("items").select("store_id, quantity, cost");
 
-      // Calculate stock per store
+      if (!items || items.length === 0) {
+        toast.error("No items found for generating opening stock.");
+        return;
+      }
+
+      // Sum total stock value per store
       const stockPerStore: Record<string, number> = {};
-      items?.forEach((item) => {
+      items.forEach((item) => {
+        if (!item.store_id) return;
         if (!stockPerStore[item.store_id]) stockPerStore[item.store_id] = 0;
-        stockPerStore[item.store_id] += item.quantity * item.cost;
+        stockPerStore[item.store_id] += (item.quantity || 0) * (item.cost || 0);
       });
 
-      // Prepare journal lines
+      // Prepare journal lines for each store
       const openingLines: JournalLine[] = Object.keys(stockPerStore).map((store_id) => ({
         id: Date.now().toString() + store_id,
         account_id: storeInventoryAccountMap[store_id],
@@ -157,7 +175,7 @@ const JournalEntryNew = () => {
         credit: 0,
       }));
 
-      // Add credit line (Retained Earnings)
+      // Add credit line to Retained Earnings
       const { data: retained } = await supabase
         .from("accounts")
         .select("*")
@@ -174,6 +192,7 @@ const JournalEntryNew = () => {
         credit: totalDebit,
       });
 
+      // Set lines in page
       setLines(openingLines);
 
       toast.success("Opening stock generated successfully. Review and Save.");
@@ -195,7 +214,7 @@ const JournalEntryNew = () => {
           <h1 className="text-3xl font-bold">New Journal Entry</h1>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={generateOpeningStock}>
+          <Button variant="outline" onClick={generateOpeningStock}>
             Generate Opening Stock
           </Button>
           <Button onClick={() => createEntry.mutate()} disabled={!isBalanced || createEntry.isPending}>
