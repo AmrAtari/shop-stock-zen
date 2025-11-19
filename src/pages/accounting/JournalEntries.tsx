@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  // State for the new status filter
   const [statusFilter, setStatusFilter] = useState("all");
   const queryClient = useQueryClient();
 
@@ -33,10 +34,21 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // The database is now configured with ON DELETE CASCADE,
-      // so this single command handles the deletion of the entry and all its lines.
-      const { error } = await supabase.from("journal_entries").delete().eq("id", id);
-      if (error) throw error;
+      // 1. CRITICAL FIX: Explicitly delete associated lines first (overrides database config issues)
+      const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
+
+      if (lineError) {
+        console.error("Failed to delete journal lines:", lineError.message);
+        // We throw the error but try to provide helpful context
+        throw new Error(`Failed to delete lines for ${id}. DB Error: ${lineError.message}`);
+      }
+
+      // 2. Delete the main journal entry
+      const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
+      if (entryError) {
+        // This should only fail if the lines were NOT deleted, or for permissions
+        throw entryError;
+      }
 
       return id; // Return the deleted ID for cache update
     },
@@ -50,12 +62,13 @@ const JournalEntries = () => {
         }
         return [];
       });
-
-      // No queryClient.invalidateQueries is needed, preventing the "reappear" race condition.
     },
     onError: (err: any) => {
-      // This should now only fire for true database errors (e.g., connection issues)
-      toast.error(err.message || "Error deleting journal entry.");
+      // Provide a clear error message to the user
+      const errorMessage = err.message.includes("Foreign key")
+        ? "Error: Deletion failed due to database constraint. Lines still exist."
+        : err.message || "Error deleting journal entry.";
+      toast.error(errorMessage);
     },
   });
 
