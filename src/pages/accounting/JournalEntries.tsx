@@ -28,7 +28,7 @@ const JournalEntries = () => {
     },
   });
 
-  // Mutation for deletion
+  // Mutation for deleting journal entries
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("journal_entries").delete().eq("id", id);
@@ -38,8 +38,8 @@ const JournalEntries = () => {
       toast.success("Journal entry deleted successfully");
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Error deleting journal entry");
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to delete journal entry");
     },
   });
 
@@ -59,7 +59,7 @@ const JournalEntries = () => {
   };
 
   const filteredEntries = journalEntries?.filter(
-    (entry: any) =>
+    (entry) =>
       entry.entry_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       entry.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
@@ -90,6 +90,7 @@ const JournalEntries = () => {
             </div>
           </div>
         </CardHeader>
+
         <CardContent>
           <Table>
             <TableHeader>
@@ -105,10 +106,10 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading || deleteMutation.isLoading ? (
+              {isLoading || deleteMutation.status === "pending" ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.isLoading ? "Deleting..." : "Loading..."}
+                    {deleteMutation.status === "pending" ? "Deleting..." : "Loading..."}
                   </TableCell>
                 </TableRow>
               ) : filteredEntries?.length === 0 ? (
@@ -118,7 +119,7 @@ const JournalEntries = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredEntries?.map((entry: any) => (
+                filteredEntries?.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="font-mono font-semibold">{entry.entry_number}</TableCell>
                     <TableCell>{format(new Date(entry.entry_date), "MMM dd, yyyy")}</TableCell>
@@ -147,7 +148,7 @@ const JournalEntries = () => {
                         size="icon"
                         title="Delete"
                         onClick={() => handleDelete(entry.id)}
-                        disabled={deleteMutation.isLoading}
+                        disabled={deleteMutation.status === "pending"}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
