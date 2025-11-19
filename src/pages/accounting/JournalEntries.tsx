@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -27,7 +28,7 @@ const JournalEntries = () => {
     },
   });
 
-  // Delete mutation
+  // Mutation for deletion
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("journal_entries").delete().eq("id", id);
@@ -37,8 +38,8 @@ const JournalEntries = () => {
       toast.success("Journal entry deleted successfully");
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to delete journal entry");
+    onError: (error: any) => {
+      toast.error(error.message || "Error deleting journal entry");
     },
   });
 
@@ -104,10 +105,10 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading || deleteMutation.status === "pending" ? (
+              {isLoading || deleteMutation.isLoading ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.status === "pending" ? "Deleting..." : "Loading..."}
+                    {deleteMutation.isLoading ? "Deleting..." : "Loading..."}
                   </TableCell>
                 </TableRow>
               ) : filteredEntries?.length === 0 ? (
@@ -146,7 +147,7 @@ const JournalEntries = () => {
                         size="icon"
                         title="Delete"
                         onClick={() => handleDelete(entry.id)}
-                        disabled={deleteMutation.status === "pending"}
+                        disabled={deleteMutation.isLoading}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
