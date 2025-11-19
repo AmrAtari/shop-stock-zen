@@ -3,16 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FileText, CheckCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, CheckCheck, Trash2 } from "lucide-react"; // Added CheckCheck, Trash2
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Added useMutation, useQueryClient
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
-  const navigate = useNavigate(); // For redirecting after deletion
+  const navigate = useNavigate();
 
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
@@ -53,7 +53,7 @@ const JournalEntryDetail = () => {
         .update({
           status: "posted",
           posted_at: new Date().toISOString(),
-          posted_by: "system_user", // Placeholder - replace with actual user ID
+          posted_by: "system_user", // Placeholder
         })
         .eq("id", id);
 
@@ -74,30 +74,30 @@ const JournalEntryDetail = () => {
     mutationFn: async () => {
       if (!id) throw new Error("Journal Entry ID is missing.");
 
-      // Delete lines first (if necessary, depending on RLS/cascade settings)
-      // await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
+      // 1. Delete associated lines first (CRITICAL)
+      const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
+      if (lineError) throw lineError;
 
-      const { error } = await supabase.from("journal_entries").delete().eq("id", id);
-
-      if (error) throw error;
+      // 2. Delete the main journal entry
+      const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
+      if (entryError) throw entryError;
     },
     onSuccess: () => {
       toast.success("Journal Entry deleted successfully.");
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
-      // Redirect back to the list page after deletion
-      navigate("/accounting/journal-entries");
+      navigate("/accounting/journal-entries"); // Redirect after deletion
     },
     onError: (err: any) => {
-      toast.error(err.message || "Failed to delete journal entry. Posted entries cannot be deleted.");
+      toast.error(err.message || "Failed to delete journal entry.");
     },
   });
 
   const handleDelete = () => {
-    if (entry?.status === "posted") {
-      toast.error("Posted entries cannot be deleted. They must be reversed.");
+    if (entry?.status !== "draft") {
+      toast.error("Only draft entries can be deleted.");
       return;
     }
-    if (window.confirm("Are you sure you want to delete this draft journal entry?")) {
+    if (window.confirm(`Are you sure you want to delete the draft entry #${entry.entry_number}?`)) {
       deleteMutation.mutate();
     }
   };
@@ -153,7 +153,6 @@ const JournalEntryDetail = () => {
 
         {/* ACTION BUTTONS */}
         <div className="flex gap-2">
-          {/* POST BUTTON (Only visible if status is draft) */}
           {entry?.status === "draft" && (
             <>
               <Button
@@ -272,9 +271,11 @@ const JournalEntryDetail = () => {
                   <TableCell>{line.account?.account_name}</TableCell>
                   <TableCell className="max-w-md truncate">{line.description}</TableCell>
                   <TableCell className="text-right font-mono">
+                    {/* FIX: Use debit_amount */}
                     {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono">
+                    {/* FIX: Use credit_amount */}
                     {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : "—"}
                   </TableCell>
                 </TableRow>
