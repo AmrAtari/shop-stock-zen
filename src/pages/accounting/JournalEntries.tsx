@@ -31,20 +31,37 @@ const JournalEntries = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // 1. Delete associated lines first (CRITICAL for non-cascading FKs)
+      // 1. Delete associated lines first
       const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
       if (lineError) throw lineError;
 
       // 2. Delete the main journal entry
       const { error: entryError } = await supabase.from("journal_entries").delete().eq("id", id);
       if (entryError) throw entryError;
+
+      return id; // Return the deleted ID
     },
-    onSuccess: () => {
+    onSuccess: (deletedId) => {
       toast.success("Journal entry deleted successfully");
-      queryClient.invalidateQueries({ queryKey: ["journal_entries"] }); // Re-fetch the list
+
+      // FIX: MANUAL CACHE UPDATE to force UI removal
+      queryClient.setQueryData(["journal_entries"], (oldData: any[] | undefined) => {
+        if (oldData) {
+          return oldData.filter((entry: any) => entry.id !== deletedId);
+        }
+        return [];
+      });
+
+      // Invalidate for background re-fetch and long-term consistency (optional but recommended)
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Error deleting journal entry. Ensure all related data is removed.");
+      // Check if it's a foreign key violation (common reason for failure if lines weren't deleted)
+      const errorMessage = err.message.includes("foreign key constraint")
+        ? "Error: Failed to delete related lines or entry. Check database constraints."
+        : err.message || "Error deleting journal entry.";
+
+      toast.error(errorMessage);
     },
   });
 
@@ -114,61 +131,61 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* FIX: Use isPending for loading check */}
-              {isLoading || deleteMutation.isPending ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.isPending ? "Deleting..." : "Loading..."}
-                  </TableCell>
-                </TableRow>
-              ) : filteredEntries?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center">
-                    No journal entries found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredEntries.map((entry: any) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="font-mono font-semibold">{entry.entry_number}</TableCell>
-                    <TableCell>{format(new Date(entry.entry_date), "MMM dd, yyyy")}</TableCell>
-                    <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{entry.entry_type}</Badge>
-                    </TableCell>
-                    <TableCell className="font-mono">${entry.total_debit?.toFixed(2) || "0.00"}</TableCell>
-                    <TableCell className="font-mono">${entry.total_credit?.toFixed(2) || "0.00"}</TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadge(entry.status) as any}>{entry.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right flex justify-end gap-1">
-                      <Link to={`/accounting/journal-entries/${entry.id}`}>
-                        <Button variant="ghost" size="icon" title="View">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                      {/* Only allow editing of drafts */}
-                      {entry.status === "draft" && (
-                        <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
-                          <Button variant="ghost" size="icon" title="Edit">
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                        </Link>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Delete"
-                        // Pass the whole entry object to handleDelete for status check
-                        onClick={() => handleDelete(entry)}
-                        disabled={deleteMutation.isPending || entry.status !== "draft"} // Only allow deletion of drafts
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </Button>
+              {
+                // The isLoading and deleteMutation.isPending checks are now correct
+                isLoading || deleteMutation.isPending ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center">
+                      {deleteMutation.isPending ? "Deleting..." : "Loading..."}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
+                ) : filteredEntries?.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center">
+                      No journal entries found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredEntries.map((entry: any) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="font-mono font-semibold">{entry.entry_number}</TableCell>
+                      <TableCell>{format(new Date(entry.entry_date), "MMM dd, yyyy")}</TableCell>
+                      <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{entry.entry_type}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono">${entry.total_debit?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell className="font-mono">${entry.total_credit?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadge(entry.status) as any}>{entry.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right flex justify-end gap-1">
+                        <Link to={`/accounting/journal-entries/${entry.id}`}>
+                          <Button variant="ghost" size="icon" title="View">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        {entry.status === "draft" && (
+                          <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
+                            <Button variant="ghost" size="icon" title="Edit">
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          </Link>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Delete"
+                          onClick={() => handleDelete(entry)}
+                          disabled={deleteMutation.isPending || entry.status !== "draft"}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )
+              }
             </TableBody>
           </Table>
         </CardContent>
