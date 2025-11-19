@@ -38,18 +38,18 @@ export const useTransferDetail = (transferId: number | null) => {
       if (transferError) throw transferError;
       if (!transfer) throw new Error("Transfer not found");
 
-      // FIX: Update select to join the 'items' table and alias the fields.
+      // FIX: Select the item_id column explicitly AND perform an aliased join
       const { data: rawItems, error: itemsError } = await supabase
         .from("transfer_items")
         .select(
           `
             id,
             transfer_id,
-            item_id,
             requested_quantity,
             received_quantity,
-            // Join the items table via item_id foreign key and retrieve sku and name
-            item_data:items!inner(sku, name) 
+            item_id, // Select the foreign key
+            // Join the items table via the item_id foreign key relationship
+            item_details:item_id!inner(sku, name) 
           `,
         )
         .eq("transfer_id", transferId)
@@ -57,7 +57,7 @@ export const useTransferDetail = (transferId: number | null) => {
 
       if (itemsError) throw itemsError;
 
-      // FIX: Map the raw results to flatten the nested item_data into the expected fields (sku, item_name).
+      // FIX: Map the raw results to pull sku and item_name from the joined 'item_details' object.
       const items = (rawItems || []).map((ti: any) => ({
         id: ti.id,
         transfer_id: ti.transfer_id,
@@ -65,8 +65,8 @@ export const useTransferDetail = (transferId: number | null) => {
         requested_quantity: ti.requested_quantity,
         received_quantity: ti.received_quantity,
         // Populate the missing fields from the joined table data
-        sku: ti.item_data?.sku || ti.sku || "N/A", 
-        item_name: ti.item_data?.name || ti.item_name || "N/A",
+        sku: ti.item_details?.sku || "N/A",
+        item_name: ti.item_details?.name || "N/A",
       })) as TransferItem[];
 
       const enhancedTransfer = {
@@ -109,7 +109,7 @@ export const useAddTransferItems = () => {
               .select("id, name")
               .eq("sku", item.sku)
               .maybeSingle();
-            
+
             if (error) throw error;
             resolvedItemId = itemData?.id;
           }
@@ -178,10 +178,7 @@ export const useUpdateTransferStatus = () => {
 
   return useMutation({
     mutationFn: async ({ transferId, status }: { transferId: number; status: Transfer["status"] }) => {
-      const { error } = await supabase
-        .from("transfers")
-        .update({ status })
-        .eq("transfer_id", transferId);
+      const { error } = await supabase.from("transfers").update({ status }).eq("transfer_id", transferId);
 
       if (error) throw error;
 
@@ -231,7 +228,7 @@ export const useReceiveTransfer = () => {
       toast.success("Transfer received successfully");
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.detail(String(variables.transferId)) });
       queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      queryClient.invalidateQueries({ queryKey: [\"store-inventory\"] });
+      queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
     },
     onError: (error: any) => {
       toast.error(`Failed to receive transfer: ${error.message}`);
