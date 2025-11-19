@@ -36,13 +36,23 @@ export const TransferDetailPage = () => {
   const updateStatusMutation = useUpdateTransferStatus();
   const receiveMutation = useReceiveTransfer();
 
-  // Fetch all items for selection
+  // Fetch all items with resolved category names
   const { data: allItems = [] } = useQuery<Item[]>({
     queryKey: ["items"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("items").select("*").order("name");
+      const { data, error } = await supabase
+        .from("items")
+        .select(`
+          *,
+          category_name:categories!items_category_fkey(name)
+        `)
+        .order("name");
       if (error) throw error;
-      return data as Item[];
+      // Map the data to include the resolved category name
+      return (data || []).map((item: any) => ({
+        ...item,
+        category: item.category_name?.name || item.category || "Uncategorized",
+      })) as Item[];
     },
   });
 
