@@ -118,28 +118,6 @@ export const useAddTransferItems = () => {
   });
 };
 
-const itemsToInsert = await Promise.all(
-  items.map(async (item) => {
-    let itemId = item.itemId;
-
-    if (!itemId) {
-      const { data: itemData } = await supabase.from("items").select("id").eq("sku", item.sku).maybeSingle();
-
-      itemId = itemData?.id;
-    }
-
-    if (!itemId) {
-      throw new Error(`Item with SKU ${item.sku} not found`);
-    }
-
-    return {
-      transfer_id: transferId,
-      item_id: itemId,
-      requested_quantity: item.quantity,
-    };
-  }),
-);
-
 // ------------------
 // 3. Remove Transfer Item
 // ------------------
