@@ -14,17 +14,10 @@ interface Store {
   name: string;
 }
 
-interface InventoryItem {
-  id: string;
-  sku: string;
-  name: string;
-  cost: number;
-}
-
 interface JournalLine {
   id: string;
-  account_id: string | null; // Allow null for optional account ID
-  item_id: string | null; // Allow null for optional item ID (UUID fix)
+  account_id: string | null; // Allow null for setting later/flexibility
+  item_id: string | null; // FIX: Allow null for UUID when no item is present
   description: string;
   debit_amount: number;
   credit_amount: number;
@@ -53,7 +46,7 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
-      // Find Inventory account dynamically using ORDER and LIMIT(1)
+      // 1. Find Inventory account (using ilike for flexibility)
       const { data: accountsData } = await supabase
         .from("accounts")
         .select("id")
@@ -63,12 +56,9 @@ const JournalEntryNew = () => {
         .limit(1);
 
       const inventoryAccount = accountsData?.[0];
+      if (!inventoryAccount) throw new Error("Inventory account not found.");
 
-      if (!inventoryAccount) {
-        throw new Error("Inventory account not found. Check if an active account exists with 'Inventory' in the name.");
-      }
-
-      // Find Retained Earnings account
+      // 2. Find Retained Earnings account
       const { data: retainedAccountData } = await supabase
         .from("accounts")
         .select("id")
@@ -77,33 +67,28 @@ const JournalEntryNew = () => {
 
       if (!retainedAccountData) throw new Error("Retained Earnings account not found.");
 
-      // Calculate Total Debit from the generated lines (Inventory Asset Debits)
+      // Calculate Total Debit (Total Cost of Inventory)
       const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
 
-      // CRITICAL ADDITION: Create the Balancing Credit Line to Retained Earnings
+      // 3. CRITICAL: Create the Balancing Credit Line to Retained Earnings
       const retainedEarningsCreditLine: JournalLine = {
         id: crypto.randomUUID(),
         account_id: retainedAccountData.id,
-        item_id: null, // FIX: Use null for item_id instead of ""
+        item_id: null, // Correctly use null
         description: `Opening Stock (Credit to Retained Earnings)`,
         debit_amount: 0,
-        credit_amount: totalDebit,
+        credit_amount: totalDebit, // Credit equals total debit
         store_id: selectedStore,
         line_number: journalLines.length + 1,
       };
 
-      // Combine Debit lines (journalLines) with the new Credit line
       const finalLines = [...journalLines, retainedEarningsCreditLine];
+      const finalTotalDebit = totalDebit;
+      const finalTotalCredit = totalDebit;
 
-      // Calculate the final totals (now balanced)
-      const finalTotalDebit = finalLines.reduce((sum, line) => sum + line.debit_amount, 0);
-      const finalTotalCredit = finalLines.reduce((sum, line) => sum + line.credit_amount, 0);
-
-      // Safety Check: Ensure the entry is balanced before insertion
       if (finalTotalDebit !== finalTotalCredit) {
-        throw new Error("Journal entry failed balancing check.");
+        throw new Error("Journal entry failed balancing check. Debit must equal Credit.");
       }
-      // -----------------------------------------------------------
 
       const journalEntryId = crypto.randomUUID();
       const entryNumber = `JE-${Date.now()}`;
@@ -117,7 +102,7 @@ const JournalEntryNew = () => {
           entry_date: entryDate,
           description: `Opening Stock for ${stores?.find((s) => s.id === selectedStore)?.name}`,
           entry_type: "manual",
-          status: "draft", // SAVED AS DRAFT
+          status: "draft",
           total_debit: finalTotalDebit,
           total_credit: finalTotalCredit,
         },
@@ -129,7 +114,9 @@ const JournalEntryNew = () => {
         ...line,
         journal_entry_id: journalEntryId,
         line_number: index + 1,
+        // Set the correct account_id: Inventory ID for the debit lines, Retained Earnings ID for the credit line.
         account_id: line.account_id || inventoryAccount.id,
+        item_id: line.item_id || null, // Ensure item_id is null if not set
       }));
 
       const { error: lineError } = await supabase.from("journal_entry_lines").insert(linesToInsert);
@@ -164,20 +151,19 @@ const JournalEntryNew = () => {
         return;
       }
 
-      // Create Debit Lines for Inventory Asset
-      const debitLines: JournalLine[] = inventoryItems.map((inv: any, index: number) => ({
+      const lines: JournalLine[] = inventoryItems.map((inv: any, index: number) => ({
         id: crypto.randomUUID(),
-        account_id: null, // FIX: Use null instead of ""
+        account_id: null, // Set to null, will use Inventory account ID during save
         item_id: inv.item_id,
-        description: `Opening Stock (Inventory): ${inv.items.sku} - ${inv.items.name}`,
+        description: `Opening Stock: ${inv.items.sku} - ${inv.items.name}`,
         debit_amount: inv.quantity * inv.items.cost,
         credit_amount: 0,
         store_id: selectedStore,
         line_number: index + 1,
       }));
 
-      setJournalLines(debitLines);
-      toast.success("Inventory lines generated. Press 'Save' to complete the entry.");
+      setJournalLines(lines);
+      toast.success("Inventory lines generated. Press 'Save Journal Entry' to save the draft.");
     } catch (err: any) {
       toast.error(err.message || "Error generating opening stock");
     }
@@ -191,8 +177,8 @@ const JournalEntryNew = () => {
       <h1 className="text-3xl font-bold">New Journal Entry</h1>
 
       <Card>
-        <CardHeader className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-          <div className="flex items-center gap-4 flex-wrap">
+        <CardHeader className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
             <Select value={selectedStore} onValueChange={setSelectedStore}>
               <SelectTrigger className="w-60">
                 <SelectValue placeholder="Select Store" />
@@ -205,7 +191,7 @@ const JournalEntryNew = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={handleGenerate} disabled={isGenerating || !selectedStore}>
+            <Button onClick={handleGenerate} disabled={isGenerating}>
               {isGenerating ? "Generating..." : "Generate Opening Stock"}
             </Button>
           </div>
@@ -227,8 +213,8 @@ const JournalEntryNew = () => {
               <TableBody>
                 {journalLines.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-10">
-                      Select a store and click "Generate Opening Stock"
+                    <TableCell colSpan={4} className="text-center">
+                      No lines generated
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -242,7 +228,7 @@ const JournalEntryNew = () => {
                         <TableCell className="text-right">${line.credit_amount.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
-                    {/* Retained Earnings Credit Line (Shown only for display purposes) */}
+                    {/* Retained Earnings Credit Line (Display only) */}
                     <TableRow className="bg-slate-50/50">
                       <TableCell>{journalLines.length + 1}</TableCell>
                       <TableCell className="font-semibold text-primary">
