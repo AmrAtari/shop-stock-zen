@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry with Joins (Requires RLS on both journal_entries and profiles)
+  // 1. Fetch Journal Entry with Joins (Cleaned up select string)
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -22,15 +22,14 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:profiles(full_name), // Join to fetch creator name
-          poster:profiles(full_name)   // Join to fetch poster name
+          creator:profiles(full_name),
+          poster:profiles(full_name)
         `,
         )
         .eq("id", id)
         .single();
 
       if (error) {
-        // If RLS fails, this error will fire, leading to "Journal entry not found."
         console.error("Error fetching journal entry:", error);
         throw error;
       }
@@ -58,7 +57,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 3. POSTING MUTATION: Fix for "invalid input syntax for type uuid: "system_user""
+  // 3. POSTING MUTATION: Contains the fix for the UUID error
   const postMutation = useMutation({
     mutationFn: async () => {
       // Basic check before posting
@@ -81,7 +80,7 @@ const JournalEntryDetail = () => {
         .from("journal_entries")
         .update({
           status: "posted",
-          posted_by: postedById, // Using the correct UUID
+          posted_by: postedById, // Correctly assigns the UUID
           posted_at: new Date().toISOString(),
         })
         .eq("id", id);
@@ -92,7 +91,6 @@ const JournalEntryDetail = () => {
     },
     onSuccess: () => {
       toast.success(`Journal Entry #${entry?.entry_number} successfully posted!`);
-      // Invalidate queries to refresh the detail page and the main list
       queryClient.invalidateQueries({ queryKey: ["journal_entry", id] });
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
@@ -100,8 +98,8 @@ const JournalEntryDetail = () => {
       toast.error(err.message || "Failed to post journal entry.");
     },
   });
-  // ---------------------------------------------------------------------------------
 
+  // Helper function for status badges
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
       draft: "secondary",
@@ -117,13 +115,14 @@ const JournalEntryDetail = () => {
     return <div>Loading journal entry details...</div>;
   }
 
-  // If the query returns no data (often due to RLS blocking SELECT)
+  // Improved error handling for RLS failure
   if (!entry) {
     return (
       <div className="p-8 text-center space-y-4">
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
-          This entry may not exist, or you may lack the necessary permissions to view it (Row Level Security policy).
+          This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
+          Please check your Supabase RLS SELECT policies on `journal_entries` and `profiles` tables.
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
@@ -182,7 +181,6 @@ const JournalEntryDetail = () => {
           <p>
             <span className="font-semibold">Type:</span> {entry.entry_type}
           </p>
-          {/* Displaying creator/poster names from joins */}
           <p>
             <span className="font-semibold">Created By:</span> {entry.creator?.full_name || "N/A"}
           </p>
@@ -232,6 +230,7 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
+                      {/* Note: Use debit_amount/credit_amount from your table structure */}
                       {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
