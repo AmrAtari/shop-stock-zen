@@ -21,15 +21,17 @@ interface InventoryItem {
   cost: number;
 }
 
+// FIX: Added journal_entry_id to the interface
 interface JournalLine {
   id: string;
   account_id: string;
-  item_id: string | null; // Changed to allow null for balancing entry
+  item_id: string | null;
   description: string;
   debit_amount: number;
   credit_amount: number;
   store_id: string;
   line_number: number;
+  journal_entry_id?: string; // Made optional as it's added during the save mutation
 }
 
 const JournalEntryNew = () => {
@@ -78,7 +80,6 @@ const JournalEntryNew = () => {
       const entryDate = new Date().toISOString();
 
       const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
-      const totalCredit = journalLines.reduce((sum, line) => sum + line.credit_amount, 0);
 
       // If the current lines are unbalanced (only debits generated), the total debit will be the amount to credit.
       const amountToCredit = totalDebit;
@@ -105,13 +106,15 @@ const JournalEntryNew = () => {
       // Prepare journal lines (debit lines for inventory)
       const debitLinesToInsert = journalLines.map((line, index) => ({
         ...line,
-        journal_entry_id: journalEntryId,
+        journal_entry_id: journalEntryId, // Now correctly typed and assigned
         line_number: index + 1,
         account_id: inventoryAccount.id, // Set the Inventory Asset account ID
       }));
 
       // Create the single balancing credit line (to Retained Earnings)
-      const creditLineToInsert: JournalLine = {
+      // Note: We cast this object to 'any' for insertion since it matches the table schema,
+      // even if the TS interface slightly differs for the state handling (like journal_entry_id being optional).
+      const creditLineToInsert: any = {
         id: crypto.randomUUID(),
         journal_entry_id: journalEntryId,
         line_number: debitLinesToInsert.length + 1,
@@ -202,11 +205,14 @@ const JournalEntryNew = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={handleGenerate} disabled={isGenerating}>
+            <Button onClick={handleGenerate} disabled={isGenerating || saveMutation.isPending}>
               {isGenerating ? "Generating..." : "Generate Opening Stock"}
             </Button>
           </div>
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || journalLines.length === 0}>
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || journalLines.length === 0 || totalDebitDisplay === 0}
+          >
             {saveMutation.isPending ? "Saving..." : "Save Journal Entry"}
           </Button>
         </CardHeader>
