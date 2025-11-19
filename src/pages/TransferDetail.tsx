@@ -82,22 +82,34 @@ const TransferDetailPage = () => {
   // Handlers
   const handleAddItems = (newItems: ImportedItem[]) => {
     addItemsMutation.mutate({
-      transferId: transferId,
-      items: newItems.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+      transferId,
+      items: newItems.map((i) => ({
+        sku: i.sku,
+        itemName: "", // Required for TS, not inserted into DB
+        quantity: i.quantity,
+      })),
     });
   };
 
   const handleBarcodeScanned = async (scannedItems: Array<{ sku: string; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: transferId,
-      items: scannedItems.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+      transferId,
+      items: scannedItems.map((i) => ({
+        sku: i.sku,
+        itemName: "", // Required for TS
+        quantity: i.quantity,
+      })),
     });
   };
 
   const handleManualSelection = (selectedItems: Array<{ item: Item; quantity: number }>) => {
     addItemsMutation.mutate({
-      transferId: transferId,
-      items: selectedItems.map((i) => ({ sku: i.item.sku, quantity: i.quantity })),
+      transferId,
+      items: selectedItems.map((i) => ({
+        sku: i.item.sku,
+        itemName: "", // Required for TS
+        quantity: i.quantity,
+      })),
     });
   };
 
@@ -187,26 +199,27 @@ const TransferDetailPage = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item: TransferItem & { item_name: string }) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-mono text-sm">
-                    {item.item_id ? allItems.find((i) => i.id === item.item_id)?.sku : "-"}
-                  </TableCell>
-                  <TableCell>{item.item_id ? allItems.find((i) => i.id === item.item_id)?.name : "-"}</TableCell>
-                  <TableCell>{item.requested_quantity || 0}</TableCell>
-                  <TableCell>{item.received_quantity || 0}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleRemoveItem(item.id)}
-                      disabled={["shipped", "received"].includes(enhancedTransfer?.status || "")}
-                    >
-                      Remove
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {items.map((item: TransferItem & { item_name?: string }) => {
+                const itemDetails = allItems.find((i) => i.id === item.item_id);
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono text-sm">{itemDetails?.sku || "-"}</TableCell>
+                    <TableCell>{itemDetails?.name || "-"}</TableCell>
+                    <TableCell>{item.requested_quantity || 0}</TableCell>
+                    <TableCell>{item.received_quantity || 0}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRemoveItem(item.id)}
+                        disabled={["shipped", "received"].includes(enhancedTransfer?.status || "")}
+                      >
+                        Remove
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
