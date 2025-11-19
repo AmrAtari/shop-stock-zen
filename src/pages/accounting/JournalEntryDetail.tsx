@@ -5,14 +5,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, FileText, CheckCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Import useMutation and useQueryClient
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { toast } from "sonner"; // Import toast for notifications
+import { toast } from "sonner";
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
-  const queryClient = useQueryClient(); // Initialize QueryClient
+  const queryClient = useQueryClient();
 
+  // 1. Fetch Journal Entry with Joins (Requires RLS on both journal_entries and profiles)
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -21,18 +22,23 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:profiles(full_name),
-          poster:profiles(full_name)
+          creator:profiles(full_name), // Join to fetch creator name
+          poster:profiles(full_name)   // Join to fetch poster name
         `,
-        ) // Select creator and poster names if you have a 'profiles' table
+        )
         .eq("id", id)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // If RLS fails, this error will fire, leading to "Journal entry not found."
+        console.error("Error fetching journal entry:", error);
+        throw error;
+      }
       return data;
     },
   });
 
+  // 2. Fetch Journal Lines with Account Joins
   const { data: lines, isLoading: linesLoading } = useQuery({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
@@ -52,17 +58,15 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // --- POSTING MUTATION: Fix for "invalid input syntax for type uuid: "system_user"" ---
+  // 3. POSTING MUTATION: Fix for "invalid input syntax for type uuid: "system_user""
   const postMutation = useMutation({
     mutationFn: async () => {
       // Basic check before posting
       if (entry?.total_debit !== entry?.total_credit) {
-        throw new Error(
-          "Journal entry is unbalanced ($" + (entry.total_debit - entry.total_credit).toFixed(2) + "). Cannot post.",
-        );
+        throw new Error("Journal entry is unbalanced. Cannot post.");
       }
 
-      // 1. Get the current authenticated user's UUID
+      // Get the current authenticated user's UUID
       const {
         data: { user },
         error: userError,
@@ -70,14 +74,14 @@ const JournalEntryDetail = () => {
       if (userError || !user?.id) {
         throw new Error("User not authenticated. Please log in to post entries.");
       }
-      const postedById = user.id;
+      const postedById = user.id; // This is the user's UUID
 
-      // 2. Update the journal entry status and set posted_by to the user's UUID
+      // Update the journal entry status and set posted_by to the user's UUID
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
           status: "posted",
-          posted_by: postedById, // <<< FIX: This correctly uses the user's UUID
+          posted_by: postedById, // Using the correct UUID
           posted_at: new Date().toISOString(),
         })
         .eq("id", id);
@@ -113,8 +117,22 @@ const JournalEntryDetail = () => {
     return <div>Loading journal entry details...</div>;
   }
 
+  // If the query returns no data (often due to RLS blocking SELECT)
   if (!entry) {
-    return <div>Journal entry not found.</div>;
+    return (
+      <div className="p-8 text-center space-y-4">
+        <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
+        <p className="text-muted-foreground">
+          This entry may not exist, or you may lack the necessary permissions to view it (Row Level Security policy).
+        </p>
+        <Link to="/accounting/journal-entries">
+          <Button variant="outline">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to List
+          </Button>
+        </Link>
+      </div>
+    );
   }
 
   return (
@@ -164,6 +182,7 @@ const JournalEntryDetail = () => {
           <p>
             <span className="font-semibold">Type:</span> {entry.entry_type}
           </p>
+          {/* Displaying creator/poster names from joins */}
           <p>
             <span className="font-semibold">Created By:</span> {entry.creator?.full_name || "N/A"}
           </p>
