@@ -1,9 +1,9 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom"; // Added useNavigate
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FileText, CheckCheck } from "lucide-react";
+import { ArrowLeft, FileText, CheckCheck, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -12,6 +12,7 @@ import { toast } from "sonner";
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate(); // For redirecting after deletion
 
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
@@ -42,7 +43,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // New mutation to post the journal entry
+  // Mutation to post the journal entry
   const postEntryMutation = useMutation({
     mutationFn: async () => {
       if (!id) throw new Error("Journal Entry ID is missing.");
@@ -51,7 +52,6 @@ const JournalEntryDetail = () => {
         .from("journal_entries")
         .update({
           status: "posted",
-          // Use current timestamp for posted_at
           posted_at: new Date().toISOString(),
           posted_by: "system_user", // Placeholder - replace with actual user ID
         })
@@ -61,7 +61,6 @@ const JournalEntryDetail = () => {
     },
     onSuccess: () => {
       toast.success("Journal Entry has been posted successfully.");
-      // Invalidate both the detail and the list queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["journal_entry", id] });
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
@@ -69,6 +68,39 @@ const JournalEntryDetail = () => {
       toast.error(err.message || "Failed to post journal entry.");
     },
   });
+
+  // Mutation to delete the journal entry
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error("Journal Entry ID is missing.");
+
+      // Delete lines first (if necessary, depending on RLS/cascade settings)
+      // await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
+
+      const { error } = await supabase.from("journal_entries").delete().eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Journal Entry deleted successfully.");
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
+      // Redirect back to the list page after deletion
+      navigate("/accounting/journal-entries");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to delete journal entry. Posted entries cannot be deleted.");
+    },
+  });
+
+  const handleDelete = () => {
+    if (entry?.status === "posted") {
+      toast.error("Posted entries cannot be deleted. They must be reversed.");
+      return;
+    }
+    if (window.confirm("Are you sure you want to delete this draft journal entry?")) {
+      deleteMutation.mutate();
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
@@ -123,10 +155,21 @@ const JournalEntryDetail = () => {
         <div className="flex gap-2">
           {/* POST BUTTON (Only visible if status is draft) */}
           {entry?.status === "draft" && (
-            <Button onClick={() => postEntryMutation.mutate()} disabled={postEntryMutation.isPending}>
-              <CheckCheck className="w-4 h-4 mr-2" />
-              {postEntryMutation.isPending ? "Posting..." : "Post Entry"}
-            </Button>
+            <>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+                title="Delete Draft Entry"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {deleteMutation.isPending ? "Deleting..." : "Delete Draft"}
+              </Button>
+              <Button onClick={() => postEntryMutation.mutate()} disabled={postEntryMutation.isPending}>
+                <CheckCheck className="w-4 h-4 mr-2" />
+                {postEntryMutation.isPending ? "Posting..." : "Post Entry"}
+              </Button>
+            </>
           )}
 
           <Button variant="outline">
