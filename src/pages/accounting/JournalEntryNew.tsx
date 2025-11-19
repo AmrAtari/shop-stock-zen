@@ -23,8 +23,8 @@ interface InventoryItem {
 
 interface JournalLine {
   id: string;
-  account_id: string;
-  item_id: string;
+  account_id: string | null; // UUID fields that might be empty must be nullable
+  item_id: string | null; // UUID fields that might be empty must be nullable
   description: string;
   debit_amount: number;
   credit_amount: number;
@@ -53,16 +53,16 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
-      // Find Inventory account dynamically using ORDER and LIMIT(1)
+      // Find Inventory account dynamically
       const { data: accountsData } = await supabase
         .from("accounts")
         .select("id")
-        .ilike("account_name", `%Inventory%`) // Back to dynamic search
+        .ilike("account_name", `%Inventory%`)
         .eq("is_active", true)
-        .order("account_code", { ascending: true }) // Sort by code (lowest first)
-        .limit(1); // Only take the top result
+        .order("account_code", { ascending: true })
+        .limit(1);
 
-      const inventoryAccount = accountsData?.[0]; // Get the first account found
+      const inventoryAccount = accountsData?.[0];
 
       if (!inventoryAccount) {
         throw new Error("Inventory account not found. Check if an active account exists with 'Inventory' in the name.");
@@ -84,7 +84,7 @@ const JournalEntryNew = () => {
       const retainedEarningsCreditLine: JournalLine = {
         id: crypto.randomUUID(),
         account_id: retainedAccountData.id,
-        item_id: "",
+        item_id: null, // FIX: Use null for item_id instead of ""
         description: `Opening Stock (Credit to Retained Earnings)`,
         debit_amount: 0,
         credit_amount: totalDebit,
@@ -129,7 +129,9 @@ const JournalEntryNew = () => {
         ...line,
         journal_entry_id: journalEntryId,
         line_number: index + 1,
-        // Use the found Inventory account ID for the debit lines
+        // Use the found Inventory account ID for the debit lines.
+        // If line.account_id is null (the inventory lines), use inventoryAccount.id.
+        // If line.account_id is set (the Retained Earnings line), use its value.
         account_id: line.account_id || inventoryAccount.id,
       }));
 
@@ -168,7 +170,7 @@ const JournalEntryNew = () => {
       // Create Debit Lines for Inventory Asset
       const debitLines: JournalLine[] = inventoryItems.map((inv: any, index: number) => ({
         id: crypto.randomUUID(),
-        account_id: "", // Will be set to Inventory Account ID during save
+        account_id: null, // FIX: Use null instead of ""
         item_id: inv.item_id,
         description: `Opening Stock (Inventory): ${inv.items.sku} - ${inv.items.name}`,
         debit_amount: inv.quantity * inv.items.cost,
