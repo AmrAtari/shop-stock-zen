@@ -21,10 +21,18 @@ interface JournalLine {
   credit: number;
 }
 
+interface InventoryItem {
+  quantity: number;
+  item: {
+    id: string;
+    name: string;
+    cost: number;
+  };
+}
+
 const JournalEntryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
   const [entryDate, setEntryDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<JournalLine[]>([
@@ -33,7 +41,6 @@ const JournalEntryNew = () => {
   ]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>("");
 
-  // Load accounts
   const { data: accounts } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => {
@@ -43,11 +50,10 @@ const JournalEntryNew = () => {
     },
   });
 
-  // Load stores
   const { data: stores } = useQuery({
     queryKey: ["stores"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("id,name,stock_account_id").order("name");
+      const { data, error } = await supabase.from("stores").select("id, name").order("name");
       if (error) throw error;
       return data;
     },
@@ -122,67 +128,53 @@ const JournalEntryNew = () => {
   const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
-  // --- Professional Opening Stock ---
+  // Generate Opening Stock for selected store
   const generateOpeningStock = async () => {
     if (!selectedStoreId) {
       toast.error("Please select a store first");
       return;
     }
 
-    try {
-      const { data: inventoryItems, error } = await supabase
-        .from("store_inventory")
-        .select(
-          `
-          quantity,
-          item:items(id, name, cost)
-        `,
-        )
-        .eq("store_id", selectedStoreId)
-        .gt("quantity", 0);
+    const { data: inventoryItems, error } = await supabase
+      .from<InventoryItem>("store_inventory")
+      .select("quantity, item:items(id, name, cost)")
+      .eq("store_id", selectedStoreId)
+      .gt("quantity", 0);
 
-      if (error) throw error;
-      if (!inventoryItems || inventoryItems.length === 0) {
-        toast.error("No inventory items found for this store");
-        return;
-      }
-
-      const store = stores?.find((s) => s.id === selectedStoreId);
-      if (!store?.stock_account_id) {
-        toast.error("Store Stock Account not defined");
-        return;
-      }
-
-      const retainedEarningsAccountId = accounts?.find((a) => a.account_code === "3000")?.id;
-      if (!retainedEarningsAccountId) {
-        toast.error("Retained Earnings account not found");
-        return;
-      }
-
-      const openingStockLines: JournalLine[] = inventoryItems.map((inv) => ({
-        id: Date.now().toString() + Math.random(),
-        account_id: store.stock_account_id, // debit Stock account
-        description: `Opening Stock - ${inv.item.name}`,
-        debit: parseFloat((inv.quantity * inv.item.cost).toFixed(2)),
-        credit: 0,
-      }));
-
-      // Add a single line to credit Retained Earnings with total
-      const totalStockValue = openingStockLines.reduce((sum, l) => sum + l.debit, 0);
-      const retainedLine: JournalLine = {
-        id: Date.now().toString() + Math.random(),
-        account_id: retainedEarningsAccountId,
-        description: `Opening Stock for store ${store.name}`,
-        debit: 0,
-        credit: parseFloat(totalStockValue.toFixed(2)),
-      };
-
-      setLines((prev) => [...prev, ...openingStockLines, retainedLine]);
-      toast.success(`Opening stock generated for ${inventoryItems.length} items`);
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to generate opening stock");
+    if (error) {
+      toast.error(error.message);
+      return;
     }
+
+    if (!inventoryItems || inventoryItems.length === 0) {
+      toast.error("No inventory items found for this store");
+      return;
+    }
+
+    // Clear existing lines
+    setLines([]);
+
+    // For each inventory item, create debit for Inventory, credit for Retained Earnings
+    const newLines: JournalLine[] = inventoryItems.map((inv) => ({
+      id: inv.item.id,
+      account_id: "", // Select the Inventory account here
+      description: `Opening stock: ${inv.item.name}`,
+      debit: inv.quantity * inv.item.cost,
+      credit: 0,
+    }));
+
+    // Add a single credit line to Retained Earnings account for total value
+    const totalValue = newLines.reduce((sum, l) => sum + l.debit, 0);
+    newLines.push({
+      id: "re",
+      account_id: "", // Select Retained Earnings account here
+      description: "Opening stock - Retained Earnings",
+      debit: 0,
+      credit: totalValue,
+    });
+
+    setLines(newLines);
+    toast.success(`Generated opening stock for ${inventoryItems.length} items`);
   };
 
   return (
@@ -207,14 +199,14 @@ const JournalEntryNew = () => {
           <CardTitle>Entry Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Entry Date</Label>
               <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Store</Label>
-              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+              <Label>Select Store</Label>
+              <Select value={selectedStoreId} onValueChange={(v) => setSelectedStoreId(v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select store" />
                 </SelectTrigger>
@@ -226,14 +218,11 @@ const JournalEntryNew = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2 flex items-end">
-              <Button onClick={generateOpeningStock} variant="outline">
+              <Button className="mt-2" onClick={generateOpeningStock}>
                 Generate Opening Stock
               </Button>
             </div>
           </div>
-
           <div className="space-y-2">
             <Label>Description</Label>
             <Textarea
@@ -251,7 +240,8 @@ const JournalEntryNew = () => {
           <div className="flex items-center justify-between">
             <CardTitle>Journal Lines</CardTitle>
             <Button variant="outline" size="sm" onClick={addLine}>
-              <Plus className="w-4 h-4 mr-2" /> Add Line
+              <Plus className="w-4 h-4 mr-2" />
+              Add Line
             </Button>
           </div>
         </CardHeader>
@@ -259,18 +249,18 @@ const JournalEntryNew = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Account</TableHead>
+                <TableHead className="w-[200px]">Account</TableHead>
                 <TableHead>Description</TableHead>
-                <TableHead>Debit</TableHead>
-                <TableHead>Credit</TableHead>
-                <TableHead></TableHead>
+                <TableHead className="w-[150px]">Debit</TableHead>
+                <TableHead className="w-[150px]">Credit</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {lines.map((line) => (
                 <TableRow key={line.id}>
                   <TableCell>
-                    <Select value={line.account_id} onValueChange={(v) => updateLine(line.id, "account_id", v)}>
+                    <Select value={line.account_id} onValueChange={(value) => updateLine(line.id, "account_id", value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select account" />
                       </SelectTrigger>
