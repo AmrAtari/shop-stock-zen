@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry with Correct Joins
+  // 1. Fetch Journal Entry with Correct Joins (Cleaned Template String)
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -22,8 +22,8 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles(username), // FIXED: Using user_profiles and username
-          poster:user_profiles(username)   // FIXED: Using user_profiles and username
+          creator:user_profiles(username),
+          poster:user_profiles(username)
         `,
         )
         .eq("id", id)
@@ -37,7 +37,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines with Account Joins
+  // 2. Fetch Journal Lines with Account Joins (Cleaned Template String)
   const { data: lines, isLoading: linesLoading } = useQuery({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
@@ -57,7 +57,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 3. POSTING MUTATION: Fix for "invalid input syntax for type uuid: "system_user""
+  // 3. POSTING MUTATION: Contains the fix for the UUID error
   const postMutation = useMutation({
     mutationFn: async () => {
       // Basic check before posting
