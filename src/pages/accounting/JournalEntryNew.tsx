@@ -21,7 +21,6 @@ interface InventoryItem {
   cost: number;
 }
 
-// FIX: Added journal_entry_id to the interface
 interface JournalLine {
   id: string;
   account_id: string;
@@ -31,7 +30,7 @@ interface JournalLine {
   credit_amount: number;
   store_id: string;
   line_number: number;
-  journal_entry_id?: string; // Made optional as it's added during the save mutation
+  journal_entry_id?: string;
 }
 
 const JournalEntryNew = () => {
@@ -55,16 +54,44 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
-      // 1. Find Inventory Asset account
-      const { data: inventoryAccount } = await supabase
+      // --- FIX: Robust Account Finding Logic ---
+      let inventoryAccount: any;
+
+      // 1. Try to find by name "Inventory"
+      const { data: nameSearchData } = await supabase
         .from("accounts")
         .select("*")
         .ilike("account_name", `%Inventory%`)
         .eq("is_active", true)
         .maybeSingle();
 
-      if (!inventoryAccount)
-        throw new Error("Inventory Asset account not found (Search for 'Inventory' in active accounts)");
+      if (nameSearchData) {
+        inventoryAccount = nameSearchData;
+      } else {
+        // 2. If not found, try to find a generic "Current Asset" or "Asset" account as a fallback
+        const { data: fallbackSearchData } = await supabase
+          .from("accounts")
+          .select("*")
+          // Assuming 'account_type' column exists and is used for broad classification
+          .or("account_type.ilike.Asset,account_name.ilike.Current Assets")
+          .eq("is_active", true)
+          .limit(1) // Just take the first one found
+          .maybeSingle();
+
+        if (fallbackSearchData) {
+          inventoryAccount = fallbackSearchData;
+          toast.warning(
+            `Using fallback account: ${inventoryAccount.account_name} as Inventory Asset not specifically named.`,
+          );
+        }
+      }
+
+      if (!inventoryAccount) {
+        throw new Error(
+          "Inventory Asset account not found. Please ensure you have an active account named 'Inventory' or an 'Asset' type account.",
+        );
+      }
+      // --- END FIX ---
 
       // 2. Find Retained Earnings account (for balancing entry)
       const { data: retainedAccount } = await supabase
@@ -81,10 +108,8 @@ const JournalEntryNew = () => {
 
       const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
 
-      // If the current lines are unbalanced (only debits generated), the total debit will be the amount to credit.
       const amountToCredit = totalDebit;
 
-      // Check for zero balance if no inventory items were generated
       if (amountToCredit === 0) throw new Error("Journal entry total is $0.00. Cannot save empty entry.");
 
       // Insert journal entry
@@ -96,7 +121,6 @@ const JournalEntryNew = () => {
           description: `Opening Stock for ${stores?.find((s) => s.id === selectedStore)?.name}`,
           entry_type: "manual",
           status: "draft",
-          // The total debit and credit must be equal for a balanced entry
           total_debit: totalDebit,
           total_credit: amountToCredit,
         },
@@ -106,23 +130,21 @@ const JournalEntryNew = () => {
       // Prepare journal lines (debit lines for inventory)
       const debitLinesToInsert = journalLines.map((line, index) => ({
         ...line,
-        journal_entry_id: journalEntryId, // Now correctly typed and assigned
+        journal_entry_id: journalEntryId,
         line_number: index + 1,
-        account_id: inventoryAccount.id, // Set the Inventory Asset account ID
+        account_id: inventoryAccount.id, // Set the found Inventory Account ID
       }));
 
       // Create the single balancing credit line (to Retained Earnings)
-      // Note: We cast this object to 'any' for insertion since it matches the table schema,
-      // even if the TS interface slightly differs for the state handling (like journal_entry_id being optional).
       const creditLineToInsert: any = {
         id: crypto.randomUUID(),
         journal_entry_id: journalEntryId,
         line_number: debitLinesToInsert.length + 1,
         account_id: retainedAccount.id, // Set the Retained Earnings account ID
-        item_id: null, // No specific item for the balancing entry
+        item_id: null,
         description: "Balancing entry for Opening Stock",
         debit_amount: 0,
-        credit_amount: amountToCredit, // Credit the total amount
+        credit_amount: amountToCredit,
         store_id: selectedStore,
       };
 
@@ -138,7 +160,7 @@ const JournalEntryNew = () => {
       toast.success("Journal entry saved successfully");
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
       setJournalLines([]);
-      setSelectedStore(""); // Reset state after successful save
+      setSelectedStore("");
     },
     onError: (err: any) => {
       toast.error(err.message || "Error saving journal entry");
@@ -164,7 +186,7 @@ const JournalEntryNew = () => {
 
       const lines: JournalLine[] = inventoryItems.map((inv: any, index: number) => ({
         id: crypto.randomUUID(),
-        account_id: "", // Will set during save
+        account_id: "", // Will be set during save
         item_id: inv.item_id,
         description: `Opening Stock: ${inv.items.sku} - ${inv.items.name}`,
         debit_amount: inv.quantity * inv.items.cost,
@@ -182,8 +204,6 @@ const JournalEntryNew = () => {
 
   // Calculate total debit and credit for display
   const totalDebitDisplay = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
-  const totalCreditDisplay = journalLines.reduce((sum, line) => sum + line.credit_amount, 0);
-  // Add the expected balancing credit for display
   const expectedTotalCreditDisplay = totalDebitDisplay > 0 ? totalDebitDisplay : 0;
 
   return (
