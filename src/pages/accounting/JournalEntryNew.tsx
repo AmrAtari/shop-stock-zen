@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,24 +21,19 @@ interface JournalLine {
   credit: number;
 }
 
-interface ItemWithStores {
-  id: string;
-  name: string;
-  cost: number;
-  stores: { store_id: string; store_name: string; quantity: number }[];
-}
-
 const JournalEntryNew = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const [entryDate, setEntryDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [description, setDescription] = useState("");
-  const [selectedStore, setSelectedStore] = useState("");
   const [lines, setLines] = useState<JournalLine[]>([
     { id: "1", account_id: "", description: "", debit: 0, credit: 0 },
     { id: "2", account_id: "", description: "", debit: 0, credit: 0 },
   ]);
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("");
 
+  // Load accounts
   const { data: accounts } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => {
@@ -48,21 +43,11 @@ const JournalEntryNew = () => {
     },
   });
 
+  // Load stores
   const { data: stores } = useQuery({
     queryKey: ["stores"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("*").order("name");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: inventoryItems } = useQuery({
-    queryKey: ["inventoryItems"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("items")
-        .select("id, name, cost, stores(store_id, store_name, quantity)");
+      const { data, error } = await supabase.from("stores").select("id,name,stock_account_id").order("name");
       if (error) throw error;
       return data;
     },
@@ -72,7 +57,10 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
       const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
-      if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error("Debits and credits must be equal");
+
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        throw new Error("Debits and credits must be equal");
+      }
 
       const { data: entryNumberData, error: entryNumberError } = await supabase.rpc("generate_journal_entry_number");
       if (entryNumberError) throw entryNumberError;
@@ -90,6 +78,7 @@ const JournalEntryNew = () => {
         })
         .select()
         .single();
+
       if (entryError) throw entryError;
 
       const lineInserts = lines
@@ -117,65 +106,83 @@ const JournalEntryNew = () => {
     },
   });
 
-  const addLine = () =>
+  const addLine = () => {
     setLines([...lines, { id: Date.now().toString(), account_id: "", description: "", debit: 0, credit: 0 }]);
-  const removeLine = (id: string) => {
-    if (lines.length > 2) setLines(lines.filter((l) => l.id !== id));
   };
-  const updateLine = (id: string, field: keyof JournalLine, value: any) =>
-    setLines(lines.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
 
-  const totalDebit = lines.reduce((sum, l) => sum + (l.debit || 0), 0);
-  const totalCredit = lines.reduce((sum, l) => sum + (l.credit || 0), 0);
+  const removeLine = (id: string) => {
+    if (lines.length > 2) setLines(lines.filter((line) => line.id !== id));
+  };
+
+  const updateLine = (id: string, field: keyof JournalLine, value: any) => {
+    setLines(lines.map((line) => (line.id === id ? { ...line, [field]: value } : line)));
+  };
+
+  const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
+  const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
-  const generateOpeningStock = () => {
-    if (!selectedStore) return toast.error("Please select a store first");
-    if (!inventoryItems || inventoryItems.length === 0) return toast.error("No inventory items found");
+  // --- Professional Opening Stock ---
+  const generateOpeningStock = async () => {
+    if (!selectedStoreId) {
+      toast.error("Please select a store first");
+      return;
+    }
 
-    const storeItems = (inventoryItems as ItemWithStores[]).filter((item) =>
-      item.stores.some((s) => s.store_id === selectedStore && s.quantity > 0),
-    );
+    try {
+      const { data: inventoryItems, error } = await supabase
+        .from("store_inventory")
+        .select(
+          `
+          quantity,
+          item:items(id, name, cost)
+        `,
+        )
+        .eq("store_id", selectedStoreId)
+        .gt("quantity", 0);
 
-    if (storeItems.length === 0) return toast.error("No items with quantity in this store");
+      if (error) throw error;
+      if (!inventoryItems || inventoryItems.length === 0) {
+        toast.error("No inventory items found for this store");
+        return;
+      }
 
-    const inventoryAccount = accounts?.find((a) => a.account_name.toLowerCase().includes("inventory"))?.id;
-    const retainedEarningsAccount = accounts?.find((a) =>
-      a.account_name.toLowerCase().includes("retained earnings"),
-    )?.id;
-    if (!inventoryAccount || !retainedEarningsAccount)
-      return toast.error("Inventory or Retained Earnings account not found");
+      const store = stores?.find((s) => s.id === selectedStoreId);
+      if (!store?.stock_account_id) {
+        toast.error("Store Stock Account not defined");
+        return;
+      }
 
-    const linesGenerated: JournalLine[] = [];
-    let totalDebitAmount = 0;
+      const retainedEarningsAccountId = accounts?.find((a) => a.account_code === "3000")?.id;
+      if (!retainedEarningsAccountId) {
+        toast.error("Retained Earnings account not found");
+        return;
+      }
 
-    storeItems.forEach((item) => {
-      const storeStock = item.stores.find((s) => s.store_id === selectedStore);
-      if (!storeStock) return;
-
-      const debitAmount = storeStock.quantity * item.cost;
-      totalDebitAmount += debitAmount;
-
-      linesGenerated.push({
-        id: Date.now().toString() + item.id,
-        account_id: inventoryAccount,
-        description: `${item.name} (${storeStock.quantity} pcs)`,
-        debit: debitAmount,
+      const openingStockLines: JournalLine[] = inventoryItems.map((inv) => ({
+        id: Date.now().toString() + Math.random(),
+        account_id: store.stock_account_id, // debit Stock account
+        description: `Opening Stock - ${inv.item.name}`,
+        debit: parseFloat((inv.quantity * inv.item.cost).toFixed(2)),
         credit: 0,
-      });
-    });
+      }));
 
-    // Add credit line
-    linesGenerated.push({
-      id: "credit-" + Date.now(),
-      account_id: retainedEarningsAccount,
-      description: `Opening Stock for store`,
-      debit: 0,
-      credit: totalDebitAmount,
-    });
+      // Add a single line to credit Retained Earnings with total
+      const totalStockValue = openingStockLines.reduce((sum, l) => sum + l.debit, 0);
+      const retainedLine: JournalLine = {
+        id: Date.now().toString() + Math.random(),
+        account_id: retainedEarningsAccountId,
+        description: `Opening Stock for store ${store.name}`,
+        debit: 0,
+        credit: parseFloat(totalStockValue.toFixed(2)),
+      };
 
-    setLines(linesGenerated);
-    toast.success("Opening stock generated for store");
+      setLines((prev) => [...prev, ...openingStockLines, retainedLine]);
+      toast.success(`Opening stock generated for ${inventoryItems.length} items`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to generate opening stock");
+    }
   };
 
   return (
@@ -190,7 +197,8 @@ const JournalEntryNew = () => {
           <h1 className="text-3xl font-bold">New Journal Entry</h1>
         </div>
         <Button onClick={() => createEntry.mutate()} disabled={!isBalanced || createEntry.isPending}>
-          <Save className="w-4 h-4 mr-2" /> {createEntry.isPending ? "Saving..." : "Save Entry"}
+          <Save className="w-4 h-4 mr-2" />
+          {createEntry.isPending ? "Saving..." : "Save Entry"}
         </Button>
       </div>
 
@@ -206,20 +214,26 @@ const JournalEntryNew = () => {
             </div>
             <div className="space-y-2">
               <Label>Store</Label>
-              <Select value={selectedStore} onValueChange={setSelectedStore}>
+              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Store" />
+                  <SelectValue placeholder="Select store" />
                 </SelectTrigger>
                 <SelectContent>
-                  {stores?.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
+                  {stores?.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2 flex items-end">
+              <Button onClick={generateOpeningStock} variant="outline">
+                Generate Opening Stock
+              </Button>
+            </div>
           </div>
+
           <div className="space-y-2">
             <Label>Description</Label>
             <Textarea
@@ -229,19 +243,17 @@ const JournalEntryNew = () => {
               rows={3}
             />
           </div>
-          <Button onClick={generateOpeningStock} variant="outline" className="mt-2">
-            Generate Opening Stock
-          </Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="flex items-center justify-between">
-          <CardTitle>Journal Lines</CardTitle>
-          <Button variant="outline" size="sm" onClick={addLine}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Line
-          </Button>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Journal Lines</CardTitle>
+            <Button variant="outline" size="sm" onClick={addLine}>
+              <Plus className="w-4 h-4 mr-2" /> Add Line
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -263,9 +275,9 @@ const JournalEntryNew = () => {
                         <SelectValue placeholder="Select account" />
                       </SelectTrigger>
                       <SelectContent>
-                        {accounts?.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.account_code} - {a.account_name}
+                        {accounts?.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.account_code} - {account.account_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -275,6 +287,7 @@ const JournalEntryNew = () => {
                     <Input
                       value={line.description}
                       onChange={(e) => updateLine(line.id, "description", e.target.value)}
+                      placeholder="Line description"
                     />
                   </TableCell>
                   <TableCell>
@@ -286,6 +299,7 @@ const JournalEntryNew = () => {
                         updateLine(line.id, "debit", parseFloat(e.target.value) || 0);
                         updateLine(line.id, "credit", 0);
                       }}
+                      placeholder="0.00"
                     />
                   </TableCell>
                   <TableCell>
@@ -297,6 +311,7 @@ const JournalEntryNew = () => {
                         updateLine(line.id, "credit", parseFloat(e.target.value) || 0);
                         updateLine(line.id, "debit", 0);
                       }}
+                      placeholder="0.00"
                     />
                   </TableCell>
                   <TableCell>
@@ -325,7 +340,9 @@ const JournalEntryNew = () => {
               </TableRow>
             </TableBody>
           </Table>
-          {!isBalanced && <p className="text-red-600 mt-2">Entry is not balanced. Debits and credits must be equal.</p>}
+          {!isBalanced && (
+            <p className="text-sm text-red-600 mt-2">Entry is not balanced. Debits and credits must be equal.</p>
+          )}
         </CardContent>
       </Card>
     </div>
