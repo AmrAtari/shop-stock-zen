@@ -23,8 +23,8 @@ interface InventoryItem {
 
 interface JournalLine {
   id: string;
-  account_id: string | null; // UUID fields that might be empty must be nullable
-  item_id: string | null; // UUID fields that might be empty must be nullable
+  account_id: string | null; // Allow null for optional account ID
+  item_id: string | null; // Allow null for optional item ID (UUID fix)
   description: string;
   debit_amount: number;
   credit_amount: number;
@@ -53,7 +53,7 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
-      // Find Inventory account dynamically
+      // Find Inventory account dynamically using ORDER and LIMIT(1)
       const { data: accountsData } = await supabase
         .from("accounts")
         .select("id")
@@ -117,7 +117,7 @@ const JournalEntryNew = () => {
           entry_date: entryDate,
           description: `Opening Stock for ${stores?.find((s) => s.id === selectedStore)?.name}`,
           entry_type: "manual",
-          status: "draft",
+          status: "draft", // SAVED AS DRAFT
           total_debit: finalTotalDebit,
           total_credit: finalTotalCredit,
         },
@@ -129,9 +129,6 @@ const JournalEntryNew = () => {
         ...line,
         journal_entry_id: journalEntryId,
         line_number: index + 1,
-        // Use the found Inventory account ID for the debit lines.
-        // If line.account_id is null (the inventory lines), use inventoryAccount.id.
-        // If line.account_id is set (the Retained Earnings line), use its value.
         account_id: line.account_id || inventoryAccount.id,
       }));
 
@@ -141,7 +138,7 @@ const JournalEntryNew = () => {
       return journalEntryId;
     },
     onSuccess: () => {
-      toast.success("Journal entry saved successfully");
+      toast.success("Journal entry saved successfully as Draft.");
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
       setJournalLines([]);
     },
@@ -213,7 +210,7 @@ const JournalEntryNew = () => {
             </Button>
           </div>
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || journalLines.length === 0}>
-            {saveMutation.isPending ? "Saving..." : "Save Journal Entry"}
+            {saveMutation.isPending ? "Saving Draft..." : "Save Journal Entry (Draft)"}
           </Button>
         </CardHeader>
         <CardContent className="p-0">
