@@ -193,7 +193,7 @@ const ChartOfAccounts = () => {
                     parent_account_id: null,
                     description: "",
                   });
-                  queryClient.invalidateQueries(["accounts"]);
+                  queryClient.invalidateQueries(["accounts"] as any);
                 }
               }}
             >
