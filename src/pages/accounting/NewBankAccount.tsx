@@ -8,6 +8,21 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
+// Create a simple storage for bank accounts (in real app, this would be an API)
+const createBankAccount = (accountData: any) => {
+  const accounts = JSON.parse(localStorage.getItem("bankAccounts") || "[]");
+  const newAccount = {
+    id: Date.now().toString(),
+    ...accountData,
+    createdAt: new Date().toISOString(),
+    currentBalance: parseFloat(accountData.initialBalance) || 0,
+    availableBalance: parseFloat(accountData.initialBalance) || 0,
+  };
+  accounts.push(newAccount);
+  localStorage.setItem("bankAccounts", JSON.stringify(accounts));
+  return newAccount;
+};
+
 const NewBankAccount = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -18,7 +33,7 @@ const NewBankAccount = () => {
     accountNumber: "",
     routingNumber: "",
     accountType: "",
-    initialBalance: "",
+    initialBalance: "0.00",
     description: "",
   });
 
@@ -31,17 +46,32 @@ const NewBankAccount = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Basic validation
+    if (!formData.bankName || !formData.accountNumber || !formData.routingNumber || !formData.accountType) {
+      toast({
+        title: "Missing required fields",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      // Simulate API call
+      // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
+      // Create the bank account
+      createBankAccount(formData);
+
       toast({
-        title: "Bank account created successfully",
-        description: `${formData.bankName} account has been added.`,
+        title: "Bank account created successfully!",
+        description: `${formData.bankName} account has been added to your accounts.`,
       });
 
+      // Navigate back to bank accounts list
       navigate("/accounting/bank-accounts");
     } catch (error) {
       toast({
@@ -57,7 +87,7 @@ const NewBankAccount = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="outline" size="icon" onClick={() => navigate("/accounting/bank-accounts")}>
+        <Button variant="outline" size="icon" onClick={() => navigate("/accounting/bank-accounts")} type="button">
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
@@ -78,7 +108,7 @@ const NewBankAccount = () => {
                 <Label htmlFor="bankName">Bank Name *</Label>
                 <Input
                   id="bankName"
-                  placeholder="e.g., Chase Bank"
+                  placeholder="e.g., Bank Of Palestine"
                   value={formData.bankName}
                   onChange={(e) => handleInputChange("bankName", e.target.value)}
                   required
@@ -88,7 +118,7 @@ const NewBankAccount = () => {
                 <Label htmlFor="accountNumber">Account Number *</Label>
                 <Input
                   id="accountNumber"
-                  placeholder="e.g., 123456789"
+                  placeholder="e.g., 682591"
                   value={formData.accountNumber}
                   onChange={(e) => handleInputChange("accountNumber", e.target.value)}
                   required
@@ -101,7 +131,7 @@ const NewBankAccount = () => {
                 <Label htmlFor="routingNumber">Routing Number *</Label>
                 <Input
                   id="routingNumber"
-                  placeholder="e.g., 021000021"
+                  placeholder="e.g., PALIPSAEXXX"
                   value={formData.routingNumber}
                   onChange={(e) => handleInputChange("routingNumber", e.target.value)}
                   required
@@ -109,7 +139,11 @@ const NewBankAccount = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="accountType">Account Type *</Label>
-                <Select value={formData.accountType} onValueChange={(value) => handleInputChange("accountType", value)}>
+                <Select
+                  value={formData.accountType}
+                  onValueChange={(value) => handleInputChange("accountType", value)}
+                  required
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select account type" />
                   </SelectTrigger>
