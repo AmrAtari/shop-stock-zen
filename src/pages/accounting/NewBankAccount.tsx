@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,45 +19,85 @@ const NewBankAccount = () => {
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
   const [isLoading, setIsLoading] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [glAccounts, setGlAccounts] = useState<any[]>([]);
+
+  // Fetch categories and GL accounts on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch bank account categories
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from("bank_account_categories")
+          .select("*")
+          .eq("is_active", true)
+          .order("name");
+
+        if (categoriesError) {
+          console.error("Error fetching categories:", categoriesError);
+        } else {
+          setCategories(categoriesData || []);
+        }
+
+        // Fetch GL accounts for mapping
+        const { data: accountsData, error: accountsError } = await supabase
+          .from("accounts")
+          .select("id, account_code, account_name")
+          .eq("is_active", true)
+          .order("account_code");
+
+        if (accountsError) {
+          console.error("Error fetching GL accounts:", accountsError);
+        } else {
+          setGlAccounts(accountsData || []);
+        }
+      } catch (error) {
+        console.error("Error in fetchData:", error);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   const [formData, setFormData] = useState({
-    // Basic Information
+    // Basic Information (from your original table)
+    account_name: "",
     bank_name: "",
     account_number: "",
-    routing_number: "",
     account_type: "",
 
-    // International Banking
+    // New professional fields (from extended table)
     iban: "",
     swift_code: "",
-
-    // Account Details
-    currency: settings?.currency || "USD",
-    opening_date: new Date().toISOString().split("T")[0],
-    initial_balance: "0.00",
-    description: "",
-
-    // Branch Information
+    routing_number: "",
     branch_name: "",
     branch_code: "",
-
-    // Contact Information
     contact_person: "",
     phone: "",
     email: "",
     address: "",
-
-    // Account Limits
     credit_limit: "0.00",
     overdraft_limit: "0.00",
     minimum_balance: "0.00",
     interest_rate: "0.00",
 
-    // Status
-    status: "active",
+    // Account balances
+    opening_balance: "0.00",
+    current_balance: "0.00",
+    available_balance: "0.00",
+    ledger_balance: "0.00",
+
+    // Foreign keys
+    currency_id: "", // Will use system currency for now
+    gl_account_id: "",
+    category_id: "",
+
+    // Status & Notes
+    is_active: true,
+    notes: "",
   });
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -68,10 +108,10 @@ const NewBankAccount = () => {
     e.preventDefault();
 
     // Basic validation
-    if (!formData.bank_name || !formData.account_number || !formData.routing_number || !formData.account_type) {
+    if (!formData.account_name || !formData.bank_name || !formData.account_number || !formData.account_type) {
       toast({
         title: "Missing required fields",
-        description: "Please fill in all required fields.",
+        description: "Please fill in Account Name, Bank Name, Account Number, and Account Type.",
         variant: "destructive",
       });
       return;
@@ -80,7 +120,6 @@ const NewBankAccount = () => {
     setIsLoading(true);
 
     try {
-      // Get current user
       const {
         data: { user },
         error: userError,
@@ -90,20 +129,18 @@ const NewBankAccount = () => {
         throw new Error("User not authenticated");
       }
 
-      // Prepare data for database insertion
+      // Prepare data for database insertion with ALL professional fields
       const bankAccountData = {
+        // Basic Information (original table columns)
+        account_name: formData.account_name,
         bank_name: formData.bank_name,
         account_number: formData.account_number,
-        routing_number: formData.routing_number,
         account_type: formData.account_type,
+
+        // New professional fields (extended columns)
         iban: formData.iban || null,
         swift_code: formData.swift_code || null,
-        currency: formData.currency,
-        opening_date: formData.opening_date,
-        current_balance: parseFloat(formData.initial_balance) || 0,
-        available_balance: parseFloat(formData.initial_balance) || 0,
-        ledger_balance: parseFloat(formData.initial_balance) || 0,
-        description: formData.description || null,
+        routing_number: formData.routing_number || null,
         branch_name: formData.branch_name || null,
         branch_code: formData.branch_code || null,
         contact_person: formData.contact_person || null,
@@ -114,13 +151,28 @@ const NewBankAccount = () => {
         overdraft_limit: parseFloat(formData.overdraft_limit) || 0,
         minimum_balance: parseFloat(formData.minimum_balance) || 0,
         interest_rate: parseFloat(formData.interest_rate) || 0,
-        status: formData.status,
-        created_by: user.id,
+
+        // Account balances
+        opening_balance: parseFloat(formData.opening_balance) || 0,
+        current_balance: parseFloat(formData.current_balance) || 0,
+        available_balance: parseFloat(formData.available_balance) || 0,
+        ledger_balance: parseFloat(formData.ledger_balance) || 0,
+
+        // Foreign keys
+        currency_id: formData.currency_id || null, // You can set this to your default currency
+        gl_account_id: formData.gl_account_id || null,
+        category_id: formData.category_id || null,
+
+        // Status & Notes
+        is_active: formData.is_active,
+        notes: formData.notes || null,
+
+        // Timestamps (auto-managed by your table)
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
-      console.log("Creating bank account with data:", bankAccountData);
+      console.log("Creating bank account with professional data:", bankAccountData);
 
       // Insert into database
       const { data, error } = await supabase.from("bank_accounts").insert([bankAccountData]).select().single();
@@ -134,7 +186,7 @@ const NewBankAccount = () => {
 
       toast({
         title: "Bank account created successfully!",
-        description: `${formData.bank_name} account has been added to your accounts.`,
+        description: `${formData.account_name} has been added to your accounts.`,
       });
 
       // Invalidate queries to refresh the list
@@ -178,6 +230,16 @@ const NewBankAccount = () => {
               <h3 className="text-lg font-semibold">Basic Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <Label htmlFor="account_name">Account Name *</Label>
+                  <Input
+                    id="account_name"
+                    placeholder="e.g., Main Business Account"
+                    value={formData.account_name}
+                    onChange={(e) => handleInputChange("account_name", e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="bank_name">Bank Name *</Label>
                   <Input
                     id="bank_name"
@@ -187,6 +249,9 @@ const NewBankAccount = () => {
                     required
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="account_number">Account Number *</Label>
                   <Input
@@ -194,19 +259,6 @@ const NewBankAccount = () => {
                     placeholder="e.g., 682591"
                     value={formData.account_number}
                     onChange={(e) => handleInputChange("account_number", e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="routing_number">Routing Number *</Label>
-                  <Input
-                    id="routing_number"
-                    placeholder="e.g., PALIPSAEXXX"
-                    value={formData.routing_number}
-                    onChange={(e) => handleInputChange("routing_number", e.target.value)}
                     required
                   />
                 </div>
@@ -225,8 +277,47 @@ const NewBankAccount = () => {
                       <SelectItem value="savings">Savings</SelectItem>
                       <SelectItem value="business">Business Checking</SelectItem>
                       <SelectItem value="money-market">Money Market</SelectItem>
-                      <SelectItem value="credit">Credit Card</SelectItem>
+                      <SelectItem value="credit-card">Credit Card</SelectItem>
                       <SelectItem value="loan">Loan Account</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="category_id">Account Category</Label>
+                  <Select
+                    value={formData.category_id}
+                    onValueChange={(value) => handleInputChange("category_id", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gl_account_id">GL Account Mapping</Label>
+                  <Select
+                    value={formData.gl_account_id}
+                    onValueChange={(value) => handleInputChange("gl_account_id", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select GL account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {glAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.account_code} - {account.account_name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -236,7 +327,7 @@ const NewBankAccount = () => {
             {/* International Banking Section */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">International Banking</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="iban">IBAN</Label>
                   <Input
@@ -255,53 +346,66 @@ const NewBankAccount = () => {
                     onChange={(e) => handleInputChange("swift_code", e.target.value)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="routing_number">Routing Number</Label>
+                  <Input
+                    id="routing_number"
+                    placeholder="e.g., 021000021"
+                    value={formData.routing_number}
+                    onChange={(e) => handleInputChange("routing_number", e.target.value)}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Account Details Section */}
+            {/* Account Balances Section */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Account Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <h3 className="text-lg font-semibold">Account Balances</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="currency">Currency</Label>
+                  <Label htmlFor="opening_balance">Opening Balance ({currency})</Label>
                   <Input
-                    id="currency"
-                    value={formData.currency}
-                    onChange={(e) => handleInputChange("currency", e.target.value)}
-                    disabled
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="opening_date">Opening Date</Label>
-                  <Input
-                    id="opening_date"
-                    type="date"
-                    value={formData.opening_date}
-                    onChange={(e) => handleInputChange("opening_date", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="initial_balance">Initial Balance ({currency})</Label>
-                  <Input
-                    id="initial_balance"
+                    id="opening_balance"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={formData.initial_balance}
-                    onChange={(e) => handleInputChange("initial_balance", e.target.value)}
+                    value={formData.opening_balance}
+                    onChange={(e) => handleInputChange("opening_balance", e.target.value)}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Optional description or notes about this account"
-                  value={formData.description}
-                  onChange={(e) => handleInputChange("description", e.target.value)}
-                  rows={3}
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="current_balance">Current Balance ({currency})</Label>
+                  <Input
+                    id="current_balance"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.current_balance}
+                    onChange={(e) => handleInputChange("current_balance", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="available_balance">Available Balance ({currency})</Label>
+                  <Input
+                    id="available_balance"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.available_balance}
+                    onChange={(e) => handleInputChange("available_balance", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ledger_balance">Ledger Balance ({currency})</Label>
+                  <Input
+                    id="ledger_balance"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.ledger_balance}
+                    onChange={(e) => handleInputChange("ledger_balance", e.target.value)}
+                  />
+                </div>
               </div>
             </div>
 
@@ -425,6 +529,39 @@ const NewBankAccount = () => {
                     onChange={(e) => handleInputChange("interest_rate", e.target.value)}
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Status & Notes Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Status & Additional Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="is_active">Account Status</Label>
+                  <Select
+                    value={formData.is_active ? "active" : "inactive"}
+                    onValueChange={(value) => handleInputChange("is_active", value === "active")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Any additional notes about this bank account"
+                  value={formData.notes}
+                  onChange={(e) => handleInputChange("notes", e.target.value)}
+                  rows={3}
+                />
               </div>
             </div>
 
