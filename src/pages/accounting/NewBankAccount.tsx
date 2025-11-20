@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 // Create a simple storage for bank accounts (in real app, this would be an API)
 const createBankAccount = (accountData: any) => {
@@ -26,6 +27,8 @@ const createBankAccount = (accountData: any) => {
 const NewBankAccount = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -159,7 +162,7 @@ const NewBankAccount = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="initialBalance">Initial Balance</Label>
+                <Label htmlFor="initialBalance">Initial Balance ({currency})</Label>
                 <Input
                   id="initialBalance"
                   type="number"
