@@ -20,8 +20,8 @@ interface JournalEntry {
   total_debit: number;
   total_credit: number;
   // Note: These columns are aliases for the joined user_profiles table
-  created_by: { username: string } | null;
-  posted_by: { username: string } | null;
+  creator: { username: string } | null; // Note the change in alias to 'creator' (no 'created_by')
+  poster: { username: string } | null; // Note the change in alias to 'poster' (no 'posted_by')
   posted_at: string | null;
 }
 
@@ -29,7 +29,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - CLEANED QUERY
+  // 1. Fetch Journal Entry - CORRECTED JOIN SYNTAX
   const { data: entry, isLoading: entryLoading } = useQuery<JournalEntry>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -38,9 +38,9 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:created_by(username), 
-          poster:posted_by(username)    
-        `, // <-- CLEAN: No comments in PostgREST select string
+          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly join to user_profiles using created_by FK
+          poster:user_profiles!posted_by(username)    // ✅ FIX 1: Explicitly join to user_profiles using posted_by FK
+        `,
         )
         .eq("id", id)
         .single();
@@ -53,17 +53,17 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines - CLEANED QUERY
+  // 2. Fetch Journal Lines - CORRECTED TABLE NAME
   const { data: lines, isLoading: linesLoading } = useQuery({
     queryKey: ["journal_line_items", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_line_items")
+        .from("journal_line_item") // ✅ FIX 2: Corrected table name to singular
         .select(
           `
           *,
           account:chart_of_accounts(account_code, account_name) 
-        `, // <-- CLEAN: No comments in PostgREST select string
+        `,
         )
         .eq("journal_entry_id", id)
         .order("created_at", { ascending: true });
@@ -198,11 +198,11 @@ const JournalEntryDetail = () => {
           </p>
 
           <p>
-            <span className="font-semibold">Created By:</span> {entry.created_by?.username || "N/A"}
+            <span className="font-semibold">Created By:</span> {entry.creator?.username || "N/A"}
           </p>
           {entry.status === "posted" && (
             <p>
-              <span className="font-semibold">Posted By:</span> {entry.posted_by?.username || "N/A"}
+              <span className="font-semibold">Posted By:</span> {entry.poster?.username || "N/A"}
               <span className="ml-4 font-semibold">Posted At:</span>{" "}
               {entry.posted_at ? format(new Date(entry.posted_at), "MMM dd, yyyy h:mm a") : "N/A"}
             </p>
