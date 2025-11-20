@@ -10,6 +10,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { formatCurrency } from "@/lib/formatters";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 interface Store {
   id: string;
@@ -93,7 +95,8 @@ const JournalEntryNew = () => {
         throw new Error(
           "Inventory Asset account not found. Please ensure you have an active account with code '1200' for general Inventory.",
         );
-
+      const { settings } = useSystemSettings();
+      const currency = settings?.currency || "USD";
       // --- Find Retained Earnings ---
       const { data: retainedAccount } = await supabase
         .from("accounts")
