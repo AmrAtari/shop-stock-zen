@@ -87,8 +87,8 @@ const NewBankAccount = () => {
     available_balance: "0.00",
     ledger_balance: "0.00",
 
-    // Foreign keys
-    currency_id: "", // Will use system currency for now
+    // Foreign keys - make these optional for now
+    currency_id: null,
     gl_account_id: "",
     category_id: "",
 
@@ -97,7 +97,7 @@ const NewBankAccount = () => {
     notes: "",
   });
 
-  const handleInputChange = (field: string, value: string | boolean) => {
+  const handleInputChange = (field: string, value: string | boolean | null) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -129,60 +129,56 @@ const NewBankAccount = () => {
         throw new Error("User not authenticated");
       }
 
-      // Prepare data for database insertion with ALL professional fields
+      // Prepare data for database insertion - SIMPLIFIED VERSION
       const bankAccountData = {
-        // Basic Information (original table columns)
+        // Required fields from your table
         account_name: formData.account_name,
         bank_name: formData.bank_name,
         account_number: formData.account_number,
         account_type: formData.account_type,
 
-        // New professional fields (extended columns)
-        iban: formData.iban || null,
-        swift_code: formData.swift_code || null,
-        routing_number: formData.routing_number || null,
-        branch_name: formData.branch_name || null,
-        branch_code: formData.branch_code || null,
-        contact_person: formData.contact_person || null,
-        phone: formData.phone || null,
-        email: formData.email || null,
-        address: formData.address || null,
+        // Optional fields - only include if they have values
+        ...(formData.iban && { iban: formData.iban }),
+        ...(formData.swift_code && { swift_code: formData.swift_code }),
+        ...(formData.routing_number && { routing_number: formData.routing_number }),
+        ...(formData.branch_name && { branch_name: formData.branch_name }),
+        ...(formData.branch_code && { branch_code: formData.branch_code }),
+        ...(formData.contact_person && { contact_person: formData.contact_person }),
+        ...(formData.phone && { phone: formData.phone }),
+        ...(formData.email && { email: formData.email }),
+        ...(formData.address && { address: formData.address }),
+
+        // Numeric fields with defaults
         credit_limit: parseFloat(formData.credit_limit) || 0,
         overdraft_limit: parseFloat(formData.overdraft_limit) || 0,
         minimum_balance: parseFloat(formData.minimum_balance) || 0,
         interest_rate: parseFloat(formData.interest_rate) || 0,
-
-        // Account balances
         opening_balance: parseFloat(formData.opening_balance) || 0,
         current_balance: parseFloat(formData.current_balance) || 0,
         available_balance: parseFloat(formData.available_balance) || 0,
         ledger_balance: parseFloat(formData.ledger_balance) || 0,
 
-        // Foreign keys
-        currency_id: formData.currency_id || null, // You can set this to your default currency
-        gl_account_id: formData.gl_account_id || null,
-        category_id: formData.category_id || null,
+        // Foreign keys - only include if selected
+        ...(formData.currency_id && { currency_id: formData.currency_id }),
+        ...(formData.gl_account_id && { gl_account_id: formData.gl_account_id }),
+        ...(formData.category_id && { category_id: formData.category_id }),
 
         // Status & Notes
         is_active: formData.is_active,
-        notes: formData.notes || null,
-
-        // Timestamps (auto-managed by your table)
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        ...(formData.notes && { notes: formData.notes }),
       };
 
-      console.log("Creating bank account with professional data:", bankAccountData);
+      console.log("Creating bank account with data:", bankAccountData);
 
-      // Insert into database
-      const { data, error } = await supabase.from("bank_accounts").insert([bankAccountData]).select().single();
+      // Insert into database - SIMPLIFIED without .select()
+      const { data, error } = await supabase.from("bank_accounts").insert([bankAccountData]);
 
       if (error) {
-        console.error("Supabase error:", error);
-        throw error;
+        console.error("Supabase error details:", error);
+        throw new Error(`Database error: ${error.message}`);
       }
 
-      console.log("Bank account created successfully:", data);
+      console.log("Bank account created successfully");
 
       toast({
         title: "Bank account created successfully!",
@@ -198,7 +194,7 @@ const NewBankAccount = () => {
       console.error("Error creating bank account:", error);
       toast({
         title: "Error creating bank account",
-        description: error.message || "Please try again.",
+        description: error.message || "Please check the console for details.",
         variant: "destructive",
       });
     } finally {
@@ -207,7 +203,9 @@ const NewBankAccount = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-h-screen">
+      {" "}
+      {/* Added min-h-screen for scroll */}
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" onClick={() => navigate("/accounting/bank-accounts")} type="button">
           <ArrowLeft className="w-4 h-4" />
@@ -217,7 +215,6 @@ const NewBankAccount = () => {
           <p className="text-muted-foreground">Create a new bank account</p>
         </div>
       </div>
-
       <form onSubmit={handleSubmit}>
         <Card>
           <CardHeader>
@@ -277,8 +274,6 @@ const NewBankAccount = () => {
                       <SelectItem value="savings">Savings</SelectItem>
                       <SelectItem value="business">Business Checking</SelectItem>
                       <SelectItem value="money-market">Money Market</SelectItem>
-                      <SelectItem value="credit-card">Credit Card</SelectItem>
-                      <SelectItem value="loan">Loan Account</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
