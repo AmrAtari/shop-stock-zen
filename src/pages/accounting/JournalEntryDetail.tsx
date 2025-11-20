@@ -9,14 +9,29 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
+// 🛑 FIX: Define interface for type safety
+interface JournalEntry {
+  id: string;
+  entry_number: string;
+  entry_date: string;
+  description: string;
+  entry_type: string;
+  status: "draft" | "posted" | "reversed";
+  total_debit: number;
+  total_credit: number;
+  // Note: These columns are aliases for the joined user_profiles table
+  created_by: { username: string } | null;
+  posted_by: { username: string } | null;
+  posted_at: string | null;
+}
+
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
   // 1. Fetch Journal Entry with Corrected Join Syntax
-  // 🛑 FIX: Use the foreign key column names (created_by, posted_by) as the join path
-  // instead of the general table alias (user_profiles). This often bypasses the PGRST200 error.
-  const { data: entry, isLoading: entryLoading } = useQuery({
+  const { data: entry, isLoading: entryLoading } = useQuery<JournalEntry>({
+    // 🛑 FIX: Apply the new interface
     queryKey: ["journal_entry", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -24,9 +39,9 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:created_by(username), // ✅ FIX 1: Use FK column name to resolve join
-          poster:posted_by(username)    // ✅ FIX 1: Use FK column name to resolve join
-        `,
+          creator:created_by(username), 
+          poster:posted_by(username)    
+        `, // ✅ FIX 1: Removed comments from template literal
         )
         .eq("id", id)
         .single();
@@ -35,22 +50,21 @@ const JournalEntryDetail = () => {
         console.error("Error fetching journal entry:", error);
         throw error;
       }
-      return data;
+      return data as JournalEntry; // Type assertion for safety
     },
   });
 
   // 2. Fetch Journal Lines with Correct Table Names
   const { data: lines, isLoading: linesLoading } = useQuery({
-    // 🛑 FIX: Use the correct table name for the query key
     queryKey: ["journal_line_items", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_line_items") // ✅ FIX 2: Correct lines table name (from log: journal_line_items)
+        .from("journal_line_items") // ✅ FIX 2: Correct lines table name
         .select(
           `
           *,
-          account:chart_of_accounts(account_code, account_name) // ✅ FIX 3: Correct account table name (from log: chart_of_accounts)
-        `,
+          account:chart_of_accounts(account_code, account_name) 
+        `, // ✅ FIX 3: Correct account table name and removed comment
         )
         .eq("journal_entry_id", id)
         .order("created_at", { ascending: true });
@@ -63,8 +77,11 @@ const JournalEntryDetail = () => {
   // 3. POSTING MUTATION (Preserved)
   const postMutation = useMutation({
     mutationFn: async () => {
+      // 🛑 FIX: Ensure entry exists before accessing properties
+      if (!entry) throw new Error("Journal entry data not loaded.");
+
       // Basic check before posting
-      if (entry?.total_debit !== entry?.total_credit) {
+      if (entry.total_debit !== entry.total_credit) {
         throw new Error("Journal entry is unbalanced. Cannot post.");
       }
 
@@ -76,7 +93,8 @@ const JournalEntryDetail = () => {
       if (userError || !user?.id) {
         throw new Error("User not authenticated. Please log in to post entries.");
       }
-      // Note: This uses the Auth ID for posted_by, which is often acceptable for logging the action.
+
+      // Note: This still uses the Auth ID for posted_by, which is often acceptable for logging the action.
       // If `posted_by` points to `user_profiles.id`, you need the same profile lookup fix as in JournalEntryNew.
       const postedById = user.id;
 
@@ -114,7 +132,7 @@ const JournalEntryDetail = () => {
     return variants[status] || "default";
   };
 
-  const isBalanced = entry?.total_debit === entry?.total_credit;
+  const isBalanced = entry && entry.total_debit === entry.total_credit; // 🛑 FIX: Safe check
 
   if (entryLoading) {
     return <div>Loading journal entry details...</div>;
@@ -187,8 +205,7 @@ const JournalEntryDetail = () => {
           <p>
             <span className="font-semibold">Type:</span> {entry.entry_type}
           </p>
-          {/* Displaying creator/poster names from joins */}
-          {/* 🛑 NOTE: The creator/poster objects are now nested under 'created_by'/'posted_by' instead of 'creator'/'poster' in the result object due to the join syntax change. */}
+
           <p>
             <span className="font-semibold">Created By:</span> {entry.created_by?.username || "N/A"}
           </p>
@@ -201,8 +218,8 @@ const JournalEntryDetail = () => {
           )}
           {!isBalanced && entry.status === "draft" && (
             <div className="text-red-600 font-bold border-l-4 border-red-600 pl-3">
-              Warning: Entry is Unbalanced! Debit: ${entry?.total_debit?.toFixed(2) || "0.00"}, Credit: $
-              {entry?.total_credit?.toFixed(2) || "0.00"}. Balance Difference: $
+              Warning: Entry is Unbalanced! Debit: ${entry.total_debit.toFixed(2) || "0.00"}, Credit: $
+              {entry.total_credit.toFixed(2) || "0.00"}. Balance Difference: $
               {Math.abs(entry.total_debit - entry.total_credit).toFixed(2)}.
             </div>
           )}
@@ -238,7 +255,6 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {/* Note: Based on your schema, we use debit_amount/credit_amount */}
                       {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
@@ -251,8 +267,8 @@ const JournalEntryDetail = () => {
                 <TableCell colSpan={3} className="text-right">
                   Totals:
                 </TableCell>
-                <TableCell className="text-right font-mono">${entry?.total_debit?.toFixed(2) || "0.00"}</TableCell>
-                <TableCell className="text-right font-mono">${entry?.total_credit?.toFixed(2) || "0.00"}</TableCell>
+                <TableCell className="text-right font-mono">${entry.total_debit.toFixed(2) || "0.00"}</TableCell>
+                <TableCell className="text-right font-mono">${entry.total_credit.toFixed(2) || "0.00"}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
