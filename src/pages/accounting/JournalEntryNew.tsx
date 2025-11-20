@@ -1,128 +1,119 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 const JournalEntryNew = () => {
   const navigate = useNavigate();
-  const [userId, setUserId] = useState<string | null>(null);
-  const [entryNumber, setEntryNumber] = useState("");
-  const [entryDate, setEntryDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [description, setDescription] = useState("");
   const [entryType, setEntryType] = useState("manual");
-  const [totalDebit, setTotalDebit] = useState(0);
-  const [totalCredit, setTotalCredit] = useState(0);
+  const [storeId, setStoreId] = useState<string | null>(null);
+  const [stores, setStores] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Get the logged-in user
+  // Fetch stores for dropdown
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id);
-      else navigate("/auth"); // redirect if not logged in
-    });
-  }, [navigate]);
+    const fetchStores = async () => {
+      const { data, error } = await supabase.from("stores").select("*");
+      if (error) return toast.error("Failed to fetch stores");
+      setStores(data || []);
+      if (data?.length) setStoreId(data[0].id);
+    };
+    fetchStores();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!userId) return toast.error("User not authenticated.");
-
-    if (totalDebit !== totalCredit) {
-      return toast.error(`Entry is unbalanced! Debit: ${totalDebit.toFixed(2)}, Credit: ${totalCredit.toFixed(2)}`);
-    }
-
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.from("journal_entries").insert({
-        entry_number: entryNumber,
-        entry_date: entryDate,
-        description,
-        entry_type: entryType,
-        total_debit: totalDebit,
-        total_credit: totalCredit,
-        created_by: userId, // ✅ Automatically set the logged-in user
-        status: "draft",
-      });
+      // Get the logged-in user for created_by
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user?.id) throw new Error("User not authenticated");
+
+      // Insert new journal entry
+      const { data, error } = await supabase
+        .from("journal_entries")
+        .insert({
+          description,
+          entry_type: entryType,
+          store_id: storeId,
+          status: "draft",
+          created_by: user.id, // automatically assigned
+          entry_number: `JE-${Date.now()}`, // example auto-generate
+          entry_date: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
       toast.success("Journal entry created successfully!");
-      navigate("/accounting/journal-entries");
+      navigate(`/accounting/journal-entries/${data.id}`);
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to create journal entry.");
+      toast.error(err.message || "Failed to create entry");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex justify-center p-4">
-      <Card className="w-full max-w-lg">
+    <div className="space-y-6">
+      <Card>
         <CardHeader>
           <CardTitle>New Journal Entry</CardTitle>
-          <CardDescription>Fill in the details to create a new journal entry</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label>Entry Number</label>
+              <label htmlFor="description">Description</label>
               <Input
-                value={entryNumber}
-                onChange={(e) => setEntryNumber(e.target.value)}
-                placeholder="e.g., JE-1763623695747"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label>Date</label>
-              <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} required />
-            </div>
-            <div className="space-y-2">
-              <label>Description</label>
-              <Textarea
+                id="description"
+                placeholder="Enter description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter description"
                 required
               />
             </div>
+
             <div className="space-y-2">
-              <label>Type</label>
-              <Input
-                value={entryType}
-                onChange={(e) => setEntryType(e.target.value)}
-                placeholder="manual, adjustment, etc."
-                required
-              />
+              <label htmlFor="entryType">Entry Type</label>
+              <Select value={entryType} onValueChange={setEntryType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="automatic">Automatic</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex gap-4">
-              <div className="flex-1 space-y-2">
-                <label>Total Debit</label>
-                <Input
-                  type="number"
-                  value={totalDebit}
-                  onChange={(e) => setTotalDebit(parseFloat(e.target.value))}
-                  required
-                />
-              </div>
-              <div className="flex-1 space-y-2">
-                <label>Total Credit</label>
-                <Input
-                  type="number"
-                  value={totalCredit}
-                  onChange={(e) => setTotalCredit(parseFloat(e.target.value))}
-                  required
-                />
-              </div>
+
+            <div className="space-y-2">
+              <label htmlFor="store">Store</label>
+              <Select value={storeId || ""} onValueChange={setStoreId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select store" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+
+            <Button type="submit" disabled={isLoading}>
               {isLoading ? "Creating..." : "Create Entry"}
             </Button>
           </form>
