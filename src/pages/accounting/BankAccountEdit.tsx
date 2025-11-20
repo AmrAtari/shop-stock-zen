@@ -5,10 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 const BankAccountEdit = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   return (
     <div className="space-y-6">
@@ -31,11 +34,11 @@ const BankAccountEdit = () => {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="bankName">Bank Name</Label>
-              <Input id="bankName" defaultValue="Chase Bank" />
+              <Input id="bankName" defaultValue="Bank Of Palestine" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="accountType">Account Type</Label>
-              <Input id="accountType" defaultValue="Checking" />
+              <Input id="accountType" defaultValue="Business Checking" />
             </div>
           </div>
 
