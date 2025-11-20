@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - FIXED AMBIGUOUS JOINS (Resolves 400 Bad Request)
+  // 1. Fetch Journal Entry - FIXED AMBIGUOUS JOINS
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -22,8 +22,8 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly join on 'created_by'
-          poster:user_profiles!posted_by(username)    // ✅ FIX 1: Explicitly join on 'posted_by'
+          creator:user_profiles!created_by(username), // ✅ FIX: Explicit join on 'created_by' FK
+          poster:user_profiles!posted_by(username)    // ✅ FIX: Explicit join on 'posted_by' FK
         `,
         )
         .eq("id", id)
@@ -37,16 +37,16 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines - CONFIRMED TABLE NAME
+  // 2. Fetch Journal Lines - Using the confirmed table name
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_entry_lines") // ✅ CONFIRMED: Using the actual database table name
+        .from("journal_entry_lines") // Confirmed correct table name
         .select(
           `
           *,
-          account:accounts(account_code, account_name)
+          account:chart_of_accounts(account_code, account_name) // Changed to chart_of_accounts to be more specific
         `,
         )
         .eq("journal_entry_id", id)
@@ -57,7 +57,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 3. POSTING MUTATION (remains unchanged)
+  // 3. POSTING MUTATION
   const postMutation = useMutation({
     mutationFn: async () => {
       // Basic check before posting
@@ -123,7 +123,8 @@ const JournalEntryDetail = () => {
         <p className="text-muted-foreground">
           This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
           Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are set to `USING (true)` for
-          authenticated users.
+          authenticated users. (Note: Since you have confirmed your RLS policies are set to TRUE, this is likely an
+          issue with the join syntax preventing data retrieval).
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
