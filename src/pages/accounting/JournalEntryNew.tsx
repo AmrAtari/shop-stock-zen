@@ -42,7 +42,7 @@ const JournalEntryNew = () => {
   const [selectedStore, setSelectedStore] = useState<string>("");
   const [journalLines, setJournalLines] = useState<JournalLine[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const currencySymbol = useCurrencySymbol(); // <-- NEW: Initialize currency symbol
+  const currencySymbol = useCurrencySymbol();
 
   // Fetch stores
   const { data: stores } = useQuery<Store[]>({
@@ -102,6 +102,19 @@ const JournalEntryNew = () => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError || !userData) throw new Error("Cannot get current user");
 
+      // 🛑 FIX START: Convert Auth User ID (userData.user.id) to Profile ID (user_profiles.id)
+      const { data: userProfile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("id")
+        .eq("user_id", userData.user.id)
+        .single();
+
+      if (profileError || !userProfile) {
+        throw new Error("User profile not found. Cannot set 'created_by' foreign key.");
+      }
+      const profileId = userProfile.id;
+      // 🛑 FIX END
+
       const journalEntryId = crypto.randomUUID();
       const entryNumber = `JE-${Date.now()}`;
       const entryDate = new Date().toISOString();
@@ -122,7 +135,7 @@ const JournalEntryNew = () => {
           status: "draft",
           total_debit: totalDebit,
           total_credit: amountToCredit,
-          created_by: userData.user.id,
+          created_by: profileId, // ✅ CORRECT: Insert the Profile ID
         },
       ]);
       if (entryError) throw entryError;
@@ -256,12 +269,10 @@ const JournalEntryNew = () => {
                       <TableRow key={line.id}>
                         <TableCell>{index + 1}</TableCell>
                         <TableCell>{line.description}</TableCell>
-                        {/* FIX: Use currencySymbol */}
                         <TableCell className="font-mono">
                           {currencySymbol}
                           {line.debit_amount.toFixed(2)}
                         </TableCell>
-                        {/* FIX: Use currencySymbol */}
                         <TableCell className="font-mono">
                           {currencySymbol}
                           {line.credit_amount.toFixed(2)}
@@ -272,9 +283,7 @@ const JournalEntryNew = () => {
                       <TableRow className="bg-green-50/50">
                         <TableCell>{journalLines.length + 1}</TableCell>
                         <TableCell className="italic">Balancing Entry (Retained Earnings)</TableCell>
-                        {/* FIX: Use currencySymbol */}
                         <TableCell className="font-mono">{currencySymbol}0.00</TableCell>
-                        {/* FIX: Use currencySymbol */}
                         <TableCell className="font-mono">
                           {currencySymbol}
                           {expectedTotalCreditDisplay.toFixed(2)}
@@ -287,12 +296,10 @@ const JournalEntryNew = () => {
                   <TableCell colSpan={2} className="text-right">
                     Total Debit/Credit:
                   </TableCell>
-                  {/* FIX: Use currencySymbol */}
                   <TableCell className="font-mono">
                     {currencySymbol}
                     {totalDebitDisplay.toFixed(2)}
                   </TableCell>
-                  {/* FIX: Use currencySymbol */}
                   <TableCell className="font-mono">
                     {currencySymbol}
                     {expectedTotalCreditDisplay.toFixed(2)}
