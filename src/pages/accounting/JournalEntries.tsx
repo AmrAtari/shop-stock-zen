@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Eye, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, Eye, Edit, Trash2, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -34,68 +34,140 @@ const JournalEntries = () => {
     },
   });
 
-  // Delete mutation
+  // Delete mutation (only for drafts)
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // 1. CRITICAL: Force Delete associated lines first. This is required
-      //    since the database ON DELETE CASCADE is not reliably working for you.
-      const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
+      const { data: entry } = await supabase.from("journal_entries").select("status").eq("id", id).single();
 
-      if (lineError) {
-        // Do not throw here unless absolutely necessary; let the main delete attempt proceed.
-        console.error("Warning: Failed to delete journal lines before main entry.", lineError);
+      if (entry?.status !== "draft") {
+        throw new Error("Only draft entries can be deleted. Posted entries must be reversed.");
       }
 
-      // 2. Delete the main journal entry and explicitly check the row count
+      const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
+      if (lineError) console.error("Warning: Failed to delete journal lines", lineError);
+
       const { count, error: entryError } = await supabase
         .from("journal_entries")
-        .delete({ count: "exact" }) // Crucial for catching silent RLS failures
+        .delete({ count: "exact" })
         .eq("id", id);
 
-      if (entryError) {
-        throw entryError;
-      }
+      if (entryError) throw entryError;
 
-      // 3. ULTIMATE CHECK: If 0 rows were deleted, the delete failed silently (e.g., RLS denied access)
       if (count === 0) {
-        // Throw a specific error if the status is 'draft', suggesting an RLS failure
-        const entryToDelete = journalEntries?.find((e) => e.id === id);
-
-        if (entryToDelete && entryToDelete.status === "draft") {
-          throw new Error(
-            "Deletion failed: Could not find or delete the entry. Check your Row Level Security (RLS) policy for the 'journal_entries' table. Ensure you are the 'created_by' user.",
-          );
-        } else {
-          throw new Error(`Deletion failed: Entry was not found or already deleted.`);
-        }
+        throw new Error("Deletion failed: Entry not found or already deleted.");
       }
 
       return id;
     },
     onSuccess: (deletedId) => {
-      toast.success("Journal entry permanently deleted successfully");
-
-      // Manual cache update: Instantly removes the item from the list UI
+      toast.success("Draft journal entry deleted successfully");
       queryClient.setQueryData(["journal_entries"], (oldData: any[] | undefined) => {
-        if (oldData) {
-          return oldData.filter((entry: any) => entry.id !== deletedId);
-        }
+        if (oldData) return oldData.filter((entry: any) => entry.id !== deletedId);
         return [];
       });
     },
     onError: (err: any) => {
-      toast.error(err.message || "An unknown error occurred during deletion.");
+      toast.error(err.message);
+    },
+  });
+
+  // Reverse mutation (for posted entries)
+  const reverseMutation = useMutation({
+    mutationFn: async (entry: any) => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id) throw new Error("User not authenticated");
+
+      // Create reversal journal entry
+      const reversalEntryId = crypto.randomUUID();
+      const reversalNumber = `JE-REV-${entry.entry_number}`;
+
+      // Get the original lines to reverse them
+      const { data: originalLines } = await supabase
+        .from("journal_entry_lines")
+        .select("*")
+        .eq("journal_entry_id", entry.id);
+
+      // Create reversal lines (swap debit/credit)
+      const reversalLines = originalLines?.map((line: any) => ({
+        id: crypto.randomUUID(),
+        journal_entry_id: reversalEntryId,
+        account_id: line.account_id,
+        item_id: line.item_id,
+        description: `Reversal: ${line.description}`,
+        debit_amount: line.credit_amount,
+        credit_amount: line.debit_amount,
+        store_id: line.store_id,
+        line_number: line.line_number,
+      }));
+
+      // Insert reversal journal entry
+      const { error: entryError } = await supabase.from("journal_entries").insert([
+        {
+          id: reversalEntryId,
+          entry_number: reversalNumber,
+          entry_date: new Date().toISOString(),
+          description: `Reversal of ${entry.entry_number}: ${entry.description}`,
+          entry_type: "reversal",
+          status: "posted",
+          total_debit: entry.total_credit,
+          total_credit: entry.total_debit,
+          created_by: user.id,
+          posted_by: user.id,
+          posted_at: new Date().toISOString(),
+          reference_id: entry.id,
+        },
+      ]);
+
+      if (entryError) throw entryError;
+
+      // Insert reversal lines
+      if (reversalLines && reversalLines.length > 0) {
+        const { error: lineError } = await supabase.from("journal_entry_lines").insert(reversalLines);
+        if (lineError) throw lineError;
+      }
+
+      // Mark original entry as reversed
+      const { error: updateError } = await supabase
+        .from("journal_entries")
+        .update({
+          status: "reversed",
+          reversed_at: new Date().toISOString(),
+          reversed_by: user.id,
+        })
+        .eq("id", entry.id);
+
+      if (updateError) throw updateError;
+
+      return reversalEntryId;
+    },
+    onSuccess: (reversalId) => {
+      toast.success(`Journal entry reversed successfully`);
+      queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to reverse journal entry");
     },
   });
 
   const handleDelete = (entry: any) => {
-    // Only allow deletion of drafts
     if (entry.status !== "draft") {
-      toast.error("Only draft entries can be deleted.");
+      toast.error("Only draft entries can be deleted. Posted entries must be reversed.");
       return;
     }
-    if (window.confirm(`Are you sure you want to permanently delete the draft entry #${entry.entry_number}?`)) {
+    if (window.confirm(`Are you sure you want to delete the draft entry #${entry.entry_number}?`)) {
       deleteMutation.mutate(entry.id);
+    }
+  };
+
+  const handleReverse = (entry: any) => {
+    if (
+      window.confirm(
+        `Are you sure you want to reverse the posted entry #${entry.entry_number}? This will create a reversal entry.`,
+      )
+    ) {
+      reverseMutation.mutate(entry);
     }
   };
 
@@ -174,10 +246,14 @@ const JournalEntries = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading || deleteMutation.isPending ? (
+              {isLoading || deleteMutation.isPending || reverseMutation.isPending ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center">
-                    {deleteMutation.isPending ? "Deleting..." : "Loading..."}
+                    {deleteMutation.isPending
+                      ? "Deleting..."
+                      : reverseMutation.isPending
+                        ? "Reversing..."
+                        : "Loading..."}
                   </TableCell>
                 </TableRow>
               ) : filteredEntries?.length === 0 ? (
@@ -206,7 +282,8 @@ const JournalEntries = () => {
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
-                      {/* Only allow editing of drafts */}
+
+                      {/* Edit - Only for drafts */}
                       {entry.status === "draft" && (
                         <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
                           <Button variant="ghost" size="icon" title="Edit">
@@ -214,14 +291,29 @@ const JournalEntries = () => {
                           </Button>
                         </Link>
                       )}
+
+                      {/* Reverse - Only for posted entries */}
+                      {entry.status === "posted" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reverse Entry"
+                          onClick={() => handleReverse(entry)}
+                          disabled={reverseMutation.isPending}
+                        >
+                          <RotateCcw className="w-4 h-4 text-orange-500" />
+                        </Button>
+                      )}
+
+                      {/* Delete - Only for drafts */}
                       <Button
                         variant="ghost"
                         size="icon"
-                        title="Delete"
+                        title={entry.status === "draft" ? "Delete" : "Cannot delete posted entries"}
                         onClick={() => handleDelete(entry)}
                         disabled={deleteMutation.isPending || entry.status !== "draft"}
                       >
-                        <Trash2 className="w-4 h-4 text-red-500" />
+                        <Trash2 className={`w-4 h-4 ${entry.status === "draft" ? "text-red-500" : "text-gray-300"}`} />
                       </Button>
                     </TableCell>
                   </TableRow>
