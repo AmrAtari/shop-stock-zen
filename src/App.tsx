@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SystemSettingsProvider } from "@/contexts/SystemSettingsContext";
-import { ThemeProvider } from "@/components/theme-provider"; // Assuming you have a ThemeProvider
 
 // Pages
 import Auth from "./pages/Auth";
@@ -47,267 +46,264 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <SystemSettingsProvider>
-        {/* Assuming a ThemeProvider wraps your application */}
-        <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-          <TooltipProvider>
-            <BrowserRouter>
-              <Routes>
-                {/* Public Routes */}
-                <Route path="/auth" element={<Auth />} />
+        <TooltipProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/auth" element={<Auth />} />
 
-                {/* Protected Routes */}
-                <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Dashboard />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/inventory"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Inventory />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Purchase Order Routes */}
-                <Route
-                  path="/purchase-orders"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <PurchaseOrders />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/purchase-orders/new"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <PurchaseOrderNew />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/purchase-orders/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <PurchaseOrderDetail />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Transfer Routes */}
-                <Route
-                  path="/transfers"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Transfers />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/transfers/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <TransferDetail />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Physical Inventory Routes */}
-                <Route
-                  path="/physical-inventory"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <PhysicalInventoryDashboard />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/physical-inventory/new"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <PhysicalInventoryNew />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/physical-inventory/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <PhysicalInventoryDetail />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Accounting Routes */}
-                <Route
-                  path="/accounting/dashboard"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <AccountingDashboard />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/accounting/journal-entries"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <JournalEntries />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/accounting/journal-entries/new"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <JournalEntryNew />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/accounting/journal-entries/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <JournalEntryDetail />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route // <-- THIS IS THE FIX FOR THE /edit ROUTE
-                  path="/accounting/journal-entries/:id/edit"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <JournalEntryEdit />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/accounting/chart-of-accounts"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <ChartOfAccounts />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                {/* System/Utility Routes */}
-                <Route
-                  path="/alerts"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Alerts />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/reports"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Reports />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/ai-reports"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <AIReports />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/stores"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Stores />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/duplicates"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Duplicates />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/configuration"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Configuration />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/notifications"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Notifications />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/inventory-recalculate"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <InventoryRecalculate />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
+              {/* Protected Routes */}
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Dashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/inventory"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Inventory />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Purchase Order Routes */}
+              <Route
+                path="/purchase-orders"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PurchaseOrders />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/purchase-orders/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PurchaseOrderNew />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/purchase-orders/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PurchaseOrderDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Transfer Routes */}
+              <Route
+                path="/transfers"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Transfers />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/transfers/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TransferDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Physical Inventory Routes */}
+              <Route
+                path="/physical-inventory"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PhysicalInventoryDashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/physical-inventory/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PhysicalInventoryNew />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/physical-inventory/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PhysicalInventoryDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Accounting Routes */}
+              <Route
+                path="/accounting/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AccountingDashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/journal-entries"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntries />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/journal-entries/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntryNew />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/journal-entries/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntryDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route // <-- FIXES 404 FOR EDIT PAGE
+                path="/accounting/journal-entries/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntryEdit />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/chart-of-accounts"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ChartOfAccounts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* System/Utility Routes */}
+              <Route
+                path="/alerts"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Alerts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Reports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ai-reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AIReports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/stores"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Stores />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/duplicates"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Duplicates />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/configuration"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Configuration />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Notifications />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/inventory-recalculate"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <InventoryRecalculate />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
 
-                {/* Fallback */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
-        </ThemeProvider>
+              {/* Fallback */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
       </SystemSettingsProvider>
     </QueryClientProvider>
   );
