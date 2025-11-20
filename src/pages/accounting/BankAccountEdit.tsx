@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +25,7 @@ const BankAccountEdit = () => {
       <Card>
         <CardHeader>
           <CardTitle>Edit Bank Account</CardTitle>
-          <CardDescription>
-            Update the information for this bank account
-          </CardDescription>
+          <CardDescription>Update the information for this bank account</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -40,7 +38,7 @@ const BankAccountEdit = () => {
               <Input id="accountType" defaultValue="Checking" />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
             <Input id="description" defaultValue="Primary business checking account" />
