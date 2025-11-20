@@ -22,8 +22,8 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const { t } = useTranslation();
 
-  // Auto-redirect if session exists
   useEffect(() => {
+    // Redirect if session exists
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate("/");
     });
@@ -34,17 +34,17 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // 1️⃣ Sign in with Supabase Auth
+      // 1️⃣ Sign in
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-
       if (authError || !authData.user) throw authError || new Error("Failed to sign in");
+
       const userId = authData.user.id;
 
-      // 2️⃣ Ensure user_profile exists (auto-create if missing)
-      const { data: profileData, error: profileError } = await supabase
+      // 2️⃣ Ensure user_profiles exists
+      let { data: profile, error: profileError } = await supabase
         .from("user_profiles")
         .select("*")
         .eq("user_id", userId)
@@ -52,15 +52,14 @@ const Auth = () => {
 
       if (profileError) throw profileError;
 
-      let profile = profileData;
       if (!profile) {
         // Auto-create profile
         const { data: newProfile, error: insertError } = await supabase
           .from("user_profiles")
           .insert({
             user_id: userId,
-            username: email.split("@")[0], // default username from email
-            store_id: null, // Optional: assign default store if needed
+            username: email.split("@")[0], // default username
+            created_at: new Date().toISOString(),
           })
           .select()
           .maybeSingle();
@@ -69,26 +68,27 @@ const Auth = () => {
         profile = newProfile;
       }
 
-      // 3️⃣ Fetch user role
-      const { data: roleData, error: roleError } = await supabase
+      // 3️⃣ Get user role
+      const { data: access, error: accessError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", userId)
         .maybeSingle<UserRoleAccess>();
 
-      if (roleError) throw roleError;
-      if (!roleData) {
+      if (accessError) throw accessError;
+      if (!access) {
         toast.error("No role assigned. Contact administrator.");
         await supabase.auth.signOut();
         return;
       }
 
-      // 4️⃣ Store profile/role in local storage or state if needed
-      localStorage.setItem("user_profile", JSON.stringify(profile));
-      localStorage.setItem("user_role", roleData.role);
+      // 4️⃣ Save role info in session/local storage (or app context)
+      const userRole = access.role;
+      localStorage.setItem("user_role", userRole);
+      localStorage.setItem("username", profile.username);
 
-      toast.success(`Welcome ${profile.username}! Role: ${roleData.role}`);
-      navigate("/"); // Redirect to dashboard
+      toast.success(`Welcome ${profile.username}, you are logged in as ${userRole.toUpperCase()}`);
+      navigate("/"); // redirect to dashboard
     } catch (error: any) {
       toast.error(error.message || "Failed to sign in");
     } finally {
