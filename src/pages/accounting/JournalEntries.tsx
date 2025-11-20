@@ -11,11 +11,15 @@ import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const queryClient = useQueryClient();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   // Fetch journal entries
   const { data: journalEntries, isLoading } = useQuery({
@@ -191,8 +195,8 @@ const JournalEntries = () => {
                     <TableCell>
                       <Badge variant="outline">{entry.entry_type}</Badge>
                     </TableCell>
-                    <TableCell className="font-mono">${entry.total_debit?.toFixed(2) || "0.00"}</TableCell>
-                    <TableCell className="font-mono">${entry.total_credit?.toFixed(2) || "0.00"}</TableCell>
+                    <TableCell className="font-mono">{formatCurrency(entry.total_debit || 0, currency)}</TableCell>
+                    <TableCell className="font-mono">{formatCurrency(entry.total_credit || 0, currency)}</TableCell>
                     <TableCell>
                       <Badge variant={getStatusBadge(entry.status) as any}>{entry.status}</Badge>
                     </TableCell>
