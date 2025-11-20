@@ -9,9 +9,28 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
+// Helper to determine badge variant based on status
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case "posted":
+      return "success";
+    case "draft":
+      return "secondary";
+    case "rejected":
+      return "destructive";
+    default:
+      return "default";
+  }
+};
+
+// ⚠️ PLACEHOLDER: Replace this with your actual implementation that fetches the system's default currency symbol.
+const useCurrencySymbol = () => "€";
+// ------------------------------------------------------------------------------------------------------
+
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const currencySymbol = useCurrencySymbol(); // <-- NEW: Use the dynamic currency symbol
 
   // 1. Fetch Journal Entry with Correct Joins (Cleaned Template String)
   const { data: entry, isLoading: entryLoading } = useQuery({
@@ -39,98 +58,78 @@ const JournalEntryDetail = () => {
 
   // 2. Fetch Journal Lines with Account Joins (Cleaned Template String)
   const { data: lines, isLoading: linesLoading } = useQuery({
-    queryKey: ["journal_entry_lines", id],
+    queryKey: ["journal_lines", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_entry_lines")
+        .from("journal_line_items")
         .select(
           `
           *,
-          account:accounts(account_code, account_name)
+          account:chart_of_accounts(account_code, account_name)
         `,
         )
         .eq("journal_entry_id", id)
-        .order("created_at", { ascending: true });
+        .order("line_number", { ascending: true });
 
       if (error) throw error;
       return data;
     },
+    enabled: !!id,
   });
 
-  // 3. POSTING MUTATION: Contains the fix for the UUID error
+  // 3. Mutation to post the entry
   const postMutation = useMutation({
     mutationFn: async () => {
-      // Basic check before posting
-      if (entry?.total_debit !== entry?.total_credit) {
-        throw new Error("Journal entry is unbalanced. Cannot post.");
+      if (!entry) throw new Error("Entry data is missing.");
+      if (Math.abs((entry.total_debit || 0) - (entry.total_credit || 0)) > 0.01) {
+        throw new Error("Cannot post an unbalanced entry.");
       }
-
-      // Get the current authenticated user's UUID
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user?.id) {
-        throw new Error("User not authenticated. Please log in to post entries.");
-      }
-      const postedById = user.id;
-
-      // Update the journal entry status and set posted_by to the user's UUID
-      const { error: updateError } = await supabase
-        .from("journal_entries")
-        .update({
-          status: "posted",
-          posted_by: postedById,
-          posted_at: new Date().toISOString(),
-        })
-        .eq("id", id);
-
-      if (updateError) throw updateError;
-
-      return id;
+      const { error } = await supabase.from("journal_entries").update({ status: "posted" }).eq("id", id);
+      if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(`Journal Entry #${entry?.entry_number} successfully posted!`);
       queryClient.invalidateQueries({ queryKey: ["journal_entry", id] });
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
+      toast.success(`Journal Entry ${entry?.entry_number} posted successfully.`);
     },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to post journal entry.");
+    onError: (error) => {
+      toast.error(`Error posting journal entry: ${error.message}`);
     },
   });
 
-  // Helper function for status badges
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, string> = {
-      draft: "secondary",
-      posted: "default",
-      reversed: "destructive",
-    };
-    return variants[status] || "default";
-  };
-
-  const isBalanced = entry?.total_debit === entry?.total_credit;
-
-  if (entryLoading) {
-    return <div>Loading journal entry details...</div>;
+  if (entryLoading || linesLoading) {
+    return (
+      <div className="flex justify-center items-center h-40">
+        <p>Loading...</p>
+      </div>
+    );
   }
 
-  // Improved error handling for RLS failure
+  // Handle the RLS/Not Found error explicitly
   if (!entry) {
     return (
-      <div className="p-8 text-center space-y-4">
-        <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
-        <p className="text-muted-foreground">
-          This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
-          Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are set to `USING (true)` for
-          authenticated users.
-        </p>
+      <div className="space-y-6">
         <Link to="/accounting/journal-entries">
-          <Button variant="outline">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to List
+          <Button variant="outline" className="flex items-center space-x-2">
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Journal Entries</span>
           </Button>
         </Link>
+        <Card className="border-red-500">
+          <CardHeader>
+            <CardTitle className="text-red-600">Journal Entry Not Found</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>
+              This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view
+              it.
+            </p>
+            <p className="mt-2 text-sm text-red-500 font-mono">
+              Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are correctly set up. If
+              policies are correct, check for foreign key data integrity issues.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -139,90 +138,90 @@ const JournalEntryDetail = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <Link to="/accounting/journal-entries">
-          <Button variant="outline">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to List
+          <Button variant="outline" className="flex items-center space-x-2">
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Entries</span>
           </Button>
         </Link>
-        <div className="flex gap-2">
+        <div className="space-x-2">
           {entry.status === "draft" && (
-            <Button
-              onClick={() => postMutation.mutate()}
-              disabled={postMutation.isPending || !isBalanced}
-              variant="default"
-              className="bg-green-600 hover:bg-green-700"
-            >
-              <CheckCheck className="w-4 h-4 mr-2" />
-              {postMutation.isPending ? "Posting..." : "Post Entry"}
-            </Button>
+            <>
+              <Button
+                variant="default"
+                onClick={() => postMutation.mutate()}
+                disabled={
+                  postMutation.isPending || Math.abs((entry.total_debit || 0) - (entry.total_credit || 0)) > 0.01
+                }
+                className="bg-green-600 hover:bg-green-700 flex items-center"
+              >
+                <CheckCheck className="w-4 h-4 mr-2" />
+                Post Entry
+              </Button>
+              <Link to={`/accounting/journal-entries/${id}/edit`}>
+                <Button variant="outline">Edit</Button>
+              </Link>
+            </>
           )}
-          <Link to={`/accounting/journal-entries/${id}/edit`}>
-            <Button variant="outline" disabled={entry.status !== "draft"}>
-              <FileText className="w-4 h-4 mr-2" />
-              Edit
-            </Button>
-          </Link>
         </div>
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row justify-between items-start">
-          <div>
-            <CardTitle>Journal Entry #{entry.entry_number}</CardTitle>
-            <p className="text-sm text-muted-foreground">Date: {format(new Date(entry.entry_date), "MMM dd, yyyy")}</p>
-          </div>
-          <Badge variant={getStatusBadge(entry.status) as any} className="text-lg py-1 px-3">
-            {entry.status}
-          </Badge>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center space-x-2">
+            <FileText className="w-6 h-6" />
+            <span>Journal Entry #{entry.entry_number}</span>
+          </CardTitle>
+          <Badge variant={getStatusBadge(entry.status)}>{entry.status}</Badge>
         </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <p>
-            <span className="font-semibold">Description:</span> {entry.description}
-          </p>
-          <p>
-            <span className="font-semibold">Type:</span> {entry.entry_type}
-          </p>
-          {/* Displaying creator/poster names from joins */}
-          <p>
-            <span className="font-semibold">Created By:</span> {entry.creator?.username || "N/A"}
-          </p>
-          {entry.status === "posted" && (
-            <p>
-              <span className="font-semibold">Posted By:</span> {entry.poster?.username || "N/A"}
-              <span className="ml-4 font-semibold">Posted At:</span>{" "}
-              {entry.posted_at ? format(new Date(entry.posted_at), "MMM dd, yyyy h:mm a") : "N/A"}
-            </p>
-          )}
-          {!isBalanced && entry.status === "draft" && (
-            <div className="text-red-600 font-bold border-l-4 border-red-600 pl-3">
-              Warning: Entry is Unbalanced! Debit: ${entry?.total_debit?.toFixed(2) || "0.00"}, Credit: $
-              {entry?.total_credit?.toFixed(2) || "0.00"}. Balance Difference: $
-              {Math.abs(entry.total_debit - entry.total_credit).toFixed(2)}.
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Date</p>
+              <p>{format(new Date(entry.entry_date), "MMM d, yyyy")}</p>
             </div>
-          )}
+            <div>
+              <p className="text-muted-foreground">Store</p>
+              <p>{entry.store_id || "N/A"}</p> {/* Assuming store name is not joined here */}
+            </div>
+            <div>
+              <p className="text-muted-foreground">Created By</p>
+              <p>{entry.creator?.username || "Unknown"}</p>
+            </div>
+            {entry.status === "posted" && (
+              <div>
+                <p className="text-muted-foreground">Posted By</p>
+                <p>{entry.poster?.username || "Unknown"}</p>
+              </div>
+            )}
+            <div className="col-span-full">
+              <p className="text-muted-foreground">Description</p>
+              <p>{entry.description || "No description provided"}</p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
+      {/* Line Items Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Entry Lines</CardTitle>
+          <CardTitle className="text-xl">Line Items</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[100px]">Code</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead className="w-1/3">Description</TableHead>
-                <TableHead className="text-right">Debit</TableHead>
-                <TableHead className="text-right">Credit</TableHead>
+                <TableHead className="w-[100px]">Account Code</TableHead>
+                <TableHead>Account Name</TableHead>
+                <TableHead className="max-w-md">Description</TableHead>
+                <TableHead className="text-right w-[150px]">Debit</TableHead>
+                <TableHead className="text-right w-[150px]">Credit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {linesLoading ? (
+              {lines?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
-                    Loading lines...
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    No line items found for this entry.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -232,11 +231,12 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {/* Note: Based on your schema, we use debit_amount/credit_amount */}
-                      {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
+                      {/* 1. FIX: Use dynamic currencySymbol */}
+                      {line.debit_amount > 0 ? `${currencySymbol}${line.debit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : "—"}
+                      {/* 2. FIX: Use dynamic currencySymbol */}
+                      {line.credit_amount > 0 ? `${currencySymbol}${line.credit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                   </TableRow>
                 ))
@@ -245,8 +245,16 @@ const JournalEntryDetail = () => {
                 <TableCell colSpan={3} className="text-right">
                   Totals:
                 </TableCell>
-                <TableCell className="text-right font-mono">${entry?.total_debit?.toFixed(2) || "0.00"}</TableCell>
-                <TableCell className="text-right font-mono">${entry?.total_credit?.toFixed(2) || "0.00"}</TableCell>
+                {/* 3. FIX: Use dynamic currencySymbol in Total Debit */}
+                <TableCell className="text-right font-mono">
+                  {currencySymbol}
+                  {entry?.total_debit?.toFixed(2) || "0.00"}
+                </TableCell>
+                {/* 4. FIX: Use dynamic currencySymbol in Total Credit */}
+                <TableCell className="text-right font-mono">
+                  {currencySymbol}
+                  {entry?.total_credit?.toFixed(2) || "0.00"}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
