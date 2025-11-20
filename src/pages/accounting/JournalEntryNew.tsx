@@ -55,7 +55,7 @@ const JournalEntryNew = () => {
     },
   });
 
-  // Save Journal Entry mutation
+  // Save Journal Entry mutation - FIXED ACCOUNTING LOGIC
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
@@ -67,51 +67,37 @@ const JournalEntryNew = () => {
         throw new Error("No items with positive value to record. Journal entry must have non-zero amounts.");
       }
 
-      // --- Find Inventory Account (FIXED) ---
-      let inventoryAccount: any;
-
-      const { data: nameSearchData } = await supabase
+      // --- Find Inventory Account ---
+      const { data: inventoryAccount } = await supabase
         .from("accounts")
         .select("*")
         .eq("account_code", "1200")
         .eq("is_active", true)
         .single();
 
-      if (nameSearchData) {
-        inventoryAccount = nameSearchData;
-      } else {
-        const { data: fallbackSearchData } = await supabase
-          .from("accounts")
-          .select("*")
-          .or("account_type.ilike.Asset,account_name.ilike.Current Assets")
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle();
-        if (fallbackSearchData) {
-          inventoryAccount = fallbackSearchData;
-          toast.warning(
-            `Using fallback account: ${inventoryAccount.account_name} as Inventory Asset not specifically named.`,
-          );
-        }
+      if (!inventoryAccount) {
+        throw new Error("Inventory account (1200) not found. Please ensure this account exists and is active.");
       }
 
-      if (!inventoryAccount)
-        throw new Error(
-          "Inventory Asset account not found. Please ensure you have an active account with code '1200' for general Inventory.",
-        );
-
-      // --- Find Retained Earnings ---
-      const { data: retainedAccount } = await supabase
+      // --- Find CASH/BANK Account (1010) instead of Retained Earnings ---
+      const { data: cashAccount } = await supabase
         .from("accounts")
         .select("*")
-        .eq("account_name", "Retained Earnings")
-        .maybeSingle();
-      if (!retainedAccount) throw new Error("Retained Earnings account not found");
+        .eq("account_code", "1010")
+        .eq("is_active", true)
+        .single();
 
-      // --- Get current user for created_by (FIXED) ---
+      if (!cashAccount) {
+        throw new Error(
+          "Primary Business Checking account (1010) not found. This is needed to record cash outflow for inventory purchases.",
+        );
+      }
+
+      // --- Get current user for created_by ---
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData?.user)
+      if (userError || !userData?.user) {
         throw new Error("Cannot get current user: session may have expired. Please try logging in again.");
+      }
 
       const currentUserId = userData.user.id;
 
@@ -145,16 +131,17 @@ const JournalEntryNew = () => {
         ...line,
         journal_entry_id: journalEntryId,
         line_number: index + 1,
-        account_id: inventoryAccount.id,
+        account_id: inventoryAccount.id, // DEBIT to Inventory
       }));
 
+      // CREDIT to Cash/Bank account instead of Retained Earnings
       const creditLineToInsert: any = {
         id: crypto.randomUUID(),
         journal_entry_id: journalEntryId,
         line_number: debitLinesToInsert.length + 1,
-        account_id: retainedAccount.id,
+        account_id: cashAccount.id, // CHANGED: Now credits Cash account
         item_id: null,
-        description: "Balancing entry for Opening Stock",
+        description: "Cash payment for inventory purchase", // CHANGED: Better description
         debit_amount: 0,
         credit_amount: amountToCredit,
         store_id: selectedStore,
@@ -167,7 +154,7 @@ const JournalEntryNew = () => {
       return journalEntryId;
     },
     onSuccess: () => {
-      toast.success("Journal entry saved successfully");
+      toast.success("Journal entry saved successfully with proper cash accounting");
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
       setJournalLines([]);
       setSelectedStore("");
@@ -331,7 +318,7 @@ const JournalEntryNew = () => {
                     {totalDebitDisplay > 0 && (
                       <TableRow className="bg-green-50/50 font-semibold">
                         <TableCell>{journalLines.length + 1}</TableCell>
-                        <TableCell className="italic">Balancing Entry (Retained Earnings)</TableCell>
+                        <TableCell className="italic">Cash payment for inventory purchase</TableCell>
                         <TableCell className="font-mono">{formatCurrency(0, currency)}</TableCell>
                         <TableCell className="font-mono">
                           {formatCurrency(expectedTotalCreditDisplay, currency)}
