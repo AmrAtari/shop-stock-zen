@@ -13,7 +13,7 @@ const BankAccounts = () => {
   const { data: bankAccounts, isLoading } = useBankAccounts();
   const { data: reconciliations } = useBankReconciliations();
 
-  const pendingReconciliations = reconciliations?.filter(r => r.status === "draft").length || 0;
+  const pendingReconciliations = reconciliations?.filter((r) => r.status === "draft").length || 0;
 
   return (
     <div className="space-y-6">
@@ -26,10 +26,12 @@ const BankAccounts = () => {
               New Reconciliation
             </Button>
           </Link>
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            New Bank Account
-          </Button>
+          <Link to="/accounting/bank-accounts/new">
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              New Bank Account
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -97,9 +99,7 @@ const BankAccounts = () => {
                     <TableCell>{account.bank_name}</TableCell>
                     <TableCell className="font-mono">{account.account_number}</TableCell>
                     <TableCell>{account.currency_id}</TableCell>
-                    <TableCell className="text-right font-mono">
-                      ${account.current_balance.toFixed(2)}
-                    </TableCell>
+                    <TableCell className="text-right font-mono">${account.current_balance.toFixed(2)}</TableCell>
                     <TableCell>
                       <Badge variant={account.is_active ? "default" : "secondary"}>
                         {account.is_active ? "Active" : "Inactive"}
@@ -113,9 +113,7 @@ const BankAccounts = () => {
                           </Button>
                         </Link>
                         <Link to={`/accounting/bank-accounts/${account.id}/reconciliation`}>
-                          <Button size="sm">
-                            Reconcile
-                          </Button>
+                          <Button size="sm">Reconcile</Button>
                         </Link>
                       </div>
                     </TableCell>
@@ -126,8 +124,20 @@ const BankAccounts = () => {
           )}
 
           {!isLoading && bankAccounts?.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              No bank accounts found. Create one to get started.
+            <div className="text-center py-12">
+              <div className="space-y-4">
+                <Building2 className="h-16 w-16 mx-auto text-muted-foreground" />
+                <h3 className="text-lg font-semibold">No bank accounts found</h3>
+                <p className="text-muted-foreground">
+                  Create your first bank account to get started with banking features.
+                </p>
+                <Link to="/accounting/bank-accounts/new">
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Bank Account
+                  </Button>
+                </Link>
+              </div>
             </div>
           )}
         </CardContent>
@@ -155,23 +165,17 @@ const BankAccounts = () => {
                 const difference = recon.statement_balance - recon.book_balance;
                 return (
                   <TableRow key={recon.id}>
-                    <TableCell className="font-medium">
-                      {recon.bank_account?.account_name}
-                    </TableCell>
+                    <TableCell className="font-medium">{recon.bank_account?.account_name}</TableCell>
                     <TableCell>{format(new Date(recon.statement_date), "MMM d, yyyy")}</TableCell>
-                    <TableCell className="text-right font-mono">
-                      ${recon.statement_balance.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      ${recon.book_balance.toFixed(2)}
-                    </TableCell>
-                    <TableCell className={`text-right font-mono ${difference !== 0 ? "text-destructive" : "text-green-600"}`}>
+                    <TableCell className="text-right font-mono">${recon.statement_balance.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-mono">${recon.book_balance.toFixed(2)}</TableCell>
+                    <TableCell
+                      className={`text-right font-mono ${difference !== 0 ? "text-destructive" : "text-green-600"}`}
+                    >
                       ${Math.abs(difference).toFixed(2)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={recon.status === "reconciled" ? "default" : "secondary"}>
-                        {recon.status}
-                      </Badge>
+                      <Badge variant={recon.status === "reconciled" ? "default" : "secondary"}>{recon.status}</Badge>
                     </TableCell>
                     <TableCell>
                       <Link to={`/accounting/bank-reconciliation/${recon.id}`}>
@@ -187,9 +191,7 @@ const BankAccounts = () => {
           </Table>
 
           {reconciliations?.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              No reconciliations found
-            </div>
+            <div className="text-center py-8 text-muted-foreground">No reconciliations found</div>
           )}
         </CardContent>
       </Card>
