@@ -8,6 +8,7 @@ import { useCreateBankAccount, useBankAccounts } from "@/hooks/useBankAccounts";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 const NewBankAccount = () => {
   const [accountName, setAccountName] = useState("");
@@ -18,6 +19,7 @@ const NewBankAccount = () => {
 
   const createBankAccount = useCreateBankAccount();
   const { refetch } = useBankAccounts();
+  const navigate = useNavigate();
 
   // Fetch accounts to link to chart of accounts
   const { data: accounts } = useQuery({
@@ -46,7 +48,7 @@ const NewBankAccount = () => {
         account_number: accountNumber,
         opening_balance: parseFloat(openingBalance) || 0,
         current_balance: parseFloat(openingBalance) || 0,
-        gl_account_id: selectedAccount,
+        account_id: selectedAccount, // CHANGED: from gl_account_id to account_id
         account_type: "checking",
         currency_id: "NIS", // You might need to create currencies table or hardcode for now
         is_active: true,
@@ -54,13 +56,9 @@ const NewBankAccount = () => {
 
       toast.success("Bank account created successfully!");
       await refetch();
-      
-      // Reset form
-      setAccountName("");
-      setBankName("");
-      setAccountNumber("");
-      setOpeningBalance("");
-      setSelectedAccount("");
+
+      // Navigate back to bank accounts list
+      navigate("/accounting/bank-accounts");
     } catch (error) {
       toast.error("Failed to create bank account");
     }
@@ -68,8 +66,13 @@ const NewBankAccount = () => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Create Bank Account</h1>
-      
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" onClick={() => navigate("/accounting/bank-accounts")}>
+          Back to Bank Accounts
+        </Button>
+        <h1 className="text-3xl font-bold">Create Bank Account</h1>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Bank Account Details</CardTitle>
@@ -133,11 +136,7 @@ const NewBankAccount = () => {
             </Select>
           </div>
 
-          <Button 
-            onClick={handleCreateAccount}
-            disabled={createBankAccount.isPending}
-            className="w-full"
-          >
+          <Button onClick={handleCreateAccount} disabled={createBankAccount.isPending} className="w-full">
             {createBankAccount.isPending ? "Creating..." : "Create Bank Account"}
           </Button>
         </CardContent>
