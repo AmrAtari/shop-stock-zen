@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 
 interface Store {
   id: string;
@@ -53,16 +54,38 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
-      // Find Inventory Account
-      const { data: inventoryAccount } = await supabase
+      // --- Find Inventory Account ---
+      let inventoryAccount: any;
+      const { data: nameSearchData } = await supabase
         .from("accounts")
         .select("*")
-        .ilike("account_name", "%Inventory%")
+        .ilike("account_name", `%Inventory%`)
         .eq("is_active", true)
         .maybeSingle();
-      if (!inventoryAccount) throw new Error("Inventory account not found");
 
-      // Find Retained Earnings account
+      if (nameSearchData) inventoryAccount = nameSearchData;
+      else {
+        const { data: fallbackSearchData } = await supabase
+          .from("accounts")
+          .select("*")
+          .or("account_type.ilike.Asset,account_name.ilike.Current Assets")
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+        if (fallbackSearchData) {
+          inventoryAccount = fallbackSearchData;
+          toast.warning(
+            `Using fallback account: ${inventoryAccount.account_name} as Inventory Asset not specifically named.`,
+          );
+        }
+      }
+
+      if (!inventoryAccount)
+        throw new Error(
+          "Inventory Asset account not found. Please ensure you have an active account named 'Inventory' or an 'Asset' type account.",
+        );
+
+      // --- Find Retained Earnings ---
       const { data: retainedAccount } = await supabase
         .from("accounts")
         .select("*")
@@ -70,12 +93,18 @@ const JournalEntryNew = () => {
         .maybeSingle();
       if (!retainedAccount) throw new Error("Retained Earnings account not found");
 
+      // --- Get current user for created_by ---
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData) throw new Error("Cannot get current user");
+
       const journalEntryId = crypto.randomUUID();
       const entryNumber = `JE-${Date.now()}`;
       const entryDate = new Date().toISOString();
 
       const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
       const amountToCredit = totalDebit;
+
+      if (amountToCredit === 0) throw new Error("Journal entry total is $0.00. Cannot save empty entry.");
 
       // Insert journal entry
       const { error: entryError } = await supabase.from("journal_entries").insert([
@@ -88,7 +117,7 @@ const JournalEntryNew = () => {
           status: "draft",
           total_debit: totalDebit,
           total_credit: amountToCredit,
-          created_by: supabase.auth.getUser()?.data.user.id, // automatically assign logged-in user
+          created_by: userData.user.id, // ✅ fixed
         },
       ]);
       if (entryError) throw entryError;
@@ -114,7 +143,6 @@ const JournalEntryNew = () => {
       };
 
       const linesToInsert = [...debitLinesToInsert, creditLineToInsert];
-
       const { error: lineError } = await supabase.from("journal_entry_lines").insert(linesToInsert);
       if (lineError) throw lineError;
 
