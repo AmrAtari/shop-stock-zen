@@ -22,8 +22,8 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly use 'created_by' FK
-          poster:user_profiles!posted_by(username)    // ✅ FIX 2: Explicitly use 'posted_by' FK
+          creator:user_profiles!created_by(username), // Fixes ambiguous join for creator
+          poster:user_profiles!posted_by(username)    // Fixes ambiguous join for poster
         `,
         )
         .eq("id", id)
@@ -37,7 +37,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines (Assuming correct table name 'journal_entry_lines')
+  // 2. Fetch Journal Lines (Assuming 'accounts' is the correct related table name for 'chart_of_accounts')
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
@@ -115,15 +115,15 @@ const JournalEntryDetail = () => {
     return <div>Loading journal entry details...</div>;
   }
 
-  // Improved error handling for RLS failure
+  // Fallback for RLS failure or truly non-existent entry
   if (!entry) {
     return (
       <div className="p-8 text-center space-y-4">
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
-          This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
-          Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are set to `USING (true)` for
-          authenticated users.
+          This entry may not exist, or you may lack the necessary permissions. The database query issue has been fixed,
+          so if this message persists, please confirm the journal entry ID is valid and your RLS policies are set to
+          TRUE on `journal_entries` and `user_profiles` for authenticated users.
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
