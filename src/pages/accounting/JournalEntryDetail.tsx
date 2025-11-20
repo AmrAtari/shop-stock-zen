@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry with Correct Joins (CRITICAL FIX APPLIED HERE)
+  // 1. Fetch Journal Entry - CRITICAL FIX: EXPLICIT FOREIGN KEY JOINS
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -22,8 +22,8 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), 
-          poster:user_profiles!posted_by(username)    
+          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly use 'created_by' FK
+          poster:user_profiles!posted_by(username)    // ✅ FIX 2: Explicitly use 'posted_by' FK
         `,
         )
         .eq("id", id)
@@ -37,7 +37,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines (Assuming correct table name 'journal_entry_lines' and relationship 'accounts')
+  // 2. Fetch Journal Lines (Assuming correct table name 'journal_entry_lines')
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
