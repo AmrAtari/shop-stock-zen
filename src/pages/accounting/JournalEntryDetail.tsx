@@ -81,7 +81,7 @@ const JournalEntryDetail = () => {
     enabled: !!id,
   });
 
-  // 2. Fetch Journal Lines - Using 'chart_of_accounts'
+  // 2. Fetch Journal Lines - CORRECTED: Using 'accounts' table instead of 'chart_of_accounts'
   const {
     data: lines,
     isLoading: linesLoading,
@@ -91,12 +91,13 @@ const JournalEntryDetail = () => {
     queryFn: async () => {
       console.log("🔍 Fetching journal lines for entry:", id);
 
+      // CORRECTED: Use 'accounts' table for the join
       const { data, error } = await supabase
         .from("journal_entry_lines")
         .select(
           `
           *,
-          account:chart_of_accounts(account_code, account_name) 
+          account:accounts(account_code, account_name) 
         `,
         )
         .eq("journal_entry_id", id)
@@ -104,10 +105,14 @@ const JournalEntryDetail = () => {
 
       console.log("📊 Lines query result:", { data, error });
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ Lines query failed:", error);
+        throw error;
+      }
+
       return data;
     },
-    enabled: !!id,
+    enabled: !!id && !!entry,
   });
 
   // Debug logging
