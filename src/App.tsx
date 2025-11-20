@@ -35,10 +35,13 @@ import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
 import JournalEntryNew from "./pages/accounting/JournalEntryNew";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
-import NewBankAccount from "./pages/accounting/NewBankAccount";
+
+// Bank Accounts
 import BankAccounts from "./pages/accounting/BankAccounts";
+import NewBankAccount from "./pages/accounting/NewBankAccount";
 import BankAccountDetail from "./pages/accounting/BankAccountDetail";
 import BankAccountEdit from "./pages/accounting/BankAccountEdit";
+
 // Components/Layouts
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -222,22 +225,52 @@ const App = () => {
                 }
               />
               <Route
-                path="/accounting/bank-accounts/new"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <NewBankAccount /> {/* Changed from BankAccountNew to NewBankAccount */}
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
                 path="/accounting/chart-of-accounts"
                 element={
                   <ProtectedRoute>
                     <Layout>
                       <ChartOfAccounts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Bank Accounts Routes */}
+              <Route
+                path="/accounting/bank-accounts"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BankAccounts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bank-accounts/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <NewBankAccount />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bank-accounts/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BankAccountDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bank-accounts/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BankAccountEdit />
                     </Layout>
                   </ProtectedRoute>
                 }
