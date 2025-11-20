@@ -444,6 +444,61 @@ export type Database = {
           },
         ]
       }
+      bill_payments: {
+        Row: {
+          bank_account_id: string
+          created_at: string | null
+          id: string
+          journal_entry_id: string
+          payment_amount: number
+          payment_date: string
+          payment_method: string | null
+          vendor_bill_id: string
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string | null
+          id?: string
+          journal_entry_id: string
+          payment_amount: number
+          payment_date: string
+          payment_method?: string | null
+          vendor_bill_id: string
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string | null
+          id?: string
+          journal_entry_id?: string
+          payment_amount?: number
+          payment_date?: string
+          payment_method?: string | null
+          vendor_bill_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_payments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_payments_vendor_bill_id_fkey"
+            columns: ["vendor_bill_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_bills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           created_at: string
@@ -569,6 +624,63 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      customer_invoices: {
+        Row: {
+          balance: number | null
+          created_at: string | null
+          customer_id: number
+          due_date: string
+          id: string
+          invoice_date: string
+          invoice_number: string
+          journal_entry_id: string | null
+          received_amount: number | null
+          status: string
+          total_amount: number
+        }
+        Insert: {
+          balance?: number | null
+          created_at?: string | null
+          customer_id: number
+          due_date: string
+          id?: string
+          invoice_date: string
+          invoice_number: string
+          journal_entry_id?: string | null
+          received_amount?: number | null
+          status: string
+          total_amount: number
+        }
+        Update: {
+          balance?: number | null
+          created_at?: string | null
+          customer_id?: number
+          due_date?: string
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          journal_entry_id?: string | null
+          received_amount?: number | null
+          status?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_invoices_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       customers: {
         Row: {
@@ -716,6 +828,61 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_payments: {
+        Row: {
+          bank_account_id: string
+          created_at: string | null
+          customer_invoice_id: string
+          id: string
+          journal_entry_id: string
+          payment_amount: number
+          payment_date: string
+          payment_method: string | null
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string | null
+          customer_invoice_id: string
+          id?: string
+          journal_entry_id: string
+          payment_amount: number
+          payment_date: string
+          payment_method?: string | null
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string | null
+          customer_invoice_id?: string
+          id?: string
+          journal_entry_id?: string
+          payment_amount?: number
+          payment_date?: string
+          payment_method?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payments_customer_invoice_id_fkey"
+            columns: ["customer_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "customer_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       items: {
         Row: {
           category: string | null
@@ -740,6 +907,7 @@ export type Database = {
           season: string | null
           size: string | null
           sku: string
+          store_id: string | null
           supplier: string | null
           tax: number
           theme: string | null
@@ -769,6 +937,7 @@ export type Database = {
           season?: string | null
           size?: string | null
           sku: string
+          store_id?: string | null
           supplier?: string | null
           tax?: number
           theme?: string | null
@@ -798,6 +967,7 @@ export type Database = {
           season?: string | null
           size?: string | null
           sku?: string
+          store_id?: string | null
           supplier?: string | null
           tax?: number
           theme?: string | null
@@ -869,6 +1039,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "items_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "items_supplier_fkey"
             columns: ["supplier"]
             isOneToOne: false
@@ -905,6 +1082,8 @@ export type Database = {
           reference_id: string | null
           reference_type: string | null
           status: string
+          total_credit: number | null
+          total_debit: number | null
           updated_at: string
         }
         Insert: {
@@ -920,6 +1099,8 @@ export type Database = {
           reference_id?: string | null
           reference_type?: string | null
           status?: string
+          total_credit?: number | null
+          total_debit?: number | null
           updated_at?: string
         }
         Update: {
@@ -935,6 +1116,8 @@ export type Database = {
           reference_id?: string | null
           reference_type?: string | null
           status?: string
+          total_credit?: number | null
+          total_debit?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -943,32 +1126,53 @@ export type Database = {
         Row: {
           account_id: string
           created_at: string
+          credit: number | null
           credit_amount: number
+          debit: number | null
           debit_amount: number
           description: string | null
           id: string
+          item_id: string | null
           journal_entry_id: string
           line_number: number
+          reference_id: string | null
+          reference_type: string | null
+          store_id: string | null
+          updated_at: string | null
         }
         Insert: {
           account_id: string
           created_at?: string
+          credit?: number | null
           credit_amount?: number
+          debit?: number | null
           debit_amount?: number
           description?: string | null
           id?: string
+          item_id?: string | null
           journal_entry_id: string
           line_number: number
+          reference_id?: string | null
+          reference_type?: string | null
+          store_id?: string | null
+          updated_at?: string | null
         }
         Update: {
           account_id?: string
           created_at?: string
+          credit?: number | null
           credit_amount?: number
+          debit?: number | null
           debit_amount?: number
           description?: string | null
           id?: string
+          item_id?: string | null
           journal_entry_id?: string
           line_number?: number
+          reference_id?: string | null
+          reference_type?: string | null
+          store_id?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -979,10 +1183,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_report"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
+          },
+          {
             foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
             columns: ["journal_entry_id"]
             isOneToOne: false
             referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
             referencedColumns: ["id"]
           },
         ]
@@ -2653,6 +2913,70 @@ export type Database = {
           },
         ]
       }
+      vendor_bills: {
+        Row: {
+          balance: number | null
+          bill_date: string
+          bill_number: string
+          created_at: string | null
+          due_date: string
+          id: string
+          journal_entry_id: string | null
+          paid_amount: number | null
+          status: string
+          supplier_id: string
+          total_amount: number
+        }
+        Insert: {
+          balance?: number | null
+          bill_date: string
+          bill_number: string
+          created_at?: string | null
+          due_date: string
+          id?: string
+          journal_entry_id?: string | null
+          paid_amount?: number | null
+          status: string
+          supplier_id: string
+          total_amount: number
+        }
+        Update: {
+          balance?: number | null
+          bill_date?: string
+          bill_number?: string
+          created_at?: string | null
+          due_date?: string
+          id?: string
+          journal_entry_id?: string | null
+          paid_amount?: number | null
+          status?: string
+          supplier_id?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_bills_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_bills_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_bills_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_report"
+            referencedColumns: ["supplier_id"]
+          },
+        ]
+      }
       workflow_rules: {
         Row: {
           condition_type: string
@@ -3278,13 +3602,18 @@ export type Database = {
         }[]
       }
       get_user_store_id: { Args: { _user_id: string }; Returns: string }
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
+      has_role:
+        | {
+            Args: { role_name: Database["public"]["Enums"]["app_role"] }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              _role: Database["public"]["Enums"]["app_role"]
+              _user_id: string
+            }
+            Returns: boolean
+          }
       is_admin: { Args: { uid: string }; Returns: boolean }
       is_po_approver: { Args: { user_id: string }; Returns: boolean }
       list_public_tables: {
@@ -3293,6 +3622,7 @@ export type Database = {
           table_name: string
         }[]
       }
+      next_journal_entry_number: { Args: never; Returns: string }
       pos_session_expected_cash: {
         Args: { session_id_param: string }
         Returns: number
