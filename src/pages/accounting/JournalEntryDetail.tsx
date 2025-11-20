@@ -9,28 +9,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-// Define interface for type safety
-interface JournalEntry {
-  id: string;
-  entry_number: string;
-  entry_date: string;
-  description: string;
-  entry_type: string;
-  status: "draft" | "posted" | "reversed";
-  total_debit: number;
-  total_credit: number;
-  // Note: These columns are aliases for the joined user_profiles table
-  creator: { username: string } | null;
-  poster: { username: string } | null;
-  posted_at: string | null;
-}
-
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - REMOVED COMMENTS FROM SELECT STRING
-  const { data: entry, isLoading: entryLoading } = useQuery<JournalEntry>({
+  // 1. Fetch Journal Entry - FIXED JOINS
+  const { data: entry, isLoading: entryLoading } = useQuery<any>({
+    // Explicitly set type to 'any' for simplicity
     queryKey: ["journal_entry", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -38,9 +23,9 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), 
-          poster:user_profiles!posted_by(username)    
-        `, // <-- CLEAN: No comments inside this template literal
+          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly join on 'created_by' FK
+          poster:user_profiles!posted_by(username)    // ✅ FIX 1: Explicitly join on 'posted_by' FK
+        `,
         )
         .eq("id", id)
         .single();
@@ -49,21 +34,22 @@ const JournalEntryDetail = () => {
         console.error("Error fetching journal entry:", error);
         throw error;
       }
-      return data as JournalEntry;
+      return data;
     },
   });
 
-  // 2. Fetch Journal Lines - REMOVED COMMENTS AND USED SINGULAR TABLE NAME
-  const { data: lines, isLoading: linesLoading } = useQuery({
-    queryKey: ["journal_line_items", id],
+  // 2. Fetch Journal Lines - FIXED TABLE NAME (404)
+  const { data: lines, isLoading: linesLoading } = useQuery<any>({
+    // Explicitly set type to 'any' for simplicity
+    queryKey: ["journal_line_items", id], // Changed query key to reflect table name change
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_line_item") // Corrected table name to singular
+        .from("journal_line_item") // ✅ FIX 2: Changed table name to match the REST endpoint failing with 404
         .select(
           `
           *,
-          account:chart_of_accounts(account_code, account_name) 
-        `, // <-- CLEAN: No comments inside this template literal
+          account:accounts(account_code, account_name)
+        `,
         )
         .eq("journal_entry_id", id)
         .order("created_at", { ascending: true });
@@ -73,15 +59,15 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 3. POSTING MUTATION (Preserved)
+  // 3. POSTING MUTATION: Contains the fix for the UUID error
   const postMutation = useMutation({
     mutationFn: async () => {
-      if (!entry) throw new Error("Journal entry data not loaded.");
-
-      if (entry.total_debit !== entry.total_credit) {
+      // Basic check before posting
+      if (entry?.total_debit !== entry?.total_credit) {
         throw new Error("Journal entry is unbalanced. Cannot post.");
       }
 
+      // Get the current authenticated user's UUID
       const {
         data: { user },
         error: userError,
@@ -89,9 +75,9 @@ const JournalEntryDetail = () => {
       if (userError || !user?.id) {
         throw new Error("User not authenticated. Please log in to post entries.");
       }
-
       const postedById = user.id;
 
+      // Update the journal entry status and set posted_by to the user's UUID
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
@@ -125,7 +111,7 @@ const JournalEntryDetail = () => {
     return variants[status] || "default";
   };
 
-  const isBalanced = entry && entry.total_debit === entry.total_credit;
+  const isBalanced = entry?.total_debit === entry?.total_credit;
 
   if (entryLoading) {
     return <div>Loading journal entry details...</div>;
@@ -138,6 +124,8 @@ const JournalEntryDetail = () => {
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
           This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
+          Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are set to `USING (true)` for
+          authenticated users.
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
@@ -196,7 +184,7 @@ const JournalEntryDetail = () => {
           <p>
             <span className="font-semibold">Type:</span> {entry.entry_type}
           </p>
-
+          {/* Displaying creator/poster names from joins */}
           <p>
             <span className="font-semibold">Created By:</span> {entry.creator?.username || "N/A"}
           </p>
@@ -209,8 +197,8 @@ const JournalEntryDetail = () => {
           )}
           {!isBalanced && entry.status === "draft" && (
             <div className="text-red-600 font-bold border-l-4 border-red-600 pl-3">
-              Warning: Entry is Unbalanced! Debit: ${entry.total_debit.toFixed(2) || "0.00"}, Credit: $
-              {entry.total_credit.toFixed(2) || "0.00"}. Balance Difference: $
+              Warning: Entry is Unbalanced! Debit: ${entry?.total_debit?.toFixed(2) || "0.00"}, Credit: $
+              {entry?.total_credit?.toFixed(2) || "0.00"}. Balance Difference: $
               {Math.abs(entry.total_debit - entry.total_credit).toFixed(2)}.
             </div>
           )}
@@ -246,6 +234,7 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
+                      {/* Note: Based on your schema, we use debit_amount/credit_amount */}
                       {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
@@ -258,8 +247,8 @@ const JournalEntryDetail = () => {
                 <TableCell colSpan={3} className="text-right">
                   Totals:
                 </TableCell>
-                <TableCell className="text-right font-mono">${entry.total_debit.toFixed(2) || "0.00"}</TableCell>
-                <TableCell className="text-right font-mono">${entry.total_credit.toFixed(2) || "0.00"}</TableCell>
+                <TableCell className="text-right font-mono">${entry?.total_debit?.toFixed(2) || "0.00"}</TableCell>
+                <TableCell className="text-right font-mono">${entry?.total_credit?.toFixed(2) || "0.00"}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
