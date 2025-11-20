@@ -8,12 +8,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { useEffect } from "react"; // <-- NEW IMPORT
+import { useEffect } from "react";
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
-  const navigate = useNavigate(); // <-- NEW INITIALIZATION
+  const navigate = useNavigate();
 
   // *** CRITICAL AUTHENTICATION CHECK ***
   useEffect(() => {
@@ -25,35 +25,72 @@ const JournalEntryDetail = () => {
     });
   }, [navigate]);
 
-  // 1. Fetch Journal Entry - CRITICAL FIX: EXPLICIT FOREIGN KEY JOINS
-  const { data: entry, isLoading: entryLoading } = useQuery<any>({
+  // 1. Fetch Journal Entry - DEBUG VERSION
+  const {
+    data: entry,
+    isLoading: entryLoading,
+    error: entryError,
+  } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      console.log("🔍 Fetching journal entry with ID:", id);
+
+      // First, let's try a simple query without joins
+      const { data: simpleData, error: simpleError } = await supabase
+        .from("journal_entries")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      console.log("📊 Simple query result:", { simpleData, simpleError });
+
+      if (simpleError) {
+        console.error("❌ Simple query failed:", simpleError);
+        throw simpleError;
+      }
+
+      if (!simpleData) {
+        console.error("❌ No data returned from simple query");
+        throw new Error("No journal entry found");
+      }
+
+      // Now try the full query with joins
+      console.log("🔄 Trying full query with joins...");
+      const { data: fullData, error: fullError } = await supabase
         .from("journal_entries")
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // FIXED JOIN
-          poster:user_profiles!posted_by(username)    // FIXED JOIN
+          creator:user_profiles!created_by(username),
+          poster:user_profiles!posted_by(username)
         `,
         )
         .eq("id", id)
         .single();
 
-      if (error) {
-        console.error("Error fetching journal entry:", error);
-        throw error;
+      console.log("📊 Full query result:", { fullData, fullError });
+
+      if (fullError) {
+        console.error("❌ Full query failed:", fullError);
+        // But we have simpleData, so return that
+        return simpleData;
       }
-      return data;
+
+      return fullData || simpleData;
     },
     enabled: !!id,
   });
 
   // 2. Fetch Journal Lines - Using 'chart_of_accounts'
-  const { data: lines, isLoading: linesLoading } = useQuery<any>({
+  const {
+    data: lines,
+    isLoading: linesLoading,
+    error: linesError,
+  } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
+      console.log("🔍 Fetching journal lines for entry:", id);
+
       const { data, error } = await supabase
         .from("journal_entry_lines")
         .select(
@@ -65,13 +102,28 @@ const JournalEntryDetail = () => {
         .eq("journal_entry_id", id)
         .order("created_at", { ascending: true });
 
+      console.log("📊 Lines query result:", { data, error });
+
       if (error) throw error;
       return data;
     },
     enabled: !!id,
   });
 
-  // 3. POSTING MUTATION (Code unchanged)
+  // Debug logging
+  useEffect(() => {
+    console.log("🔍 DEBUG INFO:", {
+      entryId: id,
+      entryData: entry,
+      entryError: entryError,
+      entryLoading: entryLoading,
+      linesData: lines,
+      linesError: linesError,
+      linesLoading: linesLoading,
+    });
+  }, [id, entry, entryError, entryLoading, lines, linesError, linesLoading]);
+
+  // 3. POSTING MUTATION
   const postMutation = useMutation({
     mutationFn: async () => {
       if (entry?.total_debit !== entry?.total_credit) {
@@ -114,6 +166,26 @@ const JournalEntryDetail = () => {
     return <div>Loading journal entry details...</div>;
   }
 
+  // Show error details if available
+  if (entryError) {
+    return (
+      <div className="p-8 text-center space-y-4">
+        <h1 className="text-2xl font-bold text-red-600">Error Loading Journal Entry</h1>
+        <div className="text-left bg-red-50 p-4 rounded">
+          <p className="font-semibold">Error Details:</p>
+          <p className="text-sm">{entryError.message}</p>
+          <p className="text-xs mt-2">Check the browser console for more details.</p>
+        </div>
+        <Link to="/accounting/journal-entries">
+          <Button variant="outline">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to List
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
   // The final check after auth and RLS are assumed correct
   if (!entry) {
     return (
@@ -122,6 +194,7 @@ const JournalEntryDetail = () => {
         <p className="text-muted-foreground">
           **Action Required:** The ID in the URL is likely invalid. Please check your database for a valid entry ID.
         </p>
+        <p className="text-sm">Entry ID: {id}</p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -221,11 +294,23 @@ const JournalEntryDetail = () => {
                     Loading lines...
                   </TableCell>
                 </TableRow>
+              ) : linesError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-red-600">
+                    Error loading lines: {linesError.message}
+                  </TableCell>
+                </TableRow>
+              ) : lines?.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center">
+                    No lines found for this entry
+                  </TableCell>
+                </TableRow>
               ) : (
                 lines?.map((line: any) => (
                   <TableRow key={line.id}>
-                    <TableCell className="font-mono font-semibold">{line.account?.account_code}</TableCell>
-                    <TableCell>{line.account?.account_name}</TableCell>
+                    <TableCell className="font-mono font-semibold">{line.account?.account_code || "N/A"}</TableCell>
+                    <TableCell>{line.account?.account_name || "N/A"}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
                       {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
