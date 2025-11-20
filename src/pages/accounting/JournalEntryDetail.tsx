@@ -132,35 +132,108 @@ const JournalEntryDetail = () => {
     });
   }, [id, entry, entryError, entryLoading, lines, linesError, linesLoading]);
 
-  // 3. POSTING MUTATION
+  // 3. POSTING MUTATION - ENHANCED DEBUG VERSION
   const postMutation = useMutation({
     mutationFn: async () => {
+      console.log("🔄 Starting post mutation...");
+
       if (entry?.total_debit !== entry?.total_credit) {
+        console.error("❌ Entry is unbalanced:", {
+          debit: entry?.total_debit,
+          credit: entry?.total_credit,
+        });
         throw new Error("Journal entry is unbalanced. Cannot post.");
       }
+
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
+      console.log("👤 Current user:", user?.id);
+      console.log("📝 Entry created_by:", entry?.created_by);
+      console.log("🔍 User matches creator:", user?.id === entry?.created_by);
+
+      if (userError) {
+        console.error("❌ User error:", userError);
+        throw new Error("User not authenticated.");
+      }
+
       if (!user?.id) {
         throw new Error("User not authenticated.");
       }
-      const { error: updateError } = await supabase
+
+      console.log("📝 Updating journal entry status to 'posted'...");
+
+      // Try a direct update first to see if it works
+      const updateData = {
+        status: "posted",
+        posted_by: user.id,
+        posted_at: new Date().toISOString(),
+      };
+
+      console.log("📤 Update data:", updateData);
+      console.log("🎯 Update conditions:", {
+        id: id,
+        created_by: user.id,
+        current_status: entry?.status,
+      });
+
+      const {
+        data,
+        error: updateError,
+        count,
+      } = await supabase
         .from("journal_entries")
-        .update({
-          status: "posted",
-          posted_by: user.id,
-          posted_at: new Date().toISOString(),
-        })
-        .eq("id", id);
-      if (updateError) throw updateError;
+        .update(updateData)
+        .eq("id", id)
+        .eq("created_by", user.id) // Add this to ensure RLS passes
+        .select();
+
+      console.log("📊 Update result:", {
+        data,
+        updateError,
+        count,
+        success: !updateError,
+        rows_updated: data?.length,
+      });
+
+      if (updateError) {
+        console.error("❌ Update failed:", updateError);
+        console.error("❌ Update error details:", {
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+          code: updateError.code,
+        });
+        throw updateError;
+      }
+
+      if (!data || data.length === 0) {
+        console.error("❌ No rows updated - RLS likely blocked the update");
+        console.error("❌ Possible reasons:");
+        console.error("   - User ID doesn't match created_by");
+        console.error("   - Entry is not in draft status");
+        console.error("   - RLS policy is too restrictive");
+        throw new Error("Update failed: No rows affected. Check RLS policies.");
+      }
+
+      console.log("✅ Successfully posted journal entry");
+      console.log("✅ Updated entry:", data[0]);
       return id;
     },
     onSuccess: () => {
+      console.log("🎉 Post mutation successful");
       toast.success(`Journal Entry #${entry?.entry_number} successfully posted!`);
       queryClient.invalidateQueries({ queryKey: ["journal_entry", id] });
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
     onError: (err: any) => {
+      console.error("❌ Post mutation failed:", err);
+      console.error("❌ Error details:", {
+        message: err.message,
+        code: err.code,
+        details: err.details,
+      });
       toast.error(err.message || "Failed to post journal entry.");
     },
   });
@@ -226,7 +299,18 @@ const JournalEntryDetail = () => {
         <div className="flex gap-2">
           {entry.status === "draft" && (
             <Button
-              onClick={() => postMutation.mutate()}
+              onClick={() => {
+                console.log("🎯 Post button clicked");
+                console.log("📊 Current entry state:", {
+                  id: entry.id,
+                  status: entry.status,
+                  created_by: entry.created_by,
+                  total_debit: entry.total_debit,
+                  total_credit: entry.total_credit,
+                  isBalanced: isBalanced,
+                });
+                postMutation.mutate();
+              }}
               disabled={postMutation.isPending || !isBalanced}
               variant="default"
               className="bg-green-600 hover:bg-green-700"
