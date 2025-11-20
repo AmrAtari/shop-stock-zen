@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - FIXED AMBIGUOUS JOINS
+  // 1. Fetch Journal Entry - FIXED AMBIGUOUS JOINS AND CLEANED QUERY STRING
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -22,8 +22,8 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // ✅ FIX: Explicit join on 'created_by' FK
-          poster:user_profiles!posted_by(username)    // ✅ FIX: Explicit join on 'posted_by' FK
+          creator:user_profiles!created_by(username), 
+          poster:user_profiles!posted_by(username)    
         `,
         )
         .eq("id", id)
@@ -37,16 +37,16 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines - Using the confirmed table name
+  // 2. Fetch Journal Lines - CLEANED QUERY STRING
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_entry_lines") // Confirmed correct table name
+        .from("journal_entry_lines")
         .select(
           `
           *,
-          account:chart_of_accounts(account_code, account_name) // Changed to chart_of_accounts to be more specific
+          account:chart_of_accounts(account_code, account_name) 
         `,
         )
         .eq("journal_entry_id", id)
