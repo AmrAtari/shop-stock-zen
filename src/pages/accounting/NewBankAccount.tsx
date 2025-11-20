@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 
 const NewBankAccount = () => {
   const [accountName, setAccountName] = useState("");
@@ -48,9 +49,9 @@ const NewBankAccount = () => {
         account_number: accountNumber,
         opening_balance: parseFloat(openingBalance) || 0,
         current_balance: parseFloat(openingBalance) || 0,
-        account_id: selectedAccount, // CHANGED: from gl_account_id to account_id
+        gl_account_id: selectedAccount, // CORRECT: matches table structure
         account_type: "checking",
-        currency_id: "NIS", // You might need to create currencies table or hardcode for now
+        currency_id: "NIS",
         is_active: true,
       });
 
@@ -59,8 +60,8 @@ const NewBankAccount = () => {
 
       // Navigate back to bank accounts list
       navigate("/accounting/bank-accounts");
-    } catch (error) {
-      toast.error("Failed to create bank account");
+    } catch (error: any) {
+      toast.error(`Failed to create bank account: ${error.message}`);
     }
   };
 
@@ -68,6 +69,7 @@ const NewBankAccount = () => {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" onClick={() => navigate("/accounting/bank-accounts")}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Bank Accounts
         </Button>
         <h1 className="text-3xl font-bold">Create Bank Account</h1>
@@ -134,6 +136,9 @@ const NewBankAccount = () => {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-sm text-muted-foreground">
+              This links the bank account to your chart of accounts. Use account 1010 for cash accounts.
+            </p>
           </div>
 
           <Button onClick={handleCreateAccount} disabled={createBankAccount.isPending} className="w-full">
