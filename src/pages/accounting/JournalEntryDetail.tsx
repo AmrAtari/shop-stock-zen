@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry with FIXED JOINS (Resolves 400 Bad Request/PGRST200)
+  // 1. Fetch Journal Entry - FIXED AMBIGUOUS JOINS (Resolves 400 Bad Request)
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -37,12 +37,12 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines with FIXED TABLE NAME (Resolves 404 Not Found)
+  // 2. Fetch Journal Lines - CONFIRMED TABLE NAME
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
-    queryKey: ["journal_line_items", id],
+    queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_line_item") // ✅ FIX 2: Changed table name to match the failing REST endpoint
+        .from("journal_entry_lines") // ✅ CONFIRMED: Using the actual database table name
         .select(
           `
           *,
@@ -57,7 +57,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 3. POSTING MUTATION: Contains the fix for the UUID error
+  // 3. POSTING MUTATION (remains unchanged)
   const postMutation = useMutation({
     mutationFn: async () => {
       // Basic check before posting
