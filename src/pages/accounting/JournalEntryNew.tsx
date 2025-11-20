@@ -54,17 +54,22 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
-      // --- Find Inventory Account ---
+      // --- Find Inventory Account (FIXED) ---
       let inventoryAccount: any;
+
+      // ✅ FIX 2: Search for the generic Inventory account by its specific name/code (1200)
+      // This guarantees a single result, preventing the query from failing and falling back to Cash.
       const { data: nameSearchData } = await supabase
         .from("accounts")
         .select("*")
-        .ilike("account_name", `%Inventory%`)
+        .eq("account_code", "1200") // Use exact code for the generic Inventory account
         .eq("is_active", true)
-        .maybeSingle();
+        .single(); // Use single() since we expect exactly one result
 
-      if (nameSearchData) inventoryAccount = nameSearchData;
-      else {
+      if (nameSearchData) {
+        inventoryAccount = nameSearchData;
+      } else {
+        // Fallback logic remains, but should no longer be hit for the generic account
         const { data: fallbackSearchData } = await supabase
           .from("accounts")
           .select("*")
@@ -82,7 +87,7 @@ const JournalEntryNew = () => {
 
       if (!inventoryAccount)
         throw new Error(
-          "Inventory Asset account not found. Please ensure you have an active account named 'Inventory' or an 'Asset' type account.",
+          "Inventory Asset account not found. Please ensure you have an active account with code '1200' for general Inventory.",
         );
 
       // --- Find Retained Earnings ---
@@ -93,13 +98,13 @@ const JournalEntryNew = () => {
         .maybeSingle();
       if (!retainedAccount) throw new Error("Retained Earnings account not found");
 
-      // --- Get current user for created_by ---
+      // --- Get current user for created_by (FIXED) ---
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      // ✅ FIX 1: Ensure user data and user ID are explicitly checked before use
-      if (userError || !userData || !userData.user)
+      // ✅ FIX 1: Robust check to ensure the user object exists, preventing FK violation
+      if (userError || !userData?.user)
         throw new Error("Cannot get current user: session may have expired. Please try logging in again.");
 
-      const currentUserId = userData.user.id; // Store ID for clear use
+      const currentUserId = userData.user.id;
 
       const journalEntryId = crypto.randomUUID();
       const entryNumber = `JE-${Date.now()}`;
@@ -147,7 +152,6 @@ const JournalEntryNew = () => {
       };
 
       const linesToInsert = [...debitLinesToInsert, creditLineToInsert];
-      // ✅ FIX 2 (from previous console logs): Ensure table name is journal_entry_lines, not journal_line_items. It seems correct here.
       const { error: lineError } = await supabase.from("journal_entry_lines").insert(linesToInsert);
       if (lineError) throw lineError;
 
