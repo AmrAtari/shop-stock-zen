@@ -13,9 +13,8 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - FIXED JOINS
+  // 1. Fetch Journal Entry with FIXED JOINS (Resolves 400 Bad Request/PGRST200)
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
-    // Explicitly set type to 'any' for simplicity
     queryKey: ["journal_entry", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -23,8 +22,8 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly join on 'created_by' FK
-          poster:user_profiles!posted_by(username)    // ✅ FIX 1: Explicitly join on 'posted_by' FK
+          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly join on 'created_by'
+          poster:user_profiles!posted_by(username)    // ✅ FIX 1: Explicitly join on 'posted_by'
         `,
         )
         .eq("id", id)
@@ -38,13 +37,12 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines - FIXED TABLE NAME (404)
+  // 2. Fetch Journal Lines with FIXED TABLE NAME (Resolves 404 Not Found)
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
-    // Explicitly set type to 'any' for simplicity
-    queryKey: ["journal_line_items", id], // Changed query key to reflect table name change
+    queryKey: ["journal_line_items", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_line_item") // ✅ FIX 2: Changed table name to match the REST endpoint failing with 404
+        .from("journal_line_item") // ✅ FIX 2: Changed table name to match the failing REST endpoint
         .select(
           `
           *,
