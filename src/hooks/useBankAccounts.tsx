@@ -11,8 +11,10 @@ export interface BankAccount {
   currency_id: string;
   opening_balance: number;
   current_balance: number;
-  account_id: string;
+  gl_account_id: string; // FIXED: Changed from account_id to gl_account_id
+  account_type: string;
   is_active: boolean;
+  notes?: string;
   created_at: string;
   updated_at: string;
 }
@@ -48,10 +50,7 @@ export const useBankAccounts = () => {
   return useQuery({
     queryKey: queryKeys.banking.accounts,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bank_accounts")
-        .select("*")
-        .order("account_name");
+      const { data, error } = await supabase.from("bank_accounts").select("*").order("account_name");
 
       if (error) throw error;
       return data as BankAccount[];
@@ -63,11 +62,7 @@ export const useBankAccountDetail = (accountId: string) => {
   return useQuery({
     queryKey: queryKeys.banking.detail(accountId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bank_accounts")
-        .select("*")
-        .eq("id", accountId)
-        .single();
+      const { data, error } = await supabase.from("bank_accounts").select("*").eq("id", accountId).single();
 
       if (error) throw error;
       return data as BankAccount;
@@ -81,11 +76,7 @@ export const useCreateBankAccount = () => {
 
   return useMutation({
     mutationFn: async (account: Partial<BankAccount>) => {
-      const { data, error } = await supabase
-        .from("bank_accounts")
-        .insert(account)
-        .select()
-        .single();
+      const { data, error } = await supabase.from("bank_accounts").insert(account).select().single();
 
       if (error) throw error;
       return data;
@@ -105,12 +96,7 @@ export const useUpdateBankAccount = () => {
 
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<BankAccount> }) => {
-      const { data, error } = await supabase
-        .from("bank_accounts")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
+      const { data, error } = await supabase.from("bank_accounts").update(updates).eq("id", id).select().single();
 
       if (error) throw error;
       return data;
@@ -132,14 +118,16 @@ export const useBankReconciliations = (bankAccountId?: string) => {
     queryFn: async () => {
       let query = supabase
         .from("bank_reconciliation")
-        .select(`
+        .select(
+          `
           *,
           bank_account:bank_accounts!bank_reconciliation_bank_account_id_fkey(
             id,
             account_name,
             bank_name
           )
-        `)
+        `,
+        )
         .order("statement_date", { ascending: false });
 
       if (bankAccountId) {
@@ -160,10 +148,12 @@ export const useReconciliationDetail = (reconciliationId: string) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("bank_reconciliation")
-        .select(`
+        .select(
+          `
           *,
           bank_account:bank_accounts!bank_reconciliation_bank_account_id_fkey(*)
-        `)
+        `,
+        )
         .eq("id", reconciliationId)
         .single();
 
@@ -179,11 +169,7 @@ export const useCreateReconciliation = () => {
 
   return useMutation({
     mutationFn: async (reconciliation: Partial<BankReconciliation>) => {
-      const { data, error } = await supabase
-        .from("bank_reconciliation")
-        .insert(reconciliation)
-        .select()
-        .single();
+      const { data, error } = await supabase.from("bank_reconciliation").insert(reconciliation).select().single();
 
       if (error) throw error;
       return data;
@@ -275,7 +261,7 @@ export const useBankTransactions = (bankAccountId: string) => {
       // Get journal entries related to this bank account
       const { data: bankAccount } = await supabase
         .from("bank_accounts")
-        .select("account_id")
+        .select("gl_account_id")
         .eq("id", bankAccountId)
         .single();
 
@@ -283,7 +269,8 @@ export const useBankTransactions = (bankAccountId: string) => {
 
       const { data, error } = await supabase
         .from("journal_entry_lines")
-        .select(`
+        .select(
+          `
           id,
           debit_amount,
           credit_amount,
@@ -295,8 +282,9 @@ export const useBankTransactions = (bankAccountId: string) => {
             description,
             status
           )
-        `)
-        .eq("account_id", bankAccount.account_id)
+        `,
+        )
+        .eq("account_id", bankAccount.gl_account_id)
         .order("journal_entry.entry_date", { ascending: false });
 
       if (error) throw error;
