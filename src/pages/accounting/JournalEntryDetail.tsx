@@ -20,8 +20,8 @@ interface JournalEntry {
   total_debit: number;
   total_credit: number;
   // Note: These columns are aliases for the joined user_profiles table
-  creator: { username: string } | null; // Note the change in alias to 'creator' (no 'created_by')
-  poster: { username: string } | null; // Note the change in alias to 'poster' (no 'posted_by')
+  creator: { username: string } | null;
+  poster: { username: string } | null;
   posted_at: string | null;
 }
 
@@ -29,7 +29,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - CORRECTED JOIN SYNTAX
+  // 1. Fetch Journal Entry - REMOVED COMMENTS FROM SELECT STRING
   const { data: entry, isLoading: entryLoading } = useQuery<JournalEntry>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -38,9 +38,9 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // ✅ FIX 1: Explicitly join to user_profiles using created_by FK
-          poster:user_profiles!posted_by(username)    // ✅ FIX 1: Explicitly join to user_profiles using posted_by FK
-        `,
+          creator:user_profiles!created_by(username), 
+          poster:user_profiles!posted_by(username)    
+        `, // <-- CLEAN: No comments inside this template literal
         )
         .eq("id", id)
         .single();
@@ -53,17 +53,17 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines - CORRECTED TABLE NAME
+  // 2. Fetch Journal Lines - REMOVED COMMENTS AND USED SINGULAR TABLE NAME
   const { data: lines, isLoading: linesLoading } = useQuery({
     queryKey: ["journal_line_items", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_line_item") // ✅ FIX 2: Corrected table name to singular
+        .from("journal_line_item") // Corrected table name to singular
         .select(
           `
           *,
           account:chart_of_accounts(account_code, account_name) 
-        `,
+        `, // <-- CLEAN: No comments inside this template literal
         )
         .eq("journal_entry_id", id)
         .order("created_at", { ascending: true });
