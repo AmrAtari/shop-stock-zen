@@ -9,11 +9,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useEffect } from "react";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   // *** CRITICAL AUTHENTICATION CHECK ***
   useEffect(() => {
@@ -81,7 +85,7 @@ const JournalEntryDetail = () => {
     enabled: !!id,
   });
 
-  // 2. Fetch Journal Lines - CORRECTED: Using 'accounts' table instead of 'chart_of_accounts'
+  // 2. Fetch Journal Lines - Using 'accounts'
   const {
     data: lines,
     isLoading: linesLoading,
@@ -269,9 +273,9 @@ const JournalEntryDetail = () => {
           )}
           {!isBalanced && entry.status === "draft" && (
             <div className="text-red-600 font-bold border-l-4 border-red-600 pl-3">
-              Warning: Entry is Unbalanced! Debit: ${entry?.total_debit?.toFixed(2) || "0.00"}, Credit: $
-              {entry?.total_credit?.toFixed(2) || "0.00"}. Balance Difference: $
-              {Math.abs(entry.total_debit - entry.total_credit).toFixed(2)}.
+              Warning: Entry is Unbalanced! Debit: {formatCurrency(entry?.total_debit || 0, currency)}, Credit:{" "}
+              {formatCurrency(entry?.total_credit || 0, currency)}. Balance Difference:{" "}
+              {formatCurrency(Math.abs(entry.total_debit - entry.total_credit), currency)}.
             </div>
           )}
         </CardContent>
@@ -318,10 +322,10 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name || "N/A"}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
+                      {line.debit_amount > 0 ? formatCurrency(line.debit_amount, currency) : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : "—"}
+                      {line.credit_amount > 0 ? formatCurrency(line.credit_amount, currency) : "—"}
                     </TableCell>
                   </TableRow>
                 ))
@@ -330,8 +334,12 @@ const JournalEntryDetail = () => {
                 <TableCell colSpan={3} className="text-right">
                   Totals:
                 </TableCell>
-                <TableCell className="text-right font-mono">${entry?.total_debit?.toFixed(2) || "0.00"}</TableCell>
-                <TableCell className="text-right font-mono">${entry?.total_credit?.toFixed(2) || "0.00"}</TableCell>
+                <TableCell className="text-right font-mono">
+                  {formatCurrency(entry?.total_debit || 0, currency)}
+                </TableCell>
+                <TableCell className="text-right font-mono">
+                  {formatCurrency(entry?.total_credit || 0, currency)}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
