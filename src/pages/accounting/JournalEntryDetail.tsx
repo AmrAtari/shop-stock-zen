@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - FIXED AMBIGUOUS JOINS AND CLEANED QUERY STRING
+  // 1. Fetch Journal Entry - CLEANED QUERY STRING
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -123,8 +123,7 @@ const JournalEntryDetail = () => {
         <p className="text-muted-foreground">
           This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
           Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are set to `USING (true)` for
-          authenticated users. (Note: Since you have confirmed your RLS policies are set to TRUE, this is likely an
-          issue with the join syntax preventing data retrieval).
+          authenticated users.
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
