@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-// 🛑 FIX: Define interface for type safety
+// Define interface for type safety
 interface JournalEntry {
   id: string;
   entry_number: string;
@@ -29,9 +29,8 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry with Corrected Join Syntax
+  // 1. Fetch Journal Entry - CLEANED QUERY
   const { data: entry, isLoading: entryLoading } = useQuery<JournalEntry>({
-    // 🛑 FIX: Apply the new interface
     queryKey: ["journal_entry", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -41,7 +40,7 @@ const JournalEntryDetail = () => {
           *,
           creator:created_by(username), 
           poster:posted_by(username)    
-        `, // ✅ FIX 1: Removed comments from template literal
+        `, // <-- CLEAN: No comments in PostgREST select string
         )
         .eq("id", id)
         .single();
@@ -50,21 +49,21 @@ const JournalEntryDetail = () => {
         console.error("Error fetching journal entry:", error);
         throw error;
       }
-      return data as JournalEntry; // Type assertion for safety
+      return data as JournalEntry;
     },
   });
 
-  // 2. Fetch Journal Lines with Correct Table Names
+  // 2. Fetch Journal Lines - CLEANED QUERY
   const { data: lines, isLoading: linesLoading } = useQuery({
     queryKey: ["journal_line_items", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("journal_line_items") // ✅ FIX 2: Correct lines table name
+        .from("journal_line_items")
         .select(
           `
           *,
           account:chart_of_accounts(account_code, account_name) 
-        `, // ✅ FIX 3: Correct account table name and removed comment
+        `, // <-- CLEAN: No comments in PostgREST select string
         )
         .eq("journal_entry_id", id)
         .order("created_at", { ascending: true });
@@ -77,15 +76,12 @@ const JournalEntryDetail = () => {
   // 3. POSTING MUTATION (Preserved)
   const postMutation = useMutation({
     mutationFn: async () => {
-      // 🛑 FIX: Ensure entry exists before accessing properties
       if (!entry) throw new Error("Journal entry data not loaded.");
 
-      // Basic check before posting
       if (entry.total_debit !== entry.total_credit) {
         throw new Error("Journal entry is unbalanced. Cannot post.");
       }
 
-      // Get the current authenticated user's UUID
       const {
         data: { user },
         error: userError,
@@ -94,11 +90,8 @@ const JournalEntryDetail = () => {
         throw new Error("User not authenticated. Please log in to post entries.");
       }
 
-      // Note: This still uses the Auth ID for posted_by, which is often acceptable for logging the action.
-      // If `posted_by` points to `user_profiles.id`, you need the same profile lookup fix as in JournalEntryNew.
       const postedById = user.id;
 
-      // Update the journal entry status and set posted_by to the user's UUID
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
@@ -132,7 +125,7 @@ const JournalEntryDetail = () => {
     return variants[status] || "default";
   };
 
-  const isBalanced = entry && entry.total_debit === entry.total_credit; // 🛑 FIX: Safe check
+  const isBalanced = entry && entry.total_debit === entry.total_credit;
 
   if (entryLoading) {
     return <div>Loading journal entry details...</div>;
@@ -145,8 +138,6 @@ const JournalEntryDetail = () => {
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
           This entry may not exist, or you may lack the necessary permissions (Row Level Security policy) to view it.
-          Please ensure your RLS SELECT policies on `journal_entries` and `user_profiles` are set to `USING (true)` for
-          authenticated users.
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
