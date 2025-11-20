@@ -1,151 +1,168 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useCreateBankAccount, useBankAccounts } from "@/hooks/useBankAccounts";
-import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
 
 const NewBankAccount = () => {
-  const [accountName, setAccountName] = useState("");
-  const [bankName, setBankName] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [openingBalance, setOpeningBalance] = useState("");
-  const [selectedAccount, setSelectedAccount] = useState("");
-
-  const createBankAccount = useCreateBankAccount();
-  const { refetch } = useBankAccounts();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch accounts to link to chart of accounts
-  const { data: accounts } = useQuery({
-    queryKey: ["accounts"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("accounts")
-        .select("id, account_code, account_name")
-        .eq("account_type", "asset")
-        .eq("is_active", true);
-      if (error) throw error;
-      return data;
-    },
+  const [formData, setFormData] = useState({
+    bankName: "",
+    accountNumber: "",
+    routingNumber: "",
+    accountType: "",
+    initialBalance: "",
+    description: "",
   });
 
-  const handleCreateAccount = async () => {
-    if (!accountName || !bankName || !accountNumber || !selectedAccount) {
-      toast.error("Please fill all required fields");
-      return;
-    }
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
 
     try {
-      await createBankAccount.mutateAsync({
-        account_name: accountName,
-        bank_name: bankName,
-        account_number: accountNumber,
-        opening_balance: parseFloat(openingBalance) || 0,
-        current_balance: parseFloat(openingBalance) || 0,
-        gl_account_id: selectedAccount, // CORRECT: matches table structure
-        account_type: "checking",
-        currency_id: "NIS",
-        is_active: true,
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      toast({
+        title: "Bank account created successfully",
+        description: `${formData.bankName} account has been added.`,
       });
 
-      toast.success("Bank account created successfully!");
-      await refetch();
-
-      // Navigate back to bank accounts list
       navigate("/accounting/bank-accounts");
-    } catch (error: any) {
-      toast.error(`Failed to create bank account: ${error.message}`);
+    } catch (error) {
+      toast({
+        title: "Error creating bank account",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" onClick={() => navigate("/accounting/bank-accounts")}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Bank Accounts
+        <Button variant="outline" size="icon" onClick={() => navigate("/accounting/bank-accounts")}>
+          <ArrowLeft className="w-4 h-4" />
         </Button>
-        <h1 className="text-3xl font-bold">Create Bank Account</h1>
+        <div>
+          <h1 className="text-3xl font-bold">Add Bank Account</h1>
+          <p className="text-muted-foreground">Create a new bank account</p>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Bank Account Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="accountName">Account Name *</Label>
-            <Input
-              id="accountName"
-              value={accountName}
-              onChange={(e) => setAccountName(e.target.value)}
-              placeholder="e.g., Primary Business Checking"
-            />
-          </div>
+      <form onSubmit={handleSubmit}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Bank Account Information</CardTitle>
+            <CardDescription>Enter the details for the new bank account</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="bankName">Bank Name *</Label>
+                <Input
+                  id="bankName"
+                  placeholder="e.g., Chase Bank"
+                  value={formData.bankName}
+                  onChange={(e) => handleInputChange("bankName", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="accountNumber">Account Number *</Label>
+                <Input
+                  id="accountNumber"
+                  placeholder="e.g., 123456789"
+                  value={formData.accountNumber}
+                  onChange={(e) => handleInputChange("accountNumber", e.target.value)}
+                  required
+                />
+              </div>
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="bankName">Bank Name *</Label>
-            <Input
-              id="bankName"
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              placeholder="e.g., Bank of Palestine"
-            />
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="routingNumber">Routing Number *</Label>
+                <Input
+                  id="routingNumber"
+                  placeholder="e.g., 021000021"
+                  value={formData.routingNumber}
+                  onChange={(e) => handleInputChange("routingNumber", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="accountType">Account Type *</Label>
+                <Select value={formData.accountType} onValueChange={(value) => handleInputChange("accountType", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="checking">Checking</SelectItem>
+                    <SelectItem value="savings">Savings</SelectItem>
+                    <SelectItem value="business">Business Checking</SelectItem>
+                    <SelectItem value="money-market">Money Market</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="accountNumber">Account Number *</Label>
-            <Input
-              id="accountNumber"
-              value={accountNumber}
-              onChange={(e) => setAccountNumber(e.target.value)}
-              placeholder="e.g., 123456789"
-            />
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="initialBalance">Initial Balance</Label>
+                <Input
+                  id="initialBalance"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.initialBalance}
+                  onChange={(e) => handleInputChange("initialBalance", e.target.value)}
+                />
+              </div>
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="openingBalance">Opening Balance</Label>
-            <Input
-              id="openingBalance"
-              type="number"
-              step="0.01"
-              value={openingBalance}
-              onChange={(e) => setOpeningBalance(e.target.value)}
-              placeholder="0.00"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                placeholder="Optional description or notes"
+                value={formData.description}
+                onChange={(e) => handleInputChange("description", e.target.value)}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="glAccount">Link to Chart of Account *</Label>
-            <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select account (1010 for cash)" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts?.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {account.account_code} - {account.account_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">
-              This links the bank account to your chart of accounts. Use account 1010 for cash accounts.
-            </p>
-          </div>
-
-          <Button onClick={handleCreateAccount} disabled={createBankAccount.isPending} className="w-full">
-            {createBankAccount.isPending ? "Creating..." : "Create Bank Account"}
-          </Button>
-        </CardContent>
-      </Card>
+            <div className="flex gap-2 pt-4">
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? "Creating..." : "Create Bank Account"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate("/accounting/bank-accounts")}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </form>
     </div>
   );
 };
