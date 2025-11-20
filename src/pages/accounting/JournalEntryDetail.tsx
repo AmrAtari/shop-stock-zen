@@ -29,6 +29,15 @@ const JournalEntryDetail = () => {
     });
   }, [navigate]);
 
+  // Debug system settings
+  useEffect(() => {
+    console.log("💰 System Settings:", {
+      settings,
+      currency,
+      systemCurrency: settings?.currency,
+    });
+  }, [settings, currency]);
+
   // 1. Fetch Journal Entry - FIXED VERSION WITH PROPER JOINS
   const {
     data: entry,
