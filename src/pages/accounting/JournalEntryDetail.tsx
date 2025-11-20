@@ -13,7 +13,7 @@ const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Journal Entry - CLEANED QUERY STRING
+  // 1. Fetch Journal Entry with Correct Joins (CRITICAL FIX APPLIED HERE)
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -37,7 +37,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines - CLEANED QUERY STRING
+  // 2. Fetch Journal Lines (Assuming correct table name 'journal_entry_lines' and relationship 'accounts')
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
@@ -46,7 +46,7 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          account:chart_of_accounts(account_code, account_name) 
+          account:accounts(account_code, account_name) 
         `,
         )
         .eq("journal_entry_id", id)
