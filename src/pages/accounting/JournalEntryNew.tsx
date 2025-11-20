@@ -9,6 +9,10 @@ import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 
+// ⚠️ PLACEHOLDER: Replace this with your actual implementation that fetches the system's default currency symbol.
+const useCurrencySymbol = () => "$";
+// ------------------------------------------------------------------------------------------------------
+
 interface Store {
   id: string;
   name: string;
@@ -38,6 +42,7 @@ const JournalEntryNew = () => {
   const [selectedStore, setSelectedStore] = useState<string>("");
   const [journalLines, setJournalLines] = useState<JournalLine[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const currencySymbol = useCurrencySymbol(); // <-- NEW: Initialize currency symbol
 
   // Fetch stores
   const { data: stores } = useQuery<Store[]>({
@@ -117,7 +122,7 @@ const JournalEntryNew = () => {
           status: "draft",
           total_debit: totalDebit,
           total_credit: amountToCredit,
-          created_by: userData.user.id, // ✅ fixed
+          created_by: userData.user.id,
         },
       ]);
       if (entryError) throw entryError;
@@ -251,16 +256,29 @@ const JournalEntryNew = () => {
                       <TableRow key={line.id}>
                         <TableCell>{index + 1}</TableCell>
                         <TableCell>{line.description}</TableCell>
-                        <TableCell className="font-mono">${line.debit_amount.toFixed(2)}</TableCell>
-                        <TableCell className="font-mono">${line.credit_amount.toFixed(2)}</TableCell>
+                        {/* FIX: Use currencySymbol */}
+                        <TableCell className="font-mono">
+                          {currencySymbol}
+                          {line.debit_amount.toFixed(2)}
+                        </TableCell>
+                        {/* FIX: Use currencySymbol */}
+                        <TableCell className="font-mono">
+                          {currencySymbol}
+                          {line.credit_amount.toFixed(2)}
+                        </TableCell>
                       </TableRow>
                     ))}
                     {totalDebitDisplay > 0 && (
                       <TableRow className="bg-green-50/50">
                         <TableCell>{journalLines.length + 1}</TableCell>
                         <TableCell className="italic">Balancing Entry (Retained Earnings)</TableCell>
-                        <TableCell className="font-mono">$0.00</TableCell>
-                        <TableCell className="font-mono">${expectedTotalCreditDisplay.toFixed(2)}</TableCell>
+                        {/* FIX: Use currencySymbol */}
+                        <TableCell className="font-mono">{currencySymbol}0.00</TableCell>
+                        {/* FIX: Use currencySymbol */}
+                        <TableCell className="font-mono">
+                          {currencySymbol}
+                          {expectedTotalCreditDisplay.toFixed(2)}
+                        </TableCell>
                       </TableRow>
                     )}
                   </>
@@ -269,8 +287,16 @@ const JournalEntryNew = () => {
                   <TableCell colSpan={2} className="text-right">
                     Total Debit/Credit:
                   </TableCell>
-                  <TableCell className="font-mono">${totalDebitDisplay.toFixed(2)}</TableCell>
-                  <TableCell className="font-mono">${expectedTotalCreditDisplay.toFixed(2)}</TableCell>
+                  {/* FIX: Use currencySymbol */}
+                  <TableCell className="font-mono">
+                    {currencySymbol}
+                    {totalDebitDisplay.toFixed(2)}
+                  </TableCell>
+                  {/* FIX: Use currencySymbol */}
+                  <TableCell className="font-mono">
+                    {currencySymbol}
+                    {expectedTotalCreditDisplay.toFixed(2)}
+                  </TableCell>
                 </TableRow>
               </TableBody>
             </Table>
