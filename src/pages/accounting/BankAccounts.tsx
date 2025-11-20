@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Edit } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 // Function to get bank accounts from storage
 const getBankAccounts = () => {
@@ -13,6 +15,8 @@ const getBankAccounts = () => {
 const BankAccounts = () => {
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<any[]>([]);
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   useEffect(() => {
     // Load accounts when component mounts
@@ -75,7 +79,7 @@ const BankAccounts = () => {
                       <p className="text-sm text-muted-foreground">
                         {account.accountType} ••••{account.accountNumber.slice(-4)}
                       </p>
-                      <p className="text-sm">Balance: ${parseFloat(account.currentBalance).toFixed(2)}</p>
+                      <p className="text-sm">Balance: {formatCurrency(parseFloat(account.currentBalance), currency)}</p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
