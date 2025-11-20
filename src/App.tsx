@@ -35,7 +35,10 @@ import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
 import JournalEntryNew from "./pages/accounting/JournalEntryNew";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
-
+import BankAccounts from "./pages/accounting/BankAccounts";
+import BankAccountNew from "./pages/accounting/NewBankAccount";
+import BankAccountDetail from "./pages/accounting/BankAccountDetail";
+import BankAccountEdit from "./pages/accounting/BankAccountEdit";
 // Components/Layouts
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
