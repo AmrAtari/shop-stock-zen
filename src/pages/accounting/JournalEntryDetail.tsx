@@ -1,4 +1,4 @@
-import { useParams, Link, useNavigate } from "react-router-dom"; // Add useNavigate
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,19 +8,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { useEffect } from "react"; // Add useEffect
+import { useEffect } from "react"; // <-- NEW IMPORT
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
-  const navigate = useNavigate(); // Initialize useNavigate
+  const navigate = useNavigate(); // <-- NEW INITIALIZATION
 
   // *** CRITICAL AUTHENTICATION CHECK ***
   useEffect(() => {
-    // Check if the user is authenticated on component mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
-        // If not authenticated, redirect to the login page
         toast.warning("Please sign in to view this entry.");
         navigate("/auth");
       }
@@ -31,14 +29,13 @@ const JournalEntryDetail = () => {
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
-      // The query itself is now fixed and should succeed if RLS and ID are valid
       const { data, error } = await supabase
         .from("journal_entries")
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), 
-          poster:user_profiles!posted_by(username)    
+          creator:user_profiles!created_by(username), // FIXED JOIN
+          poster:user_profiles!posted_by(username)    // FIXED JOIN
         `,
         )
         .eq("id", id)
@@ -50,7 +47,6 @@ const JournalEntryDetail = () => {
       }
       return data;
     },
-    // Only run this query if an ID is present
     enabled: !!id,
   });
 
@@ -75,33 +71,27 @@ const JournalEntryDetail = () => {
     enabled: !!id,
   });
 
-  // 3. POSTING MUTATION (rest of the mutation code is unchanged)
+  // 3. POSTING MUTATION (Code unchanged)
   const postMutation = useMutation({
     mutationFn: async () => {
       if (entry?.total_debit !== entry?.total_credit) {
         throw new Error("Journal entry is unbalanced. Cannot post.");
       }
-
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
-      if (userError || !user?.id) {
-        throw new Error("User not authenticated. Please log in to post entries.");
+      if (!user?.id) {
+        throw new Error("User not authenticated.");
       }
-      const postedById = user.id;
-
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
           status: "posted",
-          posted_by: postedById,
+          posted_by: user.id,
           posted_at: new Date().toISOString(),
         })
         .eq("id", id);
-
       if (updateError) throw updateError;
-
       return id;
     },
     onSuccess: () => {
@@ -114,33 +104,23 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // Helper function for status badges (unchanged)
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, string> = {
-      draft: "secondary",
-      posted: "default",
-      reversed: "destructive",
-    };
+    const variants: Record<string, string> = { draft: "secondary", posted: "default", reversed: "destructive" };
     return variants[status] || "default";
   };
-
   const isBalanced = entry?.total_debit === entry?.total_credit;
 
   if (entryLoading || linesLoading) {
     return <div>Loading journal entry details...</div>;
   }
 
-  // The final check: If we reached here and entry is null, it's either RLS or a bad ID.
+  // The final check after auth and RLS are assumed correct
   if (!entry) {
     return (
       <div className="p-8 text-center space-y-4">
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
-          **Action Required:** This usually means the ID is invalid or the user is unauthorized.
-          <ul className="list-disc list-inside mt-2 text-left mx-auto max-w-sm">
-            <li>Confirm the Journal Entry ID in the URL is correct.</li>
-            <li>Ensure you are **signed in** as an authenticated user.</li>
-          </ul>
+          **Action Required:** The ID in the URL is likely invalid. Please check your database for a valid entry ID.
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
@@ -152,7 +132,6 @@ const JournalEntryDetail = () => {
     );
   }
 
-  // ... rest of the component (display) ...
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -200,7 +179,6 @@ const JournalEntryDetail = () => {
           <p>
             <span className="font-semibold">Type:</span> {entry.entry_type}
           </p>
-          {/* Displaying creator/poster names from joins */}
           <p>
             <span className="font-semibold">Created By:</span> {entry.creator?.username || "N/A"}
           </p>
