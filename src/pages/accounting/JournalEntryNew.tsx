@@ -8,6 +8,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 interface Store {
   id: string;
@@ -38,6 +40,8 @@ const JournalEntryNew = () => {
   const [selectedStore, setSelectedStore] = useState<string>("");
   const [journalLines, setJournalLines] = useState<JournalLine[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   // Fetch stores
   const { data: stores } = useQuery<Store[]>({
@@ -260,16 +264,18 @@ const JournalEntryNew = () => {
                       <TableRow key={line.id}>
                         <TableCell>{index + 1}</TableCell>
                         <TableCell>{line.description}</TableCell>
-                        <TableCell className="font-mono">${line.debit_amount.toFixed(2)}</TableCell>
-                        <TableCell className="font-mono">${line.credit_amount.toFixed(2)}</TableCell>
+                        <TableCell className="font-mono">{formatCurrency(line.debit_amount, currency)}</TableCell>
+                        <TableCell className="font-mono">{formatCurrency(line.credit_amount, currency)}</TableCell>
                       </TableRow>
                     ))}
                     {totalDebitDisplay > 0 && (
                       <TableRow className="bg-green-50/50">
                         <TableCell>{journalLines.length + 1}</TableCell>
                         <TableCell className="italic">Balancing Entry (Retained Earnings)</TableCell>
-                        <TableCell className="font-mono">$0.00</TableCell>
-                        <TableCell className="font-mono">${expectedTotalCreditDisplay.toFixed(2)}</TableCell>
+                        <TableCell className="font-mono">{formatCurrency(0, currency)}</TableCell>
+                        <TableCell className="font-mono">
+                          {formatCurrency(expectedTotalCreditDisplay, currency)}
+                        </TableCell>
                       </TableRow>
                     )}
                   </>
@@ -278,8 +284,8 @@ const JournalEntryNew = () => {
                   <TableCell colSpan={2} className="text-right">
                     Total Debit/Credit:
                   </TableCell>
-                  <TableCell className="font-mono">${totalDebitDisplay.toFixed(2)}</TableCell>
-                  <TableCell className="font-mono">${expectedTotalCreditDisplay.toFixed(2)}</TableCell>
+                  <TableCell className="font-mono">{formatCurrency(totalDebitDisplay, currency)}</TableCell>
+                  <TableCell className="font-mono">{formatCurrency(expectedTotalCreditDisplay, currency)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
