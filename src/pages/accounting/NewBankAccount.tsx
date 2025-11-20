@@ -9,69 +9,49 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
-
-// Create a simple storage for bank accounts (in real app, this would be an API)
-const createBankAccount = (accountData: any) => {
-  const accounts = JSON.parse(localStorage.getItem("bankAccounts") || "[]");
-  const newAccount = {
-    id: Date.now().toString(),
-    ...accountData,
-    createdAt: new Date().toISOString(),
-    currentBalance: parseFloat(accountData.initialBalance) || 0,
-    availableBalance: parseFloat(accountData.initialBalance) || 0,
-    ledgerBalance: parseFloat(accountData.initialBalance) || 0,
-    status: accountData.status || "active",
-    lastReconciliation: null,
-    isReconciled: false,
-    creditLimit: parseFloat(accountData.creditLimit) || 0,
-    overdraftLimit: parseFloat(accountData.overdraftLimit) || 0,
-    minimumBalance: parseFloat(accountData.minimumBalance) || 0,
-    interestRate: parseFloat(accountData.interestRate) || 0,
-  };
-  accounts.push(newAccount);
-  localStorage.setItem("bankAccounts", JSON.stringify(accounts));
-  return newAccount;
-};
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 const NewBankAccount = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     // Basic Information
-    bankName: "",
-    accountNumber: "",
-    routingNumber: "",
-    accountType: "",
+    bank_name: "",
+    account_number: "",
+    routing_number: "",
+    account_type: "",
 
     // International Banking
     iban: "",
-    swiftCode: "",
+    swift_code: "",
 
     // Account Details
     currency: settings?.currency || "USD",
-    openingDate: new Date().toISOString().split("T")[0],
-    initialBalance: "0.00",
+    opening_date: new Date().toISOString().split("T")[0],
+    initial_balance: "0.00",
     description: "",
 
     // Branch Information
-    branchName: "",
-    branchCode: "",
+    branch_name: "",
+    branch_code: "",
 
     // Contact Information
-    contactPerson: "",
+    contact_person: "",
     phone: "",
     email: "",
     address: "",
 
     // Account Limits
-    creditLimit: "0.00",
-    overdraftLimit: "0.00",
-    minimumBalance: "0.00",
-    interestRate: "0.00",
+    credit_limit: "0.00",
+    overdraft_limit: "0.00",
+    minimum_balance: "0.00",
+    interest_rate: "0.00",
 
     // Status
     status: "active",
@@ -88,7 +68,7 @@ const NewBankAccount = () => {
     e.preventDefault();
 
     // Basic validation
-    if (!formData.bankName || !formData.accountNumber || !formData.routingNumber || !formData.accountType) {
+    if (!formData.bank_name || !formData.account_number || !formData.routing_number || !formData.account_type) {
       toast({
         title: "Missing required fields",
         description: "Please fill in all required fields.",
@@ -100,23 +80,73 @@ const NewBankAccount = () => {
     setIsLoading(true);
 
     try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Get current user
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      // Create the bank account
-      createBankAccount(formData);
+      if (userError || !user) {
+        throw new Error("User not authenticated");
+      }
+
+      // Prepare data for database insertion
+      const bankAccountData = {
+        bank_name: formData.bank_name,
+        account_number: formData.account_number,
+        routing_number: formData.routing_number,
+        account_type: formData.account_type,
+        iban: formData.iban || null,
+        swift_code: formData.swift_code || null,
+        currency: formData.currency,
+        opening_date: formData.opening_date,
+        current_balance: parseFloat(formData.initial_balance) || 0,
+        available_balance: parseFloat(formData.initial_balance) || 0,
+        ledger_balance: parseFloat(formData.initial_balance) || 0,
+        description: formData.description || null,
+        branch_name: formData.branch_name || null,
+        branch_code: formData.branch_code || null,
+        contact_person: formData.contact_person || null,
+        phone: formData.phone || null,
+        email: formData.email || null,
+        address: formData.address || null,
+        credit_limit: parseFloat(formData.credit_limit) || 0,
+        overdraft_limit: parseFloat(formData.overdraft_limit) || 0,
+        minimum_balance: parseFloat(formData.minimum_balance) || 0,
+        interest_rate: parseFloat(formData.interest_rate) || 0,
+        status: formData.status,
+        created_by: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log("Creating bank account with data:", bankAccountData);
+
+      // Insert into database
+      const { data, error } = await supabase.from("bank_accounts").insert([bankAccountData]).select().single();
+
+      if (error) {
+        console.error("Supabase error:", error);
+        throw error;
+      }
+
+      console.log("Bank account created successfully:", data);
 
       toast({
         title: "Bank account created successfully!",
-        description: `${formData.bankName} account has been added to your accounts.`,
+        description: `${formData.bank_name} account has been added to your accounts.`,
       });
+
+      // Invalidate queries to refresh the list
+      queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
 
       // Navigate back to bank accounts list
       navigate("/accounting/bank-accounts");
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Error creating bank account:", error);
       toast({
         title: "Error creating bank account",
-        description: "Please try again.",
+        description: error.message || "Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -148,22 +178,22 @@ const NewBankAccount = () => {
               <h3 className="text-lg font-semibold">Basic Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="bankName">Bank Name *</Label>
+                  <Label htmlFor="bank_name">Bank Name *</Label>
                   <Input
-                    id="bankName"
+                    id="bank_name"
                     placeholder="e.g., Bank Of Palestine"
-                    value={formData.bankName}
-                    onChange={(e) => handleInputChange("bankName", e.target.value)}
+                    value={formData.bank_name}
+                    onChange={(e) => handleInputChange("bank_name", e.target.value)}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="accountNumber">Account Number *</Label>
+                  <Label htmlFor="account_number">Account Number *</Label>
                   <Input
-                    id="accountNumber"
+                    id="account_number"
                     placeholder="e.g., 682591"
-                    value={formData.accountNumber}
-                    onChange={(e) => handleInputChange("accountNumber", e.target.value)}
+                    value={formData.account_number}
+                    onChange={(e) => handleInputChange("account_number", e.target.value)}
                     required
                   />
                 </div>
@@ -171,20 +201,20 @@ const NewBankAccount = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="routingNumber">Routing Number *</Label>
+                  <Label htmlFor="routing_number">Routing Number *</Label>
                   <Input
-                    id="routingNumber"
+                    id="routing_number"
                     placeholder="e.g., PALIPSAEXXX"
-                    value={formData.routingNumber}
-                    onChange={(e) => handleInputChange("routingNumber", e.target.value)}
+                    value={formData.routing_number}
+                    onChange={(e) => handleInputChange("routing_number", e.target.value)}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="accountType">Account Type *</Label>
+                  <Label htmlFor="account_type">Account Type *</Label>
                   <Select
-                    value={formData.accountType}
-                    onValueChange={(value) => handleInputChange("accountType", value)}
+                    value={formData.account_type}
+                    onValueChange={(value) => handleInputChange("account_type", value)}
                     required
                   >
                     <SelectTrigger>
@@ -217,12 +247,12 @@ const NewBankAccount = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="swiftCode">SWIFT/BIC Code</Label>
+                  <Label htmlFor="swift_code">SWIFT/BIC Code</Label>
                   <Input
-                    id="swiftCode"
+                    id="swift_code"
                     placeholder="e.g., PALIPSAEXXX"
-                    value={formData.swiftCode}
-                    onChange={(e) => handleInputChange("swiftCode", e.target.value)}
+                    value={formData.swift_code}
+                    onChange={(e) => handleInputChange("swift_code", e.target.value)}
                   />
                 </div>
               </div>
@@ -242,23 +272,23 @@ const NewBankAccount = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="openingDate">Opening Date</Label>
+                  <Label htmlFor="opening_date">Opening Date</Label>
                   <Input
-                    id="openingDate"
+                    id="opening_date"
                     type="date"
-                    value={formData.openingDate}
-                    onChange={(e) => handleInputChange("openingDate", e.target.value)}
+                    value={formData.opening_date}
+                    onChange={(e) => handleInputChange("opening_date", e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="initialBalance">Initial Balance ({currency})</Label>
+                  <Label htmlFor="initial_balance">Initial Balance ({currency})</Label>
                   <Input
-                    id="initialBalance"
+                    id="initial_balance"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={formData.initialBalance}
-                    onChange={(e) => handleInputChange("initialBalance", e.target.value)}
+                    value={formData.initial_balance}
+                    onChange={(e) => handleInputChange("initial_balance", e.target.value)}
                   />
                 </div>
               </div>
@@ -280,21 +310,21 @@ const NewBankAccount = () => {
               <h3 className="text-lg font-semibold">Branch Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="branchName">Branch Name</Label>
+                  <Label htmlFor="branch_name">Branch Name</Label>
                   <Input
-                    id="branchName"
+                    id="branch_name"
                     placeholder="Main Branch"
-                    value={formData.branchName}
-                    onChange={(e) => handleInputChange("branchName", e.target.value)}
+                    value={formData.branch_name}
+                    onChange={(e) => handleInputChange("branch_name", e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="branchCode">Branch Code</Label>
+                  <Label htmlFor="branch_code">Branch Code</Label>
                   <Input
-                    id="branchCode"
+                    id="branch_code"
                     placeholder="e.g., 001"
-                    value={formData.branchCode}
-                    onChange={(e) => handleInputChange("branchCode", e.target.value)}
+                    value={formData.branch_code}
+                    onChange={(e) => handleInputChange("branch_code", e.target.value)}
                   />
                 </div>
               </div>
@@ -305,12 +335,12 @@ const NewBankAccount = () => {
               <h3 className="text-lg font-semibold">Contact Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="contactPerson">Contact Person</Label>
+                  <Label htmlFor="contact_person">Contact Person</Label>
                   <Input
-                    id="contactPerson"
+                    id="contact_person"
                     placeholder="Bank manager or contact person"
-                    value={formData.contactPerson}
-                    onChange={(e) => handleInputChange("contactPerson", e.target.value)}
+                    value={formData.contact_person}
+                    onChange={(e) => handleInputChange("contact_person", e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -352,47 +382,47 @@ const NewBankAccount = () => {
               <h3 className="text-lg font-semibold">Account Limits & Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="creditLimit">Credit Limit ({currency})</Label>
+                  <Label htmlFor="credit_limit">Credit Limit ({currency})</Label>
                   <Input
-                    id="creditLimit"
+                    id="credit_limit"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={formData.creditLimit}
-                    onChange={(e) => handleInputChange("creditLimit", e.target.value)}
+                    value={formData.credit_limit}
+                    onChange={(e) => handleInputChange("credit_limit", e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="overdraftLimit">Overdraft Limit ({currency})</Label>
+                  <Label htmlFor="overdraft_limit">Overdraft Limit ({currency})</Label>
                   <Input
-                    id="overdraftLimit"
+                    id="overdraft_limit"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={formData.overdraftLimit}
-                    onChange={(e) => handleInputChange("overdraftLimit", e.target.value)}
+                    value={formData.overdraft_limit}
+                    onChange={(e) => handleInputChange("overdraft_limit", e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="minimumBalance">Minimum Balance ({currency})</Label>
+                  <Label htmlFor="minimum_balance">Minimum Balance ({currency})</Label>
                   <Input
-                    id="minimumBalance"
+                    id="minimum_balance"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={formData.minimumBalance}
-                    onChange={(e) => handleInputChange("minimumBalance", e.target.value)}
+                    value={formData.minimum_balance}
+                    onChange={(e) => handleInputChange("minimum_balance", e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="interestRate">Interest Rate (%)</Label>
+                  <Label htmlFor="interest_rate">Interest Rate (%)</Label>
                   <Input
-                    id="interestRate"
+                    id="interest_rate"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={formData.interestRate}
-                    onChange={(e) => handleInputChange("interestRate", e.target.value)}
+                    value={formData.interest_rate}
+                    onChange={(e) => handleInputChange("interest_rate", e.target.value)}
                   />
                 </div>
               </div>
