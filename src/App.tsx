@@ -222,6 +222,17 @@ const App = () => {
                 }
               />
               <Route
+                path="/accounting/bank-accounts/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <NewBankAccount /> {/* Changed from BankAccountNew to NewBankAccount */}
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
                 path="/accounting/chart-of-accounts"
                 element={
                   <ProtectedRoute>
