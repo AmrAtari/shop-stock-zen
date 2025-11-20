@@ -22,14 +22,15 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // Fixes ambiguous join for creator
-          poster:user_profiles!posted_by(username)    // Fixes ambiguous join for poster
+          creator:user_profiles!created_by(username), // Explicitly join on 'created_by'
+          poster:user_profiles!posted_by(username)    // Explicitly join on 'posted_by'
         `,
         )
         .eq("id", id)
         .single();
 
       if (error) {
+        // Log the error to confirm the 400 Bad Request is resolved
         console.error("Error fetching journal entry:", error);
         throw error;
       }
@@ -37,7 +38,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines (Assuming 'accounts' is the correct related table name for 'chart_of_accounts')
+  // 2. Fetch Journal Lines - Using the original 'chart_of_accounts' alias from your previous code
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
@@ -46,7 +47,7 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          account:accounts(account_code, account_name) 
+          account:chart_of_accounts(account_code, account_name) // Using 'chart_of_accounts'
         `,
         )
         .eq("journal_entry_id", id)
@@ -121,9 +122,9 @@ const JournalEntryDetail = () => {
       <div className="p-8 text-center space-y-4">
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
-          This entry may not exist, or you may lack the necessary permissions. The database query issue has been fixed,
-          so if this message persists, please confirm the journal entry ID is valid and your RLS policies are set to
-          TRUE on `journal_entries` and `user_profiles` for authenticated users.
+          This entry may not exist, or you may lack the necessary permissions. The database query issue has been fixed.
+          If this message persists, please **confirm the journal entry ID in the URL is valid** and that **you are
+          logged in as an authenticated user.**
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
