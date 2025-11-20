@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Edit } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 const getBankAccount = (id: string) => {
   const accounts = JSON.parse(localStorage.getItem("bankAccounts") || "[]");
@@ -14,6 +16,8 @@ const BankAccountDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const [account, setAccount] = useState<any>(null);
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   useEffect(() => {
     if (id) {
@@ -86,11 +90,11 @@ const BankAccountDetail = () => {
           <CardContent className="space-y-3">
             <div>
               <p className="text-sm text-muted-foreground">Current Balance</p>
-              <p className="text-2xl font-bold">${parseFloat(account.currentBalance).toFixed(2)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(parseFloat(account.currentBalance), currency)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Available Balance</p>
-              <p className="text-xl font-semibold">${parseFloat(account.availableBalance).toFixed(2)}</p>
+              <p className="text-xl font-semibold">{formatCurrency(parseFloat(account.availableBalance), currency)}</p>
             </div>
           </CardContent>
         </Card>
