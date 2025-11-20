@@ -10,6 +10,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { formatCurrency } from "@/lib/formatters";
+import { AlertTriangle, Info } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface Store {
   id: string;
@@ -58,22 +60,26 @@ const JournalEntryNew = () => {
     mutationFn: async () => {
       if (!selectedStore || journalLines.length === 0) throw new Error("No store selected or no items generated");
 
+      // Filter out only lines with positive values for the actual journal
+      const linesWithValue = journalLines.filter((line) => line.debit_amount > 0);
+
+      if (linesWithValue.length === 0) {
+        throw new Error("No items with positive value to record. Journal entry must have non-zero amounts.");
+      }
+
       // --- Find Inventory Account (FIXED) ---
       let inventoryAccount: any;
 
-      // ✅ FIX 2: Search for the generic Inventory account by its specific name/code (1200)
-      // This guarantees a single result, preventing the query from failing and falling back to Cash.
       const { data: nameSearchData } = await supabase
         .from("accounts")
         .select("*")
-        .eq("account_code", "1200") // Use exact code for the generic Inventory account
+        .eq("account_code", "1200")
         .eq("is_active", true)
-        .single(); // Use single() since we expect exactly one result
+        .single();
 
       if (nameSearchData) {
         inventoryAccount = nameSearchData;
       } else {
-        // Fallback logic remains, but should no longer be hit for the generic account
         const { data: fallbackSearchData } = await supabase
           .from("accounts")
           .select("*")
@@ -104,7 +110,6 @@ const JournalEntryNew = () => {
 
       // --- Get current user for created_by (FIXED) ---
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      // ✅ FIX 1: Robust check to ensure the user object exists, preventing FK violation
       if (userError || !userData?.user)
         throw new Error("Cannot get current user: session may have expired. Please try logging in again.");
 
@@ -114,7 +119,7 @@ const JournalEntryNew = () => {
       const entryNumber = `JE-${Date.now()}`;
       const entryDate = new Date().toISOString();
 
-      const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
+      const totalDebit = linesWithValue.reduce((sum, line) => sum + line.debit_amount, 0);
       const amountToCredit = totalDebit;
 
       if (amountToCredit === 0) throw new Error("Journal entry total is $0.00. Cannot save empty entry.");
@@ -130,13 +135,13 @@ const JournalEntryNew = () => {
           status: "draft",
           total_debit: totalDebit,
           total_credit: amountToCredit,
-          created_by: currentUserId, // Use the guaranteed valid user ID
+          created_by: currentUserId,
         },
       ]);
       if (entryError) throw entryError;
 
-      // Prepare journal lines
-      const debitLinesToInsert = journalLines.map((line, index) => ({
+      // Prepare journal lines (only those with value)
+      const debitLinesToInsert = linesWithValue.map((line, index) => ({
         ...line,
         journal_entry_id: journalEntryId,
         line_number: index + 1,
@@ -172,7 +177,7 @@ const JournalEntryNew = () => {
     },
   });
 
-  // Generate Opening Stock
+  // Generate Opening Stock - PROFESSIONAL APPROACH
   const handleGenerate = async () => {
     if (!selectedStore) return toast.error("Please select a store");
     setIsGenerating(true);
@@ -189,6 +194,7 @@ const JournalEntryNew = () => {
         return;
       }
 
+      // Create lines for ALL items, but mark zero-value ones
       const lines: JournalLine[] = inventoryItems.map((inv: any, index: number) => ({
         id: crypto.randomUUID(),
         account_id: "",
@@ -200,7 +206,20 @@ const JournalEntryNew = () => {
         line_number: index + 1,
       }));
 
+      // Count zero-value items for reporting
+      const zeroValueCount = lines.filter((line) => line.debit_amount === 0).length;
+      const positiveValueCount = lines.filter((line) => line.debit_amount > 0).length;
+
       setJournalLines(lines);
+
+      if (zeroValueCount > 0) {
+        toast.info(
+          `Generated ${positiveValueCount} items with value and ${zeroValueCount} zero-value items for complete inventory record.`,
+          { duration: 5000 },
+        );
+      } else {
+        toast.success(`Generated ${positiveValueCount} journal lines`);
+      }
     } catch (err: any) {
       toast.error(err.message || "Error generating opening stock");
     }
@@ -209,6 +228,8 @@ const JournalEntryNew = () => {
 
   const totalDebitDisplay = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
   const expectedTotalCreditDisplay = totalDebitDisplay > 0 ? totalDebitDisplay : 0;
+  const zeroValueCount = journalLines.filter((line) => line.debit_amount === 0).length;
+  const positiveValueCount = journalLines.filter((line) => line.debit_amount > 0).length;
 
   return (
     <div className="space-y-6">
@@ -241,6 +262,33 @@ const JournalEntryNew = () => {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
+          {/* Summary Stats */}
+          {journalLines.length > 0 && (
+            <div className="p-4 border-b bg-muted/30">
+              <div className="flex items-center gap-4 text-sm">
+                <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+                  {positiveValueCount} items with value
+                </Badge>
+                {zeroValueCount > 0 && (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    {zeroValueCount} zero-value items
+                  </Badge>
+                )}
+                <div className="text-muted-foreground">
+                  Total value: <span className="font-semibold">{formatCurrency(totalDebitDisplay, currency)}</span>
+                </div>
+              </div>
+              {zeroValueCount > 0 && (
+                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                  <Info className="w-3 h-3" />
+                  Zero-value items are shown for inventory completeness but will not be included in the final journal
+                  entry.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="overflow-x-auto max-h-[500px]">
             <Table className="min-w-[900px]">
               <TableHeader>
@@ -249,32 +297,49 @@ const JournalEntryNew = () => {
                   <TableHead>Description</TableHead>
                   <TableHead>Debit</TableHead>
                   <TableHead>Credit</TableHead>
+                  <TableHead className="w-20">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {journalLines.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center">
+                    <TableCell colSpan={5} className="text-center">
                       No lines generated
                     </TableCell>
                   </TableRow>
                 ) : (
                   <>
                     {journalLines.map((line, index) => (
-                      <TableRow key={line.id}>
+                      <TableRow key={line.id} className={line.debit_amount === 0 ? "bg-muted/30 opacity-60" : ""}>
                         <TableCell>{index + 1}</TableCell>
                         <TableCell>{line.description}</TableCell>
                         <TableCell className="font-mono">{formatCurrency(line.debit_amount, currency)}</TableCell>
                         <TableCell className="font-mono">{formatCurrency(line.credit_amount, currency)}</TableCell>
+                        <TableCell>
+                          {line.debit_amount === 0 ? (
+                            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                              Zero Value
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs bg-green-50 text-green-700">
+                              Active
+                            </Badge>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                     {totalDebitDisplay > 0 && (
-                      <TableRow className="bg-green-50/50">
+                      <TableRow className="bg-green-50/50 font-semibold">
                         <TableCell>{journalLines.length + 1}</TableCell>
                         <TableCell className="italic">Balancing Entry (Retained Earnings)</TableCell>
                         <TableCell className="font-mono">{formatCurrency(0, currency)}</TableCell>
                         <TableCell className="font-mono">
                           {formatCurrency(expectedTotalCreditDisplay, currency)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            System
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     )}
@@ -286,6 +351,7 @@ const JournalEntryNew = () => {
                   </TableCell>
                   <TableCell className="font-mono">{formatCurrency(totalDebitDisplay, currency)}</TableCell>
                   <TableCell className="font-mono">{formatCurrency(expectedTotalCreditDisplay, currency)}</TableCell>
+                  <TableCell></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
