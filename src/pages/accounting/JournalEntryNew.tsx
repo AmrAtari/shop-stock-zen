@@ -9,10 +9,6 @@ import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-// ⚠️ PLACEHOLDER: Replace this with your actual implementation that fetches the system's default currency symbol.
-const useCurrencySymbol = () => "$";
-// ------------------------------------------------------------------------------------------------------
-
 interface Store {
   id: string;
   name: string;
@@ -42,7 +38,6 @@ const JournalEntryNew = () => {
   const [selectedStore, setSelectedStore] = useState<string>("");
   const [journalLines, setJournalLines] = useState<JournalLine[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const currencySymbol = useCurrencySymbol();
 
   // Fetch stores
   const { data: stores } = useQuery<Store[]>({
@@ -100,20 +95,11 @@ const JournalEntryNew = () => {
 
       // --- Get current user for created_by ---
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData) throw new Error("Cannot get current user");
+      // ✅ FIX 1: Ensure user data and user ID are explicitly checked before use
+      if (userError || !userData || !userData.user)
+        throw new Error("Cannot get current user: session may have expired. Please try logging in again.");
 
-      // 🛑 FIX START: Convert Auth User ID (userData.user.id) to Profile ID (user_profiles.id)
-      const { data: userProfile, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("id")
-        .eq("user_id", userData.user.id)
-        .single();
-
-      if (profileError || !userProfile) {
-        throw new Error("User profile not found. Cannot set 'created_by' foreign key.");
-      }
-      const profileId = userProfile.id;
-      // 🛑 FIX END
+      const currentUserId = userData.user.id; // Store ID for clear use
 
       const journalEntryId = crypto.randomUUID();
       const entryNumber = `JE-${Date.now()}`;
@@ -135,7 +121,7 @@ const JournalEntryNew = () => {
           status: "draft",
           total_debit: totalDebit,
           total_credit: amountToCredit,
-          created_by: profileId, // ✅ CORRECT: Insert the Profile ID
+          created_by: currentUserId, // Use the guaranteed valid user ID
         },
       ]);
       if (entryError) throw entryError;
@@ -161,6 +147,7 @@ const JournalEntryNew = () => {
       };
 
       const linesToInsert = [...debitLinesToInsert, creditLineToInsert];
+      // ✅ FIX 2 (from previous console logs): Ensure table name is journal_entry_lines, not journal_line_items. It seems correct here.
       const { error: lineError } = await supabase.from("journal_entry_lines").insert(linesToInsert);
       if (lineError) throw lineError;
 
@@ -269,25 +256,16 @@ const JournalEntryNew = () => {
                       <TableRow key={line.id}>
                         <TableCell>{index + 1}</TableCell>
                         <TableCell>{line.description}</TableCell>
-                        <TableCell className="font-mono">
-                          {currencySymbol}
-                          {line.debit_amount.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="font-mono">
-                          {currencySymbol}
-                          {line.credit_amount.toFixed(2)}
-                        </TableCell>
+                        <TableCell className="font-mono">${line.debit_amount.toFixed(2)}</TableCell>
+                        <TableCell className="font-mono">${line.credit_amount.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                     {totalDebitDisplay > 0 && (
                       <TableRow className="bg-green-50/50">
                         <TableCell>{journalLines.length + 1}</TableCell>
                         <TableCell className="italic">Balancing Entry (Retained Earnings)</TableCell>
-                        <TableCell className="font-mono">{currencySymbol}0.00</TableCell>
-                        <TableCell className="font-mono">
-                          {currencySymbol}
-                          {expectedTotalCreditDisplay.toFixed(2)}
-                        </TableCell>
+                        <TableCell className="font-mono">$0.00</TableCell>
+                        <TableCell className="font-mono">${expectedTotalCreditDisplay.toFixed(2)}</TableCell>
                       </TableRow>
                     )}
                   </>
@@ -296,14 +274,8 @@ const JournalEntryNew = () => {
                   <TableCell colSpan={2} className="text-right">
                     Total Debit/Credit:
                   </TableCell>
-                  <TableCell className="font-mono">
-                    {currencySymbol}
-                    {totalDebitDisplay.toFixed(2)}
-                  </TableCell>
-                  <TableCell className="font-mono">
-                    {currencySymbol}
-                    {expectedTotalCreditDisplay.toFixed(2)}
-                  </TableCell>
+                  <TableCell className="font-mono">${totalDebitDisplay.toFixed(2)}</TableCell>
+                  <TableCell className="font-mono">${expectedTotalCreditDisplay.toFixed(2)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
