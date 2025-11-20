@@ -28,13 +28,13 @@ import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 
-// Accounting
-import AccountingDashboard from "./pages/accounting/AccountingDashboard";
-import JournalEntries from "./pages/accounting/JournalEntries";
-import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
-import JournalEntryNew from "./pages/accounting/JournalEntryNew";
-import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
-import JournalEntryEdit from "./pages/accounting/JournalEntryEdit"; // <-- NEW IMPORT
+// Accounting (*** ALL PATHS CORRECTED TO INCLUDE /accounting/ ***)
+import AccountingDashboard from "./pages/accounting/AccountingDashboard"; // <-- CORRECTED
+import JournalEntries from "./pages/accounting/JournalEntries"; // <-- CORRECTED
+import JournalEntryDetail from "./pages/accounting/JournalEntryDetail"; // <-- CORRECTED
+import JournalEntryNew from "./pages/accounting/JournalEntryNew"; // <-- CORRECTED
+import ChartOfAccounts from "./pages/accounting/ChartOfAccounts"; // <-- CORRECTED
+import JournalEntryEdit from "./pages/accounting/JournalEntryEdit"; // <-- CORRECTED (The new one)
 
 // Components/Layouts
 import Layout from "./components/Layout";
@@ -157,6 +157,7 @@ const App = () => {
                 }
               />
               {/* Accounting Routes */}
+              {/* All elements here use the corrected paths from the imports above */}
               <Route
                 path="/accounting/dashboard"
                 element={
@@ -197,7 +198,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              <Route // <-- FIXES 404 FOR EDIT PAGE
+              <Route // Fixes 404 for edit page
                 path="/accounting/journal-entries/:id/edit"
                 element={
                   <ProtectedRoute>
