@@ -24,15 +24,15 @@ const getStatusBadge = (status: string) => {
 };
 
 // ⚠️ PLACEHOLDER: Replace this with your actual implementation that fetches the system's default currency symbol.
-const useCurrencySymbol = () => "€";
+const useCurrencySymbol = () => "$";
 // ------------------------------------------------------------------------------------------------------
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
-  const currencySymbol = useCurrencySymbol(); // <-- NEW: Use the dynamic currency symbol
+  const currencySymbol = useCurrencySymbol(); // <-- FIXED: Use the dynamic currency symbol
 
-  // 1. Fetch Journal Entry with Correct Joins (Cleaned Template String)
+  // 1. Fetch Journal Entry with Correct Joins
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
@@ -56,7 +56,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // 2. Fetch Journal Lines with Account Joins (Cleaned Template String)
+  // 2. Fetch Journal Lines with Account Joins
   const { data: lines, isLoading: linesLoading } = useQuery({
     queryKey: ["journal_lines", id],
     queryFn: async () => {
@@ -231,11 +231,11 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {/* 1. FIX: Use dynamic currencySymbol */}
+                      {/* FIXED: Use dynamic currencySymbol */}
                       {line.debit_amount > 0 ? `${currencySymbol}${line.debit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {/* 2. FIX: Use dynamic currencySymbol */}
+                      {/* FIXED: Use dynamic currencySymbol */}
                       {line.credit_amount > 0 ? `${currencySymbol}${line.credit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                   </TableRow>
@@ -245,12 +245,12 @@ const JournalEntryDetail = () => {
                 <TableCell colSpan={3} className="text-right">
                   Totals:
                 </TableCell>
-                {/* 3. FIX: Use dynamic currencySymbol in Total Debit */}
+                {/* FIXED: Use dynamic currencySymbol in Total Debit */}
                 <TableCell className="text-right font-mono">
                   {currencySymbol}
                   {entry?.total_debit?.toFixed(2) || "0.00"}
                 </TableCell>
-                {/* 4. FIX: Use dynamic currencySymbol in Total Credit */}
+                {/* FIXED: Use dynamic currencySymbol in Total Credit */}
                 <TableCell className="text-right font-mono">
                   {currencySymbol}
                   {entry?.total_credit?.toFixed(2) || "0.00"}
