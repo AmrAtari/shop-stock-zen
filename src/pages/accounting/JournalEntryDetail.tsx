@@ -29,7 +29,7 @@ const JournalEntryDetail = () => {
     });
   }, [navigate]);
 
-  // 1. Fetch Journal Entry - DEBUG VERSION
+  // 1. Fetch Journal Entry - FIXED VERSION WITH PROPER JOINS
   const {
     data: entry,
     isLoading: entryLoading,
@@ -39,28 +39,13 @@ const JournalEntryDetail = () => {
     queryFn: async () => {
       console.log("🔍 Fetching journal entry with ID:", id);
 
-      // First, let's try a simple query without joins
-      const { data: simpleData, error: simpleError } = await supabase
-        .from("journal_entries")
-        .select("*")
-        .eq("id", id)
-        .single();
+      // Try multiple join approaches to find what works
+      let fullData = null;
+      let fullError = null;
 
-      console.log("📊 Simple query result:", { simpleData, simpleError });
-
-      if (simpleError) {
-        console.error("❌ Simple query failed:", simpleError);
-        throw simpleError;
-      }
-
-      if (!simpleData) {
-        console.error("❌ No data returned from simple query");
-        throw new Error("No journal entry found");
-      }
-
-      // Now try the full query with joins
-      console.log("🔄 Trying full query with joins...");
-      const { data: fullData, error: fullError } = await supabase
+      // Try approach 1: Direct join with user_profiles
+      console.log("🔄 Trying Approach 1: Direct join...");
+      const { data: data1, error: error1 } = await supabase
         .from("journal_entries")
         .select(
           `
@@ -72,15 +57,85 @@ const JournalEntryDetail = () => {
         .eq("id", id)
         .single();
 
-      console.log("📊 Full query result:", { fullData, fullError });
+      if (!error1 && data1) {
+        console.log("✅ Approach 1 worked!");
+        fullData = data1;
+      } else {
+        console.log("❌ Approach 1 failed:", error1);
 
-      if (fullError) {
-        console.error("❌ Full query failed:", fullError);
-        // But we have simpleData, so return that
-        return simpleData;
+        // Try approach 2: Alternative join syntax
+        console.log("🔄 Trying Approach 2: Alternative join...");
+        const { data: data2, error: error2 } = await supabase
+          .from("journal_entries")
+          .select(
+            `
+            *,
+            user_profiles!created_by(username),
+            user_profiles!posted_by(username)
+          `,
+          )
+          .eq("id", id)
+          .single();
+
+        if (!error2 && data2) {
+          console.log("✅ Approach 2 worked!");
+          fullData = data2;
+        } else {
+          console.log("❌ Approach 2 failed:", error2);
+          fullError = error2;
+        }
       }
 
-      return fullData || simpleData;
+      // If joins failed, get basic data and fetch user profiles separately
+      if (!fullData) {
+        console.log("🔄 Falling back to separate queries...");
+        const { data: simpleData, error: simpleError } = await supabase
+          .from("journal_entries")
+          .select("*")
+          .eq("id", id)
+          .single();
+
+        if (simpleError) {
+          console.error("❌ Simple query failed:", simpleError);
+          throw simpleError;
+        }
+
+        if (!simpleData) {
+          console.error("❌ No data returned from simple query");
+          throw new Error("No journal entry found");
+        }
+
+        // Fetch creator profile separately
+        let creatorProfile = null;
+        if (simpleData.created_by) {
+          const { data: creatorData } = await supabase
+            .from("user_profiles")
+            .select("username")
+            .eq("user_id", simpleData.created_by)
+            .single();
+          creatorProfile = creatorData;
+        }
+
+        // Fetch poster profile separately
+        let posterProfile = null;
+        if (simpleData.posted_by) {
+          const { data: posterData } = await supabase
+            .from("user_profiles")
+            .select("username")
+            .eq("user_id", simpleData.posted_by)
+            .single();
+          posterProfile = posterData;
+        }
+
+        fullData = {
+          ...simpleData,
+          creator: creatorProfile,
+          poster: posterProfile,
+        };
+      }
+
+      console.log("📊 Final entry data:", fullData);
+      return fullData;
     },
     enabled: !!id,
   });
@@ -95,7 +150,6 @@ const JournalEntryDetail = () => {
     queryFn: async () => {
       console.log("🔍 Fetching journal lines for entry:", id);
 
-      // CORRECTED: Use 'accounts' table for the join
       const { data, error } = await supabase
         .from("journal_entry_lines")
         .select(
@@ -119,20 +173,7 @@ const JournalEntryDetail = () => {
     enabled: !!id && !!entry,
   });
 
-  // Debug logging
-  useEffect(() => {
-    console.log("🔍 DEBUG INFO:", {
-      entryId: id,
-      entryData: entry,
-      entryError: entryError,
-      entryLoading: entryLoading,
-      linesData: lines,
-      linesError: linesError,
-      linesLoading: linesLoading,
-    });
-  }, [id, entry, entryError, entryLoading, lines, linesError, linesLoading]);
-
-  // 3. POSTING MUTATION - ENHANCED DEBUG VERSION
+  // 3. POSTING MUTATION
   const postMutation = useMutation({
     mutationFn: async () => {
       console.log("🔄 Starting post mutation...");
@@ -151,7 +192,6 @@ const JournalEntryDetail = () => {
       } = await supabase.auth.getUser();
       console.log("👤 Current user:", user?.id);
       console.log("📝 Entry created_by:", entry?.created_by);
-      console.log("🔍 User matches creator:", user?.id === entry?.created_by);
 
       if (userError) {
         console.error("❌ User error:", userError);
@@ -164,61 +204,36 @@ const JournalEntryDetail = () => {
 
       console.log("📝 Updating journal entry status to 'posted'...");
 
-      // Try a direct update first to see if it works
       const updateData = {
         status: "posted",
         posted_by: user.id,
         posted_at: new Date().toISOString(),
       };
 
-      console.log("📤 Update data:", updateData);
-      console.log("🎯 Update conditions:", {
-        id: id,
-        created_by: user.id,
-        current_status: entry?.status,
-      });
-
       const {
         data,
         error: updateError,
         count,
-      } = await supabase
-        .from("journal_entries")
-        .update(updateData)
-        .eq("id", id)
-        .eq("created_by", user.id) // Add this to ensure RLS passes
-        .select();
+      } = await supabase.from("journal_entries").update(updateData).eq("id", id).eq("created_by", user.id).select();
 
       console.log("📊 Update result:", {
         data,
         updateError,
         count,
         success: !updateError,
-        rows_updated: data?.length,
       });
 
       if (updateError) {
         console.error("❌ Update failed:", updateError);
-        console.error("❌ Update error details:", {
-          message: updateError.message,
-          details: updateError.details,
-          hint: updateError.hint,
-          code: updateError.code,
-        });
         throw updateError;
       }
 
       if (!data || data.length === 0) {
-        console.error("❌ No rows updated - RLS likely blocked the update");
-        console.error("❌ Possible reasons:");
-        console.error("   - User ID doesn't match created_by");
-        console.error("   - Entry is not in draft status");
-        console.error("   - RLS policy is too restrictive");
-        throw new Error("Update failed: No rows affected. Check RLS policies.");
+        console.error("❌ No rows updated");
+        throw new Error("Update failed: No rows affected.");
       }
 
       console.log("✅ Successfully posted journal entry");
-      console.log("✅ Updated entry:", data[0]);
       return id;
     },
     onSuccess: () => {
@@ -229,11 +244,6 @@ const JournalEntryDetail = () => {
     },
     onError: (err: any) => {
       console.error("❌ Post mutation failed:", err);
-      console.error("❌ Error details:", {
-        message: err.message,
-        code: err.code,
-        details: err.details,
-      });
       toast.error(err.message || "Failed to post journal entry.");
     },
   });
@@ -299,18 +309,7 @@ const JournalEntryDetail = () => {
         <div className="flex gap-2">
           {entry.status === "draft" && (
             <Button
-              onClick={() => {
-                console.log("🎯 Post button clicked");
-                console.log("📊 Current entry state:", {
-                  id: entry.id,
-                  status: entry.status,
-                  created_by: entry.created_by,
-                  total_debit: entry.total_debit,
-                  total_credit: entry.total_credit,
-                  isBalanced: isBalanced,
-                });
-                postMutation.mutate();
-              }}
+              onClick={() => postMutation.mutate()}
               disabled={postMutation.isPending || !isBalanced}
               variant="default"
               className="bg-green-600 hover:bg-green-700"
