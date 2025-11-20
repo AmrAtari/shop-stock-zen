@@ -28,13 +28,13 @@ import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 
-// Accounting (*** ALL PATHS CORRECTED TO INCLUDE /accounting/ ***)
-import AccountingDashboard from "./pages/accounting/AccountingDashboard"; // <-- CORRECTED
-import JournalEntries from "./pages/accounting/JournalEntries"; // <-- CORRECTED
-import JournalEntryDetail from "./pages/accounting/JournalEntryDetail"; // <-- CORRECTED
-import JournalEntryNew from "./pages/accounting/JournalEntryNew"; // <-- CORRECTED
-import ChartOfAccounts from "./pages/accounting/ChartOfAccounts"; // <-- CORRECTED
-import JournalEntryEdit from "./pages/accounting/JournalEntryEdit"; // <-- CORRECTED (The new one)
+// Accounting (All paths confirmed to include /accounting/)
+import AccountingDashboard from "./pages/accounting/AccountingDashboard";
+import JournalEntries from "./pages/accounting/JournalEntries";
+import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
+import JournalEntryNew from "./pages/accounting/JournalEntryNew";
+import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
+import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
 
 // Components/Layouts
 import Layout from "./components/Layout";
@@ -156,8 +156,19 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               {/* Accounting Routes */}
-              {/* All elements here use the corrected paths from the imports above */}
+              <Route // <-- NEW: FIXES THE 404 ERROR FOR THE BASE /ACCOUNTING PATH
+                path="/accounting"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      {/* Renders the dashboard when the base path /accounting is hit */}
+                      <AccountingDashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/accounting/dashboard"
                 element={
@@ -198,7 +209,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              <Route // Fixes 404 for edit page
+              <Route
                 path="/accounting/journal-entries/:id/edit"
                 element={
                   <ProtectedRoute>
