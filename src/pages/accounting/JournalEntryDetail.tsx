@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom"; // Add useNavigate
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,37 +8,53 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useEffect } from "react"; // Add useEffect
 
 const JournalEntryDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate(); // Initialize useNavigate
+
+  // *** CRITICAL AUTHENTICATION CHECK ***
+  useEffect(() => {
+    // Check if the user is authenticated on component mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        // If not authenticated, redirect to the login page
+        toast.warning("Please sign in to view this entry.");
+        navigate("/auth");
+      }
+    });
+  }, [navigate]);
 
   // 1. Fetch Journal Entry - CRITICAL FIX: EXPLICIT FOREIGN KEY JOINS
   const { data: entry, isLoading: entryLoading } = useQuery<any>({
     queryKey: ["journal_entry", id],
     queryFn: async () => {
+      // The query itself is now fixed and should succeed if RLS and ID are valid
       const { data, error } = await supabase
         .from("journal_entries")
         .select(
           `
           *,
-          creator:user_profiles!created_by(username), // Explicitly join on 'created_by'
-          poster:user_profiles!posted_by(username)    // Explicitly join on 'posted_by'
+          creator:user_profiles!created_by(username), 
+          poster:user_profiles!posted_by(username)    
         `,
         )
         .eq("id", id)
         .single();
 
       if (error) {
-        // Log the error to confirm the 400 Bad Request is resolved
         console.error("Error fetching journal entry:", error);
         throw error;
       }
       return data;
     },
+    // Only run this query if an ID is present
+    enabled: !!id,
   });
 
-  // 2. Fetch Journal Lines - Using the original 'chart_of_accounts' alias from your previous code
+  // 2. Fetch Journal Lines - Using 'chart_of_accounts'
   const { data: lines, isLoading: linesLoading } = useQuery<any>({
     queryKey: ["journal_entry_lines", id],
     queryFn: async () => {
@@ -47,7 +63,7 @@ const JournalEntryDetail = () => {
         .select(
           `
           *,
-          account:chart_of_accounts(account_code, account_name) // Using 'chart_of_accounts'
+          account:chart_of_accounts(account_code, account_name) 
         `,
         )
         .eq("journal_entry_id", id)
@@ -56,17 +72,16 @@ const JournalEntryDetail = () => {
       if (error) throw error;
       return data;
     },
+    enabled: !!id,
   });
 
-  // 3. POSTING MUTATION
+  // 3. POSTING MUTATION (rest of the mutation code is unchanged)
   const postMutation = useMutation({
     mutationFn: async () => {
-      // Basic check before posting
       if (entry?.total_debit !== entry?.total_credit) {
         throw new Error("Journal entry is unbalanced. Cannot post.");
       }
 
-      // Get the current authenticated user's UUID
       const {
         data: { user },
         error: userError,
@@ -76,7 +91,6 @@ const JournalEntryDetail = () => {
       }
       const postedById = user.id;
 
-      // Update the journal entry status and set posted_by to the user's UUID
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
@@ -100,7 +114,7 @@ const JournalEntryDetail = () => {
     },
   });
 
-  // Helper function for status badges
+  // Helper function for status badges (unchanged)
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
       draft: "secondary",
@@ -112,19 +126,21 @@ const JournalEntryDetail = () => {
 
   const isBalanced = entry?.total_debit === entry?.total_credit;
 
-  if (entryLoading) {
+  if (entryLoading || linesLoading) {
     return <div>Loading journal entry details...</div>;
   }
 
-  // Fallback for RLS failure or truly non-existent entry
+  // The final check: If we reached here and entry is null, it's either RLS or a bad ID.
   if (!entry) {
     return (
       <div className="p-8 text-center space-y-4">
         <h1 className="text-2xl font-bold text-red-600">Journal Entry Not Found</h1>
         <p className="text-muted-foreground">
-          This entry may not exist, or you may lack the necessary permissions. The database query issue has been fixed.
-          If this message persists, please **confirm the journal entry ID in the URL is valid** and that **you are
-          logged in as an authenticated user.**
+          **Action Required:** This usually means the ID is invalid or the user is unauthorized.
+          <ul className="list-disc list-inside mt-2 text-left mx-auto max-w-sm">
+            <li>Confirm the Journal Entry ID in the URL is correct.</li>
+            <li>Ensure you are **signed in** as an authenticated user.</li>
+          </ul>
         </p>
         <Link to="/accounting/journal-entries">
           <Button variant="outline">
@@ -136,6 +152,7 @@ const JournalEntryDetail = () => {
     );
   }
 
+  // ... rest of the component (display) ...
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -233,7 +250,6 @@ const JournalEntryDetail = () => {
                     <TableCell>{line.account?.account_name}</TableCell>
                     <TableCell className="max-w-md truncate">{line.description}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {/* Note: Based on your schema, we use debit_amount/credit_amount */}
                       {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
