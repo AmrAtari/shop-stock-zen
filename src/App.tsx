@@ -158,12 +158,11 @@ const App = () => {
               />
 
               {/* Accounting Routes */}
-              <Route // <-- NEW: FIXES THE 404 ERROR FOR THE BASE /ACCOUNTING PATH
+              <Route
                 path="/accounting"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      {/* Renders the dashboard when the base path /accounting is hit */}
                       <AccountingDashboard />
                     </Layout>
                   </ProtectedRoute>
