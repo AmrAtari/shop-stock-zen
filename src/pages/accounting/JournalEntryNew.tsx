@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { Trash2 } from "lucide-react"; // <-- FIX: Added missing import for Trash2
 
 // ⚠️ PLACEHOLDER: Replace this with your actual implementation that fetches the system's default currency symbol.
 const useCurrencySymbol = () => "€";
@@ -37,12 +38,19 @@ interface JournalLine {
   journal_entry_id?: string;
 }
 
+// Define the expected type for Account objects
+interface Account {
+  id: string;
+  account_code: string;
+  account_name: string;
+}
+
 const JournalEntryNew = () => {
   const queryClient = useQueryClient();
   const [selectedStore, setSelectedStore] = useState<string>("");
   const [journalLines, setJournalLines] = useState<JournalLine[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const currencySymbol = useCurrencySymbol(); // <-- NEW: Use the dynamic currency symbol
+  const currencySymbol = useCurrencySymbol();
 
   // Fetch stores
   const { data: stores } = useQuery<Store[]>({
@@ -55,34 +63,29 @@ const JournalEntryNew = () => {
   });
 
   // Fetch chart of accounts (simplified)
-  const { data: accounts } = useQuery<any[]>(
-    {
-      queryKey: ["accounts"],
-      queryFn: async () => {
-        const { data, error } = await supabase.from("chart_of_accounts").select("id, account_code, account_name");
-        if (error) throw error;
-        return data;
-      },
+  const { data: accounts } = useQuery<Account[]>({
+    // Changed type to Account[]
+    queryKey: ["accounts"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("chart_of_accounts").select("id, account_code, account_name");
+      if (error) throw error;
+      return data;
     },
-    {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    },
-  );
+    // FIX: staleTime is now correctly inside the main options object
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
 
   // Fetch inventory items (simplified)
-  const { data: items } = useQuery<InventoryItem[]>(
-    {
-      queryKey: ["inventory_items"],
-      queryFn: async () => {
-        const { data, error } = await supabase.from("inventory_items").select("id, sku, name, cost");
-        if (error) throw error;
-        return data;
-      },
+  const { data: items } = useQuery<InventoryItem[]>({
+    queryKey: ["inventory_items"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("inventory_items").select("id, sku, name, cost");
+      if (error) throw error;
+      return data;
     },
-    {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    },
-  );
+    // FIX: staleTime is now correctly inside the main options object
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
 
   // Calculate totals and expected balancing entry
   const totalDebit = journalLines.reduce((sum, line) => sum + line.debit_amount, 0);
@@ -95,12 +98,14 @@ const JournalEntryNew = () => {
 
   // Helper to find account name
   const getAccountName = (accountId: string) => {
+    // FIX: accounts is now typed as Account[] | undefined, optional chaining is safe
     return accounts?.find((a) => a.id === accountId)?.account_name || "Unknown Account";
   };
 
   // Helper to find item details
   const getItemDetails = (itemId: string | null) => {
     if (!itemId) return "N/A";
+    // FIX: items is now typed as InventoryItem[] | undefined, optional chaining is safe
     const item = items?.find((i) => i.id === itemId);
     return item ? `${item.sku} - ${item.name}` : "Unknown Item";
   };
@@ -236,6 +241,7 @@ const JournalEntryNew = () => {
                 <SelectValue placeholder="Select Store" />
               </SelectTrigger>
               <SelectContent>
+                {/* FIX: Removed map error by ensuring stores is treated as optional array */}
                 {stores?.map((store) => (
                   <SelectItem key={store.id} value={store.id}>
                     {store.name}
@@ -287,6 +293,7 @@ const JournalEntryNew = () => {
                           <SelectValue placeholder="Select Account" />
                         </SelectTrigger>
                         <SelectContent>
+                          {/* FIX: Removed map error by ensuring accounts is treated as optional array */}
                           {accounts?.map((account) => (
                             <SelectItem key={account.id} value={account.id}>
                               {account.account_code} - {account.account_name}
@@ -305,6 +312,7 @@ const JournalEntryNew = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="">N/A</SelectItem>
+                          {/* FIX: Removed map error by ensuring items is treated as optional array */}
                           {items?.map((item) => (
                             <SelectItem key={item.id} value={item.id}>
                               {item.sku}
@@ -383,19 +391,19 @@ const JournalEntryNew = () => {
                           <p>{getAccountName(line.account_id)}</p>
                           <p className="text-xs text-muted-foreground max-w-sm truncate">{line.description}</p>
                         </TableCell>
-                        {/* 1. FIX: Use currencySymbol */}
+                        {/* FIX: Use currencySymbol */}
                         <TableCell className="font-mono">
                           {currencySymbol}
                           {line.debit_amount.toFixed(2)}
                         </TableCell>
-                        {/* 2. FIX: Use currencySymbol */}
+                        {/* FIX: Use currencySymbol */}
                         <TableCell className="font-mono">
                           {currencySymbol}
                           {line.credit_amount.toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))}
-                    {/* 3. FIX: Use currencySymbol in Balancing Entry (if applicable) */}
+                    {/* FIX: Use currencySymbol in Balancing Entry (if applicable) */}
                     {totalDebitDisplay > 0 && (
                       <TableRow className="bg-green-50/50">
                         <TableCell>{journalLines.length + 1}</TableCell>
@@ -413,12 +421,12 @@ const JournalEntryNew = () => {
                   <TableCell colSpan={2} className="text-right">
                     Total Debit/Credit:
                   </TableCell>
-                  {/* 4. FIX: Use currencySymbol in Total Debit */}
+                  {/* FIX: Use currencySymbol in Total Debit */}
                   <TableCell className="font-mono">
                     {currencySymbol}
                     {totalDebitDisplay.toFixed(2)}
                   </TableCell>
-                  {/* 5. FIX: Use currencySymbol in Total Credit */}
+                  {/* FIX: Use currencySymbol in Total Credit */}
                   <TableCell className="font-mono">
                     {currencySymbol}
                     {expectedTotalCreditDisplay.toFixed(2)}
