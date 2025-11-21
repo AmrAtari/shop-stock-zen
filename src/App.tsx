@@ -11,7 +11,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Alerts from "./pages/Alerts";
-import Reports from "./pages/Reports"; // This is your General Business Reports
+import Reports from "./pages/Reports"; // General Business Reports (Transfers, Sales, PO, Inventory)
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderNew from "./pages/PurchaseOrderNew";
 import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
@@ -35,8 +35,9 @@ import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
 import JournalEntryNew from "./pages/accounting/JournalEntryNew";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
-// Import the NEW Financial Reports page
+// ADDED IMPORTS FOR RENAMED/NEW ACCOUNTING PAGES
 import FinancialReports from "./pages/accounting/FinancialReports";
+import BalanceSheet from "./pages/accounting/BalanceSheet";
 
 // Bank Accounts
 import BankAccounts from "./pages/accounting/BankAccounts";
@@ -187,13 +188,25 @@ const App = () => {
                 }
               />
 
-              {/* UPDATED: This now points to FinancialReports */}
+              {/* MODIFIED: This route now points to the renamed FinancialReports */}
               <Route
                 path="/accounting/reports"
                 element={
                   <ProtectedRoute>
                     <Layout>
                       <FinancialReports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* ADDED: Route for the specific Balance Sheet report */}
+              <Route
+                path="/accounting/reports/balance-sheet"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BalanceSheet />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -301,7 +314,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* This remains pointing to the General Reports */}
+              {/* This route still correctly points to the General Business Reports */}
               <Route
                 path="/reports"
                 element={
