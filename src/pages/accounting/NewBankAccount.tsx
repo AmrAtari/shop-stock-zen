@@ -21,9 +21,8 @@ const NewBankAccount = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [glAccounts, setGlAccounts] = useState<any[]>([]);
-  const [allowedAccountTypes, setAllowedAccountTypes] = useState<string[]>([]);
 
-  // Fetch categories, GL accounts, and check constraint on component mount
+  // Fetch categories and GL accounts on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -51,30 +50,6 @@ const NewBankAccount = () => {
           console.error("Error fetching GL accounts:", accountsError);
         } else {
           setGlAccounts(accountsData || []);
-        }
-
-        // Try to get the check constraint values by querying the information schema
-        const { data: constraintData, error: constraintError } = await supabase
-          .from("information_schema.check_constraints")
-          .select("check_clause")
-          .ilike("constraint_name", "%bank_accounts_account_type_check%");
-
-        if (!constraintError && constraintData && constraintData.length > 0) {
-          console.log("Check constraint found:", constraintData[0].check_clause);
-          // Parse the constraint to extract allowed values
-          const constraint = constraintData[0].check_clause;
-          const matches = constraint.match(/'([^']+)'/g);
-          if (matches) {
-            const allowedTypes = matches.map((match) => match.replace(/'/g, ""));
-            setAllowedAccountTypes(allowedTypes);
-            console.log("Allowed account types:", allowedTypes);
-          }
-        }
-
-        // If we can't get the constraint, try common values
-        if (allowedAccountTypes.length === 0) {
-          console.log("Could not determine allowed account types from constraint, using common values");
-          setAllowedAccountTypes(["checking", "savings", "current", "business", "money_market"]);
         }
       } catch (error) {
         console.error("Error in fetchData:", error);
@@ -156,11 +131,11 @@ const NewBankAccount = () => {
 
       // Prepare data for database insertion
       const bankAccountData = {
-        // Required fields from your table
+        // Required fields
         account_name: formData.account_name,
         bank_name: formData.bank_name,
         account_number: formData.account_number,
-        account_type: formData.account_type.toLowerCase(), // Try lowercase
+        account_type: formData.account_type,
 
         // Optional fields - only include if they have values
         ...(formData.iban && { iban: formData.iban }),
@@ -193,67 +168,12 @@ const NewBankAccount = () => {
       };
 
       console.log("Creating bank account with data:", bankAccountData);
-      console.log("Account type being sent:", bankAccountData.account_type);
 
       // Insert into database
       const { data, error } = await supabase.from("bank_accounts").insert([bankAccountData]).select();
 
       if (error) {
         console.error("Supabase error details:", error);
-
-        // If it's a constraint error, try different casing
-        if (error.code === "23514") {
-          console.log("Trying different account type casing...");
-
-          // Try uppercase
-          const bankAccountDataUpper = {
-            ...bankAccountData,
-            account_type: formData.account_type.toUpperCase(),
-          };
-
-          const { data: dataUpper, error: errorUpper } = await supabase
-            .from("bank_accounts")
-            .insert([bankAccountDataUpper])
-            .select();
-
-          if (!errorUpper) {
-            console.log("Success with uppercase account type!");
-            toast({
-              title: "Bank account created successfully!",
-              description: `${formData.account_name} has been added to your accounts.`,
-            });
-            queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
-            navigate("/accounting/bank-accounts");
-            return;
-          }
-
-          // Try title case
-          const bankAccountDataTitle = {
-            ...bankAccountData,
-            account_type: formData.account_type.charAt(0).toUpperCase() + formData.account_type.slice(1).toLowerCase(),
-          };
-
-          const { data: dataTitle, error: errorTitle } = await supabase
-            .from("bank_accounts")
-            .insert([bankAccountDataTitle])
-            .select();
-
-          if (!errorTitle) {
-            console.log("Success with title case account type!");
-            toast({
-              title: "Bank account created successfully!",
-              description: `${formData.account_name} has been added to your accounts.`,
-            });
-            queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
-            navigate("/accounting/bank-accounts");
-            return;
-          }
-
-          throw new Error(
-            `Database error: Check constraint violation. Tried multiple cases but none worked. Please check the allowed account types in your database.`,
-          );
-        }
-
         throw new Error(`Database error: ${error.message}`);
       }
 
@@ -347,12 +267,11 @@ const NewBankAccount = () => {
                       <SelectValue placeholder="Select account type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Try lowercase first since that's most common */}
                       <SelectItem value="checking">Checking Account</SelectItem>
                       <SelectItem value="savings">Savings Account</SelectItem>
                       <SelectItem value="business">Business Account</SelectItem>
-                      <SelectItem value="current">Current Account</SelectItem>
                       <SelectItem value="money_market">Money Market Account</SelectItem>
+                      <SelectItem value="current">Current Account</SelectItem>
                       <SelectItem value="fixed_deposit">Fixed Deposit</SelectItem>
                     </SelectContent>
                   </Select>
@@ -399,7 +318,6 @@ const NewBankAccount = () => {
               </div>
             </div>
 
-            {/* Rest of your form sections remain the same */}
             {/* International Banking Section */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">International Banking</h3>
