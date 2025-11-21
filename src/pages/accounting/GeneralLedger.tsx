@@ -11,13 +11,25 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { DateRange } from "react-day-picker";
 import { Link } from "react-router-dom";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
+import { exportToCSV, formatReportData } from "@/utils/reportExport";
 
 const GeneralLedger = () => {
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
   const [selectedAccount, setSelectedAccount] = useState<string>("all");
+
+  const handleExport = () => {
+    if (!ledgerData) return;
+    
+    const formattedData = formatReportData(ledgerData, "general_ledger");
+    exportToCSV(formattedData, `general_ledger_${format(dateRange.from!, "yyyy-MM-dd")}_to_${format(dateRange.to!, "yyyy-MM-dd")}`);
+  };
 
   // Fetch all accounts
   const { data: accounts } = useQuery({
@@ -129,9 +141,9 @@ const GeneralLedger = () => {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
-            Export
+            Export to CSV
           </Button>
         </div>
       </div>
@@ -187,13 +199,13 @@ const GeneralLedger = () => {
                       {transaction.description || transaction.journal_entry.description}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {transaction.debit_amount > 0 ? `$${Number(transaction.debit_amount).toFixed(2)}` : "-"}
+                      {transaction.debit_amount > 0 ? formatCurrency(Number(transaction.debit_amount), currency) : "-"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {transaction.credit_amount > 0 ? `$${Number(transaction.credit_amount).toFixed(2)}` : "-"}
+                      {transaction.credit_amount > 0 ? formatCurrency(Number(transaction.credit_amount), currency) : "-"}
                     </TableCell>
                     <TableCell className="text-right font-mono font-semibold">
-                      ${transaction.runningBalance.toFixed(2)}
+                      {formatCurrency(transaction.runningBalance, currency)}
                     </TableCell>
                     <TableCell className="text-center">
                       <Link to={`/accounting/journal-entries/${transaction.journal_entry.id}`}>

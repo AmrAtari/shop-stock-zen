@@ -8,14 +8,32 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
+import { exportToCSV, formatReportData } from "@/utils/reportExport";
 
 const BalanceSheet = () => {
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [asOfDate, setAsOfDate] = useState<Date>(new Date());
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     assets: true,
     liabilities: true,
     equity: true,
   });
+
+  const handleExport = () => {
+    if (!balanceSheetData) return;
+    
+    const allAccounts = [
+      ...balanceSheetData.assets,
+      ...balanceSheetData.liabilities,
+      ...balanceSheetData.equity
+    ];
+    
+    const formattedData = formatReportData(allAccounts, "balance_sheet");
+    exportToCSV(formattedData, `balance_sheet_${format(asOfDate, "yyyy-MM-dd")}`);
+  };
 
   const { data: balanceSheetData, isLoading } = useQuery({
     queryKey: ["balance_sheet", asOfDate],
@@ -51,10 +69,13 @@ const BalanceSheet = () => {
         const totalCredit = lines.reduce((sum: number, line: any) => sum + Number(line.credit_amount || 0), 0);
 
         // Calculate balance based on account type
+        // Assets have debit normal balance (debit increases, credit decreases)
+        // Liabilities and Equity have credit normal balance (credit increases, debit decreases)
         let balance = 0;
-        if (account.normal_balance === "debit") {
+        if (account.account_type === "asset") {
           balance = totalDebit - totalCredit;
         } else {
+          // liability or equity
           balance = totalCredit - totalDebit;
         }
 
@@ -109,7 +130,7 @@ const BalanceSheet = () => {
             )}
             {title}
           </div>
-          <span className="font-semibold">${total.toFixed(2)}</span>
+          <span className="font-semibold">{formatCurrency(total, currency)}</span>
         </div>
 
         {isExpanded && (
@@ -123,7 +144,7 @@ const BalanceSheet = () => {
                   <span className="text-muted-foreground">{account.account_code}</span>
                   <span>{account.account_name}</span>
                 </span>
-                <span className="font-mono">${account.balance.toFixed(2)}</span>
+                <span className="font-mono">{formatCurrency(account.balance, currency)}</span>
               </div>
             ))}
           </div>
@@ -152,9 +173,9 @@ const BalanceSheet = () => {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
-            Export
+            Export to CSV
           </Button>
         </div>
       </div>
@@ -198,11 +219,11 @@ const BalanceSheet = () => {
               <div className="border-t-2 pt-4 space-y-2">
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total Assets</span>
-                  <span>${balanceSheetData.totalAssets.toFixed(2)}</span>
+                  <span>{formatCurrency(balanceSheetData.totalAssets, currency)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total Liabilities & Equity</span>
-                  <span>${balanceSheetData.totalLiabilitiesAndEquity.toFixed(2)}</span>
+                  <span>{formatCurrency(balanceSheetData.totalLiabilitiesAndEquity, currency)}</span>
                 </div>
                 <div
                   className={cn(
@@ -214,7 +235,7 @@ const BalanceSheet = () => {
                 >
                   <span className="font-semibold">Difference</span>
                   <span className="font-mono">
-                    ${(balanceSheetData.totalAssets - balanceSheetData.totalLiabilitiesAndEquity).toFixed(2)}
+                    {formatCurrency(balanceSheetData.totalAssets - balanceSheetData.totalLiabilitiesAndEquity, currency)}
                   </span>
                 </div>
               </div>
