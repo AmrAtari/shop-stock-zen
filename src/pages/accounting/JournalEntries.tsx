@@ -71,7 +71,7 @@ const JournalEntries = () => {
     },
   });
 
-  // Reverse mutation (for posted entries) - BUG FIX APPLIED HERE
+  // Reverse mutation (for posted entries) - **ROBUST ERROR CHECKING APPLIED**
   const reverseMutation = useMutation({
     mutationFn: async (entry: any) => {
       const {
@@ -96,11 +96,11 @@ const JournalEntries = () => {
         );
       }
 
-      // 2. Create reversal journal entry
+      // 2. Create reversal journal entry header details
       const reversalEntryId = crypto.randomUUID();
       const reversalNumber = `JE-REV-${entry.entry_number}-${reversalEntryId.substring(0, 4)}`;
 
-      // Create reversal lines (swap debit/credit)
+      // 3. Create reversal lines (swap debit/credit)
       const reversalLines = originalLines.map((line: any) => ({
         id: crypto.randomUUID(),
         journal_entry_id: reversalEntryId,
@@ -113,7 +113,7 @@ const JournalEntries = () => {
         line_number: line.line_number,
       }));
 
-      // Insert reversal journal entry
+      // 4. Insert reversal journal entry header
       const { error: entryError } = await supabase.from("journal_entries").insert([
         {
           id: reversalEntryId,
@@ -139,7 +139,7 @@ const JournalEntries = () => {
         );
       }
 
-      // Insert reversal lines
+      // 5. Insert reversal lines
       if (reversalLines && reversalLines.length > 0) {
         const { error: lineError } = await supabase.from("journal_entry_lines").insert(reversalLines);
         // *** CRITICAL FIX: Check lines insertion error ***
@@ -151,7 +151,7 @@ const JournalEntries = () => {
         }
       }
 
-      // Mark original entry as reversed
+      // 6. Mark original entry as reversed
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
