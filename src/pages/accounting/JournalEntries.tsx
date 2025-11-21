@@ -87,7 +87,9 @@ const JournalEntries = () => {
 
       if (originalLinesError) {
         console.error("DB Error fetching original lines:", originalLinesError);
-        throw new Error(`DB Error fetching original lines: ${originalLinesError.message}. Check RLS.`);
+        throw new Error(
+          `DB Error fetching original lines: ${originalLinesError.message}. Check RLS for 'journal_entry_lines' table.`,
+        );
       }
 
       if (!originalLines || originalLines.length === 0) {
