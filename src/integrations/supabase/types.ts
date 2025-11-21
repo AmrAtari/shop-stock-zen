@@ -283,53 +283,141 @@ export type Database = {
         }
         Relationships: []
       }
+      bank_account_categories: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
       bank_accounts: {
         Row: {
           account_name: string
           account_number: string
           account_type: string
+          address: string | null
+          available_balance: number | null
           bank_name: string
+          branch_code: string | null
+          branch_name: string | null
+          category_id: string | null
+          contact_person: string | null
           created_at: string
+          credit_limit: number | null
           currency_id: string | null
           current_balance: number
+          email: string | null
           gl_account_id: string | null
+          iban: string | null
           id: string
+          interest_rate: number | null
           is_active: boolean
+          is_reconciled: boolean | null
+          last_reconciliation_date: string | null
+          ledger_balance: number | null
+          minimum_balance: number | null
           notes: string | null
           opening_balance: number
+          overdraft_limit: number | null
+          phone: string | null
+          routing_number: string | null
+          swift_code: string | null
           updated_at: string
         }
         Insert: {
           account_name: string
           account_number: string
           account_type: string
+          address?: string | null
+          available_balance?: number | null
           bank_name: string
+          branch_code?: string | null
+          branch_name?: string | null
+          category_id?: string | null
+          contact_person?: string | null
           created_at?: string
+          credit_limit?: number | null
           currency_id?: string | null
           current_balance?: number
+          email?: string | null
           gl_account_id?: string | null
+          iban?: string | null
           id?: string
+          interest_rate?: number | null
           is_active?: boolean
+          is_reconciled?: boolean | null
+          last_reconciliation_date?: string | null
+          ledger_balance?: number | null
+          minimum_balance?: number | null
           notes?: string | null
           opening_balance?: number
+          overdraft_limit?: number | null
+          phone?: string | null
+          routing_number?: string | null
+          swift_code?: string | null
           updated_at?: string
         }
         Update: {
           account_name?: string
           account_number?: string
           account_type?: string
+          address?: string | null
+          available_balance?: number | null
           bank_name?: string
+          branch_code?: string | null
+          branch_name?: string | null
+          category_id?: string | null
+          contact_person?: string | null
           created_at?: string
+          credit_limit?: number | null
           currency_id?: string | null
           current_balance?: number
+          email?: string | null
           gl_account_id?: string | null
+          iban?: string | null
           id?: string
+          interest_rate?: number | null
           is_active?: boolean
+          is_reconciled?: boolean | null
+          last_reconciliation_date?: string | null
+          ledger_balance?: number | null
+          minimum_balance?: number | null
           notes?: string | null
           opening_balance?: number
+          overdraft_limit?: number | null
+          phone?: string | null
+          routing_number?: string | null
+          swift_code?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "bank_accounts_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "bank_account_categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bank_accounts_currency_id_fkey"
             columns: ["currency_id"]
@@ -440,6 +528,134 @@ export type Database = {
             columns: ["bank_account_id"]
             isOneToOne: false
             referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_statement_imports: {
+        Row: {
+          bank_account_id: string
+          created_at: string | null
+          error_message: string | null
+          file_format: string
+          file_name: string
+          id: string
+          imported_at: string | null
+          statement_period_end: string
+          statement_period_start: string
+          status: string | null
+          transaction_count: number | null
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string | null
+          error_message?: string | null
+          file_format: string
+          file_name: string
+          id?: string
+          imported_at?: string | null
+          statement_period_end: string
+          statement_period_start: string
+          status?: string | null
+          transaction_count?: number | null
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string | null
+          error_message?: string | null
+          file_format?: string
+          file_name?: string
+          id?: string
+          imported_at?: string | null
+          statement_period_end?: string
+          statement_period_start?: string
+          status?: string | null
+          transaction_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_statement_imports_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_transactions: {
+        Row: {
+          bank_account_id: string
+          category: string | null
+          check_number: string | null
+          counterparty: string | null
+          created_at: string | null
+          credit_amount: number | null
+          debit_amount: number | null
+          description: string
+          id: string
+          is_reconciled: boolean | null
+          reconciliation_id: string | null
+          reference: string | null
+          running_balance: number | null
+          status: string | null
+          transaction_date: string
+          transaction_type: string
+          updated_at: string | null
+          value_date: string
+        }
+        Insert: {
+          bank_account_id: string
+          category?: string | null
+          check_number?: string | null
+          counterparty?: string | null
+          created_at?: string | null
+          credit_amount?: number | null
+          debit_amount?: number | null
+          description: string
+          id?: string
+          is_reconciled?: boolean | null
+          reconciliation_id?: string | null
+          reference?: string | null
+          running_balance?: number | null
+          status?: string | null
+          transaction_date: string
+          transaction_type: string
+          updated_at?: string | null
+          value_date: string
+        }
+        Update: {
+          bank_account_id?: string
+          category?: string | null
+          check_number?: string | null
+          counterparty?: string | null
+          created_at?: string | null
+          credit_amount?: number | null
+          debit_amount?: number | null
+          description?: string
+          id?: string
+          is_reconciled?: boolean | null
+          reconciliation_id?: string | null
+          reference?: string | null
+          running_balance?: number | null
+          status?: string | null
+          transaction_date?: string
+          transaction_type?: string
+          updated_at?: string | null
+          value_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_reconciliation_id_fkey"
+            columns: ["reconciliation_id"]
+            isOneToOne: false
+            referencedRelation: "bank_reconciliations"
             referencedColumns: ["id"]
           },
         ]
@@ -602,6 +818,24 @@ export type Database = {
         Update: {
           color_id?: string | null
           created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      company_codes: {
+        Row: {
+          code: string
+          id: string
+          name: string
+        }
+        Insert: {
+          code: string
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string
           id?: string
           name?: string
         }
@@ -2976,6 +3210,24 @@ export type Database = {
             referencedColumns: ["supplier_id"]
           },
         ]
+      }
+      warehouses: {
+        Row: {
+          id: string
+          location: string | null
+          name: string
+        }
+        Insert: {
+          id?: string
+          location?: string | null
+          name: string
+        }
+        Update: {
+          id?: string
+          location?: string | null
+          name?: string
+        }
+        Relationships: []
       }
       workflow_rules: {
         Row: {
