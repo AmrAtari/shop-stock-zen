@@ -1,36 +1,109 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Edit } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Plus, Eye, Edit, Trash2, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { formatCurrency } from "@/lib/formatters";
-
-// Function to get bank accounts from storage
-const getBankAccounts = () => {
-  return JSON.parse(localStorage.getItem("bankAccounts") || "[]");
-};
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 const BankAccounts = () => {
   const navigate = useNavigate();
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
+  const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    // Load accounts when component mounts
-    const loadedAccounts = getBankAccounts();
-    setAccounts(loadedAccounts);
-  }, []);
+  const {
+    data: accounts,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["bank-accounts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bank_accounts")
+        .select(
+          `
+          *,
+          bank_account_categories(name),
+          accounts(account_code, account_name)
+        `,
+        )
+        .order("created_at", { ascending: false });
 
-  const handleViewAccount = (accountId: string) => {
-    navigate(`/accounting/bank-accounts/${accountId}`);
+      if (error) {
+        console.error("Error fetching bank accounts:", error);
+        throw error;
+      }
+      return data;
+    },
+  });
+
+  const handleDelete = async (id: string, accountName: string) => {
+    if (!confirm(`Are you sure you want to delete "${accountName}"?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from("bank_accounts").delete().eq("id", id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Bank account deleted",
+        description: `${accountName} has been deleted successfully.`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
+    } catch (error: any) {
+      console.error("Error deleting bank account:", error);
+      toast({
+        title: "Error deleting bank account",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleEditAccount = (accountId: string) => {
-    navigate(`/accounting/bank-accounts/${accountId}/edit`);
-  };
+  const filteredAccounts = accounts?.filter(
+    (account) =>
+      account.account_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      account.bank_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      account.account_number.includes(searchTerm),
+  );
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">Bank Accounts</h1>
+            <p className="text-muted-foreground">Manage your bank accounts and transactions</p>
+          </div>
+          <Button onClick={() => navigate("/accounting/bank-accounts/new")}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Bank Account
+          </Button>
+        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center text-destructive">
+              <p>Error loading bank accounts: {error.message}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -45,60 +118,99 @@ const BankAccounts = () => {
         </Button>
       </div>
 
-      {accounts.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Bank Accounts</CardTitle>
-            <CardDescription>Your connected bank accounts will appear here</CardDescription>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle>Bank Accounts ({filteredAccounts?.length || 0})</CardTitle>
+          <CardDescription>Your connected bank accounts</CardDescription>
+          <div className="flex items-center space-x-2">
+            <Search className="w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by account name, bank name, or account number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
             <div className="text-center py-8">
-              <p className="text-muted-foreground">No bank accounts found</p>
-              <Button variant="outline" className="mt-4" onClick={() => navigate("/accounting/bank-accounts/new")}>
-                Add Your First Bank Account
-              </Button>
+              <p>Loading bank accounts...</p>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Bank Accounts ({accounts.length})</CardTitle>
-            <CardDescription>Your connected bank accounts</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {accounts.map((account) => (
-                <div key={account.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <span className="text-blue-600 font-bold text-sm">B</span>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">{account.bankName}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {account.accountType} ••••{account.accountNumber.slice(-4)}
-                      </p>
-                      <p className="text-sm">Balance: {formatCurrency(parseFloat(account.currentBalance), currency)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge variant="secondary">{account.accountType}</Badge>
-                    <Button variant="outline" size="sm" onClick={() => handleViewAccount(account.id)}>
-                      <Eye className="w-4 h-4 mr-1" />
-                      View
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleEditAccount(account.id)}>
-                      <Edit className="w-4 h-4 mr-1" />
-                      Edit
-                    </Button>
-                  </div>
-                </div>
-              ))}
+          ) : filteredAccounts?.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">
+                {searchTerm ? "No bank accounts found matching your search." : "No bank accounts found."}
+              </p>
+              {!searchTerm && (
+                <Button variant="outline" className="mt-4" onClick={() => navigate("/accounting/bank-accounts/new")}>
+                  Add Your First Bank Account
+                </Button>
+              )}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Account Name</TableHead>
+                  <TableHead>Bank Name</TableHead>
+                  <TableHead>Account Number</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Current Balance</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAccounts?.map((account) => (
+                  <TableRow key={account.id}>
+                    <TableCell className="font-medium">{account.account_name}</TableCell>
+                    <TableCell>{account.bank_name}</TableCell>
+                    <TableCell>{account.account_number}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {account.account_type.replace("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{formatCurrency(parseFloat(account.current_balance), currency)}</TableCell>
+                    <TableCell>
+                      <Badge variant={account.is_active ? "default" : "secondary"}>
+                        {account.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/accounting/bank-accounts/${account.id}`)}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/accounting/bank-accounts/${account.id}/edit`)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDelete(account.id, account.account_name)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
