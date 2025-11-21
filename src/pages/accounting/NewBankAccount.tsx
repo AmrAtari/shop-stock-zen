@@ -129,7 +129,7 @@ const NewBankAccount = () => {
         throw new Error("User not authenticated");
       }
 
-      // Prepare data for database insertion - SIMPLIFIED VERSION
+      // Prepare data for database insertion
       const bankAccountData = {
         // Required fields from your table
         account_name: formData.account_name,
@@ -159,7 +159,6 @@ const NewBankAccount = () => {
         ledger_balance: parseFloat(formData.ledger_balance) || 0,
 
         // Foreign keys - only include if selected
-        ...(formData.currency_id && { currency_id: formData.currency_id }),
         ...(formData.gl_account_id && { gl_account_id: formData.gl_account_id }),
         ...(formData.category_id && { category_id: formData.category_id }),
 
@@ -169,16 +168,42 @@ const NewBankAccount = () => {
       };
 
       console.log("Creating bank account with data:", bankAccountData);
+      console.log("Account type being sent:", bankAccountData.account_type);
 
-      // Insert into database - SIMPLIFIED without .select()
-      const { data, error } = await supabase.from("bank_accounts").insert([bankAccountData]);
+      // First, let's check what account types are allowed by querying existing data
+      const { data: existingAccounts, error: queryError } = await supabase
+        .from("bank_accounts")
+        .select("account_type")
+        .limit(5);
+
+      if (!queryError && existingAccounts) {
+        console.log(
+          "Existing account types in database:",
+          existingAccounts.map((acc) => acc.account_type),
+        );
+      }
+
+      // Insert into database with better error handling
+      const { data, error } = await supabase.from("bank_accounts").insert([bankAccountData]).select();
 
       if (error) {
         console.error("Supabase error details:", error);
+        console.error("Error code:", error.code);
+        console.error("Error message:", error.message);
+
+        // If it's still a constraint error, let's try common account type values
+        if (error.code === "23514") {
+          console.log("Trying alternative account type values...");
+
+          // Common account type values that might work
+          const commonAccountTypes = ["CHECKING", "SAVINGS", "BUSINESS", "MONEY_MARKET", "CURRENT", "DEPOSIT"];
+          console.log("Suggested account types to try:", commonAccountTypes);
+        }
+
         throw new Error(`Database error: ${error.message}`);
       }
 
-      console.log("Bank account created successfully");
+      console.log("Bank account created successfully:", data);
 
       toast({
         title: "Bank account created successfully!",
@@ -204,8 +229,6 @@ const NewBankAccount = () => {
 
   return (
     <div className="space-y-6 min-h-screen">
-      {" "}
-      {/* Added min-h-screen for scroll */}
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" onClick={() => navigate("/accounting/bank-accounts")} type="button">
           <ArrowLeft className="w-4 h-4" />
@@ -270,10 +293,13 @@ const NewBankAccount = () => {
                       <SelectValue placeholder="Select account type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="checking">Checking</SelectItem>
-                      <SelectItem value="savings">Savings</SelectItem>
-                      <SelectItem value="business">Business Checking</SelectItem>
-                      <SelectItem value="money-market">Money Market</SelectItem>
+                      {/* Try these common values first */}
+                      <SelectItem value="CHECKING">Checking</SelectItem>
+                      <SelectItem value="SAVINGS">Savings</SelectItem>
+                      <SelectItem value="BUSINESS">Business Checking</SelectItem>
+                      <SelectItem value="MONEY_MARKET">Money Market</SelectItem>
+                      <SelectItem value="CURRENT">Current Account</SelectItem>
+                      <SelectItem value="DEPOSIT">Deposit Account</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
