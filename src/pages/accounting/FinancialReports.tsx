@@ -71,4 +71,4 @@ const Reports = () => {
   );
 };
 
-export default Reports;
+export default FinancialReports;
