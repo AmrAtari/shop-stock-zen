@@ -9,8 +9,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
+import { exportToCSV, formatReportData } from "@/utils/reportExport";
 
 const IncomeStatement = () => {
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
@@ -20,6 +25,19 @@ const IncomeStatement = () => {
     cogs: true,
     expense: true,
   });
+
+  const handleExport = () => {
+    if (!incomeStatementData) return;
+    
+    const allAccounts = [
+      ...incomeStatementData.revenue,
+      ...incomeStatementData.cogs,
+      ...incomeStatementData.expenses
+    ];
+    
+    const formattedData = formatReportData(allAccounts, "income_statement");
+    exportToCSV(formattedData, `income_statement_${format(dateRange.from!, "yyyy-MM-dd")}_to_${format(dateRange.to!, "yyyy-MM-dd")}`);
+  };
 
   const { data: incomeStatementData, isLoading } = useQuery({
     queryKey: ["income_statement", dateRange],
@@ -121,7 +139,7 @@ const IncomeStatement = () => {
             )}
             {title}
           </div>
-          <span className="font-semibold">${total.toFixed(2)}</span>
+          <span className="font-semibold">{formatCurrency(total, currency)}</span>
         </div>
 
         {isExpanded && (
@@ -135,7 +153,7 @@ const IncomeStatement = () => {
                   <span className="text-muted-foreground">{account.account_code}</span>
                   <span>{account.account_name}</span>
                 </span>
-                <span className="font-mono">${account.balance.toFixed(2)}</span>
+                <span className="font-mono">{formatCurrency(account.balance, currency)}</span>
               </div>
             ))}
           </div>
@@ -167,9 +185,9 @@ const IncomeStatement = () => {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
-            Export
+            Export to CSV
           </Button>
         </div>
       </div>
@@ -215,7 +233,7 @@ const IncomeStatement = () => {
                   <span className={cn(
                     incomeStatementData.grossProfit >= 0 ? "text-green-600" : "text-red-600"
                   )}>
-                    ${incomeStatementData.grossProfit.toFixed(2)}
+                    {formatCurrency(incomeStatementData.grossProfit, currency)}
                   </span>
                 </div>
               </div>
@@ -238,7 +256,7 @@ const IncomeStatement = () => {
                 )}>
                   <span>Net Income</span>
                   <span className="font-mono">
-                    ${incomeStatementData.netIncome.toFixed(2)}
+                    {formatCurrency(incomeStatementData.netIncome, currency)}
                   </span>
                 </div>
               </div>

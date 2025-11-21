@@ -9,8 +9,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
+import { exportToCSV } from "@/utils/reportExport";
 
 const CashFlow = () => {
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [dateRange, setDateRange] = useState<DateRange>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
@@ -20,6 +25,19 @@ const CashFlow = () => {
     investing: true,
     financing: true,
   });
+
+  const handleExport = () => {
+    if (!cashFlowData) return;
+    
+    const exportData = [
+      { Section: "Operating Activities", Inflows: cashFlowData.operating.inflows, Outflows: cashFlowData.operating.outflows, Net: cashFlowData.operating.net },
+      { Section: "Investing Activities", Inflows: cashFlowData.investing.inflows, Outflows: cashFlowData.investing.outflows, Net: cashFlowData.investing.net },
+      { Section: "Financing Activities", Inflows: cashFlowData.financing.inflows, Outflows: cashFlowData.financing.outflows, Net: cashFlowData.financing.net },
+      { Section: "Net Cash Flow", Inflows: "-", Outflows: "-", Net: cashFlowData.netCashFlow },
+    ];
+    
+    exportToCSV(exportData, `cash_flow_${format(dateRange.from!, "yyyy-MM-dd")}_to_${format(dateRange.to!, "yyyy-MM-dd")}`);
+  };
 
   const { data: cashFlowData, isLoading } = useQuery({
     queryKey: ["cash_flow", dateRange],
@@ -149,7 +167,7 @@ const CashFlow = () => {
             "font-semibold",
             data.net >= 0 ? "text-green-600" : "text-red-600"
           )}>
-            ${data.net.toFixed(2)}
+            {formatCurrency(data.net, currency)}
           </span>
         </div>
 
@@ -158,13 +176,13 @@ const CashFlow = () => {
             <div className="flex items-center justify-between p-2 text-sm">
               <span>Cash Inflows</span>
               <span className="font-mono text-green-600">
-                ${data.inflows.toFixed(2)}
+                {formatCurrency(data.inflows, currency)}
               </span>
             </div>
             <div className="flex items-center justify-between p-2 text-sm">
               <span>Cash Outflows</span>
               <span className="font-mono text-red-600">
-                ($${data.outflows.toFixed(2)})
+                ({formatCurrency(data.outflows, currency)})
               </span>
             </div>
           </div>
@@ -196,9 +214,9 @@ const CashFlow = () => {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
-            Export
+            Export to CSV
           </Button>
         </div>
       </div>
@@ -252,7 +270,7 @@ const CashFlow = () => {
                 )}>
                   <span>Net Increase/(Decrease) in Cash</span>
                   <span className="font-mono">
-                    ${cashFlowData.netCashFlow.toFixed(2)}
+                    {formatCurrency(cashFlowData.netCashFlow, currency)}
                   </span>
                 </div>
               </div>

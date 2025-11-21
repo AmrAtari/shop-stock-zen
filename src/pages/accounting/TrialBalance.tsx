@@ -9,9 +9,21 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
+import { exportToCSV, formatReportData } from "@/utils/reportExport";
 
 const TrialBalance = () => {
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
   const [asOfDate, setAsOfDate] = useState<Date>(new Date());
+
+  const handleExport = () => {
+    if (!trialBalanceData) return;
+    
+    const formattedData = formatReportData(trialBalanceData.accounts, "trial_balance");
+    exportToCSV(formattedData, `trial_balance_${format(asOfDate, "yyyy-MM-dd")}`);
+  };
 
   const { data: trialBalanceData, isLoading } = useQuery({
     queryKey: ["trial_balance", asOfDate],
@@ -89,9 +101,9 @@ const TrialBalance = () => {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
-            Export
+            Export to CSV
           </Button>
         </div>
       </div>
@@ -128,20 +140,20 @@ const TrialBalance = () => {
                         </span>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {account.debitBalance > 0 ? `$${account.debitBalance.toFixed(2)}` : "-"}
+                        {account.debitBalance > 0 ? formatCurrency(account.debitBalance, currency) : "-"}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {account.creditBalance > 0 ? `$${account.creditBalance.toFixed(2)}` : "-"}
+                        {account.creditBalance > 0 ? formatCurrency(account.creditBalance, currency) : "-"}
                       </TableCell>
                     </TableRow>
                   ))}
-                  <TableRow className="font-bold border-t-2">
+                    <TableRow className="font-bold border-t-2">
                     <TableCell colSpan={3}>Total</TableCell>
                     <TableCell className="text-right font-mono">
-                      ${trialBalanceData.grandTotalDebit.toFixed(2)}
+                      {formatCurrency(trialBalanceData.grandTotalDebit, currency)}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      ${trialBalanceData.grandTotalCredit.toFixed(2)}
+                      {formatCurrency(trialBalanceData.grandTotalCredit, currency)}
                     </TableCell>
                   </TableRow>
                   <TableRow className={cn(
@@ -154,7 +166,7 @@ const TrialBalance = () => {
                       {trialBalanceData.isBalanced ? "✓ Balanced" : "⚠ Out of Balance"}
                     </TableCell>
                     <TableCell colSpan={2} className="text-right font-mono">
-                      Difference: ${Math.abs(trialBalanceData.difference).toFixed(2)}
+                      Difference: {formatCurrency(Math.abs(trialBalanceData.difference), currency)}
                     </TableCell>
                   </TableRow>
                 </TableBody>
