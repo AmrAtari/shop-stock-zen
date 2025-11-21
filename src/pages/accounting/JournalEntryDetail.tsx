@@ -182,7 +182,7 @@ const JournalEntryDetail = () => {
     enabled: !!id && !!entry,
   });
 
-  // 3. POSTING MUTATION
+  // 3. POSTING MUTATION - SEGREGATION OF DUTIES CHANGE APPLIED HERE
   const postMutation = useMutation({
     mutationFn: async () => {
       console.log("🔄 Starting post mutation...");
@@ -219,11 +219,12 @@ const JournalEntryDetail = () => {
         posted_at: new Date().toISOString(),
       };
 
+      // *** CHANGE: Removed .eq("created_by", user.id) to allow posting by any authenticated user (e.g., a Finance Manager) ***
       const {
         data,
         error: updateError,
         count,
-      } = await supabase.from("journal_entries").update(updateData).eq("id", id).eq("created_by", user.id).select();
+      } = await supabase.from("journal_entries").update(updateData).eq("id", id).select();
 
       console.log("📊 Update result:", {
         data,
@@ -239,7 +240,7 @@ const JournalEntryDetail = () => {
 
       if (!data || data.length === 0) {
         console.error("❌ No rows updated");
-        throw new Error("Update failed: No rows affected.");
+        throw new Error("Update failed: No rows affected. Check RLS policies or if the entry exists.");
       }
 
       console.log("✅ Successfully posted journal entry");
