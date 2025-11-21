@@ -71,7 +71,7 @@ const JournalEntries = () => {
     },
   });
 
-  // Reverse mutation (for posted entries) - **ROBUST ERROR CHECKING APPLIED**
+  // Reverse mutation (for posted entries)
   const reverseMutation = useMutation({
     mutationFn: async (entry: any) => {
       const {
@@ -79,43 +79,30 @@ const JournalEntries = () => {
       } = await supabase.auth.getUser();
       if (!user?.id) throw new Error("User not authenticated");
 
-      // 1. Get the original lines to reverse them
-      const { data: originalLines, error: originalLinesError } = await supabase
+      // Create reversal journal entry
+      const reversalEntryId = crypto.randomUUID();
+      const reversalNumber = `JE-REV-${entry.entry_number}`;
+
+      // Get the original lines to reverse them
+      const { data: originalLines } = await supabase
         .from("journal_entry_lines")
         .select("*")
         .eq("journal_entry_id", entry.id);
 
-      if (originalLinesError) {
-        console.error("DB Error fetching original lines:", originalLinesError);
-        throw new Error(
-          `DB Error fetching original lines: ${originalLinesError.message}. Check RLS for 'journal_entry_lines' table.`,
-        );
-      }
-
-      if (!originalLines || originalLines.length === 0) {
-        throw new Error(
-          "Cannot reverse: Original entry has no lines or lines could not be retrieved. Data integrity error.",
-        );
-      }
-
-      // 2. Create reversal journal entry header details
-      const reversalEntryId = crypto.randomUUID();
-      const reversalNumber = `JE-REV-${entry.entry_number}-${reversalEntryId.substring(0, 4)}`;
-
-      // 3. Create reversal lines (swap debit/credit)
-      const reversalLines = originalLines.map((line: any) => ({
+      // Create reversal lines (swap debit/credit)
+      const reversalLines = originalLines?.map((line: any) => ({
         id: crypto.randomUUID(),
         journal_entry_id: reversalEntryId,
         account_id: line.account_id,
         item_id: line.item_id,
-        description: `Reversal of line ${line.line_number}: ${line.description}`,
+        description: `Reversal: ${line.description}`,
         debit_amount: line.credit_amount, // SWAP
         credit_amount: line.debit_amount, // SWAP
         store_id: line.store_id,
         line_number: line.line_number,
       }));
 
-      // 4. Insert reversal journal entry header
+      // Insert reversal journal entry
       const { error: entryError } = await supabase.from("journal_entries").insert([
         {
           id: reversalEntryId,
@@ -123,37 +110,25 @@ const JournalEntries = () => {
           entry_date: new Date().toISOString(),
           description: `Reversal of ${entry.entry_number}: ${entry.description}`,
           entry_type: "reversal",
-          status: "posted", // Reversals should typically be posted immediately
-          total_debit: entry.total_credit,
-          total_credit: entry.total_debit,
+          status: "posted",
+          total_debit: entry.total_credit, // SWAP
+          total_credit: entry.total_debit, // SWAP
           created_by: user.id,
           posted_by: user.id,
           posted_at: new Date().toISOString(),
-          reference_id: entry.id,
+          reference_id: entry.id, // Link to the original entry
         },
       ]);
 
-      // *** CRITICAL FIX: Check entry insertion error ***
-      if (entryError) {
-        console.error("Failed to insert reversal entry:", entryError);
-        throw new Error(
-          `DB Error inserting reversal entry: ${entryError.message}. Check RLS for 'journal_entries' table.`,
-        );
-      }
+      if (entryError) throw entryError;
 
-      // 5. Insert reversal lines
+      // Insert reversal lines
       if (reversalLines && reversalLines.length > 0) {
         const { error: lineError } = await supabase.from("journal_entry_lines").insert(reversalLines);
-        // *** CRITICAL FIX: Check lines insertion error ***
-        if (lineError) {
-          console.error("Failed to insert reversal lines:", lineError);
-          throw new Error(
-            `DB Error inserting reversal lines: ${lineError.message}. Check RLS for 'journal_entry_lines' table.`,
-          );
-        }
+        if (lineError) throw lineError;
       }
 
-      // 6. Mark original entry as reversed
+      // Mark original entry as reversed
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
@@ -163,23 +138,18 @@ const JournalEntries = () => {
         })
         .eq("id", entry.id);
 
-      // *** CRITICAL FIX: Check original entry update error ***
-      if (updateError) {
-        console.error("Failed to update original entry status:", updateError);
-        throw new Error(
-          `DB Error updating original entry status: ${updateError.message}. Check RLS for 'journal_entries' table.`,
-        );
-      }
+      if (updateError) throw updateError;
 
       return reversalEntryId;
     },
     onSuccess: (reversalId) => {
-      toast.success(`Journal entry reversed successfully. New Reversal ID: ${reversalId.substring(0, 8)}...`);
+      toast.success(`Journal entry reversed successfully. A new entry (${reversalId}) has been created.`);
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
+      // Also invalidate the dashboard query which might rely on journal entry totals
+      queryClient.invalidateQueries({ queryKey: ["accounting_dashboard"] });
     },
     onError: (err: any) => {
-      // This will now catch and report database-level RLS failures explicitly
-      toast.error(err.message || "Failed to reverse journal entry. Check console for RLS errors.");
+      toast.error(err.message || "Failed to reverse journal entry");
     },
   });
 
@@ -195,7 +165,7 @@ const JournalEntries = () => {
 
   const handleReverse = (entry: any) => {
     if (entry.status !== "posted") {
-      toast.error("Only POSTED entries can be reversed.");
+      toast.error("Only posted entries can be reversed.");
       return;
     }
     if (
@@ -213,6 +183,8 @@ const JournalEntries = () => {
       posted: "default",
       reversed: "destructive",
     };
+    // Need to cast to 'any' because `variant` is typed to specific values in lucide-react,
+    // but the actual component might use the string values directly.
     return variants[status] || "default";
   };
 
