@@ -1,8 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, TrendingUp, DollarSign, BarChart3, BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const Reports = () => {
+// 1. NOTICE THE NAME CHANGE HERE: "FinancialReports"
+const FinancialReports = () => {
   const reports = [
     {
       title: "Balance Sheet",
@@ -43,14 +44,19 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Financial Reports</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Financial Reports</h1>
+          <p className="text-muted-foreground">View and download accounting statements</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {reports.map((report) => {
           const Icon = report.icon;
           return (
             <Link key={report.path} to={report.path}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardHeader>
                   <div className="flex items-center gap-4">
                     <div className={`p-3 rounded-lg bg-muted ${report.color}`}>
@@ -58,7 +64,7 @@ const Reports = () => {
                     </div>
                     <div>
                       <CardTitle className="text-lg">{report.title}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{report.description}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{report.description}</p>
                     </div>
                   </div>
                 </CardHeader>
@@ -71,4 +77,5 @@ const Reports = () => {
   );
 };
 
+// 2. THIS EXPORT NOW MATCHES THE COMPONENT NAME ABOVE
 export default FinancialReports;
