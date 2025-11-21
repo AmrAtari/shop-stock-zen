@@ -71,7 +71,7 @@ const JournalEntries = () => {
     },
   });
 
-  // Reverse mutation (for posted entries)
+  // Reverse mutation (for posted entries) - FIX IMPLEMENTED HERE
   const reverseMutation = useMutation({
     mutationFn: async (entry: any) => {
       const {
@@ -79,25 +79,37 @@ const JournalEntries = () => {
       } = await supabase.auth.getUser();
       if (!user?.id) throw new Error("User not authenticated");
 
-      // Create reversal journal entry
-      const reversalEntryId = crypto.randomUUID();
-      const reversalNumber = `JE-REV-${entry.entry_number}`;
-
       // Get the original lines to reverse them
-      const { data: originalLines } = await supabase
+      const { data: originalLines, error: originalLinesError } = await supabase // Added error retrieval
         .from("journal_entry_lines")
         .select("*")
         .eq("journal_entry_id", entry.id);
 
+      // CRITICAL: Check for DB error when fetching lines
+      if (originalLinesError) {
+        console.error("DB Error fetching original lines:", originalLinesError);
+        throw new Error(`DB Error fetching original lines: ${originalLinesError.message}`);
+      }
+
+      // CRITICAL: Check if lines exist
+      if (!originalLines || originalLines.length === 0) {
+        throw new Error("Cannot reverse: Original entry has no lines or lines could not be retrieved.");
+      }
+
+      // Create reversal journal entry
+      const reversalEntryId = crypto.randomUUID();
+      // Ensure reversal number is unique, using original number and a timestamp/uuid suffix
+      const reversalNumber = `JE-REV-${entry.entry_number}-${reversalEntryId.substring(0, 4)}`;
+
       // Create reversal lines (swap debit/credit)
-      const reversalLines = originalLines?.map((line: any) => ({
+      const reversalLines = originalLines.map((line: any) => ({
         id: crypto.randomUUID(),
         journal_entry_id: reversalEntryId,
         account_id: line.account_id,
         item_id: line.item_id,
-        description: `Reversal: ${line.description}`,
-        debit_amount: line.credit_amount,
-        credit_amount: line.debit_amount,
+        description: `Reversal of line ${line.line_number}: ${line.description}`,
+        debit_amount: line.credit_amount, // SWAP
+        credit_amount: line.debit_amount, // SWAP
         store_id: line.store_id,
         line_number: line.line_number,
       }));
@@ -110,7 +122,7 @@ const JournalEntries = () => {
           entry_date: new Date().toISOString(),
           description: `Reversal of ${entry.entry_number}: ${entry.description}`,
           entry_type: "reversal",
-          status: "posted",
+          status: "posted", // Reversals should typically be posted immediately
           total_debit: entry.total_credit,
           total_credit: entry.total_debit,
           created_by: user.id,
@@ -143,7 +155,7 @@ const JournalEntries = () => {
       return reversalEntryId;
     },
     onSuccess: (reversalId) => {
-      toast.success(`Journal entry reversed successfully`);
+      toast.success(`Journal entry reversed successfully. New Reversal ID: ${reversalId.substring(0, 8)}...`);
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
     onError: (err: any) => {
@@ -162,6 +174,10 @@ const JournalEntries = () => {
   };
 
   const handleReverse = (entry: any) => {
+    if (entry.status !== "posted") {
+      toast.error("Only POSTED entries can be reversed.");
+      return;
+    }
     if (
       window.confirm(
         `Are you sure you want to reverse the posted entry #${entry.entry_number}? This will create a reversal entry.`,
