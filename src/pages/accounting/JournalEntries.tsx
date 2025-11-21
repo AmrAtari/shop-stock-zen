@@ -71,7 +71,7 @@ const JournalEntries = () => {
     },
   });
 
-  // Reverse mutation (for posted entries) - FIX IMPLEMENTED HERE
+  // Reverse mutation (for posted entries) - BUG FIX APPLIED HERE
   const reverseMutation = useMutation({
     mutationFn: async (entry: any) => {
       const {
@@ -79,26 +79,25 @@ const JournalEntries = () => {
       } = await supabase.auth.getUser();
       if (!user?.id) throw new Error("User not authenticated");
 
-      // Get the original lines to reverse them
-      const { data: originalLines, error: originalLinesError } = await supabase // Added error retrieval
+      // 1. Get the original lines to reverse them
+      const { data: originalLines, error: originalLinesError } = await supabase
         .from("journal_entry_lines")
         .select("*")
         .eq("journal_entry_id", entry.id);
 
-      // CRITICAL: Check for DB error when fetching lines
       if (originalLinesError) {
         console.error("DB Error fetching original lines:", originalLinesError);
-        throw new Error(`DB Error fetching original lines: ${originalLinesError.message}`);
+        throw new Error(`DB Error fetching original lines: ${originalLinesError.message}. Check RLS.`);
       }
 
-      // CRITICAL: Check if lines exist
       if (!originalLines || originalLines.length === 0) {
-        throw new Error("Cannot reverse: Original entry has no lines or lines could not be retrieved.");
+        throw new Error(
+          "Cannot reverse: Original entry has no lines or lines could not be retrieved. Data integrity error.",
+        );
       }
 
-      // Create reversal journal entry
+      // 2. Create reversal journal entry
       const reversalEntryId = crypto.randomUUID();
-      // Ensure reversal number is unique, using original number and a timestamp/uuid suffix
       const reversalNumber = `JE-REV-${entry.entry_number}-${reversalEntryId.substring(0, 4)}`;
 
       // Create reversal lines (swap debit/credit)
@@ -132,12 +131,24 @@ const JournalEntries = () => {
         },
       ]);
 
-      if (entryError) throw entryError;
+      // *** CRITICAL FIX: Check entry insertion error ***
+      if (entryError) {
+        console.error("Failed to insert reversal entry:", entryError);
+        throw new Error(
+          `DB Error inserting reversal entry: ${entryError.message}. Check RLS for 'journal_entries' table.`,
+        );
+      }
 
       // Insert reversal lines
       if (reversalLines && reversalLines.length > 0) {
         const { error: lineError } = await supabase.from("journal_entry_lines").insert(reversalLines);
-        if (lineError) throw lineError;
+        // *** CRITICAL FIX: Check lines insertion error ***
+        if (lineError) {
+          console.error("Failed to insert reversal lines:", lineError);
+          throw new Error(
+            `DB Error inserting reversal lines: ${lineError.message}. Check RLS for 'journal_entry_lines' table.`,
+          );
+        }
       }
 
       // Mark original entry as reversed
@@ -150,7 +161,13 @@ const JournalEntries = () => {
         })
         .eq("id", entry.id);
 
-      if (updateError) throw updateError;
+      // *** CRITICAL FIX: Check original entry update error ***
+      if (updateError) {
+        console.error("Failed to update original entry status:", updateError);
+        throw new Error(
+          `DB Error updating original entry status: ${updateError.message}. Check RLS for 'journal_entries' table.`,
+        );
+      }
 
       return reversalEntryId;
     },
@@ -159,7 +176,8 @@ const JournalEntries = () => {
       queryClient.invalidateQueries({ queryKey: ["journal_entries"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Failed to reverse journal entry");
+      // This will now catch and report database-level RLS failures explicitly
+      toast.error(err.message || "Failed to reverse journal entry. Check console for RLS errors.");
     },
   });
 
