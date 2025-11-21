@@ -184,6 +184,19 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
+              {/* NEW: Accounting Reports Route added here */}
+              <Route
+                path="/accounting/reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Reports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
               <Route
                 path="/accounting/journal-entries"
                 element={
