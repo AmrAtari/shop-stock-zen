@@ -11,7 +11,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Alerts from "./pages/Alerts";
-import Reports from "./pages/Reports";
+import Reports from "./pages/Reports"; // This is your General Business Reports
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderNew from "./pages/PurchaseOrderNew";
 import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
@@ -28,13 +28,15 @@ import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 
-// Accounting (All paths confirmed to include /accounting/)
+// Accounting
 import AccountingDashboard from "./pages/accounting/AccountingDashboard";
 import JournalEntries from "./pages/accounting/JournalEntries";
 import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
 import JournalEntryNew from "./pages/accounting/JournalEntryNew";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
+// Import the NEW Financial Reports page
+import FinancialReports from "./pages/accounting/FinancialReports";
 
 // Bank Accounts
 import BankAccounts from "./pages/accounting/BankAccounts";
@@ -185,13 +187,13 @@ const App = () => {
                 }
               />
 
-              {/* NEW: Accounting Reports Route added here */}
+              {/* UPDATED: This now points to FinancialReports */}
               <Route
                 path="/accounting/reports"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <Reports />
+                      <FinancialReports />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -299,6 +301,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+              {/* This remains pointing to the General Reports */}
               <Route
                 path="/reports"
                 element={
