@@ -44,7 +44,7 @@ const Reports = () => {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Financial Reports</h1>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {reports.map((report) => {
           const Icon = report.icon;
@@ -58,9 +58,7 @@ const Reports = () => {
                     </div>
                     <div>
                       <CardTitle className="text-lg">{report.title}</CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        {report.description}
-                      </p>
+                      <p className="text-sm text-muted-foreground">{report.description}</p>
                     </div>
                   </div>
                 </CardHeader>
