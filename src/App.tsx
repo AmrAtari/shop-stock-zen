@@ -29,14 +29,14 @@ import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 
 // Accounting Components
-import Accounts from "./pages/accounting/Accounts"; // <-- TS2307 Fixed by creating the stub below
+import ChartOfAccounts from "./pages/accounting/ChartOfAccounts"; // <-- CORRECTED: Used ChartOfAccounts.tsx
 import Vendors from "./pages/accounting/Vendors";
 import NewVendor from "./pages/accounting/NewVendor";
 import EditVendor from "./pages/accounting/EditVendor";
 import VendorDetail from "./pages/accounting/VendorDetail";
 import Bills from "./pages/accounting/Bills";
 import NewBill from "./pages/accounting/NewBill";
-import EditBill from "./pages/accounting/EditBill"; // <-- TS2307 Fixed by completing the code below
+import EditBill from "./pages/accounting/EditBill";
 import BillDetail from "./pages/accounting/BillDetail";
 
 // Layouts and Wrappers (Assumed to exist)
@@ -220,7 +220,7 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <Accounts />
+                      <ChartOfAccounts /> {/* <-- CORRECTED COMPONENT */}
                     </Layout>
                   </ProtectedRoute>
                 }
