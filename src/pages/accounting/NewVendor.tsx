@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useSystemSettings } from "@/contexts/SystemSettingsContext"; // 💡 Import hook
+import { useSystemSettings } from "@/contexts/SystemSettingsContext"; // ✅ Imported
 
 // --- Interface Definitions ---
 interface AddressForm {
@@ -23,7 +23,7 @@ interface VendorForm {
   email: string;
   phone: string;
   tax_id: string;
-  currency_code: string; // Will use system default
+  currency_code: string;
   payment_terms: string;
   status: "Active" | "Inactive";
   billing_address: AddressForm;
@@ -33,12 +33,10 @@ interface VendorForm {
 const NewVendor = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { settings } = useSystemSettings(); // 💡 Get system settings
-  const defaultCurrency = settings?.currency || "USD"; // 💡 Define default
+  const { settings } = useSystemSettings(); // ✅ Used
+  const defaultCurrency = settings?.currency || "USD"; // Get system default
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // 💡 Initialize currency_code with the system default
   const [formData, setFormData] = useState<VendorForm>({
     name: "",
     vendor_code: "",
@@ -46,7 +44,7 @@ const NewVendor = () => {
     email: "",
     phone: "",
     tax_id: "",
-    currency_code: defaultCurrency, // Set here
+    currency_code: defaultCurrency, // Set as default value
     payment_terms: "Net 30",
     status: "Active",
     billing_address: { full_address: "" },
@@ -178,7 +176,6 @@ const NewVendor = () => {
                   <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* You can add the default currency as the first option for clarity */}
                   <SelectItem value={defaultCurrency}>{defaultCurrency} (System Default)</SelectItem>
                   <SelectItem value="USD">USD - US Dollar</SelectItem>
                   <SelectItem value="EUR">EUR - Euro</SelectItem>
