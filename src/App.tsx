@@ -35,7 +35,6 @@ import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
 import JournalEntryNew from "./pages/accounting/JournalEntryNew";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
-// ADDED IMPORTS FOR RENAMED/NEW ACCOUNTING PAGES
 import FinancialReports from "./pages/accounting/FinancialReports";
 import BalanceSheet from "./pages/accounting/BalanceSheet";
 
@@ -45,13 +44,16 @@ import NewBankAccount from "./pages/accounting/NewBankAccount";
 import BankAccountDetail from "./pages/accounting/BankAccountDetail";
 import BankAccountEdit from "./pages/accounting/BankAccountEdit";
 
-// Tax Management (NEW IMPORTS)
+// Tax Management (Completed Imports)
 import TaxConfiguration from "./pages/accounting/TaxConfiguration";
 import NewTaxRate from "./pages/accounting/NewTaxRate";
 import EditTaxRate from "./pages/accounting/EditTaxRate";
 import TaxJurisdictions from "./pages/accounting/TaxJurisdictions";
 import NewTaxJurisdiction from "./pages/accounting/NewTaxJurisdiction";
 import EditTaxJurisdiction from "./pages/accounting/EditTaxJurisdiction";
+
+// Vendor Management (NEW IMPORT)
+import Vendors from "./pages/accounting/Vendors";
 
 // Components/Layouts
 import Layout from "./components/Layout";
@@ -196,7 +198,7 @@ const App = () => {
                 }
               />
 
-              {/* MODIFIED: This route now points to the renamed FinancialReports */}
+              {/* Financial Reporting Routes */}
               <Route
                 path="/accounting/reports"
                 element={
@@ -207,8 +209,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
-              {/* ADDED: Route for the specific Balance Sheet report */}
               <Route
                 path="/accounting/reports/balance-sheet"
                 element={
@@ -220,6 +220,7 @@ const App = () => {
                 }
               />
 
+              {/* Journal Entry Routes */}
               <Route
                 path="/accounting/journal-entries"
                 element={
@@ -270,6 +271,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               {/* Bank Accounts Routes */}
               <Route
                 path="/accounting/bank-accounts"
@@ -312,7 +314,7 @@ const App = () => {
                 }
               />
 
-              {/* Tax Management Routes (NEW) */}
+              {/* Tax Management Routes */}
               <Route
                 path="/accounting/tax"
                 element={
@@ -374,6 +376,44 @@ const App = () => {
                 }
               />
               {/* End Tax Management Routes */}
+
+              {/* Vendor Management Routes (NEW) */}
+              <Route
+                path="/accounting/vendors"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Vendors />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Placeholder routes for Vendor CRUD (to be added next) */}
+              <Route
+                path="/accounting/vendors/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>{/* <NewVendor /> */}</Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/vendors/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>{/* <VendorDetail /> */}</Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/vendors/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>{/* <EditVendor /> */}</Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* End Vendor Management Routes */}
 
               {/* System/Utility Routes */}
               <Route
