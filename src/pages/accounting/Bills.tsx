@@ -19,9 +19,9 @@ interface Bill {
   due_date: string;
   total_amount: number;
   balance: number;
-  status: 'Awaiting Payment' | 'Partially Paid' | 'Paid' | 'Void';
+  status: "Awaiting Payment" | "Partially Paid" | "Paid" | "Void";
   currency_code: string;
-  suppliers: { // Joining from the 'suppliers' table
+  suppliers: {
     name: string;
     vendor_code: string | null;
   };
@@ -40,7 +40,6 @@ const Bills = () => {
   } = useQuery<Bill[]>({
     queryKey: ["vendor_bills", searchTerm],
     queryFn: async () => {
-      // Fetch bills and join with the supplier name
       let query = supabase.from("vendor_bills").select(`
         *,
         suppliers (name, vendor_code)
@@ -59,30 +58,32 @@ const Bills = () => {
     },
   });
 
-  const getStatusVariant = (status: Bill['status']) => {
+  // FIX: Replaced 'yellow' with 'warning' to match component variants
+  const getStatusVariant = (
+    status: Bill["status"],
+  ): "default" | "destructive" | "outline" | "secondary" | "success" | "warning" => {
     switch (status) {
-      case 'Awaiting Payment':
-        return 'destructive';
-      case 'Partially Paid':
-        return 'yellow'; // Assuming you have a custom yellow variant
-      case 'Paid':
-        return 'default';
-      case 'Void':
-        return 'secondary';
+      case "Awaiting Payment":
+        return "destructive";
+      case "Partially Paid":
+        return "warning";
+      case "Paid":
+        return "default";
+      case "Void":
+        return "secondary";
       default:
-        return 'outline';
+        return "outline";
     }
   };
 
-  const getDueDateClass = (dueDate: string, status: Bill['status']) => {
+  const getDueDateClass = (dueDate: string, status: Bill["status"]) => {
     const now = new Date().getTime();
     const due = new Date(dueDate).getTime();
-    if (status === 'Awaiting Payment' && due < now) {
+    if (status === "Awaiting Payment" && due < now) {
       return "text-red-600 font-semibold";
     }
     return "";
   };
-
 
   if (isLoading) {
     return <Skeleton className="h-[400px] w-full" />;
@@ -139,12 +140,16 @@ const Bills = () => {
               </TableHeader>
               <TableBody>
                 {bills.map((bill) => (
-                  <TableRow key={bill.id} onClick={() => navigate(`/accounting/bills/${bill.id}`)} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium">{bill.bill_number}</TableCell>
+                  <TableRow
+                    key={bill.id}
+                    onClick={() => navigate(`/accounting/bills/${bill.id}`)}
+                    className="cursor-pointer hover:bg-muted/50"
+                  >
+                    <TableCell className="font-medium">{bill.suppliers.vendor_code || bill.bill_number}</TableCell>
                     <TableCell>{bill.suppliers.name}</TableCell>
                     <TableCell>{new Date(bill.bill_date).toLocaleDateString()}</TableCell>
                     <TableCell className={getDueDateClass(bill.due_date, bill.status)}>
-                        {new Date(bill.due_date).toLocaleDateString()}
+                      {new Date(bill.due_date).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(bill.total_amount, bill.currency_code)}
@@ -153,17 +158,18 @@ const Bills = () => {
                       {formatCurrency(bill.balance, bill.currency_code)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusVariant(bill.status)}>
-                        {bill.status}
-                      </Badge>
+                      <Badge variant={getStatusVariant(bill.status)}>{bill.status}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/accounting/bills/${bill.id}`); }}
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/accounting/bills/${bill.id}`);
+                        }}
                       >
-                          <FileText className="w-4 h-4" />
+                        <FileText className="w-4 h-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
