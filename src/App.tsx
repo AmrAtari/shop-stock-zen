@@ -11,7 +11,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Alerts from "./pages/Alerts";
-import Reports from "./pages/Reports"; // General Business Reports (Transfers, Sales, PO, Inventory)
+import Reports from "./pages/Reports";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderNew from "./pages/PurchaseOrderNew";
 import PurchaseOrderDetail from "./pages/PurchaseOrderDetail";
@@ -28,29 +28,20 @@ import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 
-// Accounting
-import AccountingDashboard from "./pages/accounting/AccountingDashboard";
-import JournalEntries from "./pages/accounting/JournalEntries";
-import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
-import JournalEntryNew from "./pages/accounting/JournalEntryNew";
-import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
-import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
-import FinancialReports from "./pages/accounting/FinancialReports";
-import BalanceSheet from "./pages/accounting/BalanceSheet";
-
-// Bank Accounts
-import BankAccounts from "./pages/accounting/BankAccounts";
-import NewBankAccount from "./pages/accounting/NewBankAccount";
-import BankAccountDetail from "./pages/accounting/BankAccountDetail";
-import BankAccountEdit from "./pages/accounting/BankAccountEdit";
-
-// Vendor Management (NEW IMPORTS)
+// Accounting Components
+import Accounts from "./pages/accounting/Accounts";
 import Vendors from "./pages/accounting/Vendors";
 import NewVendor from "./pages/accounting/NewVendor";
 import EditVendor from "./pages/accounting/EditVendor";
 import VendorDetail from "./pages/accounting/VendorDetail";
+// >>> NEW ACCOUNTS PAYABLE IMPORTS <<<
+import Bills from "./pages/accounting/Bills";
+import NewBill from "./pages/accounting/NewBill";
+import EditBill from "./pages/accounting/EditBill";
+import BillDetail from "./pages/accounting/BillDetail";
+// >>> END NEW ACCOUNTS PAYABLE IMPORTS <<<
 
-// Components/Layouts
+// Layouts and Wrappers (Assumed to exist)
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -61,14 +52,17 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <SystemSettingsProvider>
         <TooltipProvider>
+          <Toaster />
+          <Sonner />
           <BrowserRouter>
             <Routes>
               {/* Public Routes */}
+              <Route path="/" element={<Auth />} />
               <Route path="/auth" element={<Auth />} />
 
-              {/* Protected Routes */}
+              {/* Protected Routes - General */}
               <Route
-                path="/"
+                path="/dashboard"
                 element={
                   <ProtectedRoute>
                     <Layout>
@@ -77,6 +71,38 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/alerts"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Alerts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Reports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ai-reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AIReports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Inventory Management Routes */}
               <Route
                 path="/inventory"
                 element={
@@ -87,38 +113,16 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* Purchase Order Routes */}
               <Route
-                path="/purchase-orders"
+                path="/stores"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <PurchaseOrders />
+                      <Stores />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/purchase-orders/new"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <PurchaseOrderNew />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/purchase-orders/:id"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <PurchaseOrderDetail />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              {/* Transfer Routes */}
               <Route
                 path="/transfers"
                 element={
@@ -139,7 +143,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* Physical Inventory Routes */}
               <Route
                 path="/physical-inventory"
                 element={
@@ -170,146 +173,104 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
-              {/* Accounting Routes */}
               <Route
-                path="/accounting"
+                path="/inventory-recalculate"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <AccountingDashboard />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <AccountingDashboard />
+                      <InventoryRecalculate />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
 
-              {/* Financial Reports Routes */}
+              {/* Procurement/Purchase Order Routes */}
               <Route
-                path="/accounting/reports"
+                path="/purchase-orders"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <FinancialReports />
+                      <PurchaseOrders />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
               <Route
-                path="/accounting/reports/balance-sheet"
+                path="/purchase-orders/new"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <BalanceSheet />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Journal Entries Routes */}
-              <Route
-                path="/accounting/journal-entries"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <JournalEntries />
+                      <PurchaseOrderNew />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
               <Route
-                path="/accounting/journal-entries/new"
+                path="/purchase-orders/:id"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <JournalEntryNew />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/journal-entries/:id"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <JournalEntryDetail />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/journal-entries/:id/edit"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <JournalEntryEdit />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/chart-of-accounts"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <ChartOfAccounts />
+                      <PurchaseOrderDetail />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
 
-              {/* Bank Accounts Routes */}
+              {/* Accounting Routes */}
               <Route
-                path="/accounting/bank-accounts"
+                path="/accounting/accounts"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <BankAccounts />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/bank-accounts/new"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <NewBankAccount />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/bank-accounts/:id"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <BankAccountDetail />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/bank-accounts/:id/edit"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <BankAccountEdit />
+                      <Accounts />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
 
-              {/* Vendor Management Routes (NEW) */}
+              {/* Accounts Payable (Bills) Routes */}
+              <Route
+                path="/accounting/bills"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Bills />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bills/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <NewBill />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bills/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BillDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bills/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <EditBill />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Vendor Routes */}
               <Route
                 path="/accounting/vendors"
                 element={
@@ -350,43 +311,14 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* System/Utility Routes */}
+
+              {/* Configuration & Administration */}
               <Route
-                path="/alerts"
+                path="/configuration"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <Alerts />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/reports"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <Reports />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/ai-reports"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <AIReports />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/stores"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <Stores />
+                      <Configuration />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -402,31 +334,11 @@ const App = () => {
                 }
               />
               <Route
-                path="/configuration"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <Configuration />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
                 path="/notifications"
                 element={
                   <ProtectedRoute>
                     <Layout>
                       <Notifications />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/inventory-recalculate"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <InventoryRecalculate />
                     </Layout>
                   </ProtectedRoute>
                 }
