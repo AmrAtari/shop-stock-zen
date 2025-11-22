@@ -29,17 +29,15 @@ import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 
 // Accounting Components
-import Accounts from "./pages/accounting/Accounts";
+import Accounts from "./pages/accounting/Accounts"; // <-- TS2307 Fixed by creating the stub below
 import Vendors from "./pages/accounting/Vendors";
 import NewVendor from "./pages/accounting/NewVendor";
 import EditVendor from "./pages/accounting/EditVendor";
 import VendorDetail from "./pages/accounting/VendorDetail";
-// >>> NEW ACCOUNTS PAYABLE IMPORTS <<<
 import Bills from "./pages/accounting/Bills";
 import NewBill from "./pages/accounting/NewBill";
-import EditBill from "./pages/accounting/EditBill";
+import EditBill from "./pages/accounting/EditBill"; // <-- TS2307 Fixed by completing the code below
 import BillDetail from "./pages/accounting/BillDetail";
-// >>> END NEW ACCOUNTS PAYABLE IMPORTS <<<
 
 // Layouts and Wrappers (Assumed to exist)
 import Layout from "./components/Layout";
