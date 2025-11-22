@@ -16,7 +16,14 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// --- Schema Definition (using Zod for validation) ---
+// --- Interface Definitions ---
+interface Account {
+  id: string;
+  account_name: string;
+  account_code: string;
+}
+
+// --- Schema Definition (Updated with liability_account_id) ---
 const TaxRateSchema = z.object({
   name: z.string().min(2, "Tax name must be at least 2 characters."),
   rate_percentage: z.number().min(0, "Rate cannot be negative.").max(100, "Rate cannot exceed 100%."),
@@ -24,6 +31,7 @@ const TaxRateSchema = z.object({
     errorMap: () => ({ message: "Please select a valid tax type." }),
   }),
   country_code: z.string().length(2, "Country code must be 2 characters (ISO 3166-1).").toUpperCase(),
+  liability_account_id: z.string().uuid("Please select a valid liability account."), // NEW FIELD
   is_active: z.boolean().default(true),
   is_compound: z.boolean().default(false),
   description: z.string().optional(),
@@ -37,34 +45,47 @@ const EditTaxRate = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // 1. Data Fetching
+  // --- 1. Account Data Fetching ---
+  const { data: accounts, isLoading: isLoadingAccounts } = useQuery<Account[]>({
+    queryKey: ["chart-of-accounts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("id, account_name, account_code")
+        .order("account_code", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching accounts:", error);
+        throw error;
+      }
+      return data as Account[];
+    },
+  });
+
+  // --- 2. Tax Rate Data Fetching ---
   const {
     data: taxRate,
-    isLoading,
+    isLoading: isLoadingTaxRate,
     error,
   } = useQuery({
     queryKey: ["tax-rate", id],
     queryFn: async () => {
       if (!id) throw new Error("Tax rate ID is missing.");
-      
-      const { data, error } = await supabase
-        .from("tax_rates")
-        .select("*")
-        .eq("id", id)
-        .single();
+
+      const { data, error } = await supabase.from("tax_rates").select("*").eq("id", id).single();
 
       if (error) throw error;
-      
-      // Convert the decimal rate (0.0 - 1.0) from the database back to a percentage (0-100) for the form
+
+      // Convert decimal rate to percentage for form display
       return {
         ...data,
-        rate_percentage: data.rate_percentage * 100, 
+        rate_percentage: data.rate_percentage * 100,
       };
     },
-    enabled: !!id, // Only run the query if the ID exists
+    enabled: !!id,
   });
 
-  // 2. Form Setup
+  // 3. Form Setup
   const {
     register,
     handleSubmit,
@@ -73,31 +94,31 @@ const EditTaxRate = () => {
     formState: { errors, isSubmitting },
   } = useForm<TaxRateFormValues>({
     resolver: zodResolver(TaxRateSchema),
-    // We will set default values using useEffect after data loads
   });
 
   // Load fetched data into the form once it's available
   useEffect(() => {
     if (taxRate) {
-      reset(taxRate);
+      // Ensure the liability_account_id is a string (uuid type), not null
+      reset({
+        ...taxRate,
+        liability_account_id: taxRate.liability_account_id || undefined,
+      } as TaxRateFormValues);
     }
   }, [taxRate, reset]);
 
-
-  // 3. Submission Handler (Update Logic)
+  // 4. Submission Handler (Update Logic)
   const onSubmit = async (values: TaxRateFormValues) => {
     if (!id) return;
-    
+
     try {
-      // Supabase stores the rate as a decimal (0.00 - 1.00), so we must convert the percentage input (0-100)
       const rateAsDecimal = values.rate_percentage / 100;
-      
+
       const { error } = await supabase
         .from("tax_rates")
         .update({
           ...values,
-          rate_percentage: rateAsDecimal, // Use the converted decimal rate
-          // Note: created_at and id should not be updated
+          rate_percentage: rateAsDecimal,
         })
         .eq("id", id);
 
@@ -110,12 +131,10 @@ const EditTaxRate = () => {
         description: `Tax rate "${values.name}" has been successfully updated.`,
       });
 
-      // Invalidate the list and detail query cache to show the updated rate immediately
       queryClient.invalidateQueries({ queryKey: ["tax-rates"] });
       queryClient.invalidateQueries({ queryKey: ["tax-rate", id] });
-      
-      // Navigate back to the main tax list
-      navigate("/accounting/tax"); 
+
+      navigate("/accounting/tax");
     } catch (error: any) {
       console.error("Error updating tax rate:", error);
       toast({
@@ -126,9 +145,8 @@ const EditTaxRate = () => {
     }
   };
 
-
-  // 4. Loading and Error States
-  if (isLoading) {
+  // 5. Loading and Error States
+  if (isLoadingTaxRate || isLoadingAccounts) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-80" />
@@ -159,7 +177,7 @@ const EditTaxRate = () => {
     );
   }
 
-  // 5. Main Component Rendering
+  // 6. Main Component Rendering
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -182,11 +200,7 @@ const EditTaxRate = () => {
               {/* Tax Name */}
               <div className="space-y-2">
                 <Label htmlFor="name">Tax Name</Label>
-                <Input
-                  id="name"
-                  {...register("name")}
-                  placeholder="e.g., Standard VAT, State Sales Tax (CA)"
-                />
+                <Input id="name" {...register("name")} placeholder="e.g., Standard VAT, State Sales Tax (CA)" />
                 {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
               </div>
 
@@ -232,14 +246,37 @@ const EditTaxRate = () => {
               {/* Country Code */}
               <div className="space-y-2">
                 <Label htmlFor="country_code">Country Code (2-letter ISO)</Label>
-                <Input
-                  id="country_code"
-                  maxLength={2}
-                  {...register("country_code")}
-                  placeholder="e.g., US, DE, CA"
-                />
+                <Input id="country_code" maxLength={2} {...register("country_code")} placeholder="e.g., US, DE, CA" />
                 {errors.country_code && <p className="text-sm text-destructive">{errors.country_code.message}</p>}
               </div>
+            </div>
+
+            {/* Liability Account Selector (NEW FIELD) */}
+            <div className="space-y-2">
+              <Label htmlFor="liability_account_id">Liability Account (COA)</Label>
+              <Controller
+                name="liability_account_id"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingAccounts}>
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={isLoadingAccounts ? "Loading accounts..." : "Select Liability Account"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts?.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.account_code} - {account.account_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.liability_account_id && (
+                <p className="text-sm text-destructive">{errors.liability_account_id.message}</p>
+              )}
             </div>
 
             {/* Description */}
@@ -253,44 +290,40 @@ const EditTaxRate = () => {
             </div>
 
             <div className="flex items-center space-x-4 pt-2">
-              {/* Is Active */}
+              {/* Is Active and Is Compound Checkboxes */}
               <div className="flex items-center space-x-2">
                 <Controller
                   name="is_active"
                   control={control}
                   render={({ field }) => (
-                    <Checkbox
-                      id="is_active"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Checkbox id="is_active" checked={field.value} onCheckedChange={field.onChange} />
                   )}
                 />
-                <Label htmlFor="is_active" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                <Label
+                  htmlFor="is_active"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
                   Active
                 </Label>
               </div>
 
-              {/* Is Compound */}
               <div className="flex items-center space-x-2">
                 <Controller
                   name="is_compound"
                   control={control}
                   render={({ field }) => (
-                    <Checkbox
-                      id="is_compound"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Checkbox id="is_compound" checked={field.value} onCheckedChange={field.onChange} />
                   )}
                 />
-                <Label htmlFor="is_compound" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                <Label
+                  htmlFor="is_compound"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
                   Compound Tax
                 </Label>
                 <span className="text-sm text-muted-foreground">(Applies on top of other taxes)</span>
               </div>
             </div>
-            
           </CardContent>
         </Card>
 
