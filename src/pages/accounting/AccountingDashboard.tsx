@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { DollarSign, TrendingUp, TrendingDown, FileText, Users, CreditCard } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, FileText, Users, CreditCard, Factory } from "lucide-react"; // ADDED Factory ICON
 import { Link } from "react-router-dom";
 import { useAccountingDashboard } from "@/hooks/useAccountingDashboard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -73,7 +73,9 @@ const AccountingDashboard = () => {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${(metrics?.netIncomeMTD || 0) >= 0 ? "text-green-600" : "text-destructive"}`}>
+            <div
+              className={`text-2xl font-bold ${(metrics?.netIncomeMTD || 0) >= 0 ? "text-green-600" : "text-destructive"}`}
+            >
               ${metrics?.netIncomeMTD.toFixed(2) || "0.00"}
             </div>
           </CardContent>
@@ -159,6 +161,17 @@ const AccountingDashboard = () => {
             </CardContent>
           </Card>
         </Link>
+
+        {/* NEW VENDOR LINK */}
+        <Link to="/accounting/vendors">
+          <Card className="hover:bg-accent cursor-pointer transition-colors">
+            <CardContent className="pt-6 text-center">
+              <Factory className="w-8 h-8 mx-auto mb-2 text-primary" />
+              <p className="font-semibold">Vendors</p>
+            </CardContent>
+          </Card>
+        </Link>
+        {/* END NEW VENDOR LINK */}
 
         <Link to="/accounting/journal-entries">
           <Card className="hover:bg-accent cursor-pointer transition-colors">
