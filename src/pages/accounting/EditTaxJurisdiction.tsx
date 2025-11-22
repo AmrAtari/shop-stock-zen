@@ -25,11 +25,13 @@ interface TaxRate {
 interface TaxJurisdictionDetail {
   id: string;
   name: string;
+  // Note: We use string here because that's what Supabase returns,
+  // but we will cast it in useEffect to satisfy the Zod enum.
   jurisdiction_type: string;
   country_code: string;
   tax_rate_id: string;
   is_active: boolean;
-  tax_rates: TaxRate; // To display rate details
+  tax_rates: TaxRate;
 }
 
 // --- Schema Definition (using Zod for validation) ---
@@ -39,7 +41,7 @@ const JurisdictionSchema = z.object({
     errorMap: () => ({ message: "Please select a valid jurisdiction type." }),
   }),
   country_code: z.string().length(2, "Country code must be 2 characters (ISO 3166-1).").toUpperCase(),
-  tax_rate_id: z.string().uuid("Please select a valid tax rate to apply."), // Foreign Key
+  tax_rate_id: z.string().uuid("Please select a valid tax rate to apply."),
   is_active: z.boolean().default(true),
 });
 
@@ -51,9 +53,9 @@ const EditTaxJurisdiction = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // --- 1. Fetching Tax Rates (for the dropdown) ---
+  // 1. Fetching Tax Rates (for the dropdown)
   const { data: taxRates, isLoading: isLoadingRates } = useQuery<TaxRate[]>({
-    queryKey: ["tax-rates-list"], // Different key than the main tax rates query
+    queryKey: ["tax-rates-list"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tax_rates")
@@ -66,7 +68,7 @@ const EditTaxJurisdiction = () => {
     },
   });
 
-  // --- 2. Fetching Existing Jurisdiction Data ---
+  // 2. Fetching Existing Jurisdiction Data
   const {
     data: jurisdiction,
     isLoading: isLoadingJurisdiction,
@@ -75,14 +77,14 @@ const EditTaxJurisdiction = () => {
     queryKey: ["tax-jurisdiction", id],
     queryFn: async () => {
       if (!id) throw new Error("Jurisdiction ID is missing.");
-      
+
       const { data, error } = await supabase
         .from("tax_jurisdictions")
         .select(
-            `
+          `
             *,
             tax_rates(name, rate_percentage)
-            `
+            `,
         )
         .eq("id", id)
         .single();
@@ -107,20 +109,22 @@ const EditTaxJurisdiction = () => {
   // Load fetched data into the form once available
   useEffect(() => {
     if (jurisdiction) {
-      reset(jurisdiction);
+      // Fix: Create an object that explicitly conforms to JurisdictionFormValues
+      // by casting the jurisdiction_type property.
+      const resetValues: JurisdictionFormValues = {
+        ...jurisdiction,
+        jurisdiction_type: jurisdiction.jurisdiction_type as JurisdictionFormValues["jurisdiction_type"],
+      };
+      reset(resetValues);
     }
   }, [jurisdiction, reset]);
-
 
   // 4. Submission Handler (Update Logic)
   const onSubmit = async (values: JurisdictionFormValues) => {
     if (!id) return;
-    
+
     try {
-      const { error } = await supabase
-        .from("tax_jurisdictions")
-        .update(values)
-        .eq("id", id);
+      const { error } = await supabase.from("tax_jurisdictions").update(values).eq("id", id);
 
       if (error) {
         throw error;
@@ -131,11 +135,10 @@ const EditTaxJurisdiction = () => {
         description: `Tax jurisdiction "${values.name}" has been successfully updated.`,
       });
 
-      // Invalidate the jurisdiction list and detail queries
       queryClient.invalidateQueries({ queryKey: ["tax-jurisdictions"] });
       queryClient.invalidateQueries({ queryKey: ["tax-jurisdiction", id] });
-      
-      navigate("/accounting/tax/jurisdictions"); 
+
+      navigate("/accounting/tax/jurisdictions");
     } catch (error: any) {
       console.error("Error updating jurisdiction:", error);
       toast({
@@ -145,7 +148,6 @@ const EditTaxJurisdiction = () => {
       });
     }
   };
-
 
   // 5. Loading and Error States
   if (isLoadingJurisdiction || isLoadingRates) {
@@ -172,7 +174,9 @@ const EditTaxJurisdiction = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-bold">Error Loading Jurisdiction</h1>
-            <p className="text-muted-foreground">{error?.message || "The requested jurisdiction could not be found."}</p>
+            <p className="text-muted-foreground">
+              {error?.message || "The requested jurisdiction could not be found."}
+            </p>
           </div>
         </div>
       </div>
@@ -202,23 +206,14 @@ const EditTaxJurisdiction = () => {
               {/* Jurisdiction Name */}
               <div className="space-y-2">
                 <Label htmlFor="name">Jurisdiction Name</Label>
-                <Input
-                  id="name"
-                  {...register("name")}
-                  placeholder="e.g., California, Toronto"
-                />
+                <Input id="name" {...register("name")} placeholder="e.g., California, Toronto" />
                 {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
               </div>
 
               {/* Country Code */}
               <div className="space-y-2">
                 <Label htmlFor="country_code">Country Code (2-letter ISO)</Label>
-                <Input
-                  id="country_code"
-                  maxLength={2}
-                  {...register("country_code")}
-                  placeholder="e.g., US, CA, DE"
-                />
+                <Input id="country_code" maxLength={2} {...register("country_code")} placeholder="e.g., US, CA, DE" />
                 {errors.country_code && <p className="text-sm text-destructive">{errors.country_code.message}</p>}
               </div>
             </div>
@@ -245,32 +240,31 @@ const EditTaxJurisdiction = () => {
                     </Select>
                   )}
                 />
-                {errors.jurisdiction_type && <p className="text-sm text-destructive">{errors.jurisdiction_type.message}</p>}
+                {errors.jurisdiction_type && (
+                  <p className="text-sm text-destructive">{errors.jurisdiction_type.message}</p>
+                )}
               </div>
-              
+
               {/* Tax Rate Assignment */}
               <div className="space-y-2">
                 <Label htmlFor="tax_rate_id">Default Tax Rate</Label>
                 <Controller
-                    name="tax_rate_id"
-                    control={control}
-                    render={({ field }) => (
-                        <Select 
-                            onValueChange={field.onChange} 
-                            value={field.value}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select a Tax Rate" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {taxRates?.map((rate) => (
-                                    <SelectItem key={rate.id} value={rate.id}>
-                                        {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
+                  name="tax_rate_id"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a Tax Rate" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {taxRates?.map((rate) => (
+                          <SelectItem key={rate.id} value={rate.id}>
+                            {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 />
                 {errors.tax_rate_id && <p className="text-sm text-destructive">{errors.tax_rate_id.message}</p>}
               </div>
@@ -282,18 +276,16 @@ const EditTaxJurisdiction = () => {
                 name="is_active"
                 control={control}
                 render={({ field }) => (
-                  <Checkbox
-                    id="is_active"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
+                  <Checkbox id="is_active" checked={field.value} onCheckedChange={field.onChange} />
                 )}
               />
-              <Label htmlFor="is_active" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              <Label
+                htmlFor="is_active"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
                 Active
               </Label>
             </div>
-            
           </CardContent>
         </Card>
 
