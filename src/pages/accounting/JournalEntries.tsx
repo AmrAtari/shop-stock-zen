@@ -34,13 +34,13 @@ const JournalEntries = () => {
     },
   });
 
-  // Delete mutation (only for drafts)
+  // Delete mutation (for drafts and reversed entries)
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { data: entry } = await supabase.from("journal_entries").select("status").eq("id", id).single();
 
-      if (entry?.status !== "draft") {
-        throw new Error("Only draft entries can be deleted. Posted entries must be reversed.");
+      if (entry?.status !== "draft" && entry?.status !== "reversed") {
+        throw new Error("Only draft and reversed entries can be deleted. Posted entries must be reversed first.");
       }
 
       const { error: lineError } = await supabase.from("journal_entry_lines").delete().eq("journal_entry_id", id);
@@ -154,11 +154,12 @@ const JournalEntries = () => {
   });
 
   const handleDelete = (entry: any) => {
-    if (entry.status !== "draft") {
-      toast.error("Only draft entries can be deleted. Posted entries must be reversed.");
+    if (entry.status !== "draft" && entry.status !== "reversed") {
+      toast.error("Only draft and reversed entries can be deleted. Posted entries must be reversed first.");
       return;
     }
-    if (window.confirm(`Are you sure you want to delete the draft entry #${entry.entry_number}?`)) {
+    const entryType = entry.status === "draft" ? "draft" : "reversed";
+    if (window.confirm(`Are you sure you want to delete the ${entryType} entry #${entry.entry_number}?`)) {
       deleteMutation.mutate(entry.id);
     }
   };
@@ -291,8 +292,8 @@ const JournalEntries = () => {
                         </Button>
                       </Link>
 
-                      {/* Edit - Only for drafts */}
-                      {entry.status === "draft" && (
+                      {/* Edit - For drafts and reversed entries */}
+                      {(entry.status === "draft" || entry.status === "reversed") && (
                         <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
                           <Button variant="ghost" size="icon" title="Edit">
                             <Edit className="w-4 h-4" />
@@ -313,15 +314,15 @@ const JournalEntries = () => {
                         </Button>
                       )}
 
-                      {/* Delete - Only for drafts */}
+                      {/* Delete - For drafts and reversed entries */}
                       <Button
                         variant="ghost"
                         size="icon"
-                        title={entry.status === "draft" ? "Delete" : "Cannot delete posted entries"}
+                        title={entry.status === "draft" || entry.status === "reversed" ? "Delete" : "Cannot delete posted entries"}
                         onClick={() => handleDelete(entry)}
-                        disabled={deleteMutation.isPending || entry.status !== "draft"}
+                        disabled={deleteMutation.isPending || (entry.status !== "draft" && entry.status !== "reversed")}
                       >
-                        <Trash2 className={`w-4 h-4 ${entry.status === "draft" ? "text-red-500" : "text-gray-300"}`} />
+                        <Trash2 className={`w-4 h-4 ${entry.status === "draft" || entry.status === "reversed" ? "text-red-500" : "text-gray-300"}`} />
                       </Button>
                     </TableCell>
                   </TableRow>

@@ -5,10 +5,14 @@ import { ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
 const JournalEntryEdit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
   const { data: entry, isLoading } = useQuery({
     queryKey: ["journal_entry", id],
@@ -53,10 +57,10 @@ const JournalEntryEdit = () => {
               <strong>Status:</strong> {entry?.status}
             </p>
             <p>
-              <strong>Total Debit:</strong> {entry?.total_debit}
+              <strong>Total Debit:</strong> {formatCurrency(entry?.total_debit || 0, currency)}
             </p>
             <p>
-              <strong>Total Credit:</strong> {entry?.total_credit}
+              <strong>Total Credit:</strong> {formatCurrency(entry?.total_credit || 0, currency)}
             </p>
           </div>
         </CardContent>
