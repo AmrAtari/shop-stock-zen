@@ -388,12 +388,15 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* Placeholder routes for Vendor CRUD (to be added next) */}
+              {/* Placeholder routes for Vendor CRUD (FIXED: Added children) */}
               <Route
                 path="/accounting/vendors/new"
                 element={
                   <ProtectedRoute>
-                    <Layout>{/* <NewVendor /> */}</Layout>
+                    <Layout>
+                      {/* Temporary placeholder to satisfy LayoutProps */}
+                      <div>New Vendor Form Placeholder</div>
+                    </Layout>
                   </ProtectedRoute>
                 }
               />
@@ -401,7 +404,10 @@ const App = () => {
                 path="/accounting/vendors/:id"
                 element={
                   <ProtectedRoute>
-                    <Layout>{/* <VendorDetail /> */}</Layout>
+                    <Layout>
+                      {/* Temporary placeholder to satisfy LayoutProps */}
+                      <div>Vendor Detail Placeholder</div>
+                    </Layout>
                   </ProtectedRoute>
                 }
               />
@@ -409,7 +415,10 @@ const App = () => {
                 path="/accounting/vendors/:id/edit"
                 element={
                   <ProtectedRoute>
-                    <Layout>{/* <EditVendor /> */}</Layout>
+                    <Layout>
+                      {/* Temporary placeholder to satisfy LayoutProps */}
+                      <div>Edit Vendor Form Placeholder</div>
+                    </Layout>
                   </ProtectedRoute>
                 }
               />
