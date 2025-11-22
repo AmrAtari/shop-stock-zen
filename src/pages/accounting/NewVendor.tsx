@@ -1,102 +1,91 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Save } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
-import { useForm, Controller } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { supabase } from "@/integrations/supabase/client";
 
-// --- Constants (for dropdowns) ---
-const PAYMENT_TERMS_OPTIONS = ["Due on Receipt", "Net 7", "Net 15", "Net 30", "Net 60"];
-// Based on Palestine's common trade currencies
-const CURRENCY_OPTIONS = ["ILS", "USD", "JOD", "EUR"]; 
+// --- Interface Definitions ---
+interface AddressForm {
+  full_address: string;
+}
 
-// --- Zod Schema Definition ---
-const VendorSchema = z.object({
-  name: z.string().min(2, "Vendor name is required."),
-  vendor_code: z.string().optional().or(z.literal('')),
-  contact_person: z.string().optional().or(z.literal('')),
-  email: z.string().email("Invalid email address.").optional().or(z.literal('')),
-  phone: z.string().optional().or(z.literal('')),
-  tax_id: z.string().optional().or(z.literal('')),
-  
-  // Financial Defaults
-  currency_code: z.string().min(3, "Currency code is required."),
-  payment_terms: z.string().min(1, "Payment terms are required."),
-  status: z.enum(["Active", "Inactive"]).default('Active'),
-
-  // Address fields (simple text areas for complex JSONB storage)
-  billing_address_text: z.string().optional().or(z.literal('')),
-  shipping_address_text: z.string().optional().or(z.literal('')),
-});
-
-type VendorFormValues = z.infer<typeof VendorSchema>;
+interface VendorForm {
+  name: string;
+  vendor_code: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  tax_id: string;
+  currency_code: string;
+  payment_terms: string;
+  status: "Active" | "Inactive";
+  billing_address: AddressForm;
+  shipping_address: AddressForm;
+}
 
 const NewVendor = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-  
-  const {
-    register,
-    handleSubmit,
-    control,
-    watch,
-    setValue,
-    formState: { errors, isSubmitting },
-  } = useForm<VendorFormValues>({
-    resolver: zodResolver(VendorSchema),
-    defaultValues: {
-      name: "",
-      vendor_code: "",
-      currency_code: "USD", // Default to USD or common currency
-      payment_terms: "Net 30",
-      status: "Active",
-      billing_address_text: "",
-      shipping_address_text: "",
-    },
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState<VendorForm>({
+    name: "",
+    vendor_code: "",
+    contact_person: "",
+    email: "",
+    phone: "",
+    tax_id: "",
+    currency_code: "USD",
+    payment_terms: "Net 30",
+    status: "Active",
+    billing_address: { full_address: "" },
+    shipping_address: { full_address: "" },
   });
 
-  const isSameAddress = watch("shipping_address_text") === watch("billing_address_text");
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
+  };
 
-  const onSubmit = async (values: VendorFormValues) => {
-    // Construct the JSONB objects for the addresses from the text areas
-    // In a real ERP, you'd have structured inputs (street, city, etc.)
-    const billingAddressJson = values.billing_address_text 
-      ? { full_address: values.billing_address_text }
-      : null;
-      
-    const shippingAddressJson = values.shipping_address_text 
-      ? { full_address: values.shipping_address_text }
-      : billingAddressJson; // If shipping is empty, default to billing address logic
+  const handleSelectChange = (id: keyof VendorForm, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
+  };
 
-    const vendorToInsert = {
-      name: values.name,
-      vendor_code: values.vendor_code || null,
-      contact_person: values.contact_person || null,
-      email: values.email || null,
-      phone: values.phone || null,
-      tax_id: values.tax_id || null,
-      currency_code: values.currency_code,
-      payment_terms: values.payment_terms,
-      status: values.status,
-      billing_address: billingAddressJson,
-      shipping_address: shippingAddressJson,
-    };
+  const handleAddressChange = (type: "billing_address" | "shipping_address", value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [type]: { full_address: value },
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
 
     try {
-      const { error } = await supabase
-        .from("vendors")
-        .insert(vendorToInsert);
+      const { data, error } = await supabase
+        .from("suppliers") // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
+        .insert([
+          {
+            ...formData,
+            // Ensure empty strings for codes/IDs become null in DB if necessary
+            vendor_code: formData.vendor_code || null,
+            tax_id: formData.tax_id || null,
+          },
+        ])
+        .select()
+        .single();
 
       if (error) {
         throw error;
@@ -104,24 +93,22 @@ const NewVendor = () => {
 
       toast({
         title: "Vendor Created",
-        description: `Vendor "${values.name}" has been successfully added.`,
+        description: `${formData.name} has been added to the master file.`,
       });
 
-      // Invalidate the vendor list query cache
-      queryClient.invalidateQueries({ queryKey: ["vendors"] });
-      
-      // Navigate back to the vendor list
-      navigate("/accounting/vendors"); 
+      // Navigate to the detail page or the list
+      navigate(`/accounting/vendors/${data.id}`);
     } catch (error: any) {
       console.error("Error creating vendor:", error);
       toast({
-        title: "Error Creating Vendor",
-        description: error.message || "An unexpected error occurred. Check if the vendor code is unique.",
+        title: "Error creating vendor",
+        description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
 
   return (
     <div className="space-y-6">
@@ -129,209 +116,141 @@ const NewVendor = () => {
         <Button variant="outline" size="icon" onClick={() => navigate("/accounting/vendors")}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <div>
-          <h1 className="text-3xl font-bold">Add New Vendor</h1>
-          <p className="text-muted-foreground">Define a new supplier for your Accounts Payable ledger.</p>
-        </div>
+        <h1 className="text-3xl font-bold">New Vendor</h1>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        
-        {/* Core Details Card */}
+      <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Core Details</CardTitle>
+            <CardDescription>Basic identification and contact information.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Vendor Name (Required) */}
-              <div className="space-y-2">
-                <Label htmlFor="name">Vendor Name</Label>
-                <Input
-                  id="name"
-                  {...register("name")}
-                  placeholder="e.g., Hebron Glass Supplier"
-                />
-                {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-              </div>
-
-              {/* Vendor Code (Optional) */}
-              <div className="space-y-2">
-                <Label htmlFor="vendor_code">Vendor Code (Optional)</Label>
-                <Input
-                  id="vendor_code"
-                  {...register("vendor_code")}
-                  placeholder="e.g., VG001"
-                />
-                {errors.vendor_code && <p className="text-sm text-destructive">{errors.vendor_code.message}</p>}
-              </div>
-              
-              {/* Contact Person */}
-              <div className="space-y-2">
-                <Label htmlFor="contact_person">Contact Person</Label>
-                <Input
-                  id="contact_person"
-                  {...register("contact_person")}
-                  placeholder="e.g., Ahmad Omar"
-                />
-              </div>
-
-              {/* Phone */}
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  {...register("phone")}
-                  placeholder="+970 59-xxxxxxx"
-                />
-              </div>
-
-              {/* Email */}
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  {...register("email")}
-                  placeholder="accounts@supplier.com"
-                />
-                {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
-              </div>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Vendor Name *</Label>
+              <Input id="name" value={formData.name} onChange={handleChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vendor_code">Vendor Code</Label>
+              <Input
+                id="vendor_code"
+                value={formData.vendor_code}
+                onChange={handleChange}
+                placeholder="Optional, unique identifier"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contact_person">Contact Person</Label>
+              <Input id="contact_person" value={formData.contact_person} onChange={handleChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" value={formData.email} onChange={handleChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone</Label>
+              <Input id="phone" value={formData.phone} onChange={handleChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tax_id">Tax ID / VAT Number</Label>
+              <Input id="tax_id" value={formData.tax_id} onChange={handleChange} />
             </div>
           </CardContent>
         </Card>
-        
-        {/* Financial and Address Card */}
+
         <Card>
           <CardHeader>
-            <CardTitle>Financial & Default Settings</CardTitle>
+            <CardTitle>Financial Defaults</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Currency Code */}
-                <div className="space-y-2">
-                    <Label htmlFor="currency_code">Default Currency</Label>
-                    <Controller
-                        name="currency_code"
-                        control={control}
-                        render={({ field }) => (
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select currency" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {CURRENCY_OPTIONS.map(code => (
-                                        <SelectItem key={code} value={code}>{code}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    />
-                    {errors.currency_code && <p className="text-sm text-destructive">{errors.currency_code.message}</p>}
-                </div>
-
-                {/* Payment Terms */}
-                <div className="space-y-2">
-                    <Label htmlFor="payment_terms">Payment Terms</Label>
-                    <Controller
-                        name="payment_terms"
-                        control={control}
-                        render={({ field }) => (
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select terms" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {PAYMENT_TERMS_OPTIONS.map(term => (
-                                        <SelectItem key={term} value={term}>{term}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    />
-                    {errors.payment_terms && <p className="text-sm text-destructive">{errors.payment_terms.message}</p>}
-                </div>
-
-                {/* Tax ID / VAT */}
-                <div className="space-y-2">
-                  <Label htmlFor="tax_id">Tax ID / VAT Number</Label>
-                  <Input
-                    id="tax_id"
-                    {...register("tax_id")}
-                    placeholder="e.g., 555-12345"
-                  />
-                </div>
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="currency_code">Default Currency *</Label>
+              <Select
+                value={formData.currency_code}
+                onValueChange={(value) => handleSelectChange("currency_code", value)}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD - US Dollar</SelectItem>
+                  <SelectItem value="EUR">EUR - Euro</SelectItem>
+                  <SelectItem value="AED">AED - UAE Dirham</SelectItem>
+                  {/* Add more currencies as needed */}
+                </SelectContent>
+              </Select>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-                {/* Billing Address */}
-                <div className="space-y-2">
-                    <Label htmlFor="billing_address_text">Billing Address (Full)</Label>
-                    <Textarea
-                        id="billing_address_text"
-                        {...register("billing_address_text")}
-                        placeholder="Street, City, Postal Code, Country"
-                        rows={3}
-                    />
-                </div>
-
-                {/* Shipping Address */}
-                <div className="space-y-2">
-                    <Label htmlFor="shipping_address_text">Shipping Address (Full)</Label>
-                    <Textarea
-                        id="shipping_address_text"
-                        {...register("shipping_address_text")}
-                        placeholder="Street, City, Postal Code, Country"
-                        rows={3}
-                        // Disable if the user wants to copy billing address
-                        disabled={isSameAddress && !!watch("billing_address_text")} 
-                    />
-                    <div className="flex items-center space-x-2 pt-1">
-                        <Checkbox
-                            id="same_address"
-                            checked={isSameAddress}
-                            onCheckedChange={(checked) => {
-                                // Simple logic: if checked, copy billing address text to shipping address text
-                                if (checked) {
-                                    setValue("shipping_address_text", watch("billing_address_text"), { shouldValidate: true });
-                                } else if (!checked && isSameAddress) {
-                                    // Only clear if it was copied and the user unchecks it
-                                    setValue("shipping_address_text", "", { shouldValidate: true });
-                                }
-                            }}
-                        />
-                        <Label htmlFor="same_address" className="text-sm">
-                            Same as Billing Address
-                        </Label>
-                    </div>
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment_terms">Payment Terms *</Label>
+              <Select
+                value={formData.payment_terms}
+                onValueChange={(value) => handleSelectChange("payment_terms", value)}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select terms" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Due on Receipt">Due on Receipt</SelectItem>
+                  <SelectItem value="Net 15">Net 15</SelectItem>
+                  <SelectItem value="Net 30">Net 30</SelectItem>
+                  <SelectItem value="Net 45">Net 45</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-
-            <div className="flex items-center space-x-2 pt-4">
-              {/* Status Checkbox */}
-              <Controller
-                name="status"
-                control={control}
-                render={({ field }) => (
-                  <Checkbox
-                    id="status"
-                    checked={field.value === 'Active'}
-                    onCheckedChange={(checked) => field.onChange(checked ? 'Active' : 'Inactive')}
-                  />
-                )}
-              />
-              <Label htmlFor="status" className="text-sm font-medium leading-none">
-                Active Vendor
-              </Label>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status *</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) => handleSelectChange("status", value as "Active" | "Inactive")}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            
           </CardContent>
         </Card>
 
-        {/* Action Button */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Addresses</CardTitle>
+            <CardDescription>Enter the full addresses for billing and shipping.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="billing_address">Billing Address</Label>
+              <Textarea
+                id="billing_address"
+                value={formData.billing_address.full_address}
+                onChange={(e) => handleAddressChange("billing_address", e.target.value)}
+                rows={4}
+                placeholder="Full billing address (street, city, state, zip, country)"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="shipping_address">Shipping Address (Optional)</Label>
+              <Textarea
+                id="shipping_address"
+                value={formData.shipping_address.full_address}
+                onChange={(e) => handleAddressChange("shipping_address", e.target.value)}
+                rows={4}
+                placeholder="Full shipping address if different from billing"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="flex justify-end">
           <Button type="submit" disabled={isSubmitting}>
             <Save className="w-4 h-4 mr-2" />
-            {isSubmitting ? "Saving..." : "Save Vendor"}
+            {isSubmitting ? "Saving..." : "Create Vendor"}
           </Button>
         </div>
       </form>
