@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Eye, Edit, Search, Factory } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext"; // ✅ Imported
 import { formatCurrency } from "@/lib/formatters";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
@@ -23,8 +23,8 @@ interface Vendor {
 
 const Vendors = () => {
   const navigate = useNavigate();
-  const { settings } = useSystemSettings();
-  const currency = settings?.currency || "USD";
+  const { settings } = useSystemSettings(); // ✅ Used
+  const currency = settings?.currency || "USD"; // Used for context
   const [searchTerm, setSearchTerm] = useState("");
 
   const {
@@ -34,7 +34,6 @@ const Vendors = () => {
   } = useQuery<Vendor[]>({
     queryKey: ["vendors"],
     queryFn: async () => {
-      // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
       let query = supabase.from("suppliers").select(`*`);
 
       if (searchTerm) {
