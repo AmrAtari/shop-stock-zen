@@ -11,8 +11,9 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext"; // ✅ Imported
 
-// --- Interface Definitions (Must match the unified 'suppliers' table structure) ---
+// --- Interface Definitions (Must match the new 'suppliers' table structure) ---
 interface Address {
   full_address?: string;
 }
@@ -37,6 +38,8 @@ const EditVendor = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { settings } = useSystemSettings(); // ✅ Used (Available for context/validation)
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<VendorData | null>(null);
 
@@ -50,11 +53,7 @@ const EditVendor = () => {
     queryFn: async () => {
       if (!id) throw new Error("Vendor ID is missing.");
 
-      const { data, error } = await supabase
-        .from("suppliers") // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
-        .select("*")
-        .eq("id", id)
-        .single();
+      const { data, error } = await supabase.from("suppliers").select("*").eq("id", id).single();
 
       if (error) throw error;
       return data as VendorData;
@@ -107,10 +106,9 @@ const EditVendor = () => {
       const { id: _, ...updateData } = formData;
 
       const { error } = await supabase
-        .from("suppliers") // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
+        .from("suppliers")
         .update({
           ...updateData,
-          // Ensure empty strings for codes/IDs become null in DB
           vendor_code: formData.vendor_code || null,
           tax_id: formData.tax_id || null,
         })
@@ -217,6 +215,9 @@ const EditVendor = () => {
                   <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={settings?.currency || "USD"}>
+                    {settings?.currency || "USD"} (System Default)
+                  </SelectItem>
                   <SelectItem value="USD">USD - US Dollar</SelectItem>
                   <SelectItem value="EUR">EUR - Euro</SelectItem>
                   <SelectItem value="AED">AED - UAE Dirham</SelectItem>
