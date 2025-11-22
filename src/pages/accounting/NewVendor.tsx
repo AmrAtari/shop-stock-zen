@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext"; // 💡 Import hook
 
 // --- Interface Definitions ---
 interface AddressForm {
@@ -22,7 +23,7 @@ interface VendorForm {
   email: string;
   phone: string;
   tax_id: string;
-  currency_code: string;
+  currency_code: string; // Will use system default
   payment_terms: string;
   status: "Active" | "Inactive";
   billing_address: AddressForm;
@@ -32,7 +33,12 @@ interface VendorForm {
 const NewVendor = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useSystemSettings(); // 💡 Get system settings
+  const defaultCurrency = settings?.currency || "USD"; // 💡 Define default
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 💡 Initialize currency_code with the system default
   const [formData, setFormData] = useState<VendorForm>({
     name: "",
     vendor_code: "",
@@ -40,7 +46,7 @@ const NewVendor = () => {
     email: "",
     phone: "",
     tax_id: "",
-    currency_code: "USD",
+    currency_code: defaultCurrency, // Set here
     payment_terms: "Net 30",
     status: "Active",
     billing_address: { full_address: "" },
@@ -75,11 +81,10 @@ const NewVendor = () => {
 
     try {
       const { data, error } = await supabase
-        .from("suppliers") // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
+        .from("suppliers")
         .insert([
           {
             ...formData,
-            // Ensure empty strings for codes/IDs become null in DB if necessary
             vendor_code: formData.vendor_code || null,
             tax_id: formData.tax_id || null,
           },
@@ -96,7 +101,6 @@ const NewVendor = () => {
         description: `${formData.name} has been added to the master file.`,
       });
 
-      // Navigate to the detail page or the list
       navigate(`/accounting/vendors/${data.id}`);
     } catch (error: any) {
       console.error("Error creating vendor:", error);
@@ -174,6 +178,8 @@ const NewVendor = () => {
                   <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* You can add the default currency as the first option for clarity */}
+                  <SelectItem value={defaultCurrency}>{defaultCurrency} (System Default)</SelectItem>
                   <SelectItem value="USD">USD - US Dollar</SelectItem>
                   <SelectItem value="EUR">EUR - Euro</SelectItem>
                   <SelectItem value="AED">AED - UAE Dirham</SelectItem>
