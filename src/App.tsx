@@ -44,16 +44,11 @@ import NewBankAccount from "./pages/accounting/NewBankAccount";
 import BankAccountDetail from "./pages/accounting/BankAccountDetail";
 import BankAccountEdit from "./pages/accounting/BankAccountEdit";
 
-// Tax Management (Completed Imports)
-import TaxConfiguration from "./pages/accounting/TaxConfiguration";
-import NewTaxRate from "./pages/accounting/NewTaxRate";
-import EditTaxRate from "./pages/accounting/EditTaxRate";
-import TaxJurisdictions from "./pages/accounting/TaxJurisdictions";
-import NewTaxJurisdiction from "./pages/accounting/NewTaxJurisdiction";
-import EditTaxJurisdiction from "./pages/accounting/EditTaxJurisdiction";
-
-// Vendor Management (NEW IMPORT)
+// Vendor Management (NEW IMPORTS)
 import Vendors from "./pages/accounting/Vendors";
+import NewVendor from "./pages/accounting/NewVendor";
+import EditVendor from "./pages/accounting/EditVendor";
+import VendorDetail from "./pages/accounting/VendorDetail";
 
 // Components/Layouts
 import Layout from "./components/Layout";
@@ -198,7 +193,7 @@ const App = () => {
                 }
               />
 
-              {/* Financial Reporting Routes */}
+              {/* Financial Reports Routes */}
               <Route
                 path="/accounting/reports"
                 element={
@@ -220,7 +215,7 @@ const App = () => {
                 }
               />
 
-              {/* Journal Entry Routes */}
+              {/* Journal Entries Routes */}
               <Route
                 path="/accounting/journal-entries"
                 element={
@@ -314,69 +309,6 @@ const App = () => {
                 }
               />
 
-              {/* Tax Management Routes */}
-              <Route
-                path="/accounting/tax"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <TaxConfiguration />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/tax/new"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <NewTaxRate />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/tax/:id/edit"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <EditTaxRate />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/tax/jurisdictions"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <TaxJurisdictions />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/tax/jurisdictions/new"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <NewTaxJurisdiction />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/accounting/tax/jurisdictions/:id/edit"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <EditTaxJurisdiction />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              {/* End Tax Management Routes */}
-
               {/* Vendor Management Routes (NEW) */}
               <Route
                 path="/accounting/vendors"
@@ -388,14 +320,12 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* Placeholder routes for Vendor CRUD (FIXED: Added children) */}
               <Route
                 path="/accounting/vendors/new"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      {/* Temporary placeholder to satisfy LayoutProps */}
-                      <div>New Vendor Form Placeholder</div>
+                      <NewVendor />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -405,8 +335,7 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      {/* Temporary placeholder to satisfy LayoutProps */}
-                      <div>Vendor Detail Placeholder</div>
+                      <VendorDetail />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -416,14 +345,11 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      {/* Temporary placeholder to satisfy LayoutProps */}
-                      <div>Edit Vendor Form Placeholder</div>
+                      <EditVendor />
                     </Layout>
                   </ProtectedRoute>
                 }
               />
-              {/* End Vendor Management Routes */}
-
               {/* System/Utility Routes */}
               <Route
                 path="/alerts"
@@ -435,7 +361,6 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* This route still correctly points to the General Business Reports */}
               <Route
                 path="/reports"
                 element={
