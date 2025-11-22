@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { formatCurrency } from "@/lib/formatters";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 const JournalEntries = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -20,6 +21,7 @@ const JournalEntries = () => {
   const queryClient = useQueryClient();
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
+  const { isAdmin } = useIsAdmin();
 
   // Fetch journal entries
   const { data: journalEntries, isLoading } = useQuery({
@@ -34,12 +36,13 @@ const JournalEntries = () => {
     },
   });
 
-  // Delete mutation (for drafts and reversed entries)
+  // Delete mutation (admins can delete anything, non-admins only drafts and reversed)
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { data: entry } = await supabase.from("journal_entries").select("status").eq("id", id).single();
 
-      if (entry?.status !== "draft" && entry?.status !== "reversed") {
+      // Admins can delete anything, non-admins only drafts and reversed
+      if (!isAdmin && entry?.status !== "draft" && entry?.status !== "reversed") {
         throw new Error("Only draft and reversed entries can be deleted. Posted entries must be reversed first.");
       }
 
@@ -60,7 +63,7 @@ const JournalEntries = () => {
       return id;
     },
     onSuccess: (deletedId) => {
-      toast.success("Draft journal entry deleted successfully");
+      toast.success("Journal entry deleted successfully");
       queryClient.setQueryData(["journal_entries"], (oldData: any[] | undefined) => {
         if (oldData) return oldData.filter((entry: any) => entry.id !== deletedId);
         return [];
@@ -154,26 +157,34 @@ const JournalEntries = () => {
   });
 
   const handleDelete = (entry: any) => {
-    if (entry.status !== "draft" && entry.status !== "reversed") {
+    // Admins can delete anything
+    if (!isAdmin && entry.status !== "draft" && entry.status !== "reversed") {
       toast.error("Only draft and reversed entries can be deleted. Posted entries must be reversed first.");
       return;
     }
-    const entryType = entry.status === "draft" ? "draft" : "reversed";
-    if (window.confirm(`Are you sure you want to delete the ${entryType} entry #${entry.entry_number}?`)) {
+    
+    const confirmMessage = isAdmin 
+      ? `As an admin, you can delete any entry. Are you sure you want to delete entry #${entry.entry_number}?`
+      : `Are you sure you want to delete the ${entry.status} entry #${entry.entry_number}?`;
+      
+    if (window.confirm(confirmMessage)) {
       deleteMutation.mutate(entry.id);
     }
   };
 
   const handleReverse = (entry: any) => {
-    if (entry.status !== "posted") {
+    // Admins can reverse anything except already reversed entries
+    if (!isAdmin && entry.status !== "posted") {
       toast.error("Only posted entries can be reversed.");
       return;
     }
-    if (
-      window.confirm(
-        `Are you sure you want to reverse the posted entry #${entry.entry_number}? This will create a reversal entry.`,
-      )
-    ) {
+    
+    if (entry.status === "reversed") {
+      toast.error("This entry has already been reversed.");
+      return;
+    }
+    
+    if (window.confirm(`Are you sure you want to reverse entry #${entry.entry_number}? This will create a reversal entry.`)) {
       reverseMutation.mutate(entry);
     }
   };
@@ -292,8 +303,8 @@ const JournalEntries = () => {
                         </Button>
                       </Link>
 
-                      {/* Edit - For drafts and reversed entries */}
-                      {(entry.status === "draft" || entry.status === "reversed") && (
+                      {/* Edit - For admins OR for drafts/reversed entries */}
+                      {(isAdmin || entry.status === "draft" || entry.status === "reversed") && (
                         <Link to={`/accounting/journal-entries/${entry.id}/edit`}>
                           <Button variant="ghost" size="icon" title="Edit">
                             <Edit className="w-4 h-4" />
@@ -301,8 +312,8 @@ const JournalEntries = () => {
                         </Link>
                       )}
 
-                      {/* Reverse - Only for posted entries */}
-                      {entry.status === "posted" && (
+                      {/* Reverse - For admins OR for posted entries */}
+                      {(isAdmin || entry.status === "posted") && entry.status !== "reversed" && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -314,15 +325,15 @@ const JournalEntries = () => {
                         </Button>
                       )}
 
-                      {/* Delete - For drafts and reversed entries */}
+                      {/* Delete - For admins OR for drafts/reversed entries */}
                       <Button
                         variant="ghost"
                         size="icon"
-                        title={entry.status === "draft" || entry.status === "reversed" ? "Delete" : "Cannot delete posted entries"}
+                        title={isAdmin ? "Delete (Admin)" : entry.status === "draft" || entry.status === "reversed" ? "Delete" : "Cannot delete posted entries"}
                         onClick={() => handleDelete(entry)}
-                        disabled={deleteMutation.isPending || (entry.status !== "draft" && entry.status !== "reversed")}
+                        disabled={deleteMutation.isPending || (!isAdmin && entry.status !== "draft" && entry.status !== "reversed")}
                       >
-                        <Trash2 className={`w-4 h-4 ${entry.status === "draft" || entry.status === "reversed" ? "text-red-500" : "text-gray-300"}`} />
+                        <Trash2 className={`w-4 h-4 ${isAdmin || entry.status === "draft" || entry.status === "reversed" ? "text-red-500" : "text-gray-300"}`} />
                       </Button>
                     </TableCell>
                   </TableRow>
