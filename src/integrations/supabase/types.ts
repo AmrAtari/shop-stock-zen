@@ -314,7 +314,7 @@ export type Database = {
         Row: {
           account_name: string
           account_number: string
-          account_type: string
+          account_type: Database["public"]["Enums"]["bank_account_type"]
           address: string | null
           available_balance: number | null
           bank_name: string
@@ -347,7 +347,7 @@ export type Database = {
         Insert: {
           account_name: string
           account_number: string
-          account_type: string
+          account_type: Database["public"]["Enums"]["bank_account_type"]
           address?: string | null
           available_balance?: number | null
           bank_name: string
@@ -380,7 +380,7 @@ export type Database = {
         Update: {
           account_name?: string
           account_number?: string
-          account_type?: string
+          account_type?: Database["public"]["Enums"]["bank_account_type"]
           address?: string | null
           available_balance?: number | null
           bank_name?: string
@@ -3894,6 +3894,13 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user" | "supervisor" | "inventory_man" | "cashier"
+      bank_account_type:
+        | "checking"
+        | "savings"
+        | "business"
+        | "money_market"
+        | "current"
+        | "fixed_deposit"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4022,6 +4029,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user", "supervisor", "inventory_man", "cashier"],
+      bank_account_type: [
+        "checking",
+        "savings",
+        "business",
+        "money_market",
+        "current",
+        "fixed_deposit",
+      ],
     },
   },
 } as const
