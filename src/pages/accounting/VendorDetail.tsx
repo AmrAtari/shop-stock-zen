@@ -9,9 +9,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// --- Interface Definitions (Reused from EditVendor.tsx) ---
+// --- Interface Definitions (Must match the unified 'suppliers' table structure) ---
 interface Address {
-    full_address?: string;
+  full_address?: string;
 }
 
 interface VendorDetail {
@@ -24,7 +24,7 @@ interface VendorDetail {
   tax_id: string | null;
   currency_code: string;
   payment_terms: string;
-  status: 'Active' | 'Inactive';
+  status: "Active" | "Inactive";
   billing_address: Address | null;
   shipping_address: Address | null;
   created_at: string;
@@ -45,9 +45,9 @@ const VendorDetail = () => {
     queryKey: ["vendor", id],
     queryFn: async () => {
       if (!id) throw new Error("Vendor ID is missing.");
-      
+
       const { data, error } = await supabase
-        .from("vendors")
+        .from("suppliers") // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
         .select("*")
         .eq("id", id)
         .single();
@@ -58,7 +58,7 @@ const VendorDetail = () => {
     enabled: !!id,
   });
 
-  // 2. Delete Handler (Similar to BankAccountDetail.tsx)
+  // 2. Delete Handler
   const handleDelete = async () => {
     if (!vendor) return;
 
@@ -67,8 +67,7 @@ const VendorDetail = () => {
     }
 
     try {
-      // NOTE: In a real ERP, you'd prevent deletion if the vendor has outstanding bills.
-      const { error } = await supabase.from("vendors").delete().eq("id", id);
+      const { error } = await supabase.from("suppliers").delete().eq("id", id); // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
 
       if (error) {
         throw error;
@@ -115,9 +114,7 @@ const VendorDetail = () => {
         </div>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-destructive">
-              {error?.message || "Vendor not found."}
-            </p>
+            <p className="text-destructive">{error?.message || "Vendor not found."}</p>
           </CardContent>
         </Card>
       </div>
@@ -126,7 +123,7 @@ const VendorDetail = () => {
 
   // Helper to safely extract address text
   const getAddressText = (addr: Address | null) => addr?.full_address || "N/A";
-  
+
   // 4. Main Component Rendering
   return (
     <div className="space-y-6">
@@ -137,9 +134,7 @@ const VendorDetail = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-bold">{vendor.name}</h1>
-            <Badge variant={vendor.status === 'Active' ? "default" : "secondary"}>
-                {vendor.status}
-            </Badge>
+            <Badge variant={vendor.status === "Active" ? "default" : "secondary"}>{vendor.status}</Badge>
           </div>
         </div>
         <div className="flex gap-2">
@@ -155,7 +150,6 @@ const VendorDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Card 1: Core and Contact Details */}
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -169,7 +163,7 @@ const VendorDetail = () => {
                 <p className="text-sm text-muted-foreground">Vendor Code</p>
                 <p className="font-medium">{vendor.vendor_code || "N/A"}</p>
               </div>
-              
+
               {/* Tax ID */}
               <div>
                 <p className="text-sm text-muted-foreground">Tax ID / VAT Number</p>
@@ -195,7 +189,7 @@ const VendorDetail = () => {
                   </p>
                 </div>
               )}
-              
+
               {/* Email */}
               {vendor.email && (
                 <div>
@@ -230,29 +224,29 @@ const VendorDetail = () => {
           </CardContent>
         </Card>
       </div>
-      
+
       {/* Card 3: Addresses */}
       <Card>
         <CardHeader>
-            <CardTitle>Addresses</CardTitle>
+          <CardTitle>Addresses</CardTitle>
         </CardHeader>
         <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Billing Address */}
-                <div>
-                    <p className="text-sm text-muted-foreground">Billing Address</p>
-                    <pre className="font-mono whitespace-pre-wrap bg-secondary/30 p-3 rounded text-sm">
-                        {getAddressText(vendor.billing_address)}
-                    </pre>
-                </div>
-                {/* Shipping Address */}
-                <div>
-                    <p className="text-sm text-muted-foreground">Shipping Address</p>
-                    <pre className="font-mono whitespace-pre-wrap bg-secondary/30 p-3 rounded text-sm">
-                        {getAddressText(vendor.shipping_address)}
-                    </pre>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Billing Address */}
+            <div>
+              <p className="text-sm text-muted-foreground">Billing Address</p>
+              <pre className="font-mono whitespace-pre-wrap bg-secondary/30 p-3 rounded text-sm">
+                {getAddressText(vendor.billing_address)}
+              </pre>
             </div>
+            {/* Shipping Address */}
+            <div>
+              <p className="text-sm text-muted-foreground">Shipping Address</p>
+              <pre className="font-mono whitespace-pre-wrap bg-secondary/30 p-3 rounded text-sm">
+                {getAddressText(vendor.shipping_address)}
+              </pre>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
