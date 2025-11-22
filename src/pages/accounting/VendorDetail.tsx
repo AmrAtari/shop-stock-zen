@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext"; // ✅ Imported
 
 // --- Interface Definitions (Must match the unified 'suppliers' table structure) ---
 interface Address {
@@ -35,6 +36,7 @@ const VendorDetail = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { settings } = useSystemSettings(); // ✅ Used (Available for context/validation)
 
   // 1. Fetch Vendor Data
   const {
@@ -46,11 +48,7 @@ const VendorDetail = () => {
     queryFn: async () => {
       if (!id) throw new Error("Vendor ID is missing.");
 
-      const { data, error } = await supabase
-        .from("suppliers") // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
-        .select("*")
-        .eq("id", id)
-        .single();
+      const { data, error } = await supabase.from("suppliers").select("*").eq("id", id).single();
 
       if (error) throw error;
       return data as VendorDetail;
@@ -67,7 +65,7 @@ const VendorDetail = () => {
     }
 
     try {
-      const { error } = await supabase.from("suppliers").delete().eq("id", id); // --- CRITICAL FIX: Querying the unified 'suppliers' table ---
+      const { error } = await supabase.from("suppliers").delete().eq("id", id);
 
       if (error) {
         throw error;
