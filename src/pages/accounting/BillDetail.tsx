@@ -11,55 +11,55 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/formatters";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { cn } from "@/lib/utils"; // <-- FIX: Added missing cn import
 
 // --- Interface Definitions ---
 interface BillPayment {
-    id: string;
-    payment_date: string;
-    payment_amount: number;
-    payment_method: string;
+  id: string;
+  payment_date: string;
+  payment_amount: number;
+  payment_method: string;
 }
 
 interface BillLineItem {
-    id: string;
-    description: string;
-    quantity: number;
-    unit_price: number;
-    line_total: number;
-    accounts: {
-        account_code: string;
-        account_name: string;
-    };
+  id: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  accounts: {
+    account_code: string;
+    account_name: string;
+  };
 }
 
 interface BillDetailData {
+  id: string;
+  bill_number: string;
+  bill_date: string;
+  due_date: string;
+  total_amount: number;
+  paid_amount: number;
+  balance: number;
+  status: "Awaiting Payment" | "Partially Paid" | "Paid" | "Void";
+  currency_code: string;
+  exchange_rate: number;
+  suppliers: {
     id: string;
-    bill_number: string;
-    bill_date: string;
-    due_date: string;
-    total_amount: number;
-    paid_amount: number;
-    balance: number;
-    status: 'Awaiting Payment' | 'Partially Paid' | 'Paid' | 'Void';
-    currency_code: string;
-    exchange_rate: number;
-    suppliers: {
-        id: string;
-        name: string;
-        payment_terms: string;
-    };
-    bill_line_items: BillLineItem[];
-    bill_payments: BillPayment[];
+    name: string;
+    payment_terms: string;
+  };
+  bill_line_items: BillLineItem[];
+  bill_payments: BillPayment[];
 }
 
 const BillDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const { settings } = useSystemSettings();
   const baseCurrency = settings?.currency || "USD";
-  
+
   // --- Data Fetching ---
   const {
     data: bill,
@@ -69,15 +69,17 @@ const BillDetail = () => {
     queryKey: ["vendor_bill_detail", id],
     queryFn: async () => {
       if (!id) throw new Error("Bill ID is missing.");
-      
+
       const { data, error } = await supabase
         .from("vendor_bills")
-        .select(`
+        .select(
+          `
           *,
           suppliers (id, name, payment_terms),
           bill_line_items (id, description, quantity, unit_price, line_total, accounts (account_code, account_name)),
           bill_payments (id, payment_date, payment_amount, payment_method)
-        `)
+        `,
+        )
         .eq("id", id)
         .single();
 
@@ -86,19 +88,27 @@ const BillDetail = () => {
     },
     enabled: !!id,
   });
-  
+
   // --- Helpers ---
-  const getStatusVariant = (status: BillDetailData['status']) => {
+  // FIX: Replaced 'yellow' with 'warning' to match component variants
+  const getStatusVariant = (
+    status: BillDetailData["status"],
+  ): "default" | "destructive" | "outline" | "secondary" | "success" | "warning" => {
     switch (status) {
-      case 'Awaiting Payment': return 'destructive';
-      case 'Partially Paid': return 'yellow';
-      case 'Paid': return 'default';
-      case 'Void': return 'secondary';
-      default: return 'outline';
+      case "Awaiting Payment":
+        return "destructive";
+      case "Partially Paid":
+        return "warning";
+      case "Paid":
+        return "default";
+      case "Void":
+        return "secondary";
+      default:
+        return "outline";
     }
   };
 
-  const isOverdue = bill && bill.status !== 'Paid' && new Date(bill.due_date) < new Date();
+  const isOverdue = bill && bill.status !== "Paid" && new Date(bill.due_date) < new Date();
 
   // 4. Main Component Rendering
   if (isLoading) {
@@ -111,17 +121,17 @@ const BillDetail = () => {
 
   const subtotal = bill.bill_line_items.reduce((sum, item) => sum + item.line_total, 0);
   const taxAmount = bill.total_amount - subtotal;
-  
+
   // --- Placeholder for Payment Modal Logic (to be added later) ---
   const handleRecordPayment = () => {
-      // In a real application, this would open a modal for recording a payment
-      toast({
-          title: "Payment Feature Not Ready",
-          description: "This will open a modal to record a bill payment (Step 21).",
-          variant: "default",
-      });
-      // Placeholder: navigate(`/accounting/bills/${id}/pay`);
-  }
+    // In a real application, this would open a modal for recording a payment
+    toast({
+      title: "Payment Feature Not Ready",
+      description: "This will open a modal to record a bill payment (Step 21).",
+      variant: "default",
+    });
+    // Placeholder: navigate(`/accounting/bills/${id}/pay`);
+  };
 
   return (
     <div className="space-y-6">
@@ -132,55 +142,61 @@ const BillDetail = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-bold">Bill #{bill.bill_number}</h1>
-            <p className="text-lg text-muted-foreground">Vendor: 
-                <Button variant="link" className="p-0 ml-1 h-auto font-medium" onClick={() => navigate(`/accounting/vendors/${bill.suppliers.id}`)}>
-                    {bill.suppliers.name}
-                </Button>
+            <p className="text-lg text-muted-foreground">
+              Vendor:
+              <Button
+                variant="link"
+                className="p-0 ml-1 h-auto font-medium"
+                onClick={() => navigate(`/accounting/vendors/${bill.suppliers.id}`)}
+              >
+                {bill.suppliers.name}
+              </Button>
             </p>
           </div>
         </div>
         <div className="flex gap-2">
-            {bill.status !== 'Paid' && bill.status !== 'Void' && (
-                <Button onClick={handleRecordPayment} variant="default">
-                    <DollarSign className="w-4 h-4 mr-2" /> Record Payment
-                </Button>
-            )}
-            <Button variant="outline" onClick={() => navigate(`/accounting/bills/${bill.id}/edit`)}>
-                <Edit className="w-4 h-4 mr-2" /> Edit Bill
+          {bill.status !== "Paid" && bill.status !== "Void" && (
+            <Button onClick={handleRecordPayment} variant="default">
+              <DollarSign className="w-4 h-4 mr-2" /> Record Payment
             </Button>
+          )}
+          <Button variant="outline" onClick={() => navigate(`/accounting/bills/${bill.id}/edit`)}>
+            <Edit className="w-4 h-4 mr-2" /> Edit Bill
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Card 1: Summary */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
-                Bill Summary
-                <Badge variant={getStatusVariant(bill.status)} className="text-lg px-4 py-1">
-                    {bill.status}
-                </Badge>
+              Bill Summary
+              <Badge variant={getStatusVariant(bill.status)} className="text-lg px-4 py-1">
+                {bill.status}
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
             <div>
-                <p className="text-sm text-muted-foreground">Bill Date</p>
-                <p className="font-medium">{new Date(bill.bill_date).toLocaleDateString()}</p>
+              <p className="text-sm text-muted-foreground">Bill Date</p>
+              <p className="font-medium">{new Date(bill.bill_date).toLocaleDateString()}</p>
             </div>
             <div>
-                <p className="text-sm text-muted-foreground">Payment Terms</p>
-                <p className="font-medium">{bill.suppliers.payment_terms}</p>
+              <p className="text-sm text-muted-foreground">Payment Terms</p>
+              <p className="font-medium">{bill.suppliers.payment_terms}</p>
             </div>
             <div>
-                <p className="text-sm text-muted-foreground">Due Date</p>
-                <p className={cn("font-medium", isOverdue && "text-red-600 font-bold flex items-center gap-1")}>
-                    {new Date(bill.due_date).toLocaleDateString()} {isOverdue && <Clock className="w-4 h-4" />}
-                </p>
+              <p className="text-sm text-muted-foreground">Due Date</p>
+              <p className={cn("font-medium", isOverdue && "text-red-600 font-bold flex items-center gap-1")}>
+                {new Date(bill.due_date).toLocaleDateString()} {isOverdue && <Clock className="w-4 h-4" />}
+              </p>
             </div>
             <div>
-                <p className="text-sm text-muted-foreground">Currency</p>
-                <p className="font-medium">{bill.currency_code} {bill.currency_code !== baseCurrency && `(Rate: ${bill.exchange_rate})`}</p>
+              <p className="text-sm text-muted-foreground">Currency</p>
+              <p className="font-medium">
+                {bill.currency_code} {bill.currency_code !== baseCurrency && `(Rate: ${bill.exchange_rate})`}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -227,32 +243,36 @@ const BillDetail = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bill.bill_line_items.map(item => (
+              {bill.bill_line_items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>{item.description}</TableCell>
                   <TableCell className="text-right">{item.quantity}</TableCell>
                   <TableCell className="text-right">{formatCurrency(item.unit_price, bill.currency_code)}</TableCell>
-                  <TableCell>{item.accounts.account_code} - {item.accounts.account_name}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(item.line_total, bill.currency_code)}</TableCell>
+                  <TableCell>
+                    {item.accounts.account_code} - {item.accounts.account_name}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatCurrency(item.line_total, bill.currency_code)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
             <TableFooter>
-                <TableRow className="font-bold">
-                    <TableCell colSpan={3}>Totals</TableCell>
-                    <TableCell className="text-right">Subtotal:</TableCell>
-                    <TableCell className="text-right">{formatCurrency(subtotal, bill.currency_code)}</TableCell>
-                </TableRow>
-                 <TableRow className="font-bold">
-                    <TableCell colSpan={3}></TableCell>
-                    <TableCell className="text-right">Tax:</TableCell>
-                    <TableCell className="text-right">{formatCurrency(taxAmount, bill.currency_code)}</TableCell>
-                </TableRow>
-                 <TableRow className="font-bold bg-muted/50">
-                    <TableCell colSpan={3}></TableCell>
-                    <TableCell className="text-right">Total Bill:</TableCell>
-                    <TableCell className="text-right">{formatCurrency(bill.total_amount, bill.currency_code)}</TableCell>
-                </TableRow>
+              <TableRow className="font-bold">
+                <TableCell colSpan={3}>Totals</TableCell>
+                <TableCell className="text-right">Subtotal:</TableCell>
+                <TableCell className="text-right">{formatCurrency(subtotal, bill.currency_code)}</TableCell>
+              </TableRow>
+              <TableRow className="font-bold">
+                <TableCell colSpan={3}></TableCell>
+                <TableCell className="text-right">Tax:</TableCell>
+                <TableCell className="text-right">{formatCurrency(taxAmount, bill.currency_code)}</TableCell>
+              </TableRow>
+              <TableRow className="font-bold bg-muted/50">
+                <TableCell colSpan={3}></TableCell>
+                <TableCell className="text-right">Total Bill:</TableCell>
+                <TableCell className="text-right">{formatCurrency(bill.total_amount, bill.currency_code)}</TableCell>
+              </TableRow>
             </TableFooter>
           </Table>
         </CardContent>
@@ -276,14 +296,16 @@ const BillDetail = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bill.bill_payments.map(payment => (
+                {bill.bill_payments.map((payment) => (
                   <TableRow key={payment.id}>
                     <TableCell className="flex items-center gap-2 font-medium">
-                        <CheckCircle className="w-4 h-4 text-green-500" /> 
-                        {new Date(payment.payment_date).toLocaleDateString()}
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      {new Date(payment.payment_date).toLocaleDateString()}
                     </TableCell>
-                    <TableCell>{payment.payment_method || 'Bank Transfer'}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(payment.payment_amount, bill.currency_code)}</TableCell>
+                    <TableCell>{payment.payment_method || "Bank Transfer"}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(payment.payment_amount, bill.currency_code)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
