@@ -10,12 +10,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Skeleton } from "@/components/ui/skeleton";
 
-// --- Schema Definition (using Zod for validation) ---
+// --- Interface Definitions ---
+interface Account {
+  id: string;
+  account_name: string;
+  account_code: string;
+}
+
+// --- Schema Definition (Updated with liability_account_id) ---
 const TaxRateSchema = z.object({
   name: z.string().min(2, "Tax name must be at least 2 characters."),
   rate_percentage: z.number().min(0, "Rate cannot be negative.").max(100, "Rate cannot exceed 100%."),
@@ -23,6 +31,7 @@ const TaxRateSchema = z.object({
     errorMap: () => ({ message: "Please select a valid tax type." }),
   }),
   country_code: z.string().length(2, "Country code must be 2 characters (ISO 3166-1).").toUpperCase(),
+  liability_account_id: z.string().uuid("Please select a valid liability account."), // NEW FIELD
   is_active: z.boolean().default(true),
   is_compound: z.boolean().default(false),
   description: z.string().optional(),
@@ -35,6 +44,23 @@ const NewTaxRate = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // --- 1. Account Data Fetching ---
+  const { data: accounts, isLoading: isLoadingAccounts } = useQuery<Account[]>({
+    queryKey: ["chart-of-accounts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("id, account_name, account_code")
+        .order("account_code", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching accounts:", error);
+        throw error;
+      }
+      return data as Account[];
+    },
+  });
+
   const {
     register,
     handleSubmit,
@@ -46,7 +72,8 @@ const NewTaxRate = () => {
       name: "",
       rate_percentage: 0,
       tax_type: "Sales",
-      country_code: "US", // Default to a common code
+      country_code: "US",
+      liability_account_id: undefined, // Must be set to undefined/empty string initially
       is_active: true,
       is_compound: false,
     },
@@ -54,17 +81,12 @@ const NewTaxRate = () => {
 
   const onSubmit = async (values: TaxRateFormValues) => {
     try {
-      // Supabase stores the rate as a decimal (0.00 - 1.00), so we must convert the percentage input (0-100)
       const rateAsDecimal = values.rate_percentage / 100;
-      
-      const { data, error } = await supabase
-        .from("tax_rates")
-        .insert({
-          ...values,
-          rate_percentage: rateAsDecimal,
-        })
-        .select()
-        .single();
+
+      const { error } = await supabase.from("tax_rates").insert({
+        ...values,
+        rate_percentage: rateAsDecimal,
+      });
 
       if (error) {
         throw error;
@@ -75,11 +97,8 @@ const NewTaxRate = () => {
         description: `Tax rate "${values.name}" has been successfully added.`,
       });
 
-      // Invalidate the list query cache to show the new rate immediately on the main page
       queryClient.invalidateQueries({ queryKey: ["tax-rates"] });
-      
-      // Navigate back to the main tax list
-      navigate("/accounting/tax"); 
+      navigate("/accounting/tax");
     } catch (error: any) {
       console.error("Error creating tax rate:", error);
       toast({
@@ -89,6 +108,20 @@ const NewTaxRate = () => {
       });
     }
   };
+
+  // Optional: Handle case where accounts are still loading or failed to load
+  if (isLoadingAccounts) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-80" />
+        <Card>
+          <CardContent className="pt-6">
+            <Skeleton className="h-40 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -112,11 +145,7 @@ const NewTaxRate = () => {
               {/* Tax Name */}
               <div className="space-y-2">
                 <Label htmlFor="name">Tax Name</Label>
-                <Input
-                  id="name"
-                  {...register("name")}
-                  placeholder="e.g., Standard VAT, State Sales Tax (CA)"
-                />
+                <Input id="name" {...register("name")} placeholder="e.g., Standard VAT, State Sales Tax (CA)" />
                 {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
               </div>
 
@@ -162,14 +191,41 @@ const NewTaxRate = () => {
               {/* Country Code */}
               <div className="space-y-2">
                 <Label htmlFor="country_code">Country Code (2-letter ISO)</Label>
-                <Input
-                  id="country_code"
-                  maxLength={2}
-                  {...register("country_code")}
-                  placeholder="e.g., US, DE, CA"
-                />
+                <Input id="country_code" maxLength={2} {...register("country_code")} placeholder="e.g., US, DE, CA" />
                 {errors.country_code && <p className="text-sm text-destructive">{errors.country_code.message}</p>}
               </div>
+            </div>
+
+            {/* Liability Account Selector (NEW FIELD) */}
+            <div className="space-y-2">
+              <Label htmlFor="liability_account_id">Liability Account (COA)</Label>
+              <Controller
+                name="liability_account_id"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isLoadingAccounts} // Disable while loading
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={isLoadingAccounts ? "Loading accounts..." : "Select Liability Account"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts?.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.account_code} - {account.account_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.liability_account_id && (
+                <p className="text-sm text-destructive">{errors.liability_account_id.message}</p>
+              )}
             </div>
 
             {/* Description */}
@@ -183,44 +239,40 @@ const NewTaxRate = () => {
             </div>
 
             <div className="flex items-center space-x-4 pt-2">
-              {/* Is Active */}
+              {/* Is Active and Is Compound Checkboxes */}
               <div className="flex items-center space-x-2">
                 <Controller
                   name="is_active"
                   control={control}
                   render={({ field }) => (
-                    <Checkbox
-                      id="is_active"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Checkbox id="is_active" checked={field.value} onCheckedChange={field.onChange} />
                   )}
                 />
-                <Label htmlFor="is_active" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                <Label
+                  htmlFor="is_active"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
                   Active
                 </Label>
               </div>
 
-              {/* Is Compound */}
               <div className="flex items-center space-x-2">
                 <Controller
                   name="is_compound"
                   control={control}
                   render={({ field }) => (
-                    <Checkbox
-                      id="is_compound"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Checkbox id="is_compound" checked={field.value} onCheckedChange={field.onChange} />
                   )}
                 />
-                <Label htmlFor="is_compound" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                <Label
+                  htmlFor="is_compound"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
                   Compound Tax
                 </Label>
                 <span className="text-sm text-muted-foreground">(Applies on top of other taxes)</span>
               </div>
             </div>
-            
           </CardContent>
         </Card>
 
