@@ -131,13 +131,11 @@ const JournalEntries = () => {
         if (lineError) throw lineError;
       }
 
-      // Mark original entry as reversed
+      // Mark original entry as draft so it can be edited
       const { error: updateError } = await supabase
         .from("journal_entries")
         .update({
-          status: "reversed",
-          reversed_at: new Date().toISOString(),
-          reversed_by: user.id,
+          status: "draft",
         })
         .eq("id", entry.id);
 
