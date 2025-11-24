@@ -42,6 +42,7 @@ import BillDetail from "./pages/accounting/BillDetail";
 
 // POS Components
 import POSHome from "./pages/POS/POSHome";
+import { POSProvider } from "./pages/POS/POSContext";
 
 // Layouts and Wrappers (Assumed to exist)
 import Layout from "./components/Layout";
@@ -338,9 +339,11 @@ const App = () => {
                 path="/pos"
                 element={
                   <ProtectedRoute>
-                    <Layout>
-                      <POSHome />
-                    </Layout>
+                    <POSProvider>
+                      <Layout>
+                        <POSHome />
+                      </Layout>
+                    </POSProvider>
                   </ProtectedRoute>
                 }
               />
