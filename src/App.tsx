@@ -29,7 +29,8 @@ import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 
 // Accounting Components
-import ChartOfAccounts from "./pages/accounting/ChartOfAccounts"; // <-- CORRECTED: Used ChartOfAccounts.tsx
+import AccountingDashboard from "./pages/accounting/AccountingDashboard";
+import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import Vendors from "./pages/accounting/Vendors";
 import NewVendor from "./pages/accounting/NewVendor";
 import EditVendor from "./pages/accounting/EditVendor";
@@ -38,6 +39,9 @@ import Bills from "./pages/accounting/Bills";
 import NewBill from "./pages/accounting/NewBill";
 import EditBill from "./pages/accounting/EditBill";
 import BillDetail from "./pages/accounting/BillDetail";
+
+// POS Components
+import POSHome from "./pages/POS/POSHome";
 
 // Layouts and Wrappers (Assumed to exist)
 import Layout from "./components/Layout";
@@ -225,11 +229,21 @@ const App = () => {
 
               {/* Accounting Routes */}
               <Route
+                path="/accounting"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AccountingDashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/accounting/accounts"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <ChartOfAccounts /> {/* <-- CORRECTED COMPONENT */}
+                      <ChartOfAccounts />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -314,6 +328,28 @@ const App = () => {
                   <ProtectedRoute>
                     <Layout>
                       <EditVendor />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* POS Routes */}
+              <Route
+                path="/pos"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <POSHome />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/inventory/physical"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PhysicalInventoryDashboard />
                     </Layout>
                   </ProtectedRoute>
                 }
