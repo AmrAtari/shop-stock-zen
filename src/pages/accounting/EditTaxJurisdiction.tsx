@@ -29,8 +29,7 @@ interface TaxJurisdictionDetail {
   country_code: string;
   tax_rate_id: string;
   is_active: boolean;
-  // FIX for TS2352: Supabase may return single-row joins as an array of one item,
-  // or null if the foreign key is null. Defining it as an array (or null) resolves the conflict.
+  // FIX: Allowing TaxRate[] or null resolves the TypeScript error (TS2352)
   tax_rates: TaxRate[] | null;
 }
 
@@ -58,8 +57,17 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw new Error(error.message);
-  // Filter out any rate with a null or empty ID to prevent Radix UI error
-  return (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
+
+  // CRITICAL FIX (Data Layer): Filter out rates where ID is null, undefined, or an empty string ("")
+  const filteredData = (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
+
+  // DEBUGGING LOG: Check your console to verify no empty strings are present here.
+  console.log(
+    "EditTaxJurisdiction: Filtered Tax Rates (should have no empty IDs):",
+    filteredData.map((r) => r.id),
+  );
+
+  return filteredData;
 };
 
 // 2. Fetch the specific Jurisdiction detail
@@ -230,7 +238,7 @@ const EditTaxJurisdiction = () => {
                     <SelectContent>
                       {/* Map over tax rates for the dropdown */}
                       {taxRates?.map((rate: TaxRate) => {
-                        // Crucial check to prevent the Radix UI Select error
+                        // SAFEGUARD (Render Layer): Ensure the ID is a non-empty string
                         if (!rate.id || rate.id === "") return null;
                         return (
                           <SelectItem key={rate.id} value={rate.id}>
