@@ -1296,6 +1296,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "items_supplier_fkey"
+            columns: ["supplier"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "items_theme_fkey"
             columns: ["theme"]
             isOneToOne: false
