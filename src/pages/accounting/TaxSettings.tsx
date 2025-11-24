@@ -14,11 +14,31 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Skeleton } from "@/components/ui/skeleton";
 
+// --- Interface Definitions ---
+interface TaxRate {
+  id: string;
+  name: string;
+  rate_percentage: number;
+}
+interface TaxSettingsData {
+  determination_policy: "Origin" | "Destination";
+  default_tax_rate_id: string | null;
+  tax_number_label: string | null;
+}
+// We expect only one row for settings
+interface SettingsRow {
+  id: string; // The primary key for the single settings row
+  determination_policy: "Origin" | "Destination";
+  default_tax_rate_id: string | null;
+  tax_number_label: string | null;
+}
+
 // --- Schema Definition for Validation ---
+// The default_tax_rate_id must be a string (the ID) or a null/undefined value for the placeholder.
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  default_tax_rate_id: z.string().uuid("Please select a valid default tax rate.").nullable().optional(),
-  tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").optional(),
+  default_tax_rate_id: z.string().nullable().optional(), // Must allow null or optional for "No default"
+  tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
 
 type TaxSettingsFormValues = z.infer<typeof TaxSettingsSchema>;
@@ -26,165 +46,214 @@ type TaxSettingsFormValues = z.infer<typeof TaxSettingsSchema>;
 // --- Fetch Functions ---
 
 // 1. Fetch Tax Rates for the dropdown
-const fetchTaxRates = async () => {
-  const { data, error } = await supabase.from("tax_rates").select("id, name, rate_percentage").eq("is_active", true);
-  if (error) throw new Error(error.message);
-  return data;
+const fetchTaxRates = async (): Promise<TaxRate[]> => {
+  const { data, error } = await supabase
+    .from("tax_rates")
+    .select("id, name, rate_percentage")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  // Filter out any rates with null/empty IDs to prevent the SelectItem error
+  return data.filter((rate) => rate.id) as TaxRate[];
 };
 
-// 2. Fetch current Tax Settings
-const fetchTaxSettings = async () => {
+// 2. Fetch the Single Tax Settings Row
+const fetchTaxSettings = async (): Promise<SettingsRow> => {
   const { data, error } = await supabase.from("tax_settings").select("*").limit(1).single();
-  // If no settings exist (first time), return a default structure
-  if (error && error.code === 'PGRST116') return { id: 1, determination_policy: 'Destination', tax_number_label: 'Tax ID' };
-  if (error) throw new Error(error.message);
-  return data;
-};
 
+  // If no row exists (PGRST116), return a safe default for initialization
+  if (error && error.code === "PGRST116") {
+    return {
+      id: "placeholder", // Placeholder ID for the single row
+      determination_policy: "Destination",
+      default_tax_rate_id: null,
+      tax_number_label: "VAT ID",
+    };
+  }
+  if (error) throw error;
+
+  // Ensure the ID exists for mutation later
+  return data as SettingsRow;
+};
 
 const TaxSettings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Load available tax rates
-  const { data: taxRates, isLoading: isLoadingRates } = useQuery({
+  // Fetch rates for the dropdown
+  const { data: taxRates, isLoading: isLoadingRates } = useQuery<TaxRate[]>({
     queryKey: ["taxRatesList"],
     queryFn: fetchTaxRates,
   });
 
-  // Load current settings
-  const { data: settingsData, isLoading: isLoadingSettings } = useQuery({
+  // Fetch current settings
+  const { data: currentSettings, isLoading: isLoadingSettings } = useQuery<SettingsRow>({
     queryKey: ["taxSettings"],
     queryFn: fetchTaxSettings,
   });
 
+  // Form setup
   const {
-    control,
     handleSubmit,
+    control,
     reset,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = useForm<TaxSettingsFormValues>({
     resolver: zodResolver(TaxSettingsSchema),
+    // Initialize default values to prevent the controlled/uncontrolled warnings
     defaultValues: {
-        determination_policy: 'Destination', // Default until data loads
-        default_tax_rate_id: undefined,
-        tax_number_label: 'Tax ID'
+      determination_policy: "Destination", // Should match initial settings
+      default_tax_rate_id: null,
+      tax_number_label: "VAT ID",
     },
   });
 
-  // Reset form with fetched data
+  // Reset form once settings are loaded
   useEffect(() => {
-    if (settingsData) {
+    if (currentSettings && !isLoadingSettings) {
       reset({
-        determination_policy: settingsData.determination_policy || 'Destination',
-        default_tax_rate_id: settingsData.default_tax_rate_id,
-        tax_number_label: settingsData.tax_number_label || 'Tax ID'
+        determination_policy: currentSettings.determination_policy || "Destination",
+        // IMPORTANT: If null, set to "" for the Select component to show placeholder
+        default_tax_rate_id: currentSettings.default_tax_rate_id || "",
+        tax_number_label: currentSettings.tax_number_label || "VAT ID",
       });
     }
-  }, [settingsData, reset]);
+  }, [currentSettings, isLoadingSettings, reset]);
 
-
-  // Mutation to update settings (upsert is used for the single-row table)
-  const updateSettingsMutation = useMutation({
+  // Mutation for saving settings
+  const saveSettingsMutation = useMutation({
     mutationFn: async (data: TaxSettingsFormValues) => {
-        // Enforce the single-row nature of tax_settings by always setting id to 1
-        const payload = {
-            id: 1,
-            ...data,
-            default_tax_rate_id: data.default_tax_rate_id || null, // Ensure empty string becomes null
-        };
-        const { error } = await supabase.from("tax_settings").upsert(payload);
-        if (error) throw new Error(error.message);
+      // Prepare data for Supabase (convert empty string back to null if needed)
+      const payload = {
+        determination_policy: data.determination_policy,
+        // Convert empty string from Select component back to null for DB
+        default_tax_rate_id: data.default_tax_rate_id === "" ? null : data.default_tax_rate_id,
+        tax_number_label: data.tax_number_label || null,
+      };
+
+      let result;
+      if (currentSettings?.id && currentSettings.id !== "placeholder") {
+        // Update existing row
+        result = await supabase.from("tax_settings").update(payload).eq("id", currentSettings.id);
+      } else {
+        // Insert new row
+        result = await supabase.from("tax_settings").insert(payload);
+      }
+
+      if (result.error) throw result.error;
     },
     onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Tax settings updated successfully.",
-      });
+      toast({ title: "Success", description: "Tax settings saved successfully." });
       queryClient.invalidateQueries({ queryKey: ["taxSettings"] });
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to update settings: ${error.message}`,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: `Failed to save settings: ${error.message}`, variant: "destructive" });
     },
   });
 
   const onSubmit = (data: TaxSettingsFormValues) => {
-    updateSettingsMutation.mutate(data);
+    saveSettingsMutation.mutate(data);
   };
 
-  if (isLoadingRates || isLoadingSettings) {
-    return <Skeleton className="h-[400px] w-full" />;
+  // State for loading/skeleton
+  if (isLoadingRates || isLoadingSettings || !currentSettings) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10" />
+          <Skeleton className="h-8 w-64" />
+        </div>
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <Skeleton className="h-48 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <Skeleton className="h-48 w-full" />
+          </CardContent>
+        </Card>
+        <Skeleton className="h-10 w-32 ml-auto" />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold flex items-center">
-          <Settings className="w-8 h-8 mr-3 text-primary" />
-          Global Tax Settings
-        </h1>
-        <Button variant="outline" onClick={() => navigate("/accounting/tax")}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Tax Management
-        </Button>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" onClick={() => navigate("/accounting/tax")}>
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Tax Global Settings</h1>
+            <p className="text-muted-foreground">Configure global policies that affect all tax calculations.</p>
+          </div>
+        </div>
       </div>
-      <p className="text-lg text-muted-foreground">
-        Define the overall tax policy and fallback rules for your ERP system.
-      </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Tax Policy Card */}
         <Card>
           <CardHeader>
             <CardTitle>Tax Determination Policy</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Tax Determination Policy */}
+            {/* Determination Policy */}
             <div className="space-y-2">
-              <Label htmlFor="determination_policy">Tax Calculation Basis</Label>
+              <Label htmlFor="determination_policy">Policy Type</Label>
               <Controller
                 name="determination_policy"
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
                     <SelectTrigger id="determination_policy">
-                      <SelectValue placeholder="Select a policy" />
+                      <SelectValue placeholder="Select tax policy" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Destination">
-                        Destination-Based (Most common for retail/e-commerce: Tax is based on the customer's location)
-                      </SelectItem>
-                      <SelectItem value="Origin">
-                        Origin-Based (Tax is based on your shop/warehouse location)
-                      </SelectItem>
+                      <SelectItem value="Origin">Origin-Based (Seller's Location)</SelectItem>
+                      <SelectItem value="Destination">Destination-Based (Customer's Location)</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
               />
               <p className="text-sm text-muted-foreground">
-                **Crucial ERP Policy:** Determines whether the customer's address or your business's address dictates the tax rule.
+                Determines whether tax is calculated based on the seller's location (Origin) or the customer's location
+                (Destination).
               </p>
             </div>
+          </CardContent>
+        </Card>
 
-            {/* Default Tax Rate ID */}
+        {/* Default Rate & Labels Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Default Rates and Identification</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Default Tax Rate */}
             <div className="space-y-2">
-              <Label htmlFor="default_tax_rate_id">Fallback/Default Tax Rate (Optional)</Label>
+              <Label htmlFor="default_tax_rate_id">Global Default Tax Rate</Label>
               <Controller
                 name="default_tax_rate_id"
                 control={control}
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value || ""} >
+                  <Select
+                    onValueChange={field.onChange}
+                    // Field value must be an empty string for the placeholder to work when value is null
+                    value={field.value === null ? "" : field.value}
+                  >
                     <SelectTrigger id="default_tax_rate_id">
-                      <SelectValue placeholder="No default rate selected (Use 0% if nothing is matched)" />
+                      <SelectValue placeholder="Select a default rate (Optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Empty option for optional setting */}
-                      <SelectItem value="">-- No Fallback Rate --</SelectItem> 
-                      {taxRates?.map((rate: any) => (
+                      {/* Placeholder option for no default rate. Must have an empty string value. */}
+                      <SelectItem value="">No Default Rate</SelectItem>
+                      {/* Iterate over fetched rates */}
+                      {taxRates?.map((rate) => (
+                        // FIX: The filter above ensures rate.id is not null/empty
                         <SelectItem key={rate.id} value={rate.id}>
                           {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
                         </SelectItem>
@@ -194,7 +263,8 @@ const TaxSettings = () => {
                 )}
               />
               <p className="text-sm text-muted-foreground">
-                This rate is used if no specific jurisdiction rule is matched (e.g., an international sale).
+                This rate is used if no specific jurisdiction rule is matched (e.g., an international sale) or if
+                jurisdictions are disabled.
               </p>
             </div>
 
@@ -205,11 +275,12 @@ const TaxSettings = () => {
                 name="tax_number_label"
                 control={control}
                 render={({ field }) => (
-                  <Input 
-                    id="tax_number_label" 
-                    placeholder="e.g., VAT ID, GST No., Tax ID" 
-                    value={field.value || ""} 
-                    onChange={field.onChange} 
+                  <Input
+                    id="tax_number_label"
+                    placeholder="e.g., VAT ID, GST No., Tax ID"
+                    // Ensure value is always a string, falling back to empty string if null
+                    value={field.value || ""}
+                    onChange={field.onChange}
                   />
                 )}
               />
@@ -217,15 +288,14 @@ const TaxSettings = () => {
                 The name used for the legal tax identification number on invoices (e.g., VAT ID for European customers).
               </p>
             </div>
-
           </CardContent>
         </Card>
 
         {/* Action Button */}
         <div className="flex justify-end">
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting || saveSettingsMutation.isLoading}>
             <Save className="w-4 h-4 mr-2" />
-            {isSubmitting ? "Saving..." : "Save Settings"}
+            {isSubmitting || saveSettingsMutation.isLoading ? "Saving..." : "Save Settings"}
           </Button>
         </div>
       </form>
