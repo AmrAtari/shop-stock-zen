@@ -48,8 +48,17 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw new Error(error.message);
-  // FIX (Data Layer): Filter out rates where ID is null, undefined, or an empty string ("")
-  return (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
+
+  // CRITICAL FIX (Data Layer): Filter out rates where ID is null, undefined, or an empty string ("")
+  const filteredData = (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
+
+  // DEBUGGING LOG: Check your console to verify no empty strings are present here.
+  console.log(
+    "TaxSettings: Filtered Tax Rates (should have no empty IDs):",
+    filteredData.map((r) => r.id),
+  );
+
+  return filteredData;
 };
 
 // 2. Fetch current Tax Settings
@@ -210,10 +219,10 @@ const TaxSettings = () => {
                       <SelectValue placeholder="No default rate selected (Uses 0% if nothing is matched)" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* This is the ONLY SelectItem allowed to have value="" */}
+                      {/* ONLY SelectItem allowed to have value="" */}
                       <SelectItem value="">-- No Fallback Rate --</SelectItem>
                       {taxRates?.map((rate: TaxRate) => {
-                        // FIX (Render Layer): Final safeguard to ensure the ID is a non-empty string
+                        // SAFEGUARD (Render Layer): Ensure the ID is a non-empty string
                         if (!rate.id || rate.id === "") return null;
 
                         return (
