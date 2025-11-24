@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, MapPin, Settings, ArrowLeft } from "lucide-react";
+import { DollarSign, MapPin, Settings, ArrowLeft, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -17,26 +17,27 @@ const TaxManagementIndex = () => {
       </div>
 
       <p className="text-lg text-muted-foreground">
-        Configure tax rates, manage jurisdictional rules, and ensure compliance for all transactions.
+        Configure tax rates, manage jurisdictional rules, and define the global policy for your ERP system.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* 1. Tax Rates & Configuration */}
+        {/* 1. Tax Rates & Configuration (Links to /accounting/tax/rates) */}
         <Link to="/accounting/tax/rates">
           <Card className="hover:bg-accent cursor-pointer transition-colors h-full">
             <CardHeader>
-              <Settings className="w-8 h-8 text-primary" />
+              <FileText className="w-8 h-8 text-primary" />
             </CardHeader>
             <CardContent className="pt-0">
               <CardTitle className="text-xl mb-1">Tax Rates</CardTitle>
               <CardDescription>
-                Define, edit, and manage all your tax percentages, types (Sales, VAT, etc.), and their associated rules.
+                Define, edit, and manage all your tax percentages, types (Sales, VAT, etc.), and their associated GL
+                accounts.
               </CardDescription>
             </CardContent>
           </Card>
         </Link>
 
-        {/* 2. Tax Jurisdictions (Taxes based on location) */}
+        {/* 2. Tax Jurisdictions (Links to /accounting/tax/jurisdictions) */}
         <Link to="/accounting/tax/jurisdictions">
           <Card className="hover:bg-accent cursor-pointer transition-colors h-full">
             <CardHeader>
@@ -45,24 +46,26 @@ const TaxManagementIndex = () => {
             <CardContent className="pt-0">
               <CardTitle className="text-xl mb-1">Tax Jurisdictions</CardTitle>
               <CardDescription>
-                Set up location-specific tax rules (e.g., State/Province/City taxes) and link them to defined Tax Rates.
+                Set up location-specific tax rules (State/Province/City taxes) and link them to defined Tax Rates.
               </CardDescription>
             </CardContent>
           </Card>
         </Link>
-        
-        {/* Placeholder for future features like Tax Reporting */}
-        <Card className="opacity-60 cursor-not-allowed h-full">
+
+        {/* 3. Global Tax Settings (NEW: Links to /accounting/tax/settings) */}
+        <Link to="/accounting/tax/settings">
+          <Card className="hover:bg-accent cursor-pointer transition-colors h-full">
             <CardHeader>
-              <DollarSign className="w-8 h-8 text-muted-foreground" />
+              <Settings className="w-8 h-8 text-primary" />
             </CardHeader>
             <CardContent className="pt-0">
-              <CardTitle className="text-xl mb-1">Tax Reporting</CardTitle>
+              <CardTitle className="text-xl mb-1">Global Settings</CardTitle>
               <CardDescription>
-                (Coming Soon) Generate required tax reports (e.g., Sales Tax Summary, VAT returns).
+                Configure the Tax Determination Policy (Origin/Destination), fallback rates, and legal tax labels.
               </CardDescription>
             </CardContent>
           </Card>
+        </Link>
       </div>
     </div>
   );
