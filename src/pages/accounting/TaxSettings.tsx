@@ -21,7 +21,7 @@ interface TaxRate {
   rate_percentage: number;
 }
 interface SettingsRow {
-  id: number; // Assuming the single row ID is a fixed number like 1
+  id: number;
   determination_policy: "Origin" | "Destination";
   default_tax_rate_id: string | null;
   tax_number_label: string | null;
@@ -30,7 +30,7 @@ interface SettingsRow {
 // --- Schema Definition for Validation ---
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  // FIX: Allow either a valid UUID or an empty string ("") for the placeholder option
+  // Allows the Select value to be either a valid UUID or the empty string ("")
   default_tax_rate_id: z.union([z.string().uuid("Please select a valid default tax rate."), z.literal("")]),
   tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
@@ -48,7 +48,7 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw new Error(error.message);
-  // FIX: Explicitly filter out rates where ID is null, undefined, or an empty string ("")
+  // FIX #1 (Data Layer): Filter out rates where ID is null, undefined, or an empty string ("")
   return (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
 };
 
@@ -88,7 +88,7 @@ const TaxSettings = () => {
     resolver: zodResolver(TaxSettingsSchema),
     defaultValues: {
       determination_policy: "Destination",
-      // IMPORTANT: Initialize as empty string ("") to match the placeholder
+      // Initialize as empty string ("") to match the placeholder
       default_tax_rate_id: "",
       tax_number_label: "Tax ID",
     },
@@ -210,11 +210,11 @@ const TaxSettings = () => {
                       <SelectValue placeholder="No default rate selected (Uses 0% if nothing is matched)" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Placeholder option for optional setting. MUST have an empty string value. */}
+                      {/* This is the ONLY SelectItem allowed to have value="" */}
                       <SelectItem value="">-- No Fallback Rate --</SelectItem>
                       {taxRates?.map((rate: TaxRate) => {
-                        // FINAL GUARD: Ensure the ID is a non-empty string before rendering SelectItem
-                        if (!rate.id || rate.id.length === 0) return null;
+                        // FIX #2 (Render Layer): Final safeguard to ensure the ID is a non-empty string
+                        if (!rate.id || rate.id === "") return null;
 
                         return (
                           <SelectItem key={rate.id} value={rate.id}>
