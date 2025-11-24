@@ -18,12 +18,14 @@ import {
   useCompleteReconciliation,
   useBankTransactions,
 } from "@/hooks/useBankAccounts";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 
 const BankReconciliation = () => {
   const { id, accountId } = useParams();
   const navigate = useNavigate();
+  const { formatCurrency } = useSystemSettings();
   const [selectedBankAccount, setSelectedBankAccount] = useState(accountId || "");
   const [statementDate, setStatementDate] = useState(new Date().toISOString().split("T")[0]);
   const [statementBalance, setStatementBalance] = useState("");
@@ -175,7 +177,7 @@ const BankReconciliation = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${reconciliation?.statement_balance.toFixed(2)}
+              {formatCurrency(reconciliation?.statement_balance || 0)}
             </div>
           </CardContent>
         </Card>
@@ -186,7 +188,7 @@ const BankReconciliation = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${reconciliation?.book_balance.toFixed(2)}
+              {formatCurrency(reconciliation?.book_balance || 0)}
             </div>
           </CardContent>
         </Card>
@@ -197,7 +199,7 @@ const BankReconciliation = () => {
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${Math.abs((reconciliation?.statement_balance || 0) - (reconciliation?.book_balance || 0)) < 0.01 ? "text-green-600" : "text-destructive"}`}>
-              ${Math.abs((reconciliation?.statement_balance || 0) - (reconciliation?.book_balance || 0)).toFixed(2)}
+              {formatCurrency(Math.abs((reconciliation?.statement_balance || 0) - (reconciliation?.book_balance || 0)))}
             </div>
           </CardContent>
         </Card>
@@ -258,13 +260,13 @@ const BankReconciliation = () => {
                       {transaction.journal_entry?.entry_number}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {transaction.debit_amount > 0 ? `$${transaction.debit_amount.toFixed(2)}` : "-"}
+                      {transaction.debit_amount > 0 ? formatCurrency(transaction.debit_amount) : "-"}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {transaction.credit_amount > 0 ? `$${transaction.credit_amount.toFixed(2)}` : "-"}
+                      {transaction.credit_amount > 0 ? formatCurrency(transaction.credit_amount) : "-"}
                     </TableCell>
                     <TableCell className="text-right font-mono font-bold">
-                      ${runningBalance.toFixed(2)}
+                      {formatCurrency(runningBalance)}
                     </TableCell>
                   </TableRow>
                 );

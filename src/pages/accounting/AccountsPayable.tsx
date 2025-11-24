@@ -18,6 +18,7 @@ import { BillDialog } from "@/components/accounting/BillDialog";
 import { PaymentDialog } from "@/components/accounting/PaymentDialog";
 import { VendorAgingReport } from "@/components/accounting/VendorAgingReport";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { format } from "date-fns";
 
 const AccountsPayable = () => {
@@ -26,6 +27,7 @@ const AccountsPayable = () => {
   const [billDialogOpen, setBillDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState<VendorBill | null>(null);
+  const { formatCurrency } = useSystemSettings();
 
   const { data: bills, isLoading } = useAccountsPayable(statusFilter);
   const createBill = useCreateBill();
@@ -90,7 +92,7 @@ const AccountsPayable = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${summary.total.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(summary.total)}</div>
           </CardContent>
         </Card>
 
@@ -100,7 +102,7 @@ const AccountsPayable = () => {
             <Clock className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">${summary.overdue.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-destructive">{formatCurrency(summary.overdue)}</div>
           </CardContent>
         </Card>
 
@@ -110,7 +112,7 @@ const AccountsPayable = () => {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${summary.dueThisWeek.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(summary.dueThisWeek)}</div>
           </CardContent>
         </Card>
       </div>
@@ -170,9 +172,9 @@ const AccountsPayable = () => {
                         <TableCell>{bill.supplier?.name}</TableCell>
                         <TableCell>{format(new Date(bill.bill_date), "MMM d, yyyy")}</TableCell>
                         <TableCell>{format(new Date(bill.due_date), "MMM d, yyyy")}</TableCell>
-                        <TableCell className="text-right">${bill.total_amount.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">${bill.paid_amount.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-bold">${bill.balance.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(bill.total_amount)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(bill.paid_amount)}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(bill.balance)}</TableCell>
                         <TableCell>{getStatusBadge(bill.status)}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">

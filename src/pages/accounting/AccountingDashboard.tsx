@@ -1,12 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { DollarSign, TrendingUp, TrendingDown, FileText, Users, CreditCard, Factory } from "lucide-react"; // ADDED Factory ICON
+import { DollarSign, TrendingUp, TrendingDown, FileText, Users, CreditCard, Factory } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAccountingDashboard } from "@/hooks/useAccountingDashboard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 const AccountingDashboard = () => {
   const { data: metrics, isLoading } = useAccountingDashboard();
+  const { formatCurrency } = useSystemSettings();
 
   if (isLoading) {
     return (
@@ -43,7 +45,7 @@ const AccountingDashboard = () => {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${metrics?.totalAssets.toFixed(2) || "0.00"}</div>
+            <div className="text-2xl font-bold">{formatCurrency(metrics?.totalAssets || 0)}</div>
           </CardContent>
         </Card>
 
@@ -53,7 +55,7 @@ const AccountingDashboard = () => {
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${metrics?.totalLiabilities.toFixed(2) || "0.00"}</div>
+            <div className="text-2xl font-bold">{formatCurrency(metrics?.totalLiabilities || 0)}</div>
           </CardContent>
         </Card>
 
@@ -63,7 +65,7 @@ const AccountingDashboard = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${metrics?.revenueMTD.toFixed(2) || "0.00"}</div>
+            <div className="text-2xl font-bold">{formatCurrency(metrics?.revenueMTD || 0)}</div>
           </CardContent>
         </Card>
 
@@ -76,7 +78,7 @@ const AccountingDashboard = () => {
             <div
               className={`text-2xl font-bold ${(metrics?.netIncomeMTD || 0) >= 0 ? "text-green-600" : "text-destructive"}`}
             >
-              ${metrics?.netIncomeMTD.toFixed(2) || "0.00"}
+              {formatCurrency(metrics?.netIncomeMTD || 0)}
             </div>
           </CardContent>
         </Card>
@@ -91,11 +93,11 @@ const AccountingDashboard = () => {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-sm">Outstanding Bills</span>
-              <span className="font-semibold">${metrics?.apTotal.toFixed(2) || "0.00"}</span>
+              <span className="font-semibold">{formatCurrency(metrics?.apTotal || 0)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm">Overdue</span>
-              <span className="font-semibold text-destructive">${metrics?.apOverdue.toFixed(2) || "0.00"}</span>
+              <span className="font-semibold text-destructive">{formatCurrency(metrics?.apOverdue || 0)}</span>
             </div>
             <Link to="/accounting/accounts-payable">
               <Button variant="outline" className="w-full mt-2">
@@ -113,11 +115,11 @@ const AccountingDashboard = () => {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-sm">Outstanding Invoices</span>
-              <span className="font-semibold">${metrics?.arTotal.toFixed(2) || "0.00"}</span>
+              <span className="font-semibold">{formatCurrency(metrics?.arTotal || 0)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm">Overdue</span>
-              <span className="font-semibold text-destructive">${metrics?.arOverdue.toFixed(2) || "0.00"}</span>
+              <span className="font-semibold text-destructive">{formatCurrency(metrics?.arOverdue || 0)}</span>
             </div>
             <Link to="/accounting/accounts-receivable">
               <Button variant="outline" className="w-full mt-2">
