@@ -31,8 +31,7 @@ interface SettingsRow {
 // --- Schema Definition for Validation ---
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  // FIX: Use z.union to strictly allow either a valid UUID or an empty string ("")
-  // This forces the value to match the placeholder or a real selection, solving the SelectItem error.
+  // Ensure the schema accepts either a UUID or the empty string for the placeholder option
   default_tax_rate_id: z.union([z.string().uuid("Please select a valid default tax rate."), z.literal("")]),
   tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
@@ -50,7 +49,7 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw error;
-  // FIX: Explicitly filter out rates where ID is null, undefined, or an empty string ("")
+  // Filter out rates where ID is null, undefined, or an empty string ("")
   return data.filter((rate) => rate.id && rate.id.length > 0) as TaxRate[];
 };
 
@@ -96,7 +95,7 @@ const TaxSettings = () => {
     formState: { isSubmitting, errors },
   } = useForm<TaxSettingsFormValues>({
     resolver: zodResolver(TaxSettingsSchema),
-    // IMPORTANT: Initialize default_tax_rate_id to "" to match the placeholder item value
+    // Initialize default_tax_rate_id to "" to match the placeholder item value
     defaultValues: {
       determination_policy: "Destination",
       default_tax_rate_id: "",
@@ -245,11 +244,15 @@ const TaxSettings = () => {
                       {/* Placeholder option for no default rate. Must have an empty string value. */}
                       <SelectItem value="">No Default Rate</SelectItem>
                       {/* Iterate over fetched rates */}
-                      {taxRates?.map((rate) => (
-                        <SelectItem key={rate.id} value={rate.id}>
-                          {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
-                        </SelectItem>
-                      ))}
+                      {taxRates?.map((rate) => {
+                        // FINAL FIX: Add a component-level guard to ensure rate.id is never "" at render time
+                        if (!rate.id || rate.id === "") return null;
+                        return (
+                          <SelectItem key={rate.id} value={rate.id}>
+                            {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 )}
