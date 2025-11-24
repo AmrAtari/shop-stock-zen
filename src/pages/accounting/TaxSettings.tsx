@@ -39,7 +39,7 @@ type TaxSettingsFormValues = z.infer<typeof TaxSettingsSchema>;
 
 // --- Fetch Functions ---
 
-// 1. Fetch Tax Rates for the dropdown
+// 1. Fetch Tax Rates for the dropdown (includes filter)
 const fetchTaxRates = async (): Promise<TaxRate[]> => {
   const { data, error } = await supabase
     .from("tax_rates")
@@ -48,7 +48,7 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw new Error(error.message);
-  // FIX #1 (Data Layer): Filter out rates where ID is null, undefined, or an empty string ("")
+  // FIX (Data Layer): Filter out rates where ID is null, undefined, or an empty string ("")
   return (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
 };
 
@@ -88,7 +88,7 @@ const TaxSettings = () => {
     resolver: zodResolver(TaxSettingsSchema),
     defaultValues: {
       determination_policy: "Destination",
-      // Initialize as empty string ("") to match the placeholder
+      // Initialize as empty string ("") to match the placeholder/default
       default_tax_rate_id: "",
       tax_number_label: "Tax ID",
     },
@@ -213,7 +213,7 @@ const TaxSettings = () => {
                       {/* This is the ONLY SelectItem allowed to have value="" */}
                       <SelectItem value="">-- No Fallback Rate --</SelectItem>
                       {taxRates?.map((rate: TaxRate) => {
-                        // FIX #2 (Render Layer): Final safeguard to ensure the ID is a non-empty string
+                        // FIX (Render Layer): Final safeguard to ensure the ID is a non-empty string
                         if (!rate.id || rate.id === "") return null;
 
                         return (
