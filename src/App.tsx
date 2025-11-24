@@ -40,6 +40,17 @@ import NewBill from "./pages/accounting/NewBill";
 import EditBill from "./pages/accounting/EditBill";
 import BillDetail from "./pages/accounting/BillDetail";
 
+// === START: TAX MANAGEMENT COMPONENT IMPORTS ===
+import TaxManagementIndex from "./pages/accounting/TaxManagementIndex";
+import TaxConfiguration from "./pages/accounting/TaxConfiguration";
+import TaxJurisdictions from "./pages/accounting/TaxJurisdictions";
+import TaxSettings from "./pages/accounting/TaxSettings";
+import NewTaxRate from "./pages/accounting/NewTaxRate";
+import EditTaxRate from "./pages/accounting/EditTaxRate";
+import NewTaxJurisdiction from "./pages/accounting/NewTaxJurisdiction";
+import EditTaxJurisdiction from "./pages/accounting/EditTaxJurisdiction";
+// === END: TAX MANAGEMENT COMPONENT IMPORTS ===
+
 // POS Components
 import POSHome from "./pages/POS/POSHome";
 import { POSProvider } from "./pages/POS/POSContext";
@@ -333,6 +344,89 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
+              {/* === START: TAX MANAGEMENT ROUTES (New) === */}
+              <Route
+                path="/accounting/tax"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TaxManagementIndex />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/tax/rates"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TaxConfiguration />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/tax/rates/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <NewTaxRate />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/tax/rates/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <EditTaxRate />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/tax/jurisdictions"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TaxJurisdictions />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/tax/jurisdictions/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <NewTaxJurisdiction />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/tax/jurisdictions/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <EditTaxJurisdiction />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/tax/settings"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TaxSettings />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* === END: TAX MANAGEMENT ROUTES (New) === */}
 
               {/* POS Routes */}
               <Route
