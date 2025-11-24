@@ -29,8 +29,9 @@ interface TaxJurisdictionDetail {
   country_code: string;
   tax_rate_id: string;
   is_active: boolean;
-  // FIX: Explicitly define tax_rates as TaxRate OR null to resolve TS2352
-  tax_rates: TaxRate | null;
+  // FIX for TS2352: Supabase may return single-row joins as an array of one item,
+  // or null if the foreign key is null. Defining it as an array (or null) resolves the conflict.
+  tax_rates: TaxRate[] | null;
 }
 
 // --- Schema Definition ---
@@ -80,7 +81,6 @@ const fetchJurisdictionDetail = async (id: string): Promise<TaxJurisdictionDetai
     .single();
 
   if (error) throw new Error(error.message);
-  // The cast is now safe due to the updated interface definition
   return data as TaxJurisdictionDetail;
 };
 
