@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -28,113 +28,74 @@ const JurisdictionSchema = z.object({
   jurisdiction_type: z.enum(["State", "Province", "City", "County", "District", "Other"], {
     errorMap: () => ({ message: "Please select a valid jurisdiction type." }),
   }),
-  country_code: z.string().length(2, "Country code must be 2 characters (ISO 3166-1).").toUpperCase(),
-  tax_rate_id: z.string().uuid("Please select a valid tax rate to apply."), // Foreign Key
+  country_code: z.string().length(2, "Country code must be 2 characters (ISO 3166-1 alpha-2)."),
+  tax_rate_id: z.string().uuid("Please select a valid tax rate."),
   is_active: z.boolean().default(true),
 });
 
 type JurisdictionFormValues = z.infer<typeof JurisdictionSchema>;
+
+// --- Fetch Functions ---
+const fetchTaxRates = async (): Promise<TaxRate[]> => {
+  const { data, error } = await supabase
+    .from("tax_rates")
+    .select("id, name, rate_percentage")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  // Filter out any rate with a non-string or empty ID at the data layer
+  return (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
+};
 
 const NewTaxJurisdiction = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // --- 1. Fetching Tax Rates (to populate the selector) ---
+  // Fetch available tax rates for the dropdown
   const { data: taxRates, isLoading: isLoadingRates } = useQuery<TaxRate[]>({
-    queryKey: ["tax-rates"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tax_rates")
-        .select("id, name, rate_percentage")
-        .eq("is_active", true) // Only show active rates for assignment
-        .order("name", { ascending: true });
-
-      if (error) {
-        console.error("Error fetching tax rates:", error);
-        throw error;
-      }
-      return data as TaxRate[];
-    },
+    queryKey: ["taxRatesList"],
+    queryFn: fetchTaxRates,
   });
 
   const {
-    register,
-    handleSubmit,
     control,
-    formState: { errors, isSubmitting },
+    handleSubmit,
+    formState: { isSubmitting, errors },
   } = useForm<JurisdictionFormValues>({
     resolver: zodResolver(JurisdictionSchema),
     defaultValues: {
       name: "",
       jurisdiction_type: "State",
-      country_code: "US", 
-      tax_rate_id: undefined,
+      country_code: "",
+      tax_rate_id: "",
       is_active: true,
     },
   });
 
-  const onSubmit = async (values: JurisdictionFormValues) => {
-    try {
-      const { error } = await supabase
-        .from("tax_jurisdictions")
-        .insert(values)
-        .select()
-        .single();
+  const createMutation = useMutation({
+    mutationFn: async (data: JurisdictionFormValues) => {
+      const { error } = await supabase.from("tax_jurisdictions").insert([data]);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Tax jurisdiction created successfully." });
+      queryClient.invalidateQueries({ queryKey: ["taxJurisdictions"] });
+      navigate("/accounting/tax/jurisdictions");
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: `Failed to create jurisdiction: ${error.message}`, variant: "destructive" });
+    },
+  });
 
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Jurisdiction Created",
-        description: `Tax jurisdiction "${values.name}" has been successfully added.`,
-      });
-
-      // Invalidate the jurisdiction list query cache
-      queryClient.invalidateQueries({ queryKey: ["tax-jurisdictions"] });
-      
-      // Navigate back to the jurisdiction list
-      navigate("/accounting/tax/jurisdictions"); 
-    } catch (error: any) {
-      console.error("Error creating jurisdiction:", error);
-      toast({
-        title: "Error Creating Jurisdiction",
-        description: error.message || "An unexpected error occurred.",
-        variant: "destructive",
-      });
-    }
+  const onSubmit = (data: JurisdictionFormValues) => {
+    createMutation.mutate(data);
   };
-  
-  // Handle Loading State for Tax Rates
+
   if (isLoadingRates) {
-      return (
-          <div className="space-y-6">
-              <Skeleton className="h-10 w-80" />
-              <Card><CardContent className="pt-6"><Skeleton className="h-40 w-full" /></CardContent></Card>
-          </div>
-      );
+    return <Skeleton className="h-[500px] w-full" />;
   }
-
-  // Handle Error/No Rates State
-  if (!taxRates || taxRates.length === 0) {
-      return (
-        <div className="space-y-6">
-            <h1 className="text-3xl font-bold">Add New Tax Jurisdiction</h1>
-            <Card>
-                <CardContent className="pt-6 text-center">
-                    <p className="text-destructive">
-                        Cannot create a jurisdiction. Please create at least one <a href="/accounting/tax" className="underline">Active Tax Rate</a> first.
-                    </p>
-                    <Button onClick={() => navigate("/accounting/tax/new")} className="mt-4">
-                        Create Tax Rate
-                    </Button>
-                </CardContent>
-            </Card>
-        </div>
-      );
-  }
-
 
   return (
     <div className="space-y-6">
@@ -142,10 +103,7 @@ const NewTaxJurisdiction = () => {
         <Button variant="outline" size="icon" onClick={() => navigate("/accounting/tax/jurisdictions")}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <div>
-          <h1 className="text-3xl font-bold">Add New Tax Jurisdiction</h1>
-          <p className="text-muted-foreground">Define a geographical area and assign a default tax rate.</p>
-        </div>
+        <h1 className="text-3xl font-bold">New Tax Jurisdiction</h1>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -154,82 +112,84 @@ const NewTaxJurisdiction = () => {
             <CardTitle>Jurisdiction Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Jurisdiction Name */}
-              <div className="space-y-2">
-                <Label htmlFor="name">Jurisdiction Name</Label>
-                <Input
-                  id="name"
-                  {...register("name")}
-                  placeholder="e.g., California, Toronto"
-                />
-                {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-              </div>
-
-              {/* Country Code */}
-              <div className="space-y-2">
-                <Label htmlFor="country_code">Country Code (2-letter ISO)</Label>
-                <Input
-                  id="country_code"
-                  maxLength={2}
-                  {...register("country_code")}
-                  placeholder="e.g., US, CA, DE"
-                />
-                {errors.country_code && <p className="text-sm text-destructive">{errors.country_code.message}</p>}
-              </div>
+            {/* Name */}
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Controller
+                name="name"
+                control={control}
+                render={({ field }) => <Input id="name" placeholder="e.g., California State Tax" {...field} />}
+              />
+              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Jurisdiction Type */}
               <div className="space-y-2">
-                <Label htmlFor="jurisdiction_type">Jurisdiction Type</Label>
+                <Label htmlFor="jurisdiction_type">Type</Label>
                 <Controller
                   name="jurisdiction_type"
                   control={control}
                   render={({ field }) => (
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <SelectTrigger>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id="jurisdiction_type">
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="State">State/Province</SelectItem>
-                        <SelectItem value="City">City/Municipality</SelectItem>
-                        <SelectItem value="County">County/Region</SelectItem>
+                        <SelectItem value="State">State</SelectItem>
+                        <SelectItem value="Province">Province</SelectItem>
+                        <SelectItem value="City">City</SelectItem>
+                        <SelectItem value="County">County</SelectItem>
                         <SelectItem value="District">District</SelectItem>
                         <SelectItem value="Other">Other</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
                 />
-                {errors.jurisdiction_type && <p className="text-sm text-destructive">{errors.jurisdiction_type.message}</p>}
+                {errors.jurisdiction_type && (
+                  <p className="text-sm text-destructive">{errors.jurisdiction_type.message}</p>
+                )}
               </div>
-              
-              {/* Tax Rate Assignment */}
+
+              {/* Country Code */}
               <div className="space-y-2">
-                <Label htmlFor="tax_rate_id">Default Tax Rate</Label>
+                <Label htmlFor="country_code">Country Code (ISO 2)</Label>
                 <Controller
-                    name="tax_rate_id"
-                    control={control}
-                    render={({ field }) => (
-                        <Select 
-                            onValueChange={field.onChange} 
-                            value={field.value}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select a Tax Rate" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {taxRates?.map((rate) => (
-                                    <SelectItem key={rate.id} value={rate.id}>
-                                        {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
+                  name="country_code"
+                  control={control}
+                  render={({ field }) => <Input id="country_code" placeholder="e.g., US, CA, PS" {...field} />}
                 />
-                {errors.tax_rate_id && <p className="text-sm text-destructive">{errors.tax_rate_id.message}</p>}
+                {errors.country_code && <p className="text-sm text-destructive">{errors.country_code.message}</p>}
               </div>
+            </div>
+
+            {/* Tax Rate ID */}
+            <div className="space-y-2">
+              <Label htmlFor="tax_rate_id">Applicable Tax Rate</Label>
+              <Controller
+                name="tax_rate_id"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id="tax_rate_id">
+                      <SelectValue placeholder="Select the tax rate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* Map over tax rates for the dropdown */}
+                      {taxRates?.map((rate: TaxRate) => {
+                        // FIX #2 (Render Layer): AGGRESSIVE CHECK FOR EMPTY/INVALID ID
+                        if (!rate.id || rate.id === "") return null;
+                        return (
+                          <SelectItem key={rate.id} value={rate.id}>
+                            {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.tax_rate_id && <p className="text-sm text-destructive">{errors.tax_rate_id.message}</p>}
             </div>
 
             <div className="flex items-center space-x-2 pt-2">
@@ -238,18 +198,16 @@ const NewTaxJurisdiction = () => {
                 name="is_active"
                 control={control}
                 render={({ field }) => (
-                  <Checkbox
-                    id="is_active"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
+                  <Checkbox id="is_active" checked={field.value} onCheckedChange={field.onChange} />
                 )}
               />
-              <Label htmlFor="is_active" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              <Label
+                htmlFor="is_active"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
                 Active
               </Label>
             </div>
-            
           </CardContent>
         </Card>
 
