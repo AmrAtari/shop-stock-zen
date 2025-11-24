@@ -34,10 +34,9 @@ interface SettingsRow {
 }
 
 // --- Schema Definition for Validation ---
-// The default_tax_rate_id must be a string (the ID) or a null/undefined value for the placeholder.
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  default_tax_rate_id: z.string().nullable().optional(), // Must allow null or optional for "No default"
+  default_tax_rate_id: z.string().nullable().optional(),
   tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
 
@@ -102,9 +101,8 @@ const TaxSettings = () => {
     formState: { isSubmitting, errors },
   } = useForm<TaxSettingsFormValues>({
     resolver: zodResolver(TaxSettingsSchema),
-    // Initialize default values to prevent the controlled/uncontrolled warnings
     defaultValues: {
-      determination_policy: "Destination", // Should match initial settings
+      determination_policy: "Destination",
       default_tax_rate_id: null,
       tax_number_label: "VAT ID",
     },
@@ -115,7 +113,6 @@ const TaxSettings = () => {
     if (currentSettings && !isLoadingSettings) {
       reset({
         determination_policy: currentSettings.determination_policy || "Destination",
-        // IMPORTANT: If null, set to "" for the Select component to show placeholder
         default_tax_rate_id: currentSettings.default_tax_rate_id || "",
         tax_number_label: currentSettings.tax_number_label || "VAT ID",
       });
@@ -125,10 +122,8 @@ const TaxSettings = () => {
   // Mutation for saving settings
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: TaxSettingsFormValues) => {
-      // Prepare data for Supabase (convert empty string back to null if needed)
       const payload = {
         determination_policy: data.determination_policy,
-        // Convert empty string from Select component back to null for DB
         default_tax_rate_id: data.default_tax_rate_id === "" ? null : data.default_tax_rate_id,
         tax_number_label: data.tax_number_label || null,
       };
@@ -253,7 +248,6 @@ const TaxSettings = () => {
                       <SelectItem value="">No Default Rate</SelectItem>
                       {/* Iterate over fetched rates */}
                       {taxRates?.map((rate) => (
-                        // FIX: The filter above ensures rate.id is not null/empty
                         <SelectItem key={rate.id} value={rate.id}>
                           {rate.name} ({(rate.rate_percentage * 100).toFixed(2)}%)
                         </SelectItem>
@@ -278,7 +272,6 @@ const TaxSettings = () => {
                   <Input
                     id="tax_number_label"
                     placeholder="e.g., VAT ID, GST No., Tax ID"
-                    // Ensure value is always a string, falling back to empty string if null
                     value={field.value || ""}
                     onChange={field.onChange}
                   />
@@ -293,9 +286,14 @@ const TaxSettings = () => {
 
         {/* Action Button */}
         <div className="flex justify-end">
-          <Button type="submit" disabled={isSubmitting || saveSettingsMutation.isLoading}>
+          <Button
+            type="submit"
+            // FIX: Replaced isLoading with isPending
+            disabled={isSubmitting || saveSettingsMutation.isPending}
+          >
             <Save className="w-4 h-4 mr-2" />
-            {isSubmitting || saveSettingsMutation.isLoading ? "Saving..." : "Save Settings"}
+            {/* FIX: Replaced isLoading with isPending */}
+            {isSubmitting || saveSettingsMutation.isPending ? "Saving..." : "Save Settings"}
           </Button>
         </div>
       </form>
