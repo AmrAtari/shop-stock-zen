@@ -30,7 +30,7 @@ interface SettingsRow {
 // --- Schema Definition for Validation ---
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  // FIX: Use z.union to strictly allow either a valid UUID or an empty string ("")
+  // FIX: Allow either a valid UUID or an empty string ("") for the placeholder option
   default_tax_rate_id: z.union([z.string().uuid("Please select a valid default tax rate."), z.literal("")]),
   tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
@@ -83,7 +83,7 @@ const TaxSettings = () => {
     control,
     handleSubmit,
     reset,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = useForm<TaxSettingsFormValues>({
     resolver: zodResolver(TaxSettingsSchema),
     defaultValues: {
@@ -207,13 +207,13 @@ const TaxSettings = () => {
                     value={field.value || ""}
                   >
                     <SelectTrigger id="default_tax_rate_id">
-                      <SelectValue placeholder="No default rate selected (Use 0% if nothing is matched)" />
+                      <SelectValue placeholder="No default rate selected (Uses 0% if nothing is matched)" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Empty option for optional setting. Must have an empty string value. */}
+                      {/* Placeholder option for optional setting. MUST have an empty string value. */}
                       <SelectItem value="">-- No Fallback Rate --</SelectItem>
                       {taxRates?.map((rate: TaxRate) => {
-                        // FIX: Final safeguard check to ensure the ID is a non-empty string
+                        // FINAL GUARD: Ensure the ID is a non-empty string before rendering SelectItem
                         if (!rate.id || rate.id.length === 0) return null;
 
                         return (
@@ -226,6 +226,9 @@ const TaxSettings = () => {
                   </Select>
                 )}
               />
+              {errors.default_tax_rate_id && (
+                <p className="text-sm text-destructive">{errors.default_tax_rate_id.message}</p>
+              )}
               <p className="text-sm text-muted-foreground">
                 This rate is used if no specific jurisdiction rule is matched (e.g., an international sale).
               </p>
