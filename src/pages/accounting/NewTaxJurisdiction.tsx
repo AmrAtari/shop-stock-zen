@@ -44,7 +44,7 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw new Error(error.message);
-  // Filter out any rate with a non-string or empty ID at the data layer
+  // FIX (Data Layer): Filter out rates where ID is null, undefined, or an empty string ("")
   return (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
 };
 
@@ -177,7 +177,7 @@ const NewTaxJurisdiction = () => {
                     <SelectContent>
                       {/* Map over tax rates for the dropdown */}
                       {taxRates?.map((rate: TaxRate) => {
-                        // FIX #2 (Render Layer): AGGRESSIVE CHECK FOR EMPTY/INVALID ID
+                        // FIX (Render Layer): Final safeguard to ensure the ID is a non-empty string
                         if (!rate.id || rate.id === "") return null;
                         return (
                           <SelectItem key={rate.id} value={rate.id}>
