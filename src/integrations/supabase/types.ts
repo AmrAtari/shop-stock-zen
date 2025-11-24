@@ -128,20 +128,6 @@ export type Database = {
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "accounts_payable_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "accounts_payable_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["supplier_id"]
-          },
         ]
       }
       accounts_receivable: {
@@ -660,6 +646,57 @@ export type Database = {
           },
         ]
       }
+      bill_line_items: {
+        Row: {
+          account_id: string
+          created_at: string
+          description: string | null
+          id: string
+          line_number: number
+          line_total: number
+          quantity: number
+          unit_price: number
+          vendor_bill_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          line_number: number
+          line_total: number
+          quantity: number
+          unit_price: number
+          vendor_bill_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          line_number?: number
+          line_total?: number
+          quantity?: number
+          unit_price?: number
+          vendor_bill_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_line_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_line_items_vendor_bill_id_fkey"
+            columns: ["vendor_bill_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_bills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bill_payments: {
         Row: {
           bank_account_id: string
@@ -792,13 +829,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "main_groups"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_main_group"
-            columns: ["main_group_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["brand_id"]
           },
         ]
       }
@@ -1217,13 +1247,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "items_category_fkey"
-            columns: ["category"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["category_id"]
-          },
-          {
             foreignKeyName: "items_color_fkey"
             columns: ["color"]
             isOneToOne: false
@@ -1243,13 +1266,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "main_groups"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "items_main_group_fkey"
-            columns: ["main_group"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["brand_id"]
           },
           {
             foreignKeyName: "items_origin_fkey"
@@ -1278,20 +1294,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "items_supplier_fkey"
-            columns: ["supplier"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "items_supplier_fkey"
-            columns: ["supplier"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["supplier_id"]
           },
           {
             foreignKeyName: "items_theme_fkey"
@@ -1442,20 +1444,6 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_item_lifecycle_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -1731,20 +1719,6 @@ export type Database = {
             foreignKeyName: "physical_inventory_counts_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "physical_inventory_counts_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "physical_inventory_counts_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -1932,13 +1906,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_products_category_id"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["category_id"]
-          },
-          {
             foreignKeyName: "fk_products_gender_id"
             columns: ["gender_id"]
             isOneToOne: false
@@ -2033,13 +2000,6 @@ export type Database = {
             columns: ["po_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
-            referencedColumns: ["po_id"]
-          },
-          {
-            foreignKeyName: "purchase_order_items_po_id_fkey"
-            columns: ["po_id"]
-            isOneToOne: false
-            referencedRelation: "v_po_report"
             referencedColumns: ["po_id"]
           },
         ]
@@ -2417,20 +2377,6 @@ export type Database = {
             foreignKeyName: "store_inventory_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -2494,20 +2440,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "supplier_pricing_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "supplier_pricing_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["supplier_id"]
-          },
-          {
             foreignKeyName: "supplier_pricing_variant_id_fkey"
             columns: ["variant_id"]
             isOneToOne: false
@@ -2539,20 +2471,6 @@ export type Database = {
             foreignKeyName: "supplier_pricing_variant_id_fkey"
             columns: ["variant_id"]
             isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "supplier_pricing_variant_id_fkey"
-            columns: ["variant_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "supplier_pricing_variant_id_fkey"
-            columns: ["variant_id"]
-            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -2560,31 +2478,49 @@ export type Database = {
       }
       suppliers: {
         Row: {
-          address: string | null
+          billing_address: Json | null
           contact_person: string | null
           created_at: string
+          currency_code: string
           email: string | null
           id: string
           name: string
+          payment_terms: string
           phone: string | null
+          shipping_address: Json | null
+          status: string
+          tax_id: string | null
+          vendor_code: string | null
         }
         Insert: {
-          address?: string | null
+          billing_address?: Json | null
           contact_person?: string | null
           created_at?: string
+          currency_code?: string
           email?: string | null
           id?: string
           name: string
+          payment_terms?: string
           phone?: string | null
+          shipping_address?: Json | null
+          status?: string
+          tax_id?: string | null
+          vendor_code?: string | null
         }
         Update: {
-          address?: string | null
+          billing_address?: Json | null
           contact_person?: string | null
           created_at?: string
+          currency_code?: string
           email?: string | null
           id?: string
           name?: string
+          payment_terms?: string
           phone?: string | null
+          shipping_address?: Json | null
+          status?: string
+          tax_id?: string | null
+          vendor_code?: string | null
         }
         Relationships: []
       }
@@ -2620,6 +2556,91 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      tax_jurisdictions: {
+        Row: {
+          country_code: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          jurisdiction_type: string
+          name: string
+          tax_rate_id: string | null
+        }
+        Insert: {
+          country_code: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          jurisdiction_type: string
+          name: string
+          tax_rate_id?: string | null
+        }
+        Update: {
+          country_code?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          jurisdiction_type?: string
+          name?: string
+          tax_rate_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_jurisdictions_tax_rate_id_fkey"
+            columns: ["tax_rate_id"]
+            isOneToOne: false
+            referencedRelation: "tax_rates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tax_rates: {
+        Row: {
+          country_code: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_compound: boolean | null
+          liability_account_id: string | null
+          name: string
+          rate_percentage: number
+          tax_type: string
+        }
+        Insert: {
+          country_code: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_compound?: boolean | null
+          liability_account_id?: string | null
+          name: string
+          rate_percentage: number
+          tax_type: string
+        }
+        Update: {
+          country_code?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_compound?: boolean | null
+          liability_account_id?: string | null
+          name?: string
+          rate_percentage?: number
+          tax_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_rates_liability_account_id_fkey"
+            columns: ["liability_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       test: {
         Row: {
@@ -2739,20 +2760,6 @@ export type Database = {
             foreignKeyName: "transactions_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "transactions_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -2833,20 +2840,6 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_item_lifecycle_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "transfer_items_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transfer_items_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -3090,20 +3083,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_supplier"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_supplier"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["supplier_id"]
-          },
-          {
             foreignKeyName: "fk_variants_color_id"
             columns: ["color_id"]
             isOneToOne: false
@@ -3130,20 +3109,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["product_id"]
-          },
-          {
-            foreignKeyName: "variants_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "variants_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["supplier_id"]
           },
         ]
       }
@@ -3194,20 +3159,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vendor_bills_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vendor_bills_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["supplier_id"]
           },
         ]
       }
@@ -3348,81 +3299,6 @@ export type Database = {
           },
         ]
       }
-      v_items_report: {
-        Row: {
-          brand: string | null
-          brand_id: string | null
-          category: string | null
-          category_id: string | null
-          color: string | null
-          cost_price: number | null
-          created_at: string | null
-          gender: string | null
-          global_quantity: number | null
-          id: string | null
-          last_restocked: string | null
-          min_stock: number | null
-          name: string | null
-          origin: string | null
-          season: string | null
-          selling_price: number | null
-          size: string | null
-          sku: string | null
-          supplier_id: string | null
-          supplier_name: string | null
-          unit: string | null
-        }
-        Relationships: []
-      }
-      v_items_sold_report: {
-        Row: {
-          avg_selling_price: number | null
-          brand: string | null
-          category: string | null
-          cost_price: number | null
-          first_sale_date: string | null
-          item_id: string | null
-          item_name: string | null
-          last_sale_date: string | null
-          sku: string | null
-          supplier: string | null
-          total_profit: number | null
-          total_quantity_sold: number | null
-          total_sales_amount: number | null
-          total_transactions: number | null
-        }
-        Relationships: []
-      }
-      v_po_report: {
-        Row: {
-          currency: string | null
-          expected_delivery_date: string | null
-          id: number | null
-          order_date: string | null
-          po_id: number | null
-          po_number: string | null
-          shipping_charges: number | null
-          status: string | null
-          store_id: string | null
-          store_location: string | null
-          store_name: string | null
-          subtotal: number | null
-          supplier_id: string | null
-          supplier_name: string | null
-          tax_amount: number | null
-          total_cost: number | null
-          total_items: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "purchase_orders_store_id_fkey"
-            columns: ["store_id"]
-            isOneToOne: false
-            referencedRelation: "stores"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       v_pos_receipts_report: {
         Row: {
           amount: number | null
@@ -3475,20 +3351,6 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_item_lifecycle_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "transactions_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -3574,20 +3436,6 @@ export type Database = {
             foreignKeyName: "transactions_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "transactions_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -3621,85 +3469,6 @@ export type Database = {
           to_store: string | null
         }
         Relationships: []
-      }
-      v_store_inventory_report: {
-        Row: {
-          brand: string | null
-          category: string | null
-          cost_price: number | null
-          created_at: string | null
-          id: string | null
-          item_id: string | null
-          item_name: string | null
-          min_stock: number | null
-          qty_on_order: number | null
-          selling_price: number | null
-          sku: string | null
-          store_id: string | null
-          store_location: string | null
-          store_name: string | null
-          store_quantity: number | null
-          supplier_name: string | null
-          unit: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "items"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "items_with_current_price"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_inventory_turnover_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_item_lifecycle_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_profit_margin_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "store_inventory_store_id_fkey"
-            columns: ["store_id"]
-            isOneToOne: false
-            referencedRelation: "stores"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       v_store_stock_levels: {
         Row: {
@@ -3743,20 +3512,6 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_item_lifecycle_report"
-            referencedColumns: ["item_id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_report"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "store_inventory_item_id_fkey"
-            columns: ["item_id"]
-            isOneToOne: false
-            referencedRelation: "v_items_sold_report"
             referencedColumns: ["item_id"]
           },
           {

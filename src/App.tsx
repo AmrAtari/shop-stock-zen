@@ -55,10 +55,19 @@ const App = () => {
           <BrowserRouter>
             <Routes>
               {/* Public Routes */}
-              <Route path="/" element={<Auth />} />
               <Route path="/auth" element={<Auth />} />
 
-              {/* Protected Routes - General */}
+              {/* Protected Routes - Main */}
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Dashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/dashboard"
                 element={

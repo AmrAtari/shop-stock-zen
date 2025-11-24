@@ -25,7 +25,7 @@ const Auth = () => {
   useEffect(() => {
     // Redirect if session exists
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate("/");
+      if (session) navigate("/dashboard");
     });
   }, [navigate]);
 
@@ -88,7 +88,7 @@ const Auth = () => {
       localStorage.setItem("username", profile.username);
 
       toast.success(`Welcome ${profile.username}, you are logged in as ${userRole.toUpperCase()}`);
-      navigate("/"); // redirect to dashboard
+      navigate("/dashboard");
     } catch (error: any) {
       toast.error(error.message || "Failed to sign in");
     } finally {
