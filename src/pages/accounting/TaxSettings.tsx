@@ -20,14 +20,9 @@ interface TaxRate {
   name: string;
   rate_percentage: number;
 }
-interface TaxSettingsData {
-  determination_policy: "Origin" | "Destination";
-  default_tax_rate_id: string | null;
-  tax_number_label: string | null;
-}
-// We expect only one row for settings
+
 interface SettingsRow {
-  id: string; // The primary key for the single settings row
+  id: string;
   determination_policy: "Origin" | "Destination";
   default_tax_rate_id: string | null;
   tax_number_label: string | null;
@@ -36,11 +31,9 @@ interface SettingsRow {
 // --- Schema Definition for Validation ---
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  // FIX: Use z.union to allow either a UUID string OR an empty string ("")
-  default_tax_rate_id: z
-    .union([z.string().uuid("Please select a valid default tax rate."), z.literal("")])
-    .nullable()
-    .optional(),
+  // FIX: Use z.union to strictly allow either a valid UUID or an empty string ("")
+  // This forces the value to match the placeholder or a real selection, solving the SelectItem error.
+  default_tax_rate_id: z.union([z.string().uuid("Please select a valid default tax rate."), z.literal("")]),
   tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
 
@@ -57,14 +50,14 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw error;
-  return data.filter((rate) => rate.id) as TaxRate[];
+  // FIX: Explicitly filter out rates where ID is null, undefined, or an empty string ("")
+  return data.filter((rate) => rate.id && rate.id.length > 0) as TaxRate[];
 };
 
 // 2. Fetch the Single Tax Settings Row
 const fetchTaxSettings = async (): Promise<SettingsRow> => {
   const { data, error } = await supabase.from("tax_settings").select("*").limit(1).single();
 
-  // If no row exists (PGRST116), return a safe default for initialization
   if (error && error.code === "PGRST116") {
     return {
       id: "placeholder",
@@ -103,9 +96,10 @@ const TaxSettings = () => {
     formState: { isSubmitting, errors },
   } = useForm<TaxSettingsFormValues>({
     resolver: zodResolver(TaxSettingsSchema),
+    // IMPORTANT: Initialize default_tax_rate_id to "" to match the placeholder item value
     defaultValues: {
       determination_policy: "Destination",
-      default_tax_rate_id: "", // Initialize as empty string to match "No Default Rate"
+      default_tax_rate_id: "",
       tax_number_label: "VAT ID",
     },
   });
@@ -115,7 +109,7 @@ const TaxSettings = () => {
     if (currentSettings && !isLoadingSettings) {
       reset({
         determination_policy: currentSettings.determination_policy || "Destination",
-        // IMPORTANT: If null, set to "" for the Select component to show placeholder
+        // Convert null from DB to "" for the Select component to show placeholder
         default_tax_rate_id: currentSettings.default_tax_rate_id || "",
         tax_number_label: currentSettings.tax_number_label || "VAT ID",
       });
@@ -241,8 +235,8 @@ const TaxSettings = () => {
                 render={({ field }) => (
                   <Select
                     onValueChange={field.onChange}
-                    // Field value must be an empty string for the placeholder to work when value is null
-                    value={field.value === null ? "" : field.value}
+                    // Ensures the Select value is either a UUID string or ""
+                    value={field.value || ""}
                   >
                     <SelectTrigger id="default_tax_rate_id">
                       <SelectValue placeholder="Select a default rate (Optional)" />
@@ -260,6 +254,9 @@ const TaxSettings = () => {
                   </Select>
                 )}
               />
+              {errors.default_tax_rate_id && (
+                <p className="text-sm text-destructive">{errors.default_tax_rate_id.message}</p>
+              )}
               <p className="text-sm text-muted-foreground">
                 This rate is used if no specific jurisdiction rule is matched (e.g., an international sale) or if
                 jurisdictions are disabled.
