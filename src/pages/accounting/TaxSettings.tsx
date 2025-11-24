@@ -36,7 +36,11 @@ interface SettingsRow {
 // --- Schema Definition for Validation ---
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  default_tax_rate_id: z.string().nullable().optional(),
+  // FIX: Use z.union to allow either a UUID string OR an empty string ("")
+  default_tax_rate_id: z
+    .union([z.string().uuid("Please select a valid default tax rate."), z.literal("")])
+    .nullable()
+    .optional(),
   tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
 
@@ -53,7 +57,6 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw error;
-  // Filter out any rates with null/empty IDs to prevent the SelectItem error
   return data.filter((rate) => rate.id) as TaxRate[];
 };
 
@@ -64,7 +67,7 @@ const fetchTaxSettings = async (): Promise<SettingsRow> => {
   // If no row exists (PGRST116), return a safe default for initialization
   if (error && error.code === "PGRST116") {
     return {
-      id: "placeholder", // Placeholder ID for the single row
+      id: "placeholder",
       determination_policy: "Destination",
       default_tax_rate_id: null,
       tax_number_label: "VAT ID",
@@ -72,7 +75,6 @@ const fetchTaxSettings = async (): Promise<SettingsRow> => {
   }
   if (error) throw error;
 
-  // Ensure the ID exists for mutation later
   return data as SettingsRow;
 };
 
@@ -103,7 +105,7 @@ const TaxSettings = () => {
     resolver: zodResolver(TaxSettingsSchema),
     defaultValues: {
       determination_policy: "Destination",
-      default_tax_rate_id: null,
+      default_tax_rate_id: "", // Initialize as empty string to match "No Default Rate"
       tax_number_label: "VAT ID",
     },
   });
@@ -113,6 +115,7 @@ const TaxSettings = () => {
     if (currentSettings && !isLoadingSettings) {
       reset({
         determination_policy: currentSettings.determination_policy || "Destination",
+        // IMPORTANT: If null, set to "" for the Select component to show placeholder
         default_tax_rate_id: currentSettings.default_tax_rate_id || "",
         tax_number_label: currentSettings.tax_number_label || "VAT ID",
       });
@@ -124,6 +127,7 @@ const TaxSettings = () => {
     mutationFn: async (data: TaxSettingsFormValues) => {
       const payload = {
         determination_policy: data.determination_policy,
+        // Convert empty string from Select component back to null for DB
         default_tax_rate_id: data.default_tax_rate_id === "" ? null : data.default_tax_rate_id,
         tax_number_label: data.tax_number_label || null,
       };
@@ -286,14 +290,9 @@ const TaxSettings = () => {
 
         {/* Action Button */}
         <div className="flex justify-end">
-          <Button
-            type="submit"
-            // FIX: Replaced isLoading with isPending
-            disabled={isSubmitting || saveSettingsMutation.isPending}
-          >
+          <Button type="submit" disabled={isSubmitting || saveSettingsMutation.isPending}>
             <Save className="w-4 h-4 mr-2" />
-            {/* FIX: Replaced isLoading with isPending */}
-            {isSubmitting || saveSettingsMutation.isPending ? "Saving..." : "Save Settings"}
+            {saveSettingsMutation.isPending ? "Saving..." : "Save Settings"}
           </Button>
         </div>
       </form>
