@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Edit, Trash2, Search, ArrowLeft } from "lucide-react"; // Note: Added ArrowLeft for consistency
+import { Plus, Edit, Trash2, Search, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -114,7 +114,7 @@ const TaxConfiguration = () => {
             <p className="text-muted-foreground">Configure and manage tax rates for your ERP.</p>
           </div>
         </div>
-        {/* === FIX: Added /rates/ to the path === */}
+        {/* === FIXED LINK: Added /rates/ === */}
         <Button onClick={() => navigate("/accounting/tax/rates/new")}>
           <Plus className="w-4 h-4 mr-2" />
           Add New Tax Rate
@@ -145,7 +145,7 @@ const TaxConfiguration = () => {
               <p className="text-muted-foreground">
                 {searchTerm ? "No tax rates found matching your search." : "No tax rates configured yet."}
               </p>
-              {/* === FIX: Added /rates/ to the path === */}
+              {/* === FIXED LINK: Added /rates/ === */}
               {!searchTerm && (
                 <Button variant="outline" className="mt-4" onClick={() => navigate("/accounting/tax/rates/new")}>
                   Configure Your First Tax Rate
@@ -188,7 +188,7 @@ const TaxConfiguration = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          // === FIX: Added /rates/ to the path ===
+                          // === FIXED LINK: Added /rates/ ===
                           onClick={() => navigate(`/accounting/tax/rates/${rate.id}/edit`)}
                         >
                           <Edit className="w-4 h-4" />
