@@ -29,7 +29,8 @@ interface TaxJurisdictionDetail {
   country_code: string;
   tax_rate_id: string;
   is_active: boolean;
-  tax_rates: TaxRate;
+  // FIX: Explicitly define tax_rates as TaxRate OR null to resolve TS2352
+  tax_rates: TaxRate | null;
 }
 
 // --- Schema Definition ---
@@ -47,7 +48,7 @@ type JurisdictionFormValues = z.infer<typeof JurisdictionSchema>;
 
 // --- Fetch Functions ---
 
-// 1. Fetch Tax Rates for the dropdown
+// 1. Fetch Tax Rates for the dropdown (Includes filter for empty IDs)
 const fetchTaxRates = async (): Promise<TaxRate[]> => {
   const { data, error } = await supabase
     .from("tax_rates")
@@ -56,7 +57,7 @@ const fetchTaxRates = async (): Promise<TaxRate[]> => {
     .order("name", { ascending: true });
 
   if (error) throw new Error(error.message);
-  // Filter out any rate with a non-string or empty ID at the data layer
+  // Filter out any rate with a null or empty ID to prevent Radix UI error
   return (data as TaxRate[]).filter((rate) => rate.id && rate.id.length > 0);
 };
 
@@ -79,6 +80,7 @@ const fetchJurisdictionDetail = async (id: string): Promise<TaxJurisdictionDetai
     .single();
 
   if (error) throw new Error(error.message);
+  // The cast is now safe due to the updated interface definition
   return data as TaxJurisdictionDetail;
 };
 
@@ -228,7 +230,7 @@ const EditTaxJurisdiction = () => {
                     <SelectContent>
                       {/* Map over tax rates for the dropdown */}
                       {taxRates?.map((rate: TaxRate) => {
-                        // FIX #2 (Render Layer): AGGRESSIVE CHECK FOR EMPTY/INVALID ID
+                        // Crucial check to prevent the Radix UI Select error
                         if (!rate.id || rate.id === "") return null;
                         return (
                           <SelectItem key={rate.id} value={rate.id}>
