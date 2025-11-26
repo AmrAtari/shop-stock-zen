@@ -23,7 +23,6 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
     bill_date: "",
     due_date: "",
     total_amount: "",
-    currency_id: "USD",
     payment_terms: "",
     notes: "",
   });
@@ -40,18 +39,6 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
     },
   });
 
-  const { data: currencies } = useQuery({
-    queryKey: ["currencies"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("currency_")
-        .select("*")
-        .order("name");
-      if (error) throw error;
-      return data;
-    },
-  });
-
   useEffect(() => {
     if (bill) {
       setFormData({
@@ -59,7 +46,6 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
         bill_date: bill.bill_date,
         due_date: bill.due_date,
         total_amount: bill.total_amount.toString(),
-        currency_id: bill.currency_id,
         payment_terms: bill.payment_terms || "",
         notes: bill.notes || "",
       });
@@ -69,7 +55,6 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
         bill_date: new Date().toISOString().split("T")[0],
         due_date: "",
         total_amount: "",
-        currency_id: "USD",
         payment_terms: "",
         notes: "",
       });
@@ -91,9 +76,7 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
       total_amount: totalAmount,
       paid_amount: bill?.paid_amount || 0,
       balance: totalAmount - (bill?.paid_amount || 0),
-      currency_id: formData.currency_id,
-      exchange_rate: 1.0,
-      status: bill?.status || "draft",
+      status: bill?.status || "Awaiting Payment",
       payment_terms: formData.payment_terms,
       notes: formData.notes,
       created_by: user.user.id,
@@ -110,45 +93,24 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="supplier">Supplier *</Label>
-              <Select
-                value={formData.supplier_id}
-                onValueChange={(value) => setFormData({ ...formData, supplier_id: value })}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select supplier" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers?.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="currency">Currency</Label>
-              <Select
-                value={formData.currency_id}
-                onValueChange={(value) => setFormData({ ...formData, currency_id: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {currencies?.map((currency) => (
-                    <SelectItem key={currency.id} value={currency.id}>
-                      {currency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="supplier">Supplier *</Label>
+            <Select
+              value={formData.supplier_id}
+              onValueChange={(value) => setFormData({ ...formData, supplier_id: value })}
+              required
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select supplier" />
+              </SelectTrigger>
+              <SelectContent>
+                {suppliers?.map((supplier) => (
+                  <SelectItem key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

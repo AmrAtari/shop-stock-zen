@@ -20,7 +20,6 @@ interface Bill {
   total_amount: number;
   balance: number;
   status: "Awaiting Payment" | "Partially Paid" | "Paid" | "Void";
-  currency_code: string;
   suppliers: {
     name: string;
     vendor_code: string | null;
@@ -152,10 +151,10 @@ const Bills = () => {
                       {new Date(bill.due_date).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(bill.total_amount, bill.currency_code)}
+                      {formatCurrency(bill.total_amount, baseCurrency)}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      {formatCurrency(bill.balance, bill.currency_code)}
+                      {formatCurrency(bill.balance, baseCurrency)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={getStatusVariant(bill.status)}>{bill.status}</Badge>
