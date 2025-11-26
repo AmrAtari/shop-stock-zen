@@ -7,20 +7,18 @@ export interface VendorBill {
   id: string;
   bill_number: string;
   supplier_id: string;
-  purchase_order_id?: string;
   bill_date: string;
   due_date: string;
   total_amount: number;
   paid_amount: number;
   balance: number;
-  currency_id: string;
-  exchange_rate: number;
   status: string;
   payment_terms?: string;
   notes?: string;
+  journal_entry_id?: string;
   created_by: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   supplier?: {
     id: string;
     name: string;
@@ -66,10 +64,10 @@ export const useAccountsPayable = (status?: string) => {
     queryKey: queryKeys.accountsPayable.bills(status),
     queryFn: async () => {
       let query = supabase
-        .from("accounts_payable")
+        .from("vendor_bills")
         .select(`
           *,
-          supplier:suppliers!accounts_payable_supplier_id_fkey(
+          supplier:suppliers(
             id,
             name,
             contact_person,
@@ -96,20 +94,19 @@ export const useBillDetail = (billId: string) => {
     queryKey: queryKeys.accountsPayable.detail(billId),
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("accounts_payable")
+        .from("vendor_bills")
         .select(`
           *,
-          supplier:suppliers!accounts_payable_supplier_id_fkey(
+          supplier:suppliers(
             id,
             name,
             contact_person,
             email,
-            phone,
-            address
+            phone
           )
         `)
         .eq("id", billId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data as VendorBill;
@@ -123,9 +120,15 @@ export const useCreateBill = () => {
 
   return useMutation({
     mutationFn: async (bill: Partial<VendorBill>) => {
+      // Generate bill number
+      const billNumber = `BILL-${Date.now()}`;
+      
       const { data, error } = await supabase
-        .from("accounts_payable")
-        .insert(bill)
+        .from("vendor_bills")
+        .insert({
+          ...bill,
+          bill_number: billNumber,
+        })
         .select()
         .single();
 
@@ -148,7 +151,7 @@ export const useUpdateBill = () => {
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<VendorBill> }) => {
       const { data, error } = await supabase
-        .from("accounts_payable")
+        .from("vendor_bills")
         .update(updates)
         .eq("id", id)
         .select()
@@ -185,60 +188,45 @@ export const useRecordPayment = () => {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error("Not authenticated");
 
-      // Create payment record
+      // Get current bill to calculate new amounts
+      const { data: bill } = await supabase
+        .from("vendor_bills")
+        .select("total_amount, paid_amount")
+        .eq("id", payment.bill_id)
+        .single();
+
+      if (!bill) throw new Error("Bill not found");
+
+      const newPaidAmount = (bill.paid_amount || 0) + payment.amount;
+      const newBalance = bill.total_amount - newPaidAmount;
+      const newStatus =
+        newBalance <= 0 ? "Paid" : newBalance < bill.total_amount ? "Partially Paid" : "Awaiting Payment";
+
+      // Create bill payment record
       const { data: paymentData, error: paymentError } = await supabase
-        .from("payments")
+        .from("bill_payments")
         .insert({
+          vendor_bill_id: payment.bill_id,
           payment_date: payment.payment_date,
-          payment_type: "vendor_payment",
+          payment_amount: payment.amount,
           payment_method: payment.payment_method,
-          amount: payment.amount,
-          currency_id: payment.currency_id,
-          exchange_rate: 1.0,
-          reference_number: payment.reference_number,
-          supplier_id: payment.supplier_id,
-          description: payment.description,
-          status: "cleared",
-          created_by: user.user.id,
+          bank_account_id: payment.currency_id, // Using as placeholder
+          journal_entry_id: "", // Will be created by trigger
         })
         .select()
         .single();
 
       if (paymentError) throw paymentError;
 
-      // Create payment allocation
-      const { error: allocationError } = await supabase
-        .from("payment_allocations")
-        .insert({
-          payment_id: paymentData.id,
-          ap_id: payment.bill_id,
-          allocated_amount: payment.amount,
-        });
-
-      if (allocationError) throw allocationError;
-
       // Update bill paid amount and status
-      const { data: bill } = await supabase
-        .from("accounts_payable")
-        .select("total_amount, paid_amount")
-        .eq("id", payment.bill_id)
-        .single();
-
-      if (bill) {
-        const newPaidAmount = (bill.paid_amount || 0) + payment.amount;
-        const newBalance = bill.total_amount - newPaidAmount;
-        const newStatus =
-          newBalance <= 0 ? "paid" : newBalance < bill.total_amount ? "partial" : "approved";
-
-        await supabase
-          .from("accounts_payable")
-          .update({
-            paid_amount: newPaidAmount,
-            balance: newBalance,
-            status: newStatus,
-          })
-          .eq("id", payment.bill_id);
-      }
+      await supabase
+        .from("vendor_bills")
+        .update({
+          paid_amount: newPaidAmount,
+          balance: newBalance,
+          status: newStatus,
+        })
+        .eq("id", payment.bill_id);
 
       return paymentData;
     },
@@ -258,7 +246,7 @@ export const useVendorAging = () => {
     queryKey: queryKeys.accountsPayable.aging,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("accounts_payable")
+        .from("vendor_bills")
         .select(`
           id,
           supplier_id,
@@ -266,13 +254,13 @@ export const useVendorAging = () => {
           due_date,
           balance,
           status,
-          supplier:suppliers!accounts_payable_supplier_id_fkey(
+          supplier:suppliers(
             id,
             name
           )
         `)
-        .neq("status", "paid")
-        .neq("status", "cancelled");
+        .neq("status", "Paid")
+        .neq("status", "Void");
 
       if (error) throw error;
 
@@ -327,24 +315,17 @@ export const useBillPayments = (billId?: string) => {
     queryKey: queryKeys.accountsPayable.payments(billId),
     queryFn: async () => {
       let query = supabase
-        .from("payment_allocations")
+        .from("bill_payments")
         .select(`
           id,
-          allocated_amount,
-          created_at,
-          payment:payments!payment_allocations_payment_id_fkey(
-            id,
-            payment_number,
-            payment_date,
-            payment_method,
-            amount,
-            reference_number,
-            status
-          )
+          payment_amount,
+          payment_date,
+          payment_method,
+          created_at
         `);
 
       if (billId) {
-        query = query.eq("ap_id", billId);
+        query = query.eq("vendor_bill_id", billId);
       }
 
       const { data, error } = await query.order("created_at", { ascending: false });

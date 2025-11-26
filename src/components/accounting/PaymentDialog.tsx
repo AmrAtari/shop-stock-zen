@@ -30,7 +30,7 @@ export const PaymentDialog = ({ open, onOpenChange, bill, onSubmit }: PaymentDia
       payment_date: formData.payment_date,
       payment_method: formData.payment_method,
       amount: parseFloat(formData.amount),
-      currency_id: bill.currency_id,
+      currency_id: "USD", // Use system default
       reference_number: formData.reference_number,
       supplier_id: bill.supplier_id,
       description: formData.description,

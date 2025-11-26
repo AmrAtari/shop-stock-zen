@@ -42,8 +42,6 @@ interface BillDetailData {
   paid_amount: number;
   balance: number;
   status: "Awaiting Payment" | "Partially Paid" | "Paid" | "Void";
-  currency_code: string;
-  exchange_rate: number;
   suppliers: {
     id: string;
     name: string;
@@ -194,9 +192,7 @@ const BillDetail = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Currency</p>
-              <p className="font-medium">
-                {bill.currency_code} {bill.currency_code !== baseCurrency && `(Rate: ${bill.exchange_rate})`}
-              </p>
+              <p className="font-medium">{baseCurrency}</p>
             </div>
           </CardContent>
         </Card>
@@ -209,16 +205,16 @@ const BillDetail = () => {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span>Total Bill Amount:</span>
-              <span className="font-semibold">{formatCurrency(bill.total_amount, bill.currency_code)}</span>
+              <span className="font-semibold">{formatCurrency(bill.total_amount, baseCurrency)}</span>
             </div>
             <div className="flex justify-between">
               <span>Amount Paid:</span>
-              <span className="font-medium text-green-600">{formatCurrency(bill.paid_amount, bill.currency_code)}</span>
+              <span className="font-medium text-green-600">{formatCurrency(bill.paid_amount, baseCurrency)}</span>
             </div>
             <div className="flex justify-between text-xl font-bold border-t pt-2 mt-2">
               <span>Balance Due:</span>
               <span className={cn(bill.balance > 0 ? "text-red-600" : "text-green-600")}>
-                {formatCurrency(bill.balance, bill.currency_code)}
+                {formatCurrency(bill.balance, baseCurrency)}
               </span>
             </div>
           </CardContent>
@@ -247,12 +243,12 @@ const BillDetail = () => {
                 <TableRow key={item.id}>
                   <TableCell>{item.description}</TableCell>
                   <TableCell className="text-right">{item.quantity}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(item.unit_price, bill.currency_code)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(item.unit_price, baseCurrency)}</TableCell>
                   <TableCell>
                     {item.accounts.account_code} - {item.accounts.account_name}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(item.line_total, bill.currency_code)}
+                    {formatCurrency(item.line_total, baseCurrency)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -261,17 +257,17 @@ const BillDetail = () => {
               <TableRow className="font-bold">
                 <TableCell colSpan={3}>Totals</TableCell>
                 <TableCell className="text-right">Subtotal:</TableCell>
-                <TableCell className="text-right">{formatCurrency(subtotal, bill.currency_code)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(subtotal, baseCurrency)}</TableCell>
               </TableRow>
               <TableRow className="font-bold">
                 <TableCell colSpan={3}></TableCell>
                 <TableCell className="text-right">Tax:</TableCell>
-                <TableCell className="text-right">{formatCurrency(taxAmount, bill.currency_code)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(taxAmount, baseCurrency)}</TableCell>
               </TableRow>
               <TableRow className="font-bold bg-muted/50">
                 <TableCell colSpan={3}></TableCell>
                 <TableCell className="text-right">Total Bill:</TableCell>
-                <TableCell className="text-right">{formatCurrency(bill.total_amount, bill.currency_code)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(bill.total_amount, baseCurrency)}</TableCell>
               </TableRow>
             </TableFooter>
           </Table>
@@ -304,7 +300,7 @@ const BillDetail = () => {
                     </TableCell>
                     <TableCell>{payment.payment_method || "Bank Transfer"}</TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatCurrency(payment.payment_amount, bill.currency_code)}
+                      {formatCurrency(payment.payment_amount, baseCurrency)}
                     </TableCell>
                   </TableRow>
                 ))}
