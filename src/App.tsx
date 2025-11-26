@@ -41,6 +41,25 @@ import NewBill from "./pages/accounting/NewBill";
 import EditBill from "./pages/accounting/EditBill";
 import BillDetail from "./pages/accounting/BillDetail";
 
+// Missing Accounting Imports
+import AccountsReceivable from "./pages/accounting/AccountsReceivable";
+import FinancialReports from "./pages/accounting/FinancialReports";
+import BalanceSheet from "./pages/accounting/BalanceSheet";
+import IncomeStatement from "./pages/accounting/IncomeStatement";
+import CashFlow from "./pages/accounting/CashFlow";
+import TrialBalance from "./pages/accounting/TrialBalance";
+import GeneralLedger from "./pages/accounting/GeneralLedger";
+import JournalEntries from "./pages/accounting/JournalEntries";
+import JournalEntryNew from "./pages/accounting/JournalEntryNew";
+import JournalEntryDetail from "./pages/accounting/JournalEntryDetail";
+import JournalEntryEdit from "./pages/accounting/JournalEntryEdit";
+import BankAccounts from "./pages/accounting/BankAccounts";
+import NewBankAccount from "./pages/accounting/NewBankAccount";
+import BankAccountDetail from "./pages/accounting/BankAccountDetail";
+import BankAccountEdit from "./pages/accounting/BankAccountEdit";
+import BankReconciliation from "./pages/accounting/BankReconciliation";
+import OpeningStockEntry from "./pages/accounting/OpeningStockEntry";
+
 // === START: TAX MANAGEMENT COMPONENT IMPORTS ===
 import TaxManagementIndex from "./pages/accounting/TaxManagementIndex";
 import TaxConfiguration from "./pages/accounting/TaxConfiguration";
@@ -438,6 +457,202 @@ const App = () => {
                 }
               />
               {/* === END: TAX MANAGEMENT ROUTES (New) === */}
+
+              {/* === START: MISSING ACCOUNTING ROUTES === */}
+
+              {/* Accounts Receivable */}
+              <Route
+                path="/accounting/accounts-receivable"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AccountsReceivable />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Financial Reports */}
+              <Route
+                path="/accounting/financial-reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <FinancialReports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Balance Sheet */}
+              <Route
+                path="/accounting/balance-sheet"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BalanceSheet />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Income Statement */}
+              <Route
+                path="/accounting/income-statement"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <IncomeStatement />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Cash Flow */}
+              <Route
+                path="/accounting/cash-flow"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <CashFlow />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Trial Balance */}
+              <Route
+                path="/accounting/trial-balance"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TrialBalance />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* General Ledger */}
+              <Route
+                path="/accounting/general-ledger"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <GeneralLedger />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Journal Entries */}
+              <Route
+                path="/accounting/journal-entries"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntries />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/journal-entries/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntryNew />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/journal-entries/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntryDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/journal-entries/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <JournalEntryEdit />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Bank Accounts */}
+              <Route
+                path="/accounting/bank-accounts"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BankAccounts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bank-accounts/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <NewBankAccount />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bank-accounts/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BankAccountDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/bank-accounts/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BankAccountEdit />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Bank Reconciliation */}
+              <Route
+                path="/accounting/bank-reconciliation"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BankReconciliation />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Opening Stock Entry */}
+              <Route
+                path="/accounting/opening-stock"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <OpeningStockEntry />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* === END: MISSING ACCOUNTING ROUTES === */}
 
               {/* POS Routes */}
               <Route
