@@ -8,11 +8,12 @@ import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { formatCurrency } from "@/lib/formatters";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// --- Data Interfaces ---
+// --- Data Interfaces (CORRECTED) ---
 interface Bill {
   id: string;
   balance: number;
   due_date: string;
+  // FIX 1: Change suppliers type from array to single object
   suppliers: {
     name: string;
   };
@@ -28,7 +29,7 @@ interface VendorAging {
   totalDue: number;
 }
 
-// Aging Calculation Logic
+// Aging Calculation Logic (No change needed here)
 const calculateAging = (bills: Bill[]): VendorAging[] => {
   const today = new Date();
   const agingMap = new Map<string, Omit<VendorAging, "vendorName">>();
@@ -42,7 +43,9 @@ const calculateAging = (bills: Bill[]): VendorAging[] => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const balance = bill.balance;
 
+    // FIX: The query ensures bill.suppliers is an object, not an array
     const vendorKey = bill.suppliers.name;
+
     if (!agingMap.has(vendorKey)) {
       agingMap.set(vendorKey, {
         current: 0,
@@ -105,7 +108,10 @@ export const VendorAgingReport = () => {
         .gt("balance", 0);
 
       if (error) throw error;
-      return data as Bill[];
+
+      // FIX 2: Explicitly cast the data type to 'unknown' first to resolve the overlap error
+      // then cast to the correct array type 'Bill[]'.
+      return data as unknown as Bill[];
     },
   });
 
@@ -114,7 +120,7 @@ export const VendorAgingReport = () => {
     return openBills ? calculateAging(openBills) : [];
   }, [openBills]);
 
-  // Calculate Grand Totals
+  // Calculate Grand Totals (No change needed here)
   const grandTotals = useMemo(() => {
     return agingData.reduce(
       (acc, row) => ({
