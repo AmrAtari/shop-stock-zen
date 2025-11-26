@@ -270,12 +270,36 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
+              {/* Chart of Accounts - Add both routes for compatibility */}
               <Route
                 path="/accounting/accounts"
                 element={
                   <ProtectedRoute>
                     <Layout>
                       <ChartOfAccounts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/chart-of-accounts"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ChartOfAccounts />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Accounting Reports - Add both routes for compatibility */}
+              <Route
+                path="/accounting/reports"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <FinancialReports />
                     </Layout>
                   </ProtectedRoute>
                 }
