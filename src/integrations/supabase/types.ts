@@ -2028,6 +2028,7 @@ export type Database = {
           expected_delivery_date: string | null
           fob_terms: string | null
           id: number
+          is_tax_inclusive: boolean
           order_date: string
           payment_terms: string | null
           po_id: number
@@ -2063,6 +2064,7 @@ export type Database = {
           expected_delivery_date?: string | null
           fob_terms?: string | null
           id?: number
+          is_tax_inclusive?: boolean
           order_date: string
           payment_terms?: string | null
           po_id?: number
@@ -2098,6 +2100,7 @@ export type Database = {
           expected_delivery_date?: string | null
           fob_terms?: string | null
           id?: number
+          is_tax_inclusive?: boolean
           order_date?: string
           payment_terms?: string | null
           po_id?: number
@@ -2572,7 +2575,7 @@ export type Database = {
           is_active: boolean | null
           jurisdiction_type: string
           name: string
-          tax_rate_id: string | null
+          tax_rate_id: string
         }
         Insert: {
           country_code: string
@@ -2581,7 +2584,7 @@ export type Database = {
           is_active?: boolean | null
           jurisdiction_type: string
           name: string
-          tax_rate_id?: string | null
+          tax_rate_id: string
         }
         Update: {
           country_code?: string
@@ -2590,7 +2593,7 @@ export type Database = {
           is_active?: boolean | null
           jurisdiction_type?: string
           name?: string
-          tax_rate_id?: string | null
+          tax_rate_id?: string
         }
         Relationships: [
           {
@@ -2610,7 +2613,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           is_compound: boolean | null
-          liability_account_id: string | null
+          liability_account_id: string
           name: string
           rate_percentage: number
           tax_type: string
@@ -2622,7 +2625,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_compound?: boolean | null
-          liability_account_id?: string | null
+          liability_account_id: string
           name: string
           rate_percentage: number
           tax_type: string
@@ -2634,7 +2637,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_compound?: boolean | null
-          liability_account_id?: string | null
+          liability_account_id?: string
           name?: string
           rate_percentage?: number
           tax_type?: string
@@ -2645,6 +2648,38 @@ export type Database = {
             columns: ["liability_account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tax_settings: {
+        Row: {
+          default_tax_rate_id: string | null
+          determination_policy: string
+          id: number
+          last_updated_at: string | null
+          tax_number_label: string | null
+        }
+        Insert: {
+          default_tax_rate_id?: string | null
+          determination_policy: string
+          id?: number
+          last_updated_at?: string | null
+          tax_number_label?: string | null
+        }
+        Update: {
+          default_tax_rate_id?: string | null
+          determination_policy?: string
+          id?: number
+          last_updated_at?: string | null
+          tax_number_label?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_settings_default_tax_rate_id_fkey"
+            columns: ["default_tax_rate_id"]
+            isOneToOne: false
+            referencedRelation: "tax_rates"
             referencedColumns: ["id"]
           },
         ]
