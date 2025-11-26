@@ -31,6 +31,7 @@ import InventoryRecalculate from "./pages/InventoryRecalculate";
 // Accounting Components
 import AccountingDashboard from "./pages/accounting/AccountingDashboard";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
+import AccountsPayable from "./pages/accounting/AccountsPayable";
 import Vendors from "./pages/accounting/Vendors";
 import NewVendor from "./pages/accounting/NewVendor";
 import EditVendor from "./pages/accounting/EditVendor";
@@ -261,7 +262,17 @@ const App = () => {
                 }
               />
 
-              {/* Accounts Payable (Bills) Routes */}
+              {/* Accounts Payable Routes */}
+              <Route
+                path="/accounting/accounts-payable"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AccountsPayable />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/accounting/bills"
                 element={
