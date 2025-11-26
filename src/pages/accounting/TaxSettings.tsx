@@ -30,8 +30,8 @@ interface SettingsRow {
 // --- Schema Definition for Validation ---
 const TaxSettingsSchema = z.object({
   determination_policy: z.enum(["Origin", "Destination"]),
-  // Allows the Select value to be either a valid UUID or the empty string ("")
-  default_tax_rate_id: z.union([z.string().uuid("Please select a valid default tax rate."), z.literal("")]),
+  // Allows the Select value to be either a valid UUID or "none" (for no selection)
+  default_tax_rate_id: z.union([z.string().uuid("Please select a valid default tax rate."), z.literal("none")]),
   tax_number_label: z.string().max(50, "Label cannot exceed 50 characters.").nullable().optional(),
 });
 
@@ -97,8 +97,8 @@ const TaxSettings = () => {
     resolver: zodResolver(TaxSettingsSchema),
     defaultValues: {
       determination_policy: "Destination",
-      // Initialize as empty string ("") to match the placeholder/default
-      default_tax_rate_id: "",
+      // Initialize as "none" to represent no selection
+      default_tax_rate_id: "none",
       tax_number_label: "Tax ID",
     },
   });
@@ -108,8 +108,8 @@ const TaxSettings = () => {
     if (settingsData) {
       reset({
         determination_policy: settingsData.determination_policy || "Destination",
-        // Convert null from DB to "" for the Select component to show placeholder
-        default_tax_rate_id: settingsData.default_tax_rate_id || "",
+        // Convert null from DB to "none" for the Select component
+        default_tax_rate_id: settingsData.default_tax_rate_id || "none",
         tax_number_label: settingsData.tax_number_label || "Tax ID",
       });
     }
@@ -122,8 +122,8 @@ const TaxSettings = () => {
       const payload = {
         id: settingsData?.id || 1, // Use existing ID or default to 1
         determination_policy: data.determination_policy,
-        // Convert empty string ("") from Select component back to null for DB storage
-        default_tax_rate_id: data.default_tax_rate_id === "" ? null : data.default_tax_rate_id,
+        // Convert "none" from Select component back to null for DB storage
+        default_tax_rate_id: data.default_tax_rate_id === "none" ? null : data.default_tax_rate_id,
         tax_number_label: data.tax_number_label || null,
       };
       const { error } = await supabase.from("tax_settings").upsert(payload, { onConflict: "id" });
@@ -206,21 +206,21 @@ const TaxSettings = () => {
             {/* Default Tax Rate ID */}
             <div className="space-y-2">
               <Label htmlFor="default_tax_rate_id">Fallback/Default Tax Rate (Optional)</Label>
-              <Controller
+                <Controller
                 name="default_tax_rate_id"
                 control={control}
                 render={({ field }) => (
                   <Select
                     onValueChange={field.onChange}
-                    // Use the field value, defaulting to "" if null/undefined
-                    value={field.value || ""}
+                    // Use the field value, defaulting to "none" if null/undefined
+                    value={field.value || "none"}
                   >
                     <SelectTrigger id="default_tax_rate_id">
                       <SelectValue placeholder="No default rate selected (Uses 0% if nothing is matched)" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* ONLY SelectItem allowed to have value="" */}
-                      <SelectItem value="">-- No Fallback Rate --</SelectItem>
+                      {/* Use "none" instead of empty string for no selection */}
+                      <SelectItem value="none">-- No Fallback Rate --</SelectItem>
                       {taxRates?.map((rate: TaxRate) => {
                         // SAFEGUARD (Render Layer): Ensure the ID is a non-empty string
                         if (!rate.id || rate.id === "") return null;
