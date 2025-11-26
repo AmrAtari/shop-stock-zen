@@ -30,10 +30,7 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
   const { data: suppliers } = useQuery({
     queryKey: queryKeys.suppliers.all,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("suppliers")
-        .select("*")
-        .order("name");
+      const { data, error } = await supabase.from("suppliers").select("*").order("name");
       if (error) throw error;
       return data;
     },
@@ -173,9 +170,7 @@ export const BillDialog = ({ open, onOpenChange, bill, onSubmit }: BillDialogPro
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit">
-              {bill ? "Update Bill" : "Create Bill"}
-            </Button>
+            <Button type="submit">{bill ? "Update Bill" : "Create Bill"}</Button>
           </div>
         </form>
       </DialogContent>
