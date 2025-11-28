@@ -3160,10 +3160,13 @@ export type Database = {
           bill_date: string
           bill_number: string
           created_at: string | null
+          created_by: string | null
           due_date: string
           id: string
           journal_entry_id: string | null
+          notes: string | null
           paid_amount: number | null
+          payment_terms: string | null
           status: string
           supplier_id: string
           total_amount: number
@@ -3173,10 +3176,13 @@ export type Database = {
           bill_date: string
           bill_number: string
           created_at?: string | null
+          created_by?: string | null
           due_date: string
           id?: string
           journal_entry_id?: string | null
+          notes?: string | null
           paid_amount?: number | null
+          payment_terms?: string | null
           status: string
           supplier_id: string
           total_amount: number
@@ -3186,10 +3192,13 @@ export type Database = {
           bill_date?: string
           bill_number?: string
           created_at?: string | null
+          created_by?: string | null
           due_date?: string
           id?: string
           journal_entry_id?: string | null
+          notes?: string | null
           paid_amount?: number | null
+          payment_terms?: string | null
           status?: string
           supplier_id?: string
           total_amount?: number
