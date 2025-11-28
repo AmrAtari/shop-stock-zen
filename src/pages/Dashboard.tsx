@@ -866,22 +866,14 @@ const Dashboard = () => {
       </Card>
 
       {/* Rest of the dashboard components... */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {isLoading ? (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {isLoading || storeMetricsLoading ? (
           <>
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
             <Skeleton className="h-32" />
             <Skeleton className="h-32" />
           </>
         ) : (
           <>
-            <MetricCard
-              title="Total Items"
-              value={metrics.totalItems.toLocaleString()}
-              icon={<Package className="w-5 h-5" />}
-              variant="default"
-            />
             <MetricCard
               title="Inventory Value"
               value={formatCurrency(metrics.totalValue, currency)}
@@ -889,15 +881,9 @@ const Dashboard = () => {
               variant="success"
             />
             <MetricCard
-              title="Low Stock Alerts"
-              value={metrics.lowStockCount}
-              icon={<AlertTriangle className="w-5 h-5" />}
-              variant="warning"
-            />
-            <MetricCard
-              title="Total Products"
-              value={metrics.totalProducts}
-              icon={<TrendingUp className="w-5 h-5" />}
+              title="Total Stores"
+              value={storeMetrics.filter((s) => s.storeName !== "(Non-Specified Store)").length}
+              icon={<Store className="w-5 h-5" />}
               variant="default"
             />
           </>
