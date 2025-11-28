@@ -40,23 +40,13 @@ export const useDashboardData = () => {
     queryFn: async (): Promise<DashboardMetrics> => {
       const { data: items, error: itemsError } = await supabase
         .from("items")
-        .select("id, quantity, min_stock");
+        .select("id, quantity, min_stock, cost");
 
       if (itemsError) throw itemsError;
 
-      const { data: priceLevels, error: priceError } = await supabase
-        .from("price_levels")
-        .select("item_id, cost_price")
-        .eq("is_current", true);
-
-      if (priceError) throw priceError;
-
-      const priceMap = new Map(priceLevels.map(pl => [pl.item_id, pl.cost_price]));
-
       const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
       const totalValue = items.reduce((sum, item) => {
-        const costPrice = priceMap.get(item.id) || 0;
-        return sum + (item.quantity * costPrice);
+        return sum + (item.quantity * (item.cost || 0));
       }, 0);
       const lowStockCount = items.filter(item => item.quantity <= item.min_stock).length;
       const totalProducts = items.length;
@@ -70,32 +60,14 @@ export const useDashboardData = () => {
   const { data: categoryData, isLoading: categoryLoading } = useQuery({
     queryKey: queryKeys.dashboard.categoryDistribution,
     queryFn: async () => {
-      const { data: items, error: itemsError } = await supabase
-        .from("items")
-        .select(`
-          quantity,
-          category:categories(name)
-        `);
-
-      if (itemsError) throw itemsError;
-
-      const { data: priceLevels, error: priceError } = await supabase
-        .from("price_levels")
-        .select("item_id, cost_price")
-        .eq("is_current", true);
-
-      if (priceError) throw priceError;
-
       const { data: allItems, error: allItemsError } = await supabase
         .from("items")
         .select(`
-          id, quantity,
+          id, quantity, cost,
           category:categories(name)
         `);
 
       if (allItemsError) throw allItemsError;
-
-      const priceMap = new Map(priceLevels.map(pl => [pl.item_id, pl.cost_price]));
 
       // Group by category for quantity
       const quantityByCategory = (allItems || []).reduce((acc: any, item: any) => {
@@ -114,7 +86,7 @@ export const useDashboardData = () => {
       // Group by category for value
       const valueByCategory = (allItems || []).reduce((acc: any, item: any) => {
         const categoryName = item.category?.name || 'Uncategorized';
-        const costPrice = priceMap.get(item.id) || 0;
+        const costPrice = item.cost || 0;
         if (!acc[categoryName]) {
           acc[categoryName] = 0;
         }
@@ -172,22 +144,13 @@ export const useDashboardData = () => {
     queryFn: async (): Promise<ABCDistribution[]> => {
       const { data: items, error: itemsError } = await supabase
         .from("items")
-        .select("id, quantity");
+        .select("id, quantity, cost");
 
       if (itemsError) throw itemsError;
 
-      const { data: priceLevels, error: priceError } = await supabase
-        .from("price_levels")
-        .select("item_id, cost_price")
-        .eq("is_current", true);
-
-      if (priceError) throw priceError;
-
-      const priceMap = new Map(priceLevels.map(pl => [pl.item_id, pl.cost_price]));
-
       // Calculate value for each item
       const itemValues = items.map(item => ({
-        value: item.quantity * (priceMap.get(item.id) || 0),
+        value: item.quantity * (item.cost || 0),
       })).sort((a, b) => b.value - a.value);
 
       const totalValue = itemValues.reduce((sum, item) => sum + item.value, 0);
