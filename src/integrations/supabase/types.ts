@@ -1296,6 +1296,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "items_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
             foreignKeyName: "items_supplier_fkey"
             columns: ["supplier"]
             isOneToOne: false
@@ -1457,6 +1464,13 @@ export type Database = {
             foreignKeyName: "journal_entry_lines_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -1473,6 +1487,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -1726,6 +1747,13 @@ export type Database = {
             foreignKeyName: "physical_inventory_counts_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_counts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -1800,6 +1828,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "physical_inventory_sessions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -2135,6 +2170,13 @@ export type Database = {
             referencedRelation: "stores"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "purchase_orders_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
         ]
       }
       refunds: {
@@ -2318,6 +2360,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "stock_on_hand_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
             foreignKeyName: "stock_on_hand_variant_id_fkey"
             columns: ["variant_id"]
             isOneToOne: false
@@ -2387,6 +2436,13 @@ export type Database = {
             foreignKeyName: "store_inventory_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -2396,6 +2452,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -2475,6 +2538,13 @@ export type Database = {
             columns: ["variant_id"]
             isOneToOne: false
             referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "supplier_pricing_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -2802,6 +2872,13 @@ export type Database = {
             foreignKeyName: "transactions_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -2875,6 +2952,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
             referencedColumns: ["item_id"]
           },
           {
@@ -2977,11 +3061,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transfers_from_store_id_fkey"
+            columns: ["from_store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
             foreignKeyName: "transfers_to_store_id_fkey"
             columns: ["to_store_id"]
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_to_store_id_fkey"
+            columns: ["to_store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -3035,6 +3133,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_profiles_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -3355,7 +3460,34 @@ export type Database = {
             referencedRelation: "stores"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
         ]
+      }
+      v_items_sold_report: {
+        Row: {
+          avg_selling_price: number | null
+          brand: string | null
+          category: string | null
+          current_stock: number | null
+          first_sale_date: string | null
+          item_id: string | null
+          item_name: string | null
+          last_sale_date: string | null
+          model_number: string | null
+          sku: string | null
+          store_id: string | null
+          store_name: string | null
+          total_quantity_sold: number | null
+          total_revenue: number | null
+          total_transactions: number | null
+        }
+        Relationships: []
       }
       v_po_report: {
         Row: {
@@ -3385,6 +3517,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -3434,20 +3573,16 @@ export type Database = {
           brand: string | null
           cashier_id: string | null
           category: string | null
-          cost_price: number | null
           created_at: string | null
           discount_fixed: number | null
           discount_percent: number | null
           id: string | null
           is_refund: boolean | null
-          is_refunded: boolean | null
           item_id: string | null
           item_name: string | null
           payment_method: string | null
           price: number | null
           quantity: number | null
-          session_cashier_id: string | null
-          session_id: string | null
           sku: string | null
           transaction_id: string | null
         }
@@ -3484,15 +3619,15 @@ export type Database = {
             foreignKeyName: "transactions_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
-            referencedRelation: "v_profit_margin_report"
+            referencedRelation: "v_items_sold_report"
             referencedColumns: ["item_id"]
           },
           {
-            foreignKeyName: "transactions_session_id_fkey"
-            columns: ["session_id"]
+            foreignKeyName: "transactions_item_id_fkey"
+            columns: ["item_id"]
             isOneToOne: false
-            referencedRelation: "cash_sessions"
-            referencedColumns: ["id"]
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
           },
         ]
       }
@@ -3548,6 +3683,13 @@ export type Database = {
             foreignKeyName: "transfer_items_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "transfer_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -3559,11 +3701,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transfers_from_store_id_fkey"
+            columns: ["from_store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
             foreignKeyName: "transfers_to_store_id_fkey"
             columns: ["to_store_id"]
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_to_store_id_fkey"
+            columns: ["to_store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -3619,6 +3775,13 @@ export type Database = {
             foreignKeyName: "store_inventory_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -3628,6 +3791,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -3679,6 +3849,13 @@ export type Database = {
             foreignKeyName: "store_inventory_item_id_fkey"
             columns: ["item_id"]
             isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "store_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "v_profit_margin_report"
             referencedColumns: ["item_id"]
           },
@@ -3688,6 +3865,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_inventory_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -3728,11 +3912,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transfers_from_store_id_fkey"
+            columns: ["from_store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
             foreignKeyName: "transfers_to_store_id_fkey"
             columns: ["to_store_id"]
             isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_to_store_id_fkey"
+            columns: ["to_store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
