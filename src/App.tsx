@@ -304,6 +304,56 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/accounting/reports/balance-sheet"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BalanceSheet />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/reports/income-statement"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <IncomeStatement />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/reports/cash-flow"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <CashFlow />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/reports/trial-balance"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <TrialBalance />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/reports/general-ledger"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <GeneralLedger />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Accounts Payable Routes */}
               <Route
