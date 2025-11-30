@@ -39,6 +39,11 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     inventoryTurnoverReport,
     profitMarginReport,
     itemLifecycleReport,
+    cashSessionsReport,
+    refundsReport,
+    paymentMethodsReport,
+    cashierPerformanceReport,
+    dailyPosSummaryReport,
   } = useReportsData(dateFrom, dateTo);
 
   const handleRowClick = (itemId: string, sku: string, itemName: string) => {
@@ -125,6 +130,51 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [itemLifecycleReport, searchTerm, selectedCategory, selectedBrand]);
 
+  // Filter Cash Sessions
+  const filteredCashSessions = useMemo(() => {
+    return cashSessionsReport.filter((session: any) => {
+      const matchesSearch = session.cashier_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStore = selectedStore === "all" || session.store_name?.toLowerCase().includes(selectedStore.toLowerCase());
+      return matchesSearch && matchesStore;
+    });
+  }, [cashSessionsReport, searchTerm, selectedStore]);
+
+  // Filter Refunds
+  const filteredRefunds = useMemo(() => {
+    return refundsReport.filter((refund: any) => {
+      const matchesSearch = refund.transaction_id?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           refund.item_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === "all" || refund.category === selectedCategory;
+      const matchesBrand = selectedBrand === "all" || refund.brand === selectedBrand;
+      return matchesSearch && matchesCategory && matchesBrand;
+    });
+  }, [refundsReport, searchTerm, selectedCategory, selectedBrand]);
+
+  // Filter Payment Methods
+  const filteredPaymentMethods = useMemo(() => {
+    return paymentMethodsReport.filter((payment: any) => {
+      const matchesStore = selectedStore === "all" || payment.store_name?.toLowerCase().includes(selectedStore.toLowerCase());
+      return matchesStore;
+    });
+  }, [paymentMethodsReport, selectedStore]);
+
+  // Filter Cashier Performance
+  const filteredCashierPerformance = useMemo(() => {
+    return cashierPerformanceReport.filter((cashier: any) => {
+      const matchesSearch = cashier.cashier_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStore = selectedStore === "all" || cashier.store_name?.toLowerCase().includes(selectedStore.toLowerCase());
+      return matchesSearch && matchesStore;
+    });
+  }, [cashierPerformanceReport, searchTerm, selectedStore]);
+
+  // Filter Daily POS Summary
+  const filteredDailyPosSummary = useMemo(() => {
+    return dailyPosSummaryReport.filter((summary: any) => {
+      const matchesStore = selectedStore === "all" || summary.store_name?.toLowerCase().includes(selectedStore.toLowerCase());
+      return matchesStore;
+    });
+  }, [dailyPosSummaryReport, selectedStore]);
+
   const exportToCSV = (data: any[], filename: string) => {
     if (data.length === 0) return;
     
@@ -149,7 +199,7 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
   return (
     <>
     <Tabs defaultValue="receipts" className="space-y-4">
-      <TabsList className="grid grid-cols-4 lg:grid-cols-8">
+      <TabsList className="grid grid-cols-4 lg:grid-cols-8 xl:grid-cols-13 gap-1">
         <TabsTrigger value="receipts" className="flex items-center gap-2">
           <Receipt className="h-4 w-4" />
           <span className="hidden sm:inline">Receipts</span>
@@ -157,6 +207,26 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
         <TabsTrigger value="items-sold" className="flex items-center gap-2">
           <TrendingDown className="h-4 w-4" />
           <span className="hidden sm:inline">Items Sold</span>
+        </TabsTrigger>
+        <TabsTrigger value="cash-sessions" className="flex items-center gap-2">
+          <DollarSign className="h-4 w-4" />
+          <span className="hidden sm:inline">Cash Sessions</span>
+        </TabsTrigger>
+        <TabsTrigger value="refunds" className="flex items-center gap-2">
+          <TrendingDown className="h-4 w-4" />
+          <span className="hidden sm:inline">Refunds</span>
+        </TabsTrigger>
+        <TabsTrigger value="payment-methods" className="flex items-center gap-2">
+          <DollarSign className="h-4 w-4" />
+          <span className="hidden sm:inline">Payments</span>
+        </TabsTrigger>
+        <TabsTrigger value="cashier-performance" className="flex items-center gap-2">
+          <Target className="h-4 w-4" />
+          <span className="hidden sm:inline">Cashiers</span>
+        </TabsTrigger>
+        <TabsTrigger value="daily-summary" className="flex items-center gap-2">
+          <BarChart2 className="h-4 w-4" />
+          <span className="hidden sm:inline">Daily</span>
         </TabsTrigger>
         <TabsTrigger value="lifecycle" className="flex items-center gap-2">
           <History className="h-4 w-4" />
@@ -168,7 +238,7 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
         </TabsTrigger>
         <TabsTrigger value="stock-movement" className="flex items-center gap-2">
           <BarChart2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Stock Movement</span>
+          <span className="hidden sm:inline">Stock</span>
         </TabsTrigger>
         <TabsTrigger value="turnover" className="flex items-center gap-2">
           <Target className="h-4 w-4" />
@@ -176,11 +246,11 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
         </TabsTrigger>
         <TabsTrigger value="profit" className="flex items-center gap-2">
           <DollarSign className="h-4 w-4" />
-          <span className="hidden sm:inline">Profit Margin</span>
+          <span className="hidden sm:inline">Profit</span>
         </TabsTrigger>
         <TabsTrigger value="pivot" className="flex items-center gap-2">
           <BarChart2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Pivot Table</span>
+          <span className="hidden sm:inline">Pivot</span>
         </TabsTrigger>
       </TabsList>
 
@@ -571,6 +641,270 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
           title="Pivot Table Analysis"
           description="Create custom cross-tabulations and aggregations like Excel pivot tables"
         />
+      </TabsContent>
+
+      {/* Cash Sessions Report */}
+      <TabsContent value="cash-sessions">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Cash Sessions Report</CardTitle>
+              <CardDescription>Cash register opening and closing sessions</CardDescription>
+            </div>
+            <Button onClick={() => exportToCSV(filteredCashSessions, "cash-sessions-report")}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-[600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cashier</TableHead>
+                    <TableHead>Store</TableHead>
+                    <TableHead>Opened</TableHead>
+                    <TableHead>Closed</TableHead>
+                    <TableHead>Start Cash</TableHead>
+                    <TableHead>End Cash</TableHead>
+                    <TableHead>Cash Sales</TableHead>
+                    <TableHead>Card Sales</TableHead>
+                    <TableHead>Total Sales</TableHead>
+                    <TableHead>Transactions</TableHead>
+                    <TableHead>Variance</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCashSessions.map((session: any) => (
+                    <TableRow key={session.id}>
+                      <TableCell>{session.cashier_name || "Unknown"}</TableCell>
+                      <TableCell>{session.store_name || "-"}</TableCell>
+                      <TableCell>{new Date(session.open_at).toLocaleString()}</TableCell>
+                      <TableCell>{session.close_at ? new Date(session.close_at).toLocaleString() : "Open"}</TableCell>
+                      <TableCell>{formatCurrency(session.start_cash || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(session.end_cash || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(session.total_cash_sales || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(session.total_card_sales || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(session.total_sales || 0, currency)}</TableCell>
+                      <TableCell>{session.transaction_count || 0}</TableCell>
+                      <TableCell className={Math.abs(Number(session.variance)) < 1 ? "" : "text-destructive"}>
+                        {formatCurrency(session.variance || 0, currency)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* Refunds Report */}
+      <TabsContent value="refunds">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Refunds Report</CardTitle>
+              <CardDescription>All refunded transactions with reasons</CardDescription>
+            </div>
+            <Button onClick={() => exportToCSV(filteredRefunds, "refunds-report")}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-[600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Refund Date</TableHead>
+                    <TableHead>Transaction ID</TableHead>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Reason</TableHead>
+                    <TableHead>Refunded By</TableHead>
+                    <TableHead>Store</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredRefunds.map((refund: any) => (
+                    <TableRow key={refund.refund_id}>
+                      <TableCell>{new Date(refund.refund_date).toLocaleDateString()}</TableCell>
+                      <TableCell className="font-mono">{refund.transaction_id}</TableCell>
+                      <TableCell>{refund.item_name}</TableCell>
+                      <TableCell>{refund.category || "-"}</TableCell>
+                      <TableCell>{refund.brand || "-"}</TableCell>
+                      <TableCell>{refund.quantity}</TableCell>
+                      <TableCell className="text-destructive">{formatCurrency(refund.refund_amount || 0, currency)}</TableCell>
+                      <TableCell>{refund.refund_reason || "-"}</TableCell>
+                      <TableCell>{refund.refunded_by_name || "-"}</TableCell>
+                      <TableCell>{refund.store_name || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* Payment Methods Report */}
+      <TabsContent value="payment-methods">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Payment Methods Report</CardTitle>
+              <CardDescription>Sales breakdown by payment method</CardDescription>
+            </div>
+            <Button onClick={() => exportToCSV(filteredPaymentMethods, "payment-methods-report")}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-[600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Payment Method</TableHead>
+                    <TableHead>Store</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Transactions</TableHead>
+                    <TableHead>Total Sales</TableHead>
+                    <TableHead>Refunds</TableHead>
+                    <TableHead>Net Amount</TableHead>
+                    <TableHead>Avg Transaction</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredPaymentMethods.map((payment: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell className="capitalize font-medium">{payment.payment_method}</TableCell>
+                      <TableCell>{payment.store_name || "-"}</TableCell>
+                      <TableCell>{payment.transaction_date ? new Date(payment.transaction_date).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell>{payment.transaction_count || 0}</TableCell>
+                      <TableCell>{formatCurrency(payment.total_sales || 0, currency)}</TableCell>
+                      <TableCell className="text-destructive">{formatCurrency(payment.total_refunds || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(payment.net_amount || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(payment.avg_transaction_value || 0, currency)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* Cashier Performance Report */}
+      <TabsContent value="cashier-performance">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Cashier Performance Report</CardTitle>
+              <CardDescription>Sales performance by cashier</CardDescription>
+            </div>
+            <Button onClick={() => exportToCSV(filteredCashierPerformance, "cashier-performance-report")}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-[600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cashier</TableHead>
+                    <TableHead>Store</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Sessions</TableHead>
+                    <TableHead>Transactions</TableHead>
+                    <TableHead>Items Sold</TableHead>
+                    <TableHead>Total Sales</TableHead>
+                    <TableHead>Refunds</TableHead>
+                    <TableHead>Net Sales</TableHead>
+                    <TableHead>Avg Transaction</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCashierPerformance.map((cashier: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">{cashier.cashier_name || "Unknown"}</TableCell>
+                      <TableCell>{cashier.store_name || "-"}</TableCell>
+                      <TableCell>{cashier.transaction_date ? new Date(cashier.transaction_date).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell>{cashier.sessions_worked || 0}</TableCell>
+                      <TableCell>{cashier.total_transactions || 0}</TableCell>
+                      <TableCell>{formatNumber(cashier.items_sold || 0, 0)}</TableCell>
+                      <TableCell>{formatCurrency(cashier.total_sales || 0, currency)}</TableCell>
+                      <TableCell className="text-destructive">{formatCurrency(cashier.total_refund_amount || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(cashier.net_sales || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(cashier.avg_transaction_value || 0, currency)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* Daily POS Summary Report */}
+      <TabsContent value="daily-summary">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Daily POS Summary</CardTitle>
+              <CardDescription>Daily sales summary by store</CardDescription>
+            </div>
+            <Button onClick={() => exportToCSV(filteredDailyPosSummary, "daily-pos-summary-report")}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-[600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Store</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Sessions</TableHead>
+                    <TableHead>Cashiers</TableHead>
+                    <TableHead>Transactions</TableHead>
+                    <TableHead>Items Sold</TableHead>
+                    <TableHead>Gross Sales</TableHead>
+                    <TableHead>Refunds</TableHead>
+                    <TableHead>Net Sales</TableHead>
+                    <TableHead>Cash</TableHead>
+                    <TableHead>Card</TableHead>
+                    <TableHead>Avg Transaction</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredDailyPosSummary.map((summary: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">{summary.store_name || "Unknown"}</TableCell>
+                      <TableCell>{summary.sales_date ? new Date(summary.sales_date).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell>{summary.sessions_count || 0}</TableCell>
+                      <TableCell>{summary.active_cashiers || 0}</TableCell>
+                      <TableCell>{summary.total_transactions || 0}</TableCell>
+                      <TableCell>{formatNumber(summary.items_sold || 0, 0)}</TableCell>
+                      <TableCell>{formatCurrency(summary.gross_sales || 0, currency)}</TableCell>
+                      <TableCell className="text-destructive">{formatCurrency(summary.refund_amount || 0, currency)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(summary.net_sales || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(summary.cash_sales || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(summary.card_sales || 0, currency)}</TableCell>
+                      <TableCell>{formatCurrency(summary.avg_transaction_value || 0, currency)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       </TabsContent>
     </Tabs>
 

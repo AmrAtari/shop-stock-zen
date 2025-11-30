@@ -172,6 +172,76 @@ export const useReportsData = (dateFrom?: string, dateTo?: string) => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // Cash Sessions Report
+  const cashSessionsReport = useQuery({
+    queryKey: ["cash-sessions-report", dateFrom, dateTo],
+    queryFn: async () => {
+      let query = supabase.from("v_cash_sessions_report").select("*");
+      if (dateFrom) query = query.gte("open_at", dateFrom);
+      if (dateTo) query = query.lte("open_at", dateTo);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Refunds Report
+  const refundsReport = useQuery({
+    queryKey: ["refunds-report", dateFrom, dateTo],
+    queryFn: async () => {
+      let query = supabase.from("v_refunds_report").select("*");
+      if (dateFrom) query = query.gte("refund_date", dateFrom);
+      if (dateTo) query = query.lte("refund_date", dateTo);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Payment Methods Report
+  const paymentMethodsReport = useQuery({
+    queryKey: ["payment-methods-report", dateFrom, dateTo],
+    queryFn: async () => {
+      let query = supabase.from("v_payment_methods_report").select("*");
+      if (dateFrom) query = query.gte("transaction_date", dateFrom);
+      if (dateTo) query = query.lte("transaction_date", dateTo);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Cashier Performance Report
+  const cashierPerformanceReport = useQuery({
+    queryKey: ["cashier-performance-report", dateFrom, dateTo],
+    queryFn: async () => {
+      let query = supabase.from("v_cashier_performance_report").select("*");
+      if (dateFrom) query = query.gte("transaction_date", dateFrom);
+      if (dateTo) query = query.lte("transaction_date", dateTo);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Daily POS Summary Report
+  const dailyPosSummaryReport = useQuery({
+    queryKey: ["daily-pos-summary-report", dateFrom, dateTo],
+    queryFn: async () => {
+      let query = supabase.from("v_daily_pos_summary").select("*");
+      if (dateFrom) query = query.gte("sales_date", dateFrom);
+      if (dateTo) query = query.lte("sales_date", dateTo);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
   const isLoading = 
     storeInventoryReport.isLoading || 
     salesReport.isLoading || 
@@ -182,7 +252,12 @@ export const useReportsData = (dateFrom?: string, dateTo?: string) => {
     stockMovementReport.isLoading ||
     inventoryTurnoverReport.isLoading ||
     profitMarginReport.isLoading ||
-    itemLifecycleReport.isLoading;
+    itemLifecycleReport.isLoading ||
+    cashSessionsReport.isLoading ||
+    refundsReport.isLoading ||
+    paymentMethodsReport.isLoading ||
+    cashierPerformanceReport.isLoading ||
+    dailyPosSummaryReport.isLoading;
 
   const error = 
     storeInventoryReport.error || 
@@ -194,7 +269,12 @@ export const useReportsData = (dateFrom?: string, dateTo?: string) => {
     stockMovementReport.error ||
     inventoryTurnoverReport.error ||
     profitMarginReport.error ||
-    itemLifecycleReport.error;
+    itemLifecycleReport.error ||
+    cashSessionsReport.error ||
+    refundsReport.error ||
+    paymentMethodsReport.error ||
+    cashierPerformanceReport.error ||
+    dailyPosSummaryReport.error;
 
   return {
     stores,
@@ -210,6 +290,11 @@ export const useReportsData = (dateFrom?: string, dateTo?: string) => {
     inventoryTurnoverReport: inventoryTurnoverReport.data || [],
     profitMarginReport: profitMarginReport.data || [],
     itemLifecycleReport: itemLifecycleReport.data || [],
+    cashSessionsReport: cashSessionsReport.data || [],
+    refundsReport: refundsReport.data || [],
+    paymentMethodsReport: paymentMethodsReport.data || [],
+    cashierPerformanceReport: cashierPerformanceReport.data || [],
+    dailyPosSummaryReport: dailyPosSummaryReport.data || [],
     isLoading,
     error,
   };
