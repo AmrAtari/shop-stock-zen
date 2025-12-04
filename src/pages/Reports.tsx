@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Search, Package, TrendingUp, ShoppingCart } from "lucide-react";
+import { Download, Search, Package, TrendingUp, ShoppingCart, Receipt } from "lucide-react";
 import { useReportsData } from "@/hooks/useReportsData";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import ReportsExtended from "./ReportsExtended";
+import POSReports from "@/components/reports/POSReports";
 
 const Reports = () => {
   const { settings } = useSystemSettings();
@@ -213,6 +214,10 @@ const Reports = () => {
           <TabsTrigger value="po" className="flex items-center gap-2">
             <ShoppingCart className="h-4 w-4" />
             Purchase Orders
+          </TabsTrigger>
+          <TabsTrigger value="pos" className="flex items-center gap-2">
+            <Receipt className="h-4 w-4" />
+            POS Reports
           </TabsTrigger>
           <TabsTrigger value="advanced" className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
@@ -466,6 +471,18 @@ const Reports = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* POS Reports Tab */}
+        <TabsContent value="pos">
+          <POSReports 
+            searchTerm={searchTerm}
+            selectedStore={selectedStore}
+            selectedCategory={selectedCategory}
+            selectedBrand={selectedBrand}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+          />
         </TabsContent>
 
         {/* Advanced Reports Tab */}
