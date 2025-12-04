@@ -1,13 +1,11 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Search, Receipt, TrendingDown, ArrowRightLeft, BarChart2, Target, DollarSign, History } from "lucide-react";
+import { Download, Receipt, TrendingDown, ArrowRightLeft, BarChart2, Target, DollarSign, History, Users, CreditCard, Calendar } from "lucide-react";
 import { useReportsData } from "@/hooks/useReportsData";
-import { formatCurrency, formatNumber, formatPercentage } from "@/lib/formatters";
+import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import PivotTable from "@/components/reports/PivotTable";
 import { ItemDrillDownDialog } from "@/components/reports/ItemDrillDownDialog";
@@ -51,7 +49,7 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     setDrillDownOpen(true);
   };
 
-  // Filter POS Receipts
+  // Filter functions
   const filteredReceipts = useMemo(() => {
     return posReceiptsReport.filter((item: any) => {
       const matchesSearch = item.receipt_number?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -63,7 +61,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [posReceiptsReport, searchTerm, selectedCategory, selectedBrand]);
 
-  // Filter Items Sold
   const filteredItemsSold = useMemo(() => {
     return itemsSoldReport.filter((item: any) => {
       const matchesSearch = item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -74,7 +71,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [itemsSoldReport, searchTerm, selectedCategory, selectedBrand]);
 
-  // Filter Transfers
   const filteredTransfers = useMemo(() => {
     return transfersReport.filter((item: any) => {
       const matchesSearch = item.transfer_id?.toString().includes(searchTerm);
@@ -85,7 +81,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [transfersReport, searchTerm, selectedStore]);
 
-  // Filter Stock Movement
   const filteredStockMovement = useMemo(() => {
     return stockMovementReport.filter((item: any) => {
       const matchesSearch = item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -96,7 +91,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [stockMovementReport, searchTerm, selectedCategory, selectedBrand]);
 
-  // Filter Inventory Turnover
   const filteredTurnover = useMemo(() => {
     return inventoryTurnoverReport.filter((item: any) => {
       const matchesSearch = item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -107,7 +101,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [inventoryTurnoverReport, searchTerm, selectedCategory, selectedBrand]);
 
-  // Filter Profit Margin
   const filteredProfitMargin = useMemo(() => {
     return profitMarginReport.filter((item: any) => {
       const matchesSearch = item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -118,7 +111,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [profitMarginReport, searchTerm, selectedCategory, selectedBrand]);
 
-  // Filter Item Lifecycle
   const filteredItemLifecycle = useMemo(() => {
     return itemLifecycleReport.filter((item: any) => {
       const matchesSearch = item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -130,7 +122,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [itemLifecycleReport, searchTerm, selectedCategory, selectedBrand]);
 
-  // Filter Cash Sessions
   const filteredCashSessions = useMemo(() => {
     return cashSessionsReport.filter((session: any) => {
       const matchesSearch = session.cashier_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -139,7 +130,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [cashSessionsReport, searchTerm, selectedStore]);
 
-  // Filter Refunds
   const filteredRefunds = useMemo(() => {
     return refundsReport.filter((refund: any) => {
       const matchesSearch = refund.transaction_id?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -150,7 +140,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [refundsReport, searchTerm, selectedCategory, selectedBrand]);
 
-  // Filter Payment Methods
   const filteredPaymentMethods = useMemo(() => {
     return paymentMethodsReport.filter((payment: any) => {
       const matchesStore = selectedStore === "all" || payment.store_name?.toLowerCase().includes(selectedStore.toLowerCase());
@@ -158,7 +147,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [paymentMethodsReport, selectedStore]);
 
-  // Filter Cashier Performance
   const filteredCashierPerformance = useMemo(() => {
     return cashierPerformanceReport.filter((cashier: any) => {
       const matchesSearch = cashier.cashier_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -167,7 +155,6 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
     });
   }, [cashierPerformanceReport, searchTerm, selectedStore]);
 
-  // Filter Daily POS Summary
   const filteredDailyPosSummary = useMemo(() => {
     return dailyPosSummaryReport.filter((summary: any) => {
       const matchesStore = selectedStore === "all" || summary.store_name?.toLowerCase().includes(selectedStore.toLowerCase());
@@ -198,726 +185,607 @@ const ReportsExtended = ({ searchTerm, selectedStore, selectedCategory, selected
 
   return (
     <>
-    <Tabs defaultValue="receipts" className="space-y-4">
-      <TabsList className="grid grid-cols-4 lg:grid-cols-8 xl:grid-cols-13 gap-1">
-        <TabsTrigger value="receipts" className="flex items-center gap-2">
-          <Receipt className="h-4 w-4" />
-          <span className="hidden sm:inline">Receipts</span>
-        </TabsTrigger>
-        <TabsTrigger value="items-sold" className="flex items-center gap-2">
-          <TrendingDown className="h-4 w-4" />
-          <span className="hidden sm:inline">Items Sold</span>
-        </TabsTrigger>
-        <TabsTrigger value="cash-sessions" className="flex items-center gap-2">
-          <DollarSign className="h-4 w-4" />
-          <span className="hidden sm:inline">Cash Sessions</span>
-        </TabsTrigger>
-        <TabsTrigger value="refunds" className="flex items-center gap-2">
-          <TrendingDown className="h-4 w-4" />
-          <span className="hidden sm:inline">Refunds</span>
-        </TabsTrigger>
-        <TabsTrigger value="payment-methods" className="flex items-center gap-2">
-          <DollarSign className="h-4 w-4" />
-          <span className="hidden sm:inline">Payments</span>
-        </TabsTrigger>
-        <TabsTrigger value="cashier-performance" className="flex items-center gap-2">
-          <Target className="h-4 w-4" />
-          <span className="hidden sm:inline">Cashiers</span>
-        </TabsTrigger>
-        <TabsTrigger value="daily-summary" className="flex items-center gap-2">
-          <BarChart2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Daily</span>
-        </TabsTrigger>
-        <TabsTrigger value="lifecycle" className="flex items-center gap-2">
-          <History className="h-4 w-4" />
-          <span className="hidden sm:inline">Lifecycle</span>
-        </TabsTrigger>
-        <TabsTrigger value="transfers" className="flex items-center gap-2">
-          <ArrowRightLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Transfers</span>
-        </TabsTrigger>
-        <TabsTrigger value="stock-movement" className="flex items-center gap-2">
-          <BarChart2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Stock</span>
-        </TabsTrigger>
-        <TabsTrigger value="turnover" className="flex items-center gap-2">
-          <Target className="h-4 w-4" />
-          <span className="hidden sm:inline">Turnover</span>
-        </TabsTrigger>
-        <TabsTrigger value="profit" className="flex items-center gap-2">
-          <DollarSign className="h-4 w-4" />
-          <span className="hidden sm:inline">Profit</span>
-        </TabsTrigger>
-        <TabsTrigger value="pivot" className="flex items-center gap-2">
-          <BarChart2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Pivot</span>
-        </TabsTrigger>
-      </TabsList>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column - Inventory & Stock Reports */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <BarChart2 className="h-5 w-5" />
+            Inventory & Stock Reports
+          </h3>
+          
+          <Tabs defaultValue="lifecycle" className="space-y-4">
+            <TabsList className="grid grid-cols-3 lg:grid-cols-6 gap-1">
+              <TabsTrigger value="lifecycle" className="text-xs">Lifecycle</TabsTrigger>
+              <TabsTrigger value="transfers" className="text-xs">Transfers</TabsTrigger>
+              <TabsTrigger value="stock-movement" className="text-xs">Movement</TabsTrigger>
+              <TabsTrigger value="turnover" className="text-xs">Turnover</TabsTrigger>
+              <TabsTrigger value="profit" className="text-xs">Profit</TabsTrigger>
+              <TabsTrigger value="pivot" className="text-xs">Pivot</TabsTrigger>
+            </TabsList>
 
-      {/* POS Receipts Report */}
-      <TabsContent value="receipts">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>POS Receipts Report</CardTitle>
-              <CardDescription>All transactions and receipts from POS</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredReceipts, "pos-receipts-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Receipt #</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Discount</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Payment</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredReceipts.map((item: any, index: number) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-mono">{item.receipt_number}</TableCell>
-                      <TableCell>{item.transaction_date ? new Date(item.transaction_date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>{item.item_name}</TableCell>
-                      <TableCell>{item.category || "-"}</TableCell>
-                      <TableCell>{item.brand || "-"}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>{formatCurrency(item.price || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency((item.discount_fixed || 0) + (item.discount_percent || 0), currency)}</TableCell>
-                      <TableCell>{formatCurrency(item.amount || 0, currency)}</TableCell>
-                      <TableCell className="capitalize">{item.payment_method}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Item Lifecycle Report */}
+            <TabsContent value="lifecycle">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Item Lifecycle</CardTitle>
+                    <CardDescription className="text-xs">Track items from entry to sale</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredItemLifecycle, "item-lifecycle-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">SKU</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs">Added</TableHead>
+                          <TableHead className="text-xs">Stock</TableHead>
+                          <TableHead className="text-xs">Sold</TableHead>
+                          <TableHead className="text-xs">Revenue</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredItemLifecycle.slice(0, 50).map((item: any, idx: number) => (
+                          <TableRow 
+                            key={idx}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
+                          >
+                            <TableCell className="font-mono text-xs">{item.sku}</TableCell>
+                            <TableCell className="text-xs">{item.item_name}</TableCell>
+                            <TableCell className="text-xs">{item.date_added ? new Date(item.date_added).toLocaleDateString() : "-"}</TableCell>
+                            <TableCell className="text-xs">{item.current_stock || 0}</TableCell>
+                            <TableCell className="text-xs">{formatNumber(item.total_quantity_sold || 0, 0)}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(item.total_revenue || 0, currency)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Items Sold Report */}
-      <TabsContent value="items-sold">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Items Sold Report</CardTitle>
-              <CardDescription>Sales performance by item</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredItemsSold, "items-sold-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Units Sold</TableHead>
-                    <TableHead>Transactions</TableHead>
-                    <TableHead>Total Sales</TableHead>
-                    <TableHead>Avg Price</TableHead>
-                    <TableHead>Total Profit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredItemsSold.map((item: any) => (
-                    <TableRow 
-                      key={item.item_id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
-                    >
-                      <TableCell className="font-mono">{item.sku}</TableCell>
-                      <TableCell>{item.item_name}</TableCell>
-                      <TableCell>{item.category || "-"}</TableCell>
-                      <TableCell>{item.brand || "-"}</TableCell>
-                      <TableCell>{formatNumber(item.total_quantity_sold || 0, 0)}</TableCell>
-                      <TableCell>{item.total_transactions || 0}</TableCell>
-                      <TableCell>{formatCurrency(item.total_sales_amount || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(item.avg_selling_price || 0, currency)}</TableCell>
-                      <TableCell className={Number(item.total_profit) >= 0 ? "text-success" : "text-destructive"}>
-                        {formatCurrency(item.total_profit || 0, currency)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Transfers Report */}
+            <TabsContent value="transfers">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Transfers</CardTitle>
+                    <CardDescription className="text-xs">Inter-store transfers</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredTransfers, "transfers-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">ID</TableHead>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">From</TableHead>
+                          <TableHead className="text-xs">To</TableHead>
+                          <TableHead className="text-xs">Qty</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTransfers.slice(0, 50).map((item: any, index: number) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-mono text-xs">{item.transfer_id}</TableCell>
+                            <TableCell className="text-xs">{item.transfer_date ? new Date(item.transfer_date).toLocaleDateString() : "-"}</TableCell>
+                            <TableCell className="text-xs">{item.from_store_name}</TableCell>
+                            <TableCell className="text-xs">{item.to_store_name}</TableCell>
+                            <TableCell className="text-xs">{item.transfer_quantity || 0}</TableCell>
+                            <TableCell className="text-xs capitalize">{item.status}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Item Lifecycle Report */}
-      <TabsContent value="lifecycle">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Item Lifecycle Tracking</CardTitle>
-              <CardDescription>Track items from entry to sale by SKU or model number</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredItemLifecycle, "item-lifecycle-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Item Name</TableHead>
-                    <TableHead>Model #</TableHead>
-                    <TableHead>Date Added</TableHead>
-                    <TableHead>Store</TableHead>
-                    <TableHead>Current Stock</TableHead>
-                    <TableHead>Last PO Date</TableHead>
-                    <TableHead>Last Sale Date</TableHead>
-                    <TableHead>Total Sold</TableHead>
-                    <TableHead>Total Revenue</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Category</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredItemLifecycle.map((item: any, idx: number) => (
-                    <TableRow 
-                      key={idx}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
-                    >
-                      <TableCell className="font-mono">{item.sku}</TableCell>
-                      <TableCell>{item.item_name}</TableCell>
-                      <TableCell>{item.model_number || "-"}</TableCell>
-                      <TableCell>{item.date_added ? new Date(item.date_added).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>{item.store_name || "-"}</TableCell>
-                      <TableCell>{item.current_stock || 0}</TableCell>
-                      <TableCell>
-                        {item.last_po_date ? new Date(item.last_po_date).toLocaleDateString() : "-"}
-                      </TableCell>
-                      <TableCell>
-                        {item.last_sale_date ? new Date(item.last_sale_date).toLocaleDateString() : "-"}
-                      </TableCell>
-                      <TableCell>{formatNumber(item.total_quantity_sold || 0, 0)}</TableCell>
-                      <TableCell>{formatCurrency(item.total_revenue || 0, currency)}</TableCell>
-                      <TableCell>{item.brand || "-"}</TableCell>
-                      <TableCell>{item.category || "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Stock Movement Report */}
+            <TabsContent value="stock-movement">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Stock Movement</CardTitle>
+                    <CardDescription className="text-xs">All inventory movements</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredStockMovement, "stock-movement-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Type</TableHead>
+                          <TableHead className="text-xs">SKU</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs">Qty</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredStockMovement.slice(0, 50).map((item: any, index: number) => (
+                          <TableRow 
+                            key={index}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
+                          >
+                            <TableCell className="text-xs">{item.movement_date ? new Date(item.movement_date).toLocaleDateString() : "-"}</TableCell>
+                            <TableCell className="text-xs capitalize">{item.movement_type}</TableCell>
+                            <TableCell className="font-mono text-xs">{item.sku}</TableCell>
+                            <TableCell className="text-xs">{item.item_name}</TableCell>
+                            <TableCell className={`text-xs ${Number(item.quantity_change) >= 0 ? "text-success" : "text-destructive"}`}>
+                              {item.quantity_change > 0 ? "+" : ""}{item.quantity_change}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Transfers Report */}
-      <TabsContent value="transfers">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Transfers Report</CardTitle>
-              <CardDescription>Inter-store transfers and movements</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredTransfers, "transfers-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Transfer ID</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>From Store</TableHead>
-                    <TableHead>To Store</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTransfers.map((item: any, index: number) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-mono">{item.transfer_id}</TableCell>
-                      <TableCell>{item.transfer_date ? new Date(item.transfer_date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>{item.from_store_name}</TableCell>
-                      <TableCell>{item.to_store_name}</TableCell>
-                      <TableCell>{item.transfer_quantity || 0}</TableCell>
-                      <TableCell className="capitalize">{item.status}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Inventory Turnover Report */}
+            <TabsContent value="turnover">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Inventory Turnover</CardTitle>
+                    <CardDescription className="text-xs">Item turnover rates</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredTurnover, "inventory-turnover-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">SKU</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs">Stock</TableHead>
+                          <TableHead className="text-xs">Sold</TableHead>
+                          <TableHead className="text-xs">Ratio</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTurnover.slice(0, 50).map((item: any) => {
+                          const ratio = Number(item.turnover_ratio) || 0;
+                          let status = "Slow";
+                          let statusColor = "text-destructive";
+                          if (ratio > 3) { status = "Fast"; statusColor = "text-success"; }
+                          else if (ratio > 1.5) { status = "Good"; statusColor = "text-warning"; }
+                          
+                          return (
+                            <TableRow key={item.item_id}>
+                              <TableCell className="font-mono text-xs">{item.sku}</TableCell>
+                              <TableCell className="text-xs">{item.item_name}</TableCell>
+                              <TableCell className="text-xs">{formatNumber(item.current_stock || 0, 0)}</TableCell>
+                              <TableCell className="text-xs">{formatNumber(item.total_sold || 0, 0)}</TableCell>
+                              <TableCell className="text-xs">{formatNumber(ratio, 2)}</TableCell>
+                              <TableCell className={`text-xs ${statusColor}`}>{status}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Stock Movement Report */}
-      <TabsContent value="stock-movement">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Stock Movement Report</CardTitle>
-              <CardDescription>All inventory movements (Sales, Refunds, POs)</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredStockMovement, "stock-movement-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Qty Change</TableHead>
-                    <TableHead>Store</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStockMovement.map((item: any, index: number) => (
-                    <TableRow 
-                      key={index}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
-                    >
-                      <TableCell>{item.movement_date ? new Date(item.movement_date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell className="capitalize">{item.movement_type}</TableCell>
-                      <TableCell className="font-mono">{item.sku}</TableCell>
-                      <TableCell>{item.item_name}</TableCell>
-                      <TableCell>{item.category || "-"}</TableCell>
-                      <TableCell>{item.brand || "-"}</TableCell>
-                      <TableCell className={Number(item.quantity_change) >= 0 ? "text-success" : "text-destructive"}>
-                        {item.quantity_change > 0 ? "+" : ""}{item.quantity_change}
-                      </TableCell>
-                      <TableCell>{item.to_store || "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Profit Margin Report */}
+            <TabsContent value="profit">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Profit Margin</CardTitle>
+                    <CardDescription className="text-xs">Profitability by item</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredProfitMargin, "profit-margin-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">SKU</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs">Cost</TableHead>
+                          <TableHead className="text-xs">Price</TableHead>
+                          <TableHead className="text-xs">Margin</TableHead>
+                          <TableHead className="text-xs">Profit</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredProfitMargin.slice(0, 50).map((item: any) => (
+                          <TableRow key={item.item_id}>
+                            <TableCell className="font-mono text-xs">{item.sku}</TableCell>
+                            <TableCell className="text-xs">{item.item_name}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(item.cost_price || 0, currency)}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(item.selling_price || 0, currency)}</TableCell>
+                            <TableCell className={`text-xs ${Number(item.profit_margin_percent) >= 30 ? "text-success" : Number(item.profit_margin_percent) >= 15 ? "text-warning" : "text-destructive"}`}>
+                              {formatNumber(item.profit_margin_percent || 0, 1)}%
+                            </TableCell>
+                            <TableCell className={`text-xs ${Number(item.total_profit) >= 0 ? "text-success" : "text-destructive"}`}>
+                              {formatCurrency(item.total_profit || 0, currency)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Inventory Turnover Report */}
-      <TabsContent value="turnover">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Inventory Turnover Report</CardTitle>
-              <CardDescription>Item turnover rates and stock efficiency</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredTurnover, "inventory-turnover-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Current Stock</TableHead>
-                    <TableHead>Units Sold</TableHead>
-                    <TableHead>Turnover Ratio</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTurnover.map((item: any) => {
-                    const ratio = Number(item.turnover_ratio) || 0;
-                    let status = "Slow";
-                    let statusColor = "text-destructive";
-                    if (ratio > 3) { status = "Fast"; statusColor = "text-success"; }
-                    else if (ratio > 1.5) { status = "Good"; statusColor = "text-warning"; }
-                    
-                    return (
-                      <TableRow key={item.item_id}>
-                        <TableCell className="font-mono">{item.sku}</TableCell>
-                        <TableCell>{item.item_name}</TableCell>
-                        <TableCell>{item.category || "-"}</TableCell>
-                        <TableCell>{item.brand || "-"}</TableCell>
-                        <TableCell>{formatNumber(item.current_stock || 0, 0)}</TableCell>
-                        <TableCell>{formatNumber(item.total_sold || 0, 0)}</TableCell>
-                        <TableCell>{formatNumber(ratio, 2)}</TableCell>
-                        <TableCell className={statusColor}>{status}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Pivot Table */}
+            <TabsContent value="pivot">
+              <PivotTable 
+                data={filteredItemsSold}
+                title="Pivot Analysis"
+                description="Custom cross-tabulations"
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
 
-      {/* Profit Margin Report */}
-      <TabsContent value="profit">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Profit Margin Analysis</CardTitle>
-              <CardDescription>Profitability by item</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredProfitMargin, "profit-margin-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Cost</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Margin %</TableHead>
-                    <TableHead>Units Sold</TableHead>
-                    <TableHead>Total Profit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredProfitMargin.map((item: any) => (
-                    <TableRow key={item.item_id}>
-                      <TableCell className="font-mono">{item.sku}</TableCell>
-                      <TableCell>{item.item_name}</TableCell>
-                      <TableCell>{item.category || "-"}</TableCell>
-                      <TableCell>{item.brand || "-"}</TableCell>
-                      <TableCell>{formatCurrency(item.cost_price || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(item.selling_price || 0, currency)}</TableCell>
-                      <TableCell className={Number(item.profit_margin_percent) >= 30 ? "text-success" : Number(item.profit_margin_percent) >= 15 ? "text-warning" : "text-destructive"}>
-                        {formatNumber(item.profit_margin_percent || 0, 1)}%
-                      </TableCell>
-                      <TableCell>{formatNumber(item.units_sold || 0, 0)}</TableCell>
-                      <TableCell className={Number(item.total_profit) >= 0 ? "text-success" : "text-destructive"}>
-                        {formatCurrency(item.total_profit || 0, currency)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+        {/* Right Column - POS Reports */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Receipt className="h-5 w-5" />
+            POS Reports
+          </h3>
+          
+          <Tabs defaultValue="receipts" className="space-y-4">
+            <TabsList className="grid grid-cols-4 lg:grid-cols-7 gap-1">
+              <TabsTrigger value="receipts" className="text-xs">Receipts</TabsTrigger>
+              <TabsTrigger value="items-sold" className="text-xs">Items Sold</TabsTrigger>
+              <TabsTrigger value="cash-sessions" className="text-xs">Cash</TabsTrigger>
+              <TabsTrigger value="daily-summary" className="text-xs">Daily</TabsTrigger>
+              <TabsTrigger value="refunds" className="text-xs">Refunds</TabsTrigger>
+              <TabsTrigger value="payments" className="text-xs">Payments</TabsTrigger>
+              <TabsTrigger value="cashiers" className="text-xs">Cashiers</TabsTrigger>
+            </TabsList>
 
-      {/* Pivot Table Tab */}
-      <TabsContent value="pivot">
-        <PivotTable 
-          data={filteredItemsSold}
-          title="Pivot Table Analysis"
-          description="Create custom cross-tabulations and aggregations like Excel pivot tables"
-        />
-      </TabsContent>
+            {/* POS Receipts Report */}
+            <TabsContent value="receipts">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">POS Receipts</CardTitle>
+                    <CardDescription className="text-xs">All transactions from POS</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredReceipts, "pos-receipts-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Receipt #</TableHead>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs">Qty</TableHead>
+                          <TableHead className="text-xs">Amount</TableHead>
+                          <TableHead className="text-xs">Payment</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredReceipts.slice(0, 50).map((item: any, index: number) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-mono text-xs">{item.receipt_number}</TableCell>
+                            <TableCell className="text-xs">{item.transaction_date ? new Date(item.transaction_date).toLocaleDateString() : "-"}</TableCell>
+                            <TableCell className="text-xs">{item.item_name}</TableCell>
+                            <TableCell className="text-xs">{item.quantity}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(item.amount || 0, currency)}</TableCell>
+                            <TableCell className="text-xs capitalize">{item.payment_method}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Cash Sessions Report */}
-      <TabsContent value="cash-sessions">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Cash Sessions Report</CardTitle>
-              <CardDescription>Cash register opening and closing sessions</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredCashSessions, "cash-sessions-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Cashier</TableHead>
-                    <TableHead>Store</TableHead>
-                    <TableHead>Opened</TableHead>
-                    <TableHead>Closed</TableHead>
-                    <TableHead>Start Cash</TableHead>
-                    <TableHead>End Cash</TableHead>
-                    <TableHead>Cash Sales</TableHead>
-                    <TableHead>Card Sales</TableHead>
-                    <TableHead>Total Sales</TableHead>
-                    <TableHead>Transactions</TableHead>
-                    <TableHead>Variance</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCashSessions.map((session: any) => (
-                    <TableRow key={session.id}>
-                      <TableCell>{session.cashier_name || "Unknown"}</TableCell>
-                      <TableCell>{session.store_name || "-"}</TableCell>
-                      <TableCell>{new Date(session.open_at).toLocaleString()}</TableCell>
-                      <TableCell>{session.close_at ? new Date(session.close_at).toLocaleString() : "Open"}</TableCell>
-                      <TableCell>{formatCurrency(session.start_cash || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(session.end_cash || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(session.total_cash_sales || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(session.total_card_sales || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(session.total_sales || 0, currency)}</TableCell>
-                      <TableCell>{session.transaction_count || 0}</TableCell>
-                      <TableCell className={Math.abs(Number(session.variance)) < 1 ? "" : "text-destructive"}>
-                        {formatCurrency(session.variance || 0, currency)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Items Sold Report */}
+            <TabsContent value="items-sold">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Items Sold</CardTitle>
+                    <CardDescription className="text-xs">Sales by item</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredItemsSold, "items-sold-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">SKU</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs">Sold</TableHead>
+                          <TableHead className="text-xs">Sales</TableHead>
+                          <TableHead className="text-xs">Profit</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredItemsSold.slice(0, 50).map((item: any) => (
+                          <TableRow 
+                            key={item.item_id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
+                          >
+                            <TableCell className="font-mono text-xs">{item.sku}</TableCell>
+                            <TableCell className="text-xs">{item.item_name}</TableCell>
+                            <TableCell className="text-xs">{formatNumber(item.total_quantity_sold || 0, 0)}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(item.total_sales_amount || 0, currency)}</TableCell>
+                            <TableCell className={`text-xs ${Number(item.total_profit) >= 0 ? "text-success" : "text-destructive"}`}>
+                              {formatCurrency(item.total_profit || 0, currency)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Refunds Report */}
-      <TabsContent value="refunds">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Refunds Report</CardTitle>
-              <CardDescription>All refunded transactions with reasons</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredRefunds, "refunds-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Refund Date</TableHead>
-                    <TableHead>Transaction ID</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>Refunded By</TableHead>
-                    <TableHead>Store</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRefunds.map((refund: any) => (
-                    <TableRow key={refund.refund_id}>
-                      <TableCell>{new Date(refund.refund_date).toLocaleDateString()}</TableCell>
-                      <TableCell className="font-mono">{refund.transaction_id}</TableCell>
-                      <TableCell>{refund.item_name}</TableCell>
-                      <TableCell>{refund.category || "-"}</TableCell>
-                      <TableCell>{refund.brand || "-"}</TableCell>
-                      <TableCell>{refund.quantity}</TableCell>
-                      <TableCell className="text-destructive">{formatCurrency(refund.refund_amount || 0, currency)}</TableCell>
-                      <TableCell>{refund.refund_reason || "-"}</TableCell>
-                      <TableCell>{refund.refunded_by_name || "-"}</TableCell>
-                      <TableCell>{refund.store_name || "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Cash Sessions Report */}
+            <TabsContent value="cash-sessions">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Cash Sessions</CardTitle>
+                    <CardDescription className="text-xs">Opening & closing sessions</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredCashSessions, "cash-sessions-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Cashier</TableHead>
+                          <TableHead className="text-xs">Opened</TableHead>
+                          <TableHead className="text-xs">Closed</TableHead>
+                          <TableHead className="text-xs">Sales</TableHead>
+                          <TableHead className="text-xs">Variance</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredCashSessions.slice(0, 50).map((session: any) => (
+                          <TableRow key={session.id}>
+                            <TableCell className="text-xs">{session.cashier_name || "Unknown"}</TableCell>
+                            <TableCell className="text-xs">{new Date(session.open_at).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-xs">{session.close_at ? new Date(session.close_at).toLocaleDateString() : "Open"}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(session.total_sales || 0, currency)}</TableCell>
+                            <TableCell className={`text-xs ${Math.abs(Number(session.variance)) < 1 ? "" : "text-destructive"}`}>
+                              {formatCurrency(session.variance || 0, currency)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Payment Methods Report */}
-      <TabsContent value="payment-methods">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Payment Methods Report</CardTitle>
-              <CardDescription>Sales breakdown by payment method</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredPaymentMethods, "payment-methods-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Payment Method</TableHead>
-                    <TableHead>Store</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Transactions</TableHead>
-                    <TableHead>Total Sales</TableHead>
-                    <TableHead>Refunds</TableHead>
-                    <TableHead>Net Amount</TableHead>
-                    <TableHead>Avg Transaction</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPaymentMethods.map((payment: any, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell className="capitalize font-medium">{payment.payment_method}</TableCell>
-                      <TableCell>{payment.store_name || "-"}</TableCell>
-                      <TableCell>{payment.transaction_date ? new Date(payment.transaction_date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>{payment.transaction_count || 0}</TableCell>
-                      <TableCell>{formatCurrency(payment.total_sales || 0, currency)}</TableCell>
-                      <TableCell className="text-destructive">{formatCurrency(payment.total_refunds || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(payment.net_amount || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(payment.avg_transaction_value || 0, currency)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Daily POS Summary */}
+            <TabsContent value="daily-summary">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Daily Summary</CardTitle>
+                    <CardDescription className="text-xs">Daily POS totals</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredDailyPosSummary, "daily-pos-summary")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Store</TableHead>
+                          <TableHead className="text-xs">Transactions</TableHead>
+                          <TableHead className="text-xs">Items</TableHead>
+                          <TableHead className="text-xs">Sales</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredDailyPosSummary.slice(0, 50).map((summary: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs">{new Date(summary.sales_date).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-xs">{summary.store_name || "-"}</TableCell>
+                            <TableCell className="text-xs">{summary.transaction_count || 0}</TableCell>
+                            <TableCell className="text-xs">{summary.items_sold || 0}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(summary.total_sales || 0, currency)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Cashier Performance Report */}
-      <TabsContent value="cashier-performance">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Cashier Performance Report</CardTitle>
-              <CardDescription>Sales performance by cashier</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredCashierPerformance, "cashier-performance-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Cashier</TableHead>
-                    <TableHead>Store</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Sessions</TableHead>
-                    <TableHead>Transactions</TableHead>
-                    <TableHead>Items Sold</TableHead>
-                    <TableHead>Total Sales</TableHead>
-                    <TableHead>Refunds</TableHead>
-                    <TableHead>Net Sales</TableHead>
-                    <TableHead>Avg Transaction</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCashierPerformance.map((cashier: any, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{cashier.cashier_name || "Unknown"}</TableCell>
-                      <TableCell>{cashier.store_name || "-"}</TableCell>
-                      <TableCell>{cashier.transaction_date ? new Date(cashier.transaction_date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>{cashier.sessions_worked || 0}</TableCell>
-                      <TableCell>{cashier.total_transactions || 0}</TableCell>
-                      <TableCell>{formatNumber(cashier.items_sold || 0, 0)}</TableCell>
-                      <TableCell>{formatCurrency(cashier.total_sales || 0, currency)}</TableCell>
-                      <TableCell className="text-destructive">{formatCurrency(cashier.total_refund_amount || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(cashier.net_sales || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(cashier.avg_transaction_value || 0, currency)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            {/* Refunds Report */}
+            <TabsContent value="refunds">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Refunds</CardTitle>
+                    <CardDescription className="text-xs">Refunded transactions</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredRefunds, "refunds-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Item</TableHead>
+                          <TableHead className="text-xs">Qty</TableHead>
+                          <TableHead className="text-xs">Amount</TableHead>
+                          <TableHead className="text-xs">Reason</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRefunds.slice(0, 50).map((refund: any) => (
+                          <TableRow key={refund.refund_id}>
+                            <TableCell className="text-xs">{new Date(refund.refund_date).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-xs">{refund.item_name}</TableCell>
+                            <TableCell className="text-xs">{refund.quantity}</TableCell>
+                            <TableCell className="text-xs text-destructive">{formatCurrency(refund.refund_amount || 0, currency)}</TableCell>
+                            <TableCell className="text-xs">{refund.refund_reason || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-      {/* Daily POS Summary Report */}
-      <TabsContent value="daily-summary">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Daily POS Summary</CardTitle>
-              <CardDescription>Daily sales summary by store</CardDescription>
-            </div>
-            <Button onClick={() => exportToCSV(filteredDailyPosSummary, "daily-pos-summary-report")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Store</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Sessions</TableHead>
-                    <TableHead>Cashiers</TableHead>
-                    <TableHead>Transactions</TableHead>
-                    <TableHead>Items Sold</TableHead>
-                    <TableHead>Gross Sales</TableHead>
-                    <TableHead>Refunds</TableHead>
-                    <TableHead>Net Sales</TableHead>
-                    <TableHead>Cash</TableHead>
-                    <TableHead>Card</TableHead>
-                    <TableHead>Avg Transaction</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredDailyPosSummary.map((summary: any, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{summary.store_name || "Unknown"}</TableCell>
-                      <TableCell>{summary.sales_date ? new Date(summary.sales_date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>{summary.sessions_count || 0}</TableCell>
-                      <TableCell>{summary.active_cashiers || 0}</TableCell>
-                      <TableCell>{summary.total_transactions || 0}</TableCell>
-                      <TableCell>{formatNumber(summary.items_sold || 0, 0)}</TableCell>
-                      <TableCell>{formatCurrency(summary.gross_sales || 0, currency)}</TableCell>
-                      <TableCell className="text-destructive">{formatCurrency(summary.refund_amount || 0, currency)}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(summary.net_sales || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(summary.cash_sales || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(summary.card_sales || 0, currency)}</TableCell>
-                      <TableCell>{formatCurrency(summary.avg_transaction_value || 0, currency)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
-    </Tabs>
+            {/* Payment Methods Report */}
+            <TabsContent value="payments">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Payment Methods</CardTitle>
+                    <CardDescription className="text-xs">Breakdown by payment type</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredPaymentMethods, "payment-methods-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Date</TableHead>
+                          <TableHead className="text-xs">Store</TableHead>
+                          <TableHead className="text-xs">Method</TableHead>
+                          <TableHead className="text-xs">Count</TableHead>
+                          <TableHead className="text-xs">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredPaymentMethods.slice(0, 50).map((payment: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs">{new Date(payment.transaction_date).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-xs">{payment.store_name || "-"}</TableCell>
+                            <TableCell className="text-xs capitalize">{payment.payment_method}</TableCell>
+                            <TableCell className="text-xs">{payment.transaction_count || 0}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(payment.total_amount || 0, currency)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-    {/* Drill-Down Dialog */}
-    {selectedItem && (
+            {/* Cashier Performance */}
+            <TabsContent value="cashiers">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div>
+                    <CardTitle className="text-base">Cashier Performance</CardTitle>
+                    <CardDescription className="text-xs">Sales by cashier</CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => exportToCSV(filteredCashierPerformance, "cashier-performance-report")}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-auto max-h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Cashier</TableHead>
+                          <TableHead className="text-xs">Store</TableHead>
+                          <TableHead className="text-xs">Transactions</TableHead>
+                          <TableHead className="text-xs">Items</TableHead>
+                          <TableHead className="text-xs">Total Sales</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredCashierPerformance.slice(0, 50).map((cashier: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs">{cashier.cashier_name || "Unknown"}</TableCell>
+                            <TableCell className="text-xs">{cashier.store_name || "-"}</TableCell>
+                            <TableCell className="text-xs">{cashier.transaction_count || 0}</TableCell>
+                            <TableCell className="text-xs">{cashier.items_sold || 0}</TableCell>
+                            <TableCell className="text-xs">{formatCurrency(cashier.total_sales || 0, currency)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+
       <ItemDrillDownDialog
         open={drillDownOpen}
         onOpenChange={setDrillDownOpen}
-        itemId={selectedItem.itemId}
-        sku={selectedItem.sku}
-        itemName={selectedItem.itemName}
+        itemId={selectedItem?.itemId || ""}
+        sku={selectedItem?.sku || ""}
+        itemName={selectedItem?.itemName || ""}
       />
-    )}
     </>
   );
 };
