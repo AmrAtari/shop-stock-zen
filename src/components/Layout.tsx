@@ -12,6 +12,8 @@ import {
   Bot,
   Calculator,
   ClipboardList,
+  Users,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,6 +36,8 @@ const Layout = ({ children }: LayoutProps) => {
   const navigation = [
     { name: t('common.dashboard'), href: "/", icon: LayoutDashboard },
     ...(isAdmin ? [{ name: t('common.configuration'), href: "/configuration", icon: Settings }] : []),
+    { name: "CRM", href: "/crm/customers", icon: Users },
+    { name: "Sales Orders", href: "/sales/orders", icon: FileText },
     { name: t('common.inventory'), href: "/inventory", icon: Package },
     { name: "Physical Inventory", href: "/inventory/physical", icon: ClipboardList },
     { name: t('common.purchaseOrders'), href: "/purchase-orders", icon: ShoppingCart },

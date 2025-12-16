@@ -75,6 +75,13 @@ import EditTaxJurisdiction from "./pages/accounting/EditTaxJurisdiction";
 import POSHome from "./pages/POS/POSHome";
 import { POSProvider } from "./pages/POS/POSContext";
 
+// CRM Components
+import Customers from "./pages/crm/Customers";
+import CustomerDetail from "./pages/crm/CustomerDetail";
+import CustomerNew from "./pages/crm/CustomerNew";
+import CustomerEdit from "./pages/crm/CustomerEdit";
+import CustomerGroups from "./pages/crm/CustomerGroups";
+
 // Layouts and Wrappers (Assumed to exist)
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
