@@ -82,6 +82,14 @@ import CustomerNew from "./pages/crm/CustomerNew";
 import CustomerEdit from "./pages/crm/CustomerEdit";
 import CustomerGroups from "./pages/crm/CustomerGroups";
 
+// Sales Components
+import SalesOrders from "./pages/sales/SalesOrders";
+import SalesOrderNew from "./pages/sales/SalesOrderNew";
+import SalesOrderDetail from "./pages/sales/SalesOrderDetail";
+
+// Audit Log
+import AuditLog from "./pages/AuditLog";
+
 // Layouts and Wrappers (Assumed to exist)
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -786,6 +794,102 @@ const App = () => {
                   <ProtectedRoute>
                     <Layout>
                       <Notifications />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* CRM Routes */}
+              <Route
+                path="/crm/customers"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Customers />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/crm/customers/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <CustomerNew />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/crm/customers/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <CustomerDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/crm/customers/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <CustomerEdit />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/crm/groups"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <CustomerGroups />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Sales Orders Routes */}
+              <Route
+                path="/sales/orders"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <SalesOrders />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sales/orders/new"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <SalesOrderNew />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sales/orders/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <SalesOrderDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Audit Log */}
+              <Route
+                path="/audit-log"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <AuditLog />
                     </Layout>
                   </ProtectedRoute>
                 }

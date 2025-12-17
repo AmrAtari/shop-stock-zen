@@ -46,6 +46,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: t('common.reports'), href: "/reports", icon: BarChart3 },
     { name: "AI Reports", href: "/ai-reports", icon: Bot },
     { name: t('common.pos'), href: "/pos", icon: ShoppingCart },
+    ...(isAdmin ? [{ name: "Audit Log", href: "/audit-log", icon: ClipboardList }] : []),
   ];
 
   const handleLogout = async () => {
