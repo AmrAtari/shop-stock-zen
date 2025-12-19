@@ -761,6 +761,81 @@ export type Database = {
           },
         ]
       }
+      bin_locations: {
+        Row: {
+          aisle: string | null
+          bin: string | null
+          bin_code: string
+          capacity: number | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          rack: string | null
+          shelf: string | null
+          store_id: string | null
+        }
+        Insert: {
+          aisle?: string | null
+          bin?: string | null
+          bin_code: string
+          capacity?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          rack?: string | null
+          shelf?: string | null
+          store_id?: string | null
+        }
+        Update: {
+          aisle?: string | null
+          bin?: string | null
+          bin_code?: string
+          capacity?: number | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          rack?: string | null
+          shelf?: string | null
+          store_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bin_locations_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bin_locations_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_cashier_performance_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "bin_locations_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_daily_pos_summary"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "bin_locations_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "bin_locations_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_payment_methods_report"
+            referencedColumns: ["store_id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           created_at: string
@@ -1107,6 +1182,36 @@ export type Database = {
         }
         Relationships: []
       }
+      dashboard_configurations: {
+        Row: {
+          config_name: string | null
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          layout: Json | null
+          user_id: string
+          widgets: Json
+        }
+        Insert: {
+          config_name?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          layout?: Json | null
+          user_id: string
+          widgets: Json
+        }
+        Update: {
+          config_name?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          layout?: Json | null
+          user_id?: string
+          widgets?: Json
+        }
+        Relationships: []
+      }
       delivery_note_items: {
         Row: {
           created_at: string | null
@@ -1403,6 +1508,327 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      item_batches: {
+        Row: {
+          batch_number: string
+          cost_price: number | null
+          created_at: string | null
+          expiry_date: string | null
+          id: string
+          item_id: string | null
+          manufacture_date: string | null
+          notes: string | null
+          quantity: number | null
+          status: string | null
+          store_id: string | null
+        }
+        Insert: {
+          batch_number: string
+          cost_price?: number | null
+          created_at?: string | null
+          expiry_date?: string | null
+          id?: string
+          item_id?: string | null
+          manufacture_date?: string | null
+          notes?: string | null
+          quantity?: number | null
+          status?: string | null
+          store_id?: string | null
+        }
+        Update: {
+          batch_number?: string
+          cost_price?: number | null
+          created_at?: string | null
+          expiry_date?: string | null
+          id?: string
+          item_id?: string | null
+          manufacture_date?: string | null
+          notes?: string | null
+          quantity?: number | null
+          status?: string | null
+          store_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_batches_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_batches_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_batches_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_batches_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_batches_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_batches_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_batches_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_batches_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_cashier_performance_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "item_batches_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_daily_pos_summary"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "item_batches_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "item_batches_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_payment_methods_report"
+            referencedColumns: ["store_id"]
+          },
+        ]
+      }
+      item_bin_locations: {
+        Row: {
+          bin_id: string
+          item_id: string
+          max_quantity: number | null
+          min_quantity: number | null
+          quantity: number | null
+        }
+        Insert: {
+          bin_id: string
+          item_id: string
+          max_quantity?: number | null
+          min_quantity?: number | null
+          quantity?: number | null
+        }
+        Update: {
+          bin_id?: string
+          item_id?: string
+          max_quantity?: number | null
+          min_quantity?: number | null
+          quantity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_bin_locations_bin_id_fkey"
+            columns: ["bin_id"]
+            isOneToOne: false
+            referencedRelation: "bin_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_bin_locations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_bin_locations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_bin_locations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_bin_locations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_bin_locations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_bin_locations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
+          },
+        ]
+      }
+      item_serial_numbers: {
+        Row: {
+          batch_id: string | null
+          created_at: string | null
+          id: string
+          item_id: string | null
+          notes: string | null
+          purchase_date: string | null
+          serial_number: string
+          sold_transaction_id: string | null
+          status: string | null
+          store_id: string | null
+          warranty_expiry: string | null
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string | null
+          id?: string
+          item_id?: string | null
+          notes?: string | null
+          purchase_date?: string | null
+          serial_number: string
+          sold_transaction_id?: string | null
+          status?: string | null
+          store_id?: string | null
+          warranty_expiry?: string | null
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string | null
+          id?: string
+          item_id?: string | null
+          notes?: string | null
+          purchase_date?: string | null
+          serial_number?: string
+          sold_transaction_id?: string | null
+          status?: string | null
+          store_id?: string | null
+          warranty_expiry?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_serial_numbers_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "item_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_cashier_performance_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_daily_pos_summary"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "item_serial_numbers_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_payment_methods_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -1798,6 +2224,83 @@ export type Database = {
           },
         ]
       }
+      kpi_definitions: {
+        Row: {
+          calculation_formula: string | null
+          created_at: string | null
+          description: string | null
+          frequency: string | null
+          id: string
+          is_active: boolean | null
+          kpi_code: string
+          name: string
+          target_value: number | null
+          unit: string | null
+        }
+        Insert: {
+          calculation_formula?: string | null
+          created_at?: string | null
+          description?: string | null
+          frequency?: string | null
+          id?: string
+          is_active?: boolean | null
+          kpi_code: string
+          name: string
+          target_value?: number | null
+          unit?: string | null
+        }
+        Update: {
+          calculation_formula?: string | null
+          created_at?: string | null
+          description?: string | null
+          frequency?: string | null
+          id?: string
+          is_active?: boolean | null
+          kpi_code?: string
+          name?: string
+          target_value?: number | null
+          unit?: string | null
+        }
+        Relationships: []
+      }
+      kpi_history: {
+        Row: {
+          actual_value: number | null
+          created_at: string | null
+          id: string
+          kpi_id: string | null
+          period_date: string
+          target_value: number | null
+          variance: number | null
+        }
+        Insert: {
+          actual_value?: number | null
+          created_at?: string | null
+          id?: string
+          kpi_id?: string | null
+          period_date: string
+          target_value?: number | null
+          variance?: number | null
+        }
+        Update: {
+          actual_value?: number | null
+          created_at?: string | null
+          id?: string
+          kpi_id?: string | null
+          period_date?: string
+          target_value?: number | null
+          variance?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kpi_history_kpi_id_fkey"
+            columns: ["kpi_id"]
+            isOneToOne: false
+            referencedRelation: "kpi_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       main_groups: {
         Row: {
           created_at: string
@@ -1816,36 +2319,105 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_preferences: {
+        Row: {
+          created_at: string | null
+          email_enabled: boolean | null
+          id: string
+          in_app_enabled: boolean | null
+          notification_type: string
+          sms_enabled: boolean | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          in_app_enabled?: boolean | null
+          notification_type: string
+          sms_enabled?: boolean | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          in_app_enabled?: boolean | null
+          notification_type?: string
+          sms_enabled?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_templates: {
+        Row: {
+          body_template: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          sms_template: string | null
+          subject: string | null
+          template_code: string
+        }
+        Insert: {
+          body_template: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          sms_template?: string | null
+          subject?: string | null
+          template_code: string
+        }
+        Update: {
+          body_template?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          sms_template?: string | null
+          subject?: string | null
+          template_code?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
+          email_sent: boolean | null
           id: string
           is_read: boolean
           link: string
           message: string
+          priority: string | null
           reference_id: string | null
+          sms_sent: boolean | null
           title: string
           type: string
           user_id: string | null
         }
         Insert: {
           created_at?: string
+          email_sent?: boolean | null
           id?: string
           is_read?: boolean
           link: string
           message: string
+          priority?: string | null
           reference_id?: string | null
+          sms_sent?: boolean | null
           title: string
           type: string
           user_id?: string | null
         }
         Update: {
           created_at?: string
+          email_sent?: boolean | null
           id?: string
           is_read?: boolean
           link?: string
           message?: string
+          priority?: string | null
           reference_id?: string | null
+          sms_sent?: boolean | null
           title?: string
           type?: string
           user_id?: string | null
@@ -2160,6 +2732,42 @@ export type Database = {
           },
         ]
       }
+      po_amendments: {
+        Row: {
+          amendment_date: string | null
+          amendment_number: number
+          approved_by: string | null
+          changes: Json
+          created_at: string | null
+          id: string
+          po_id: number | null
+          reason: string
+          status: string | null
+        }
+        Insert: {
+          amendment_date?: string | null
+          amendment_number: number
+          approved_by?: string | null
+          changes: Json
+          created_at?: string | null
+          id?: string
+          po_id?: number | null
+          reason: string
+          status?: string | null
+        }
+        Update: {
+          amendment_date?: string | null
+          amendment_number?: number
+          approved_by?: string | null
+          changes?: Json
+          created_at?: string | null
+          id?: string
+          po_id?: number | null
+          reason?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       po_approvers: {
         Row: {
           created_at: string | null
@@ -2174,6 +2782,96 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      po_receiving: {
+        Row: {
+          created_at: string | null
+          id: string
+          notes: string | null
+          po_id: number | null
+          received_by: string | null
+          receiving_date: string | null
+          receiving_number: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          po_id?: number | null
+          received_by?: string | null
+          receiving_date?: string | null
+          receiving_number: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          po_id?: number | null
+          received_by?: string | null
+          receiving_date?: string | null
+          receiving_number?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
+      po_receiving_items: {
+        Row: {
+          accepted_quantity: number | null
+          batch_number: string | null
+          created_at: string | null
+          id: string
+          po_item_id: string | null
+          qc_notes: string | null
+          qc_status: string | null
+          received_quantity: number
+          receiving_id: string | null
+          rejected_quantity: number | null
+          rejection_reason: string | null
+        }
+        Insert: {
+          accepted_quantity?: number | null
+          batch_number?: string | null
+          created_at?: string | null
+          id?: string
+          po_item_id?: string | null
+          qc_notes?: string | null
+          qc_status?: string | null
+          received_quantity: number
+          receiving_id?: string | null
+          rejected_quantity?: number | null
+          rejection_reason?: string | null
+        }
+        Update: {
+          accepted_quantity?: number | null
+          batch_number?: string | null
+          created_at?: string | null
+          id?: string
+          po_item_id?: string | null
+          qc_notes?: string | null
+          qc_status?: string | null
+          received_quantity?: number
+          receiving_id?: string | null
+          rejected_quantity?: number | null
+          rejection_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "po_receiving_items_po_item_id_fkey"
+            columns: ["po_item_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "po_receiving_items_receiving_id_fkey"
+            columns: ["receiving_id"]
+            isOneToOne: false
+            referencedRelation: "po_receiving"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       price_levels: {
         Row: {
@@ -2561,6 +3259,130 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_sales_report"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      reorder_rules: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          item_id: string | null
+          last_triggered_at: string | null
+          lead_time_days: number | null
+          preferred_supplier_id: string | null
+          reorder_point: number
+          reorder_quantity: number
+          store_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          item_id?: string | null
+          last_triggered_at?: string | null
+          lead_time_days?: number | null
+          preferred_supplier_id?: string | null
+          reorder_point: number
+          reorder_quantity: number
+          store_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          item_id?: string | null
+          last_triggered_at?: string | null
+          lead_time_days?: number | null
+          preferred_supplier_id?: string | null
+          reorder_point?: number
+          reorder_quantity?: number
+          store_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reorder_rules_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items_with_current_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_inventory_turnover_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_item_lifecycle_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "v_profit_margin_report"
+            referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_preferred_supplier_id_fkey"
+            columns: ["preferred_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_cashier_performance_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_daily_pos_summary"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "reorder_rules_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_payment_methods_report"
+            referencedColumns: ["store_id"]
           },
         ]
       }
@@ -3989,6 +4811,65 @@ export type Database = {
           },
           {
             foreignKeyName: "vendor_bills_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_performance: {
+        Row: {
+          avg_lead_time_days: number | null
+          created_at: string | null
+          defect_rate: number | null
+          evaluation_period: string | null
+          id: string
+          late_deliveries: number | null
+          on_time_deliveries: number | null
+          overall_score: number | null
+          period_end: string | null
+          period_start: string | null
+          quality_pass_rate: number | null
+          supplier_id: string | null
+          total_orders: number | null
+          total_value: number | null
+        }
+        Insert: {
+          avg_lead_time_days?: number | null
+          created_at?: string | null
+          defect_rate?: number | null
+          evaluation_period?: string | null
+          id?: string
+          late_deliveries?: number | null
+          on_time_deliveries?: number | null
+          overall_score?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          quality_pass_rate?: number | null
+          supplier_id?: string | null
+          total_orders?: number | null
+          total_value?: number | null
+        }
+        Update: {
+          avg_lead_time_days?: number | null
+          created_at?: string | null
+          defect_rate?: number | null
+          evaluation_period?: string | null
+          id?: string
+          late_deliveries?: number | null
+          on_time_deliveries?: number | null
+          overall_score?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          quality_pass_rate?: number | null
+          supplier_id?: string | null
+          total_orders?: number | null
+          total_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_performance_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
