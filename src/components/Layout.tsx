@@ -14,6 +14,9 @@ import {
   ClipboardList,
   Users,
   FileText,
+  Bell,
+  TrendingUp,
+  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,13 +42,16 @@ const Layout = ({ children }: LayoutProps) => {
     { name: "CRM", href: "/crm/customers", icon: Users },
     { name: "Sales Orders", href: "/sales/orders", icon: FileText },
     { name: t('common.inventory'), href: "/inventory", icon: Package },
+    { name: "Batch Tracking", href: "/inventory/batches", icon: Boxes },
     { name: "Physical Inventory", href: "/inventory/physical", icon: ClipboardList },
     { name: t('common.purchaseOrders'), href: "/purchase-orders", icon: ShoppingCart },
     { name: t('common.transfers'), href: "/transfers", icon: Store },
     { name: t('common.accounting'), href: "/accounting", icon: Calculator },
+    { name: "Business Intelligence", href: "/business-intelligence", icon: TrendingUp },
     { name: t('common.reports'), href: "/reports", icon: BarChart3 },
     { name: "AI Reports", href: "/ai-reports", icon: Bot },
     { name: t('common.pos'), href: "/pos", icon: ShoppingCart },
+    { name: "Notifications", href: "/notifications", icon: Bell },
     ...(isAdmin ? [{ name: "Audit Log", href: "/audit-log", icon: ClipboardList }] : []),
   ];
 
