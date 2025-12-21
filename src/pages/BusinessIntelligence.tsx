@@ -1,4 +1,11 @@
-import { useBIMetrics, useKPIDefinitions, useKPIHistory } from "@/hooks/useBIMetrics";
+import { 
+  useBIMetrics, 
+  useSalesTrend, 
+  useTopCategories, 
+  useLowStockAlerts,
+  useCustomerTrend,
+  useCalculatedKPIs
+} from "@/hooks/useBIMetrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -10,24 +17,26 @@ import {
   ShoppingCart, 
   Users,
   BarChart3,
-  Activity
+  Activity,
+  AlertTriangle
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 const BusinessIntelligence = () => {
+  const { formatCurrency } = useSystemSettings();
   const { data: metrics, isLoading: metricsLoading } = useBIMetrics();
-  const { data: kpis } = useKPIDefinitions();
-  const { data: kpiHistory } = useKPIHistory();
+  const { data: salesTrend } = useSalesTrend();
+  const { data: topCategories } = useTopCategories();
+  const { data: lowStockAlerts } = useLowStockAlerts();
+  const { data: customerTrend } = useCustomerTrend();
+  const { data: kpis } = useCalculatedKPIs();
 
-  // Sample trend data for charts
-  const trendData = [
-    { month: "Jan", sales: 45000, orders: 120, customers: 45 },
-    { month: "Feb", sales: 52000, orders: 145, customers: 52 },
-    { month: "Mar", sales: 48000, orders: 132, customers: 48 },
-    { month: "Apr", sales: 61000, orders: 168, customers: 61 },
-    { month: "May", sales: 55000, orders: 155, customers: 55 },
-    { month: "Jun", sales: 67000, orders: 189, customers: 67 },
-  ];
+  // Merge sales and customer trends for the chart
+  const trendData = salesTrend?.map((s, idx) => ({
+    ...s,
+    customers: customerTrend?.[idx]?.customers || 0,
+  })) || [];
 
   const MetricCard = ({ 
     title, 
@@ -87,31 +96,30 @@ const BusinessIntelligence = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Total Sales (30 days)"
-          value={`$${(metrics?.totalSales || 0).toLocaleString()}`}
-          change="+12.5% from last month"
+          value={formatCurrency(metrics?.totalSales || 0)}
+          change={`${metrics?.salesGrowth?.toFixed(1) || 0}% from last month`}
           icon={DollarSign}
-          trend="up"
+          trend={Number(metrics?.salesGrowth) > 0 ? "up" : Number(metrics?.salesGrowth) < 0 ? "down" : "neutral"}
         />
         <MetricCard
           title="Inventory Value"
-          value={`$${(metrics?.inventoryValue || 0).toLocaleString()}`}
-          change="2.3% decrease"
+          value={formatCurrency(metrics?.inventoryValue || 0)}
           icon={Package}
-          trend="down"
+          trend="neutral"
         />
         <MetricCard
           title="Pending PO Value"
-          value={`$${(metrics?.pendingPOValue || 0).toLocaleString()}`}
-          change="5 orders pending"
+          value={formatCurrency(metrics?.pendingPOValue || 0)}
+          change={`${metrics?.pendingPOCount || 0} orders pending`}
           icon={ShoppingCart}
           trend="neutral"
         />
         <MetricCard
-          title="New Customers"
+          title="New Customers (30 days)"
           value={String(metrics?.newCustomers || 0)}
-          change="+8 this month"
+          change={`${metrics?.customerGrowth?.toFixed(1) || 0}% growth`}
           icon={Users}
-          trend="up"
+          trend={Number(metrics?.customerGrowth) > 0 ? "up" : Number(metrics?.customerGrowth) < 0 ? "down" : "neutral"}
         />
       </div>
 
@@ -209,7 +217,7 @@ const BusinessIntelligence = () => {
             <div className="p-4 border rounded-lg">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium">Inventory Turnover</span>
-                <Badge variant="outline">{metrics?.inventoryTurnover}x</Badge>
+                <Badge variant="outline">{metrics?.inventoryTurnover || 0}x</Badge>
               </div>
               <Progress value={Math.min(Number(metrics?.inventoryTurnover || 0) * 10, 100)} />
               <p className="text-xs text-muted-foreground mt-1">Target: 10x annually</p>
@@ -218,45 +226,45 @@ const BusinessIntelligence = () => {
             <div className="p-4 border rounded-lg">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium">Order Fulfillment Rate</span>
-                <Badge variant="outline">94%</Badge>
+                <Badge variant="outline">{kpis?.fulfillmentRate || 0}%</Badge>
               </div>
-              <Progress value={94} />
+              <Progress value={kpis?.fulfillmentRate || 0} />
               <p className="text-xs text-muted-foreground mt-1">Target: 98%</p>
             </div>
             
             <div className="p-4 border rounded-lg">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium">Customer Retention</span>
-                <Badge variant="outline">87%</Badge>
+                <Badge variant="outline">{kpis?.customerRetention || 0}%</Badge>
               </div>
-              <Progress value={87} />
+              <Progress value={kpis?.customerRetention || 0} />
               <p className="text-xs text-muted-foreground mt-1">Target: 90%</p>
             </div>
             
             <div className="p-4 border rounded-lg">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium">Gross Margin</span>
-                <Badge variant="outline">32%</Badge>
+                <Badge variant="outline">{kpis?.grossMargin || 0}%</Badge>
               </div>
-              <Progress value={32} />
+              <Progress value={kpis?.grossMargin || 0} />
               <p className="text-xs text-muted-foreground mt-1">Target: 35%</p>
             </div>
             
             <div className="p-4 border rounded-lg">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium">Stock Accuracy</span>
-                <Badge variant="outline">96%</Badge>
+                <Badge variant="outline">{kpis?.stockAccuracy || 0}%</Badge>
               </div>
-              <Progress value={96} />
+              <Progress value={kpis?.stockAccuracy || 0} />
               <p className="text-xs text-muted-foreground mt-1">Target: 99%</p>
             </div>
             
             <div className="p-4 border rounded-lg">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium">Vendor On-Time Rate</span>
-                <Badge variant="outline">89%</Badge>
+                <Badge variant="outline">{kpis?.vendorOnTimeRate || 0}%</Badge>
               </div>
-              <Progress value={89} />
+              <Progress value={kpis?.vendorOnTimeRate || 0} />
               <p className="text-xs text-muted-foreground mt-1">Target: 95%</p>
             </div>
           </div>
@@ -270,51 +278,48 @@ const BusinessIntelligence = () => {
             <CardTitle className="text-lg">Top Performing Categories</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {[
-              { name: "Electronics", value: 45000, percentage: 35 },
-              { name: "Clothing", value: 32000, percentage: 25 },
-              { name: "Home & Garden", value: 28000, percentage: 22 },
-              { name: "Sports", value: 18000, percentage: 14 },
-            ].map((category) => (
-              <div key={category.name} className="flex items-center gap-3">
-                <div className="flex-1">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>{category.name}</span>
-                    <span className="text-muted-foreground">${category.value.toLocaleString()}</span>
+            {topCategories && topCategories.length > 0 ? (
+              topCategories.map((category) => (
+                <div key={category.name} className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>{category.name}</span>
+                      <span className="text-muted-foreground">{formatCurrency(category.value)}</span>
+                    </div>
+                    <Progress value={category.percentage} />
                   </div>
-                  <Progress value={category.percentage} />
+                  <Badge variant="secondary">{category.percentage}%</Badge>
                 </div>
-                <Badge variant="secondary">{category.percentage}%</Badge>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No category data available</p>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Recent Alerts</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Low Stock Alerts
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {[
-              { type: "warning", message: "5 items below reorder point", time: "2 hours ago" },
-              { type: "info", message: "Monthly sales report ready", time: "5 hours ago" },
-              { type: "success", message: "Inventory count completed", time: "1 day ago" },
-              { type: "error", message: "2 vendors with poor performance", time: "2 days ago" },
-            ].map((alert, index) => (
-              <div key={index} className="flex items-center gap-3 p-2 rounded-lg border">
-                <Badge variant={
-                  alert.type === "warning" ? "secondary" :
-                  alert.type === "error" ? "destructive" :
-                  alert.type === "success" ? "default" : "outline"
-                }>
-                  {alert.type}
-                </Badge>
-                <div className="flex-1">
-                  <p className="text-sm">{alert.message}</p>
-                  <p className="text-xs text-muted-foreground">{alert.time}</p>
+            {lowStockAlerts && lowStockAlerts.length > 0 ? (
+              lowStockAlerts.slice(0, 5).map((item, index) => (
+                <div key={index} className="flex items-center gap-3 p-2 rounded-lg border">
+                  <Badge variant="destructive">Low</Badge>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{(item.items as any)?.name || 'Unknown Item'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      SKU: {(item.items as any)?.sku} | Stock: {item.quantity} / Min: {item.min_stock}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No low stock alerts</p>
+            )}
           </CardContent>
         </Card>
       </div>
