@@ -209,6 +209,45 @@ export type Database = {
           },
         ]
       }
+      api_keys: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          key_hash: string
+          last_used_at: string | null
+          name: string
+          permissions: string[] | null
+          rate_limit: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          key_hash: string
+          last_used_at?: string | null
+          name: string
+          permissions?: string[] | null
+          rate_limit?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          key_hash?: string
+          last_used_at?: string | null
+          name?: string
+          permissions?: string[] | null
+          rate_limit?: number | null
+        }
+        Relationships: []
+      }
       attribute_types: {
         Row: {
           created_at: string
@@ -854,6 +893,169 @@ export type Database = {
         }
         Relationships: []
       }
+      budget_adjustments: {
+        Row: {
+          adjustment_type: string
+          amount: number
+          approved_by: string | null
+          budget_line_id: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          reason: string | null
+        }
+        Insert: {
+          adjustment_type: string
+          amount: number
+          approved_by?: string | null
+          budget_line_id: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+        }
+        Update: {
+          adjustment_type?: string
+          amount?: number
+          approved_by?: string | null
+          budget_line_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_adjustments_budget_line_id_fkey"
+            columns: ["budget_line_id"]
+            isOneToOne: false
+            referencedRelation: "budget_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budget_lines: {
+        Row: {
+          account_id: string
+          actual_amount: number | null
+          budget_period_id: string
+          budgeted_amount: number
+          created_at: string | null
+          id: string
+          notes: string | null
+          store_id: string | null
+          updated_at: string | null
+          variance: number | null
+        }
+        Insert: {
+          account_id: string
+          actual_amount?: number | null
+          budget_period_id: string
+          budgeted_amount?: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          store_id?: string | null
+          updated_at?: string | null
+          variance?: number | null
+        }
+        Update: {
+          account_id?: string
+          actual_amount?: number | null
+          budget_period_id?: string
+          budgeted_amount?: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          store_id?: string | null
+          updated_at?: string | null
+          variance?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_lines_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_lines_budget_period_id_fkey"
+            columns: ["budget_period_id"]
+            isOneToOne: false
+            referencedRelation: "budget_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_lines_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_lines_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_cashier_performance_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "budget_lines_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_daily_pos_summary"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "budget_lines_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "budget_lines_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_payment_methods_report"
+            referencedColumns: ["store_id"]
+          },
+        ]
+      }
+      budget_periods: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          end_date: string
+          fiscal_year: number
+          id: string
+          name: string
+          start_date: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          end_date: string
+          fiscal_year: number
+          id?: string
+          name: string
+          start_date: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          end_date?: string
+          fiscal_year?: number
+          id?: string
+          name?: string
+          start_date?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       cash_sessions: {
         Row: {
           cashier_id: string | null
@@ -1399,6 +1601,51 @@ export type Database = {
           },
         ]
       }
+      exchange_rates: {
+        Row: {
+          created_at: string | null
+          effective_date: string
+          from_currency_id: string | null
+          id: string
+          rate: number
+          source: string | null
+          to_currency_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          effective_date: string
+          from_currency_id?: string | null
+          id?: string
+          rate: number
+          source?: string | null
+          to_currency_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          effective_date?: string
+          from_currency_id?: string | null
+          id?: string
+          rate?: number
+          source?: string | null
+          to_currency_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exchange_rates_from_currency_id_fkey"
+            columns: ["from_currency_id"]
+            isOneToOne: false
+            referencedRelation: "currency_"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exchange_rates_to_currency_id_fkey"
+            columns: ["to_currency_id"]
+            isOneToOne: false
+            referencedRelation: "currency_"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       genders: {
         Row: {
           created_at: string
@@ -1455,6 +1702,92 @@ export type Database = {
           total_rows?: number
         }
         Relationships: []
+      }
+      integration_configs: {
+        Row: {
+          config: Json | null
+          created_at: string | null
+          credentials_encrypted: string | null
+          id: string
+          integration_name: string
+          integration_type: string
+          is_active: boolean | null
+          last_sync_at: string | null
+          sync_frequency_minutes: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string | null
+          credentials_encrypted?: string | null
+          id?: string
+          integration_name: string
+          integration_type: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          sync_frequency_minutes?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string | null
+          credentials_encrypted?: string | null
+          id?: string
+          integration_name?: string
+          integration_type?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          sync_frequency_minutes?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      integration_sync_logs: {
+        Row: {
+          completed_at: string | null
+          details: Json | null
+          error_message: string | null
+          id: string
+          integration_id: string
+          records_failed: number | null
+          records_processed: number | null
+          started_at: string | null
+          status: string
+          sync_type: string
+        }
+        Insert: {
+          completed_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          integration_id: string
+          records_failed?: number | null
+          records_processed?: number | null
+          started_at?: string | null
+          status: string
+          sync_type: string
+        }
+        Update: {
+          completed_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          integration_id?: string
+          records_failed?: number | null
+          records_processed?: number | null
+          started_at?: string | null
+          status?: string
+          sync_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_sync_logs_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "integration_configs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invoice_payments: {
         Row: {
@@ -4892,6 +5225,86 @@ export type Database = {
           id?: string
           location?: string | null
           name?: string
+        }
+        Relationships: []
+      }
+      webhook_deliveries: {
+        Row: {
+          attempts: number | null
+          created_at: string | null
+          delivered_at: string | null
+          event_type: string
+          id: string
+          payload: Json
+          response_body: string | null
+          response_status: number | null
+          webhook_id: string
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string | null
+          delivered_at?: string | null
+          event_type: string
+          id?: string
+          payload: Json
+          response_body?: string | null
+          response_status?: number | null
+          webhook_id: string
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string | null
+          delivered_at?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+          webhook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_endpoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_endpoints: {
+        Row: {
+          created_at: string | null
+          events: string[]
+          headers: Json | null
+          id: string
+          is_active: boolean | null
+          name: string
+          retry_count: number | null
+          secret_key: string | null
+          url: string
+        }
+        Insert: {
+          created_at?: string | null
+          events: string[]
+          headers?: Json | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          retry_count?: number | null
+          secret_key?: string | null
+          url: string
+        }
+        Update: {
+          created_at?: string | null
+          events?: string[]
+          headers?: Json | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          retry_count?: number | null
+          secret_key?: string | null
+          url?: string
         }
         Relationships: []
       }

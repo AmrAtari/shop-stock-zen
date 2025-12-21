@@ -90,6 +90,13 @@ import SalesOrderDetail from "./pages/sales/SalesOrderDetail";
 // Audit Log
 import AuditLog from "./pages/AuditLog";
 
+// Phase 2 - Advanced Inventory
+import BatchTracking from "./pages/inventory/BatchTracking";
+import BinLocations from "./pages/inventory/BinLocations";
+import ReorderPoints from "./pages/inventory/ReorderPoints";
+import VendorPerformance from "./pages/VendorPerformance";
+import BusinessIntelligence from "./pages/BusinessIntelligence";
+
 // Layouts and Wrappers (Assumed to exist)
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -890,6 +897,58 @@ const App = () => {
                   <ProtectedRoute>
                     <Layout>
                       <AuditLog />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Phase 2 - Advanced Inventory Routes */}
+              <Route
+                path="/inventory/batches"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BatchTracking />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/inventory/bins"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BinLocations />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/inventory/reorder"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ReorderPoints />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/vendor-performance"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <VendorPerformance />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/business-intelligence"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <BusinessIntelligence />
                     </Layout>
                   </ProtectedRoute>
                 }
