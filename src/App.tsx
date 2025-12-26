@@ -94,6 +94,11 @@ import AuditLog from "./pages/AuditLog";
 import BatchTracking from "./pages/inventory/BatchTracking";
 import BinLocations from "./pages/inventory/BinLocations";
 import ReorderPoints from "./pages/inventory/ReorderPoints";
+
+// Phase 3 - Budgeting, Multi-Currency, Integrations
+import Budgeting from "./pages/accounting/Budgeting";
+import MultiCurrency from "./pages/accounting/MultiCurrency";
+import Integrations from "./pages/Integrations";
 import VendorPerformance from "./pages/VendorPerformance";
 import BusinessIntelligence from "./pages/BusinessIntelligence";
 
@@ -749,6 +754,38 @@ const App = () => {
               />
 
               {/* === END: MISSING ACCOUNTING ROUTES === */}
+
+              {/* Phase 3 - Budgeting, Multi-Currency, Integrations */}
+              <Route
+                path="/accounting/budgeting"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Budgeting />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/accounting/multi-currency"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <MultiCurrency />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/integrations"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Integrations />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
 
               {/* POS Routes */}
               <Route
