@@ -17,6 +17,9 @@ import {
   Bell,
   TrendingUp,
   Boxes,
+  Wallet,
+  Globe,
+  Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -51,6 +54,9 @@ const Layout = ({ children }: LayoutProps) => {
     { name: t('common.reports'), href: "/reports", icon: BarChart3 },
     { name: "AI Reports", href: "/ai-reports", icon: Bot },
     { name: t('common.pos'), href: "/pos", icon: ShoppingCart },
+    { name: "Budgeting", href: "/accounting/budgeting", icon: Wallet },
+    { name: "Multi-Currency", href: "/accounting/multi-currency", icon: Globe },
+    { name: "Integrations", href: "/integrations", icon: Link2 },
     { name: "Notifications", href: "/notifications", icon: Bell },
     ...(isAdmin ? [{ name: "Audit Log", href: "/audit-log", icon: ClipboardList }] : []),
   ];
