@@ -1,6 +1,6 @@
 // src/pos/POSHome.tsx
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard, Clock, Package } from "lucide-react";
+import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard, Clock, Package, Users, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,11 +8,15 @@ import { POSBarcodeInput } from "@/components/POSBarcodeInput";
 import { POSPaymentDialog } from "@/components/POSPaymentDialog";
 import { POSReceipt } from "@/components/POSReceipt";
 import { POSHoldsSidebar } from "@/components/POSHoldsSidebar";
+import { POSCustomerSelector } from "@/components/POS/POSCustomerSelector";
+import { POSLoyaltyPanel, calculatePointsEarned, calculateRedemptionValue } from "@/components/POS/POSLoyaltyPanel";
+import { POSProductGrid } from "@/components/POS/POSProductGrid";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { usePOS } from "./POSContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePOS, CartItem } from "./POSContext";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 type Product = {
@@ -22,17 +26,25 @@ type Product = {
   quantity: number;
   sku: string;
   image?: string;
-};
-
-type CartItem = Product & {
-  cartQuantity: number;
-  itemDiscountType?: "fixed" | "percent";
-  itemDiscountValue?: number;
+  category?: string;
 };
 
 const POSHome = () => {
   const queryClient = useQueryClient();
-  const { sessionId, cashierId, storeId, openSession, isSessionOpen, saveHold, resumeHold, removeHold, holds } = usePOS();
+  const { 
+    sessionId, 
+    cashierId, 
+    storeId, 
+    openSession, 
+    isSessionOpen, 
+    saveHold, 
+    resumeHold, 
+    removeHold, 
+    holds,
+    selectedCustomer,
+    setSelectedCustomer,
+    loyaltySettings,
+  } = usePOS();
   const { formatCurrency } = useSystemSettings();
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -41,21 +53,53 @@ const POSHome = () => {
   const [globalDiscountType, setGlobalDiscountType] = useState<"fixed" | "percent">("fixed");
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
   const [showHoldsSidebar, setShowHoldsSidebar] = useState(false);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [productViewMode, setProductViewMode] = useState<"scanner" | "grid">("scanner");
 
-  // Fetch products
+  // Fetch products with store-specific inventory
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
-    queryKey: ["pos-products"],
+    queryKey: ["pos-products", storeId],
     queryFn: async (): Promise<Product[]> => {
-      const { data, error } = await supabase
-        .from("items")
-        // CORRECTED: The failing 'price_levels' join and filter are removed.
-        // Now fetching the direct 'price' column available on the 'items' table.
-        .select("id, name, quantity, sku, price, size(name), color(name)")
-        // Removed: .eq("price_levels.is_current", true)
-        .order("name");
-      if (error) throw error;
-      // CORRECTED: Mapping logic updated to use the direct 'price' property.
-      return (data || []).map((i: any) => ({ ...i, price: i.price || 0 }));
+      if (storeId) {
+        // Fetch from store_inventory for store-specific stock
+        const { data, error } = await supabase
+          .from("store_inventory")
+          .select(`
+            quantity,
+            item:items!inner(
+              id,
+              name,
+              sku,
+              price,
+              category:categories(name)
+            )
+          `)
+          .eq("store_id", storeId)
+          .gt("quantity", 0);
+          
+        if (error) throw error;
+        
+        return (data || []).map((si: any) => ({
+          id: si.item.id,
+          name: si.item.name,
+          sku: si.item.sku,
+          price: si.item.price || 0,
+          quantity: si.quantity,
+          category: si.item.category?.name || "Uncategorized",
+        }));
+      } else {
+        // Fallback to all items if no store selected
+        const { data, error } = await supabase
+          .from("items")
+          .select("id, name, quantity, sku, price, category:categories(name)")
+          .order("name");
+        if (error) throw error;
+        return (data || []).map((i: any) => ({ 
+          ...i, 
+          price: i.price || 0,
+          category: i.category?.name || "Uncategorized",
+        }));
+      }
     },
   });
 
@@ -76,7 +120,6 @@ const POSHome = () => {
       }
       return [...prev, { ...product, cartQuantity: 1 }];
     });
-    // Helpful beep / UI feedback could be added here
   }, []);
 
   const updateCartQty = (id: string, qty: number) => {
@@ -143,9 +186,25 @@ const POSHome = () => {
     return (subtotal * globalDiscountValue) / 100;
   }, [subtotal, globalDiscountType, globalDiscountValue]);
 
-  const total = useMemo(
+  // Loyalty points calculations
+  const loyaltyRedemptionValue = useMemo(() => 
+    calculateRedemptionValue(pointsToRedeem, loyaltySettings.pointValueInCents),
+    [pointsToRedeem, loyaltySettings.pointValueInCents]
+  );
+
+  const totalBeforeLoyalty = useMemo(
     () => Math.max(0, subtotal - itemDiscountTotal - globalDiscountAmount),
     [subtotal, itemDiscountTotal, globalDiscountAmount],
+  );
+
+  const total = useMemo(
+    () => Math.max(0, totalBeforeLoyalty - loyaltyRedemptionValue),
+    [totalBeforeLoyalty, loyaltyRedemptionValue],
+  );
+
+  const pointsToEarn = useMemo(() => 
+    selectedCustomer ? calculatePointsEarned(total, loyaltySettings.pointsPerDollar) : 0,
+    [selectedCustomer, total, loyaltySettings.pointsPerDollar]
   );
 
   // Checkout flow: create transaction, write sales rows, update stock, attach sessionId & cashierId
@@ -157,7 +216,6 @@ const POSHome = () => {
     }
 
     const transactionId = `TXN-${Date.now()}`;
-    // Use the payment method with the largest amount as the primary method
     const primaryPayment = payments.reduce((max, p) => p.amount > max.amount ? p : max, payments[0]);
     const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
     
@@ -183,6 +241,7 @@ const POSHome = () => {
             (item.price * item.cartQuantity * itemDiscountPercent) / 100,
           is_refund: false,
           payment_method: primaryPayment.method,
+          customer_id: selectedCustomer?.id || null,
         };
       });
 
@@ -198,6 +257,7 @@ const POSHome = () => {
           quantity: item.cartQuantity,
           price: item.price,
           user_id: cashierId,
+          customer_id: selectedCustomer?.id || null,
         })),
       );
 
@@ -230,10 +290,25 @@ const POSHome = () => {
 
             if (updateErr) {
               console.error("Error updating store inventory:", updateErr);
-            } else {
-              console.log(`Decremented ${item.sku} by ${item.cartQuantity} at store ${storeId}`);
             }
           }
+        }
+      }
+
+      // Update customer loyalty points
+      if (selectedCustomer) {
+        const netPointsChange = pointsToEarn - pointsToRedeem;
+        const newLoyaltyPoints = Math.max(0, (selectedCustomer.loyalty_points || 0) + netPointsChange);
+        
+        const { error: loyaltyError } = await supabase
+          .from("customers")
+          .update({ loyalty_points: newLoyaltyPoints })
+          .eq("id", selectedCustomer.id);
+          
+        if (loyaltyError) {
+          console.error("Error updating loyalty points:", loyaltyError);
+        } else {
+          toast.success(`Customer earned ${pointsToEarn} points${pointsToRedeem > 0 ? `, redeemed ${pointsToRedeem} points` : ""}`);
         }
       }
 
@@ -245,11 +320,17 @@ const POSHome = () => {
         paymentMethod: primaryPayment.method,
         amountPaid: totalPaid,
         date: new Date(),
+        customer: selectedCustomer,
+        pointsEarned: pointsToEarn,
+        pointsRedeemed: pointsToRedeem,
       });
 
       setCart([]);
+      setPointsToRedeem(0);
+      setSelectedCustomer(null);
       toast.success("Sale completed");
       queryClient.invalidateQueries({ queryKey: ["pos-products"] });
+      queryClient.invalidateQueries({ queryKey: ["pos-customers"] });
       setShowPaymentDialog(false);
     } catch (err: any) {
       console.error(err);
@@ -275,9 +356,8 @@ const POSHome = () => {
     const startCash = parseFloat(startCashStr || "0");
     if (!cashier) return toast.error("Cashier required");
     
-    // For now, use a hardcoded store - in production this should be a proper store selector
     const store = prompt("Enter store ID (leave empty for default):");
-    const defaultStore = "d0223c13-45d0-46c5-b737-3ded952b24cb"; // Hebron Store as default
+    const defaultStore = "d0223c13-45d0-46c5-b737-3ded952b24cb";
     await openSession(cashier, startCash, store || defaultStore);
   };
 
@@ -303,8 +383,8 @@ const POSHome = () => {
                   Open Session
                 </Button>
               ) : (
-                <div className="flex items-center gap-2 bg-success/10 text-success px-4 py-2 rounded-lg border border-success/20">
-                  <div className="h-2 w-2 bg-success rounded-full animate-pulse" />
+                <div className="flex items-center gap-2 bg-green-500/10 text-green-600 px-4 py-2 rounded-lg border border-green-500/20">
+                  <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
                   <span className="text-sm font-medium">Session Active</span>
                 </div>
               )}
@@ -342,10 +422,34 @@ const POSHome = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Panel - Product Selection & Cart */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Barcode Scanner Section */}
+            {/* Customer Selection */}
+            <Card className="border-2">
+              <CardHeader className="bg-muted/50 border-b py-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Customer
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <POSCustomerSelector
+                  selectedCustomer={selectedCustomer}
+                  onSelectCustomer={setSelectedCustomer}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Product Selection Tabs */}
             <Card className="border-2">
               <CardHeader className="bg-muted/50 border-b">
-                <CardTitle className="text-lg">Product Scanner</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Products</CardTitle>
+                  <Tabs value={productViewMode} onValueChange={(v) => setProductViewMode(v as any)}>
+                    <TabsList className="h-8">
+                      <TabsTrigger value="scanner" className="text-xs">Scanner</TabsTrigger>
+                      <TabsTrigger value="grid" className="text-xs">Browse</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
               </CardHeader>
               <CardContent className="pt-6">
                 {isLoadingProducts ? (
@@ -353,8 +457,13 @@ const POSHome = () => {
                     <Loader2 className="animate-spin h-8 w-8 text-primary mx-auto mb-3" />
                     <p className="text-sm text-muted-foreground">Loading products...</p>
                   </div>
-                ) : (
+                ) : productViewMode === "scanner" ? (
                   <POSBarcodeInput products={products} onProductSelect={(p) => handleProductSelect(p)} />
+                ) : (
+                  <POSProductGrid 
+                    products={products} 
+                    onProductSelect={(p) => handleProductSelect(p)} 
+                  />
                 )}
               </CardContent>
             </Card>
@@ -373,13 +482,13 @@ const POSHome = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4">
-                  <div className="space-y-2 max-h-[450px] overflow-y-auto pr-2">
+                  <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2">
                     {cart.map((it) => (
                       <div key={it.id} className="flex items-center gap-4 p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors">
                         <div className="flex-1 min-w-0">
                           <h4 className="font-semibold text-foreground truncate">{it.name}</h4>
                           <p className="text-sm text-muted-foreground">SKU: {it.sku}</p>
-                          <p className="text-xs text-muted-foreground mt-1">${it.price.toFixed(2)} × {it.cartQuantity}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{formatCurrency(it.price)} × {it.cartQuantity}</p>
                         </div>
 
                         <div className="flex items-center gap-3">
@@ -450,6 +559,18 @@ const POSHome = () => {
 
           {/* Right Panel - Order Summary & Payment */}
           <div className="space-y-6">
+            {/* Loyalty Panel */}
+            {selectedCustomer && (
+              <POSLoyaltyPanel
+                customer={selectedCustomer}
+                transactionTotal={totalBeforeLoyalty}
+                pointsToEarn={pointsToEarn}
+                pointsToRedeem={pointsToRedeem}
+                onRedeemPointsChange={setPointsToRedeem}
+                loyaltySettings={loyaltySettings}
+              />
+            )}
+
             {/* Order Summary */}
             <Card className="border-2">
               <CardHeader className="bg-muted/50 border-b">
@@ -467,16 +588,26 @@ const POSHome = () => {
                       {itemDiscountTotal > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Item Discounts</span>
-                          <span className="font-semibold text-success">-{formatCurrency(itemDiscountTotal)}</span>
+                          <span className="font-semibold text-green-600">-{formatCurrency(itemDiscountTotal)}</span>
                         </div>
                       )}
                       {globalDiscountAmount > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Global Discount</span>
-                          <span className="font-semibold text-success">-{formatCurrency(globalDiscountAmount)}</span>
+                          <span className="font-semibold text-green-600">-{formatCurrency(globalDiscountAmount)}</span>
                         </div>
                       )}
                     </>
+                  )}
+
+                  {loyaltyRedemptionValue > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <Star className="h-3 w-3 text-yellow-500" />
+                        Loyalty Points ({pointsToRedeem} pts)
+                      </span>
+                      <span className="font-semibold text-green-600">-{formatCurrency(loyaltyRedemptionValue)}</span>
+                    </div>
                   )}
                 </div>
 
@@ -539,9 +670,9 @@ const POSHome = () => {
 
             {/* Last Transaction */}
             {lastTransaction && (
-              <Card className="border-2 border-success/20 bg-success/5">
-                <CardHeader className="bg-success/10 border-b border-success/20">
-                  <CardTitle className="text-base text-success flex items-center gap-2">
+              <Card className="border-2 border-green-500/20 bg-green-500/5">
+                <CardHeader className="bg-green-500/10 border-b border-green-500/20">
+                  <CardTitle className="text-base text-green-600 flex items-center gap-2">
                     <ReceiptIcon className="h-4 w-4" />
                     Last Transaction
                   </CardTitle>
@@ -549,8 +680,20 @@ const POSHome = () => {
                 <CardContent className="pt-4 space-y-2">
                   <div className="text-xs text-muted-foreground">Transaction ID</div>
                   <div className="font-mono text-sm font-semibold">{lastTransaction?.transactionId}</div>
+                  {lastTransaction?.customer && (
+                    <>
+                      <div className="text-xs text-muted-foreground mt-2">Customer</div>
+                      <div className="text-sm font-medium">{lastTransaction.customer.name}</div>
+                    </>
+                  )}
                   <div className="text-xs text-muted-foreground mt-2">Total Amount</div>
-                  <div className="text-lg font-bold text-success">{formatCurrency(lastTransaction?.total || 0)}</div>
+                  <div className="text-lg font-bold text-green-600">{formatCurrency(lastTransaction?.total || 0)}</div>
+                  {lastTransaction?.pointsEarned > 0 && (
+                    <Badge variant="secondary" className="mt-2">
+                      <Star className="h-3 w-3 mr-1 text-yellow-500" />
+                      +{lastTransaction.pointsEarned} points earned
+                    </Badge>
+                  )}
                   <Button size="sm" variant="outline" className="w-full mt-3" onClick={() => setShowPaymentDialog(true)}>
                     <ReceiptIcon className="h-3 w-3 mr-2" />
                     Reprint Receipt
