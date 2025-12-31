@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 // Define the CartItem structure for the holds
-interface CartItem {
+export interface CartItem {
   id: string;
   name: string;
   price: number;
@@ -18,6 +18,25 @@ interface CartItem {
   itemDiscountValue?: number;
 }
 
+// Customer type for POS
+export interface POSCustomer {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  loyalty_points: number;
+  customer_type: string;
+  credit_limit: number;
+  outstanding_balance: number;
+}
+
+// Loyalty settings
+export interface LoyaltySettings {
+  pointsPerDollar: number;
+  pointValueInCents: number;
+  minRedeemPoints: number;
+}
+
 interface POSContextValue {
   sessionId: string | null;
   cashierId: string | null;
@@ -29,15 +48,29 @@ interface POSContextValue {
   saveHold: (holdId: string, cart: CartItem[]) => void;
   resumeHold: (holdId: string) => CartItem[] | null;
   removeHold: (holdId: string) => void;
+  // Customer & Loyalty
+  selectedCustomer: POSCustomer | null;
+  setSelectedCustomer: (customer: POSCustomer | null) => void;
+  loyaltySettings: LoyaltySettings;
 }
 
 const POSContext = createContext<POSContextValue | undefined>(undefined);
+
+// Default loyalty settings
+const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
+  pointsPerDollar: 1, // 1 point per $1 spent
+  pointValueInCents: 1, // 1 point = 1 cent discount
+  minRedeemPoints: 100, // Minimum 100 points to redeem
+};
 
 export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [cashierId, setCashierId] = useState<string | null>(null);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [isSessionOpen, setIsSessionOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<POSCustomer | null>(null);
+  const [loyaltySettings] = useState<LoyaltySettings>(DEFAULT_LOYALTY_SETTINGS);
+  
   // Holds state is initialized by loading from localStorage
   const [holds, setHolds] = useState<Record<string, CartItem[]>>(() => {
     const savedHolds = localStorage.getItem("pos-holds");
@@ -178,6 +211,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveHold,
         resumeHold,
         removeHold,
+        selectedCustomer,
+        setSelectedCustomer,
+        loyaltySettings,
       }}
     >
       {children}
