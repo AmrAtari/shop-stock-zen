@@ -9,10 +9,11 @@ import {
   Plus,
   GripVertical,
   X,
-  Bell,
   Store,
   Warehouse,
-  FileText,
+  ShoppingCart,
+  Users,
+  Bell,
   Download,
 } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
@@ -44,6 +45,10 @@ import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { formatCurrency } from "@/lib/formatters";
 import { useAggregatedInventory } from "@/hooks/useStoreInventoryView";
+import WelcomeHeader from "@/components/dashboard/WelcomeHeader";
+import QuickActions from "@/components/dashboard/QuickActions";
+import StoreOverviewCard from "@/components/dashboard/StoreOverviewCard";
+import RecentActivityCard from "@/components/dashboard/RecentActivityCard";
 
 interface ChartConfig {
   id: string;
@@ -601,374 +606,235 @@ const Dashboard = () => {
   const hasUnspecifiedInventory = unassignedItemsData.length > 0;
 
   return (
-    <div className="p-8 space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Customizable overview of your inventory across all stores</p>
-        </div>
-        <div className="flex gap-2">
-          {isAdmin && (
-            <Dialog open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
-              <DialogTrigger asChild>
-                <div className="relative">
-                  <Button variant="outline" size="icon">
-                    <Bell className="w-5 h-5" />
-                  </Button>
-                  {pendingCount > 0 && (
-                    <span className="absolute top-0 right-0 block h-4 w-4 rounded-full ring-2 ring-background bg-red-500 text-xs text-white flex items-center justify-center -translate-y-1 translate-x-1">
-                      {pendingCount > 9 ? "9+" : pendingCount}
-                    </span>
-                  )}
-                </div>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Notifications ({pendingCount} Pending)</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                  {notificationsLoading ? (
-                    <div className="space-y-3">
-                      {[...Array(3)].map((_, i) => (
-                        <div key={i} className="p-3 border rounded-lg">
-                          <Skeleton className="h-4 w-3/4 mb-2" />
-                          <Skeleton className="h-3 w-full" />
-                          <Skeleton className="h-3 w-1/2 mt-1" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-4">No new approvals or notifications.</p>
-                  ) : (
-                    notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        className={`p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors ${
-                          notif.is_read ? "bg-muted/30" : ""
-                        }`}
-                        onClick={() => handleNotificationClick(notif.link, notif.id)}
-                      >
-                        <p className="font-semibold text-sm">{notif.title}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{notif.description}</p>
-                        <div className="flex justify-between items-center mt-1">
-                          <span className="text-xs text-gray-400">
-                            {new Date(notif.created_at).toLocaleDateString()}
-                          </span>
-                          <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">
-                            {notif.id.startsWith("sample-") ? "Sample" : "Real"}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <Button variant="ghost" onClick={() => handleNotificationClick("/approvals")}>
-                  View All Approvals / Notifications <ExternalLink className="w-4 h-4 ml-2" />
-                </Button>
-              </DialogContent>
-            </Dialog>
-          )}
+    <div className="space-y-6">
+      {/* Welcome Header */}
+      <WelcomeHeader
+        pendingCount={pendingCount}
+        onNotificationsClick={() => setIsNotificationsOpen(true)}
+        isEditMode={isEditMode}
+        onEditModeToggle={() => setIsEditMode(!isEditMode)}
+      />
 
-          <Button variant={isEditMode ? "default" : "outline"} onClick={() => setIsEditMode(!isEditMode)}>
-            {isEditMode ? "Save Layout" : "Edit Dashboard"}
-          </Button>
-          {isEditMode && (
-            <Dialog open={isAddChartOpen} onOpenChange={setIsAddChartOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Chart
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Chart to Dashboard</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <Select value={selectedChart} onValueChange={setSelectedChart}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a chart type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getAvailableChartOptions().map((chart) => (
-                        <SelectItem key={chart.id} value={chart.id}>
-                          {chart.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setIsAddChartOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleAddChart} disabled={!selectedChart}>
-                      Add Chart
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
-        </div>
+      {/* Quick Actions */}
+      <QuickActions />
+
+      {/* Key Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          title="Total Items"
+          value={totalItemsAllStores.toLocaleString()}
+          icon={<Package className="w-5 h-5" />}
+          variant="default"
+          subtitle="Across all stores"
+          onClick={() => navigate("/inventory")}
+        />
+        <MetricCard
+          title="Inventory Value"
+          value={formatCurrency(totalValueAllStores, currency)}
+          icon={<DollarSign className="w-5 h-5" />}
+          variant="success"
+          subtitle="Total stock value"
+        />
+        <MetricCard
+          title="Low Stock Alerts"
+          value={totalLowStockAllStores.toLocaleString()}
+          icon={<AlertTriangle className="w-5 h-5" />}
+          variant="warning"
+          subtitle="Items needing reorder"
+          onClick={() => navigate("/alerts")}
+        />
+        <MetricCard
+          title="Active Stores"
+          value={storeMetrics.filter((s) => s.storeName !== "(Non-Specified Store)").length}
+          icon={<Warehouse className="w-5 h-5" />}
+          variant="info"
+          subtitle="Operational locations"
+          onClick={() => navigate("/stores")}
+        />
       </div>
 
-      {/* Store Metrics Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Store className="w-5 h-5" />
-            Inventory Overview by Store
-            <div className="ml-auto flex gap-2">
-              {hasUnspecifiedInventory && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleExportUnspecified}
-                  className="bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                >
-                  <Download className="w-4 h-4 mr-1" />
-                  Export Unspecified Data
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={debugAllTables}>
-                Debug All Tables
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // If you have a queryClient available you'd invalidate ["aggregated-inventory"] here.
-                  // For now we log and rely on react-query refetch behavior.
-                  toast.success("Refresh triggered");
-                }}
-              >
-                Refresh Data
-              </Button>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {storeMetricsLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
-            </div>
-          ) : storeMetrics.length === 0 ? (
-            <div className="text-center py-8">
-              <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Store Data Found</h3>
-              <p className="text-muted-foreground mb-4">
-                We couldn't find any store inventory data. Check the console for debug information.
-              </p>
-              <Button onClick={debugAllTables}>Debug Database</Button>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <MetricCard
-                  title="Total Items (All Stores)"
-                  value={totalItemsAllStores.toLocaleString()}
-                  icon={<Package className="w-5 h-5" />}
-                  variant="default"
-                />
-                <MetricCard
-                  title="Total Inventory Value"
-                  value={formatCurrency(totalValueAllStores, currency)}
-                  icon={<DollarSign className="w-5 h-5" />}
-                  variant="success"
-                />
-                <MetricCard
-                  title="Total Low Stock Alerts"
-                  value={totalLowStockAllStores.toLocaleString()}
-                  icon={<AlertTriangle className="w-5 h-5" />}
-                  variant="warning"
-                />
-                <MetricCard
-                  title="Active Stores"
-                  value={storeMetrics.filter((s) => s.storeName !== "(Non-Specified Store)").length}
-                  icon={<Warehouse className="w-5 h-5" />}
-                  variant="default"
-                />
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Store-wise Breakdown</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {storeMetrics
-                    .sort((a, b) => {
-                      if (a.storeName === "(Non-Specified Store)") return 1;
-                      if (b.storeName === "(Non-Specified Store)") return -1;
-                      return 0;
-                    })
-                    .map((store, index) => (
-                      <Card
-                        key={index}
-                        className={`relative overflow-hidden ${
-                          store.storeName === "(Non-Specified Store)" ? "border-2 border-dashed border-red-500" : ""
-                        }`}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h4
-                              className={`font-semibold text-sm truncate ${
-                                store.storeName === "(Non-Specified Store)" ? "text-red-500" : ""
-                              }`}
-                            >
-                              {store.storeName}
-                            </h4>
-                            <Store
-                              className={`w-4 h-4 ${
-                                store.storeName === "(Non-Specified Store)" ? "text-red-500" : "text-muted-foreground"
-                              }`}
-                            />
-                          </div>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Items:</span>
-                              <span className="font-medium">{store.totalItems.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Value:</span>
-                              <span className="font-medium">{formatCurrency(store.inventoryValue, currency)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Low Stock:</span>
-                              <span
-                                className={`font-medium ${store.lowStockCount > 0 ? "text-warning" : "text-success"}`}
-                              >
-                                {store.lowStockCount.toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                          {store.storeName === "(Non-Specified Store)" && store.totalItems > 0 && (
-                            <div className="mt-3">
-                              <Button
-                                variant="link"
-                                size="sm"
-                                onClick={handleExportUnspecified}
-                                className="p-0 h-auto text-xs text-red-500 hover:text-red-600"
-                              >
-                                <Download className="w-3 h-3 mr-1" />
-                                Download & Export Data
-                              </Button>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {dashboardCharts.length === 0 && !isLoading ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Package className="w-12 h-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No charts configured</h3>
-              <p className="text-muted-foreground text-center mb-4">
-                Add charts to your dashboard to visualize your inventory data
-              </p>
-              <Button onClick={() => setIsEditMode(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Your First Chart
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
-      </div>
-
+      {/* Store Overview and Activity Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {dashboardCharts.map((dashboardChart) => {
-          const chartConfig = availableCharts.find((chart) => chart.id === dashboardChart.chartId);
-          if (!chartConfig) return null;
-
-          return (
-            <Card
-              key={dashboardChart.id}
-              className={`relative ${isEditMode ? "border-2 border-dashed border-primary" : ""}`}
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, dashboardChart.id)}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, dashboardChart.id)}
-            >
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <div className="flex items-center gap-2">
-                  {isEditMode && <GripVertical className="w-4 h-4 text-muted-foreground cursor-move" />}
-                  <CardTitle>{chartConfig.title}</CardTitle>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => navigate(`/reports?tab=${chartConfig.reportTab}`)}>
-                    <ExternalLink className="w-4 h-4 mr-1" />
-                    Full Report
-                  </Button>
-                  {isEditMode && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveChart(dashboardChart.id)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>{isLoading ? <Skeleton className="h-[300px]" /> : renderChart(chartConfig)}</CardContent>
-            </Card>
-          );
-        })}
+        <StoreOverviewCard
+          stores={storeMetrics}
+          isLoading={storeMetricsLoading}
+          formatCurrency={(val) => formatCurrency(val, currency)}
+        />
+        <RecentActivityCard />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Low Stock Items</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-20" />
-              <Skeleton className="h-20" />
-              <Skeleton className="h-20" />
-            </div>
-          ) : lowStockItems.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No low stock items</p>
-          ) : (
-            <>
-              <div className="space-y-4">
-                {lowStockItems.slice(0, 5).map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-sm text-muted-foreground">{item.sku}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium text-warning">
-                        {item.quantity} {item.unit}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Min: {item.minStock}</p>
-                    </div>
+      {/* Notifications Dialog */}
+      <Dialog open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              Notifications ({pendingCount} Pending)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {notificationsLoading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="p-3 border rounded-lg">
+                    <Skeleton className="h-4 w-3/4 mb-2" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-1/2 mt-1" />
                   </div>
                 ))}
               </div>
-              {lowStockItems.length > 5 && (
-                <div className="mt-4 text-center">
-                  <Button variant="outline" onClick={() => navigate("/reports?tab=LOW_STOCK")}>
-                    <ExternalLink className="w-4 h-4 mr-1" />
-                    See Full Report ({lowStockItems.length} items)
-                  </Button>
+            ) : notifications.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4">No new notifications</p>
+            ) : (
+              notifications.map((notif) => (
+                <div
+                  key={notif.id}
+                  className={`p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors ${
+                    notif.is_read ? "bg-muted/30 opacity-60" : ""
+                  }`}
+                  onClick={() => handleNotificationClick(notif.link, notif.id)}
+                >
+                  <p className="font-semibold text-sm">{notif.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{notif.description}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(notif.created_at).toLocaleDateString()}
+                  </span>
                 </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+              ))
+            )}
+          </div>
+          <Button variant="outline" className="w-full" onClick={() => handleNotificationClick("/notifications")}>
+            View All Notifications
+            <ExternalLink className="w-4 h-4 ml-2" />
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Chart Dialog */}
+      {isEditMode && (
+        <Dialog open={isAddChartOpen} onOpenChange={setIsAddChartOpen}>
+          <DialogTrigger asChild>
+            <Button className="fixed bottom-6 right-6 shadow-lg z-50" size="lg">
+              <Plus className="w-5 h-5 mr-2" />
+              Add Chart
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Chart to Dashboard</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Select value={selectedChart} onValueChange={setSelectedChart}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a chart type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getAvailableChartOptions().map((chart) => (
+                    <SelectItem key={chart.id} value={chart.id}>
+                      {chart.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsAddChartOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddChart} disabled={!selectedChart}>
+                  Add Chart
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Charts Section */}
+      {dashboardCharts.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Analytics</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {dashboardCharts.map((dashboardChart) => {
+              const chartConfig = availableCharts.find((chart) => chart.id === dashboardChart.chartId);
+              if (!chartConfig) return null;
+
+              return (
+                <Card
+                  key={dashboardChart.id}
+                  className={`relative ${isEditMode ? "border-2 border-dashed border-primary" : ""}`}
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, dashboardChart.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, dashboardChart.id)}
+                >
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <div className="flex items-center gap-2">
+                      {isEditMode && <GripVertical className="w-4 h-4 text-muted-foreground cursor-move" />}
+                      <CardTitle className="text-base">{chartConfig.title}</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => navigate(`/reports?tab=${chartConfig.reportTab}`)}>
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                      {isEditMode && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveChart(dashboardChart.id)}
+                          className="h-8 w-8 p-0 text-destructive"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>{isLoading ? <Skeleton className="h-[300px]" /> : renderChart(chartConfig)}</CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Low Stock Items Section */}
+      {lowStockItems.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-warning" />
+                Low Stock Alerts
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/reports?tab=LOW_STOCK")}>
+                View All
+                <ExternalLink className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {lowStockItems.slice(0, 5).map((item) => (
+                <div 
+                  key={item.id} 
+                  className="flex items-center justify-between p-3 rounded-lg bg-warning/5 border border-warning/20 hover:bg-warning/10 transition-colors cursor-pointer"
+                  onClick={() => navigate("/inventory")}
+                >
+                  <div>
+                    <p className="font-medium text-sm">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.sku}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-warning text-sm">
+                      {item.quantity} {item.unit}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Min: {item.minStock}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
