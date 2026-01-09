@@ -58,6 +58,8 @@ import { toast } from "@/components/ui/use-toast";
 
 // *** DatabaseAdminComponent is imported here. ***
 import DatabaseAdminPanel from "./DatabaseAdminComponent.tsx";
+import UserRolesSection from "@/sections/UserRolesSection";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 // --- TYPE DEFINITIONS ---
 type UserRole = "admin" | "inventory_man" | "supervisor" | "user" | null;
@@ -134,13 +136,6 @@ const ATTRIBUTE_ICONS = [
 ];
 
 // --- AUTH & SETTINGS HOOKS (Database-Aware) ---
-
-// Mocking the auth hook for admin check, replace with your actual auth context
-const useAuth = () => {
-  // NOTE: This should be dynamically fetched from your user context/Supabase session
-  const [userRole, setUserRole] = useState<UserRole>("admin");
-  return { userRole };
-};
 
 const useSystemSettings = () => {
   const [dynamicCurrencies, setDynamicCurrencies] = useState<CatalogItem[]>([]);
@@ -273,9 +268,7 @@ const useSystemSettings = () => {
 // ---------------------------------------------------------------------
 // 1. Organizational Structure Component (Database-Aware)
 // ---------------------------------------------------------------------
-const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = ({ dynamicCurrencies }) => {
-  const { userRole } = useAuth();
-  const isAdmin = userRole === "admin";
+const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[]; isAdmin: boolean }> = ({ dynamicCurrencies, isAdmin }) => {
 
   const [companyCodes, setCompanyCodes] = useState<CompanyCode[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -459,9 +452,7 @@ const OrganizationalStructure: React.FC<{ dynamicCurrencies: CatalogItem[] }> = 
 // ---------------------------------------------------------------------
 // 2. Workflow Rules Component (Database-Aware)
 // ---------------------------------------------------------------------
-const WorkflowRules: React.FC = () => {
-  const { userRole } = useAuth();
-  const isAdmin = userRole === "admin";
+const WorkflowRules: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const availableRoles: UserRole[] = ["admin", "supervisor", "inventory_man", "user"];
 
   const [rules, setRules] = useState<WorkflowRule[]>([]);
@@ -722,246 +713,6 @@ const WorkflowRules: React.FC = () => {
 // 3. User & Attribute Dialogs (Imported from user's Configuration (10).tsx)
 // ---------------------------------------------------------------------
 
-// NOTE: UserPermissionsDialog, AddUserDialog, AddAttributeDialog, CatalogManagementDialog
-// The implementation of these components from the user's uploaded file is used directly
-// as it contains the correct Edge Function and RPC calls.
-
-// ---------------------------------------------------------------------
-// 4. User Permissions Dialog (from Configuration (10).tsx)
-// ---------------------------------------------------------------------
-interface UserPermissionsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  user: UserWithRole | null;
-  onSave: (userId: string, newRole: UserWithRole["role"]) => Promise<void>;
-  onDelete: (userId: string) => Promise<void>;
-}
-
-const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
-  open,
-  onOpenChange,
-  user,
-  onSave,
-  onDelete,
-}) => {
-  const { userRole: currentUserRole } = useAuth();
-  const isAdmin = currentUserRole === "admin";
-
-  const [currentRole, setCurrentRole] = useState<UserWithRole["role"]>(user?.role || null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const availableRoles = ["admin", "inventory_man", "supervisor", "user"];
-
-  useEffect(() => {
-    setCurrentRole(user?.role || null);
-  }, [user]);
-
-  const handleSave = async () => {
-    if (!user || !currentRole || !isAdmin) return;
-    setIsSaving(true);
-    await onSave(user.id, currentRole);
-    setIsSaving(false);
-    onOpenChange(false);
-  };
-
-  const handleDelete = async () => {
-    if (!user || !isAdmin) return;
-    setIsDeleting(true);
-    await onDelete(user.id);
-    setIsDeleting(false);
-    onOpenChange(false);
-  };
-
-  if (!user) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Manage Permissions for {user.email}</DialogTitle>
-          <DialogDescription>Update the system role for this user and view account details.</DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4">
-          {/* Role Management */}
-          <div className="flex items-center space-x-2">
-            <Label htmlFor="role" className="w-[100px]">
-              System Role
-            </Label>
-            <Select
-              value={currentRole || ""}
-              onValueChange={(value) => setCurrentRole(value as UserWithRole["role"])}
-              disabled={isSaving || isDeleting || !isAdmin}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Role" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableRoles.map((role) => (
-                  <SelectItem key={role} value={role}>
-                    {role.charAt(0).toUpperCase() + role.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Account Details */}
-          <Card className="mt-2">
-            <CardHeader className="py-2">
-              <CardTitle className="text-sm">Account Info</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm space-y-1">
-              <p className="flex justify-between">
-                <span className="text-gray-500">User ID:</span> <span>{user.id.slice(0, 8)}...</span>
-              </p>
-              <p className="flex justify-between">
-                <span className="text-gray-500">Created:</span>{" "}
-                <span>{new Date(user.created_at).toLocaleDateString()}</span>
-              </p>
-              <p className="flex justify-between">
-                <span className="text-gray-500">Last Sign-in:</span>{" "}
-                <span>{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "Never"}</span>
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <DialogFooter className="flex justify-between">
-          <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || isSaving || !isAdmin}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            {isDeleting ? "Removing Role..." : "Remove Role"}
-          </Button>
-          <div className="space-x-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isDeleting}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={isSaving || isDeleting || currentRole === user.role || !isAdmin}>
-              <Check className="w-4 h-4 mr-2" />
-              {isSaving ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// ---------------------------------------------------------------------
-// 5. Add User Dialog (from Configuration (10).tsx)
-// ---------------------------------------------------------------------
-const AddUserDialog: React.FC<{
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onUserAdded: () => void;
-}> = ({ open, onOpenChange, onUserAdded }) => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserWithRole["role"]>("user");
-  const [loading, setLoading] = useState(false);
-
-  const handleAddUser = async () => {
-    if (!email || !password || !role) {
-      toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
-      return;
-    }
-    setLoading(true);
-
-    try {
-      // Use the secure Edge Function to create the user and assign the role
-      const { error } = await supabase.functions.invoke("admin-create-user-password", {
-        body: {
-          userId: email, // userId is used as email in the Edge Function
-          password: password,
-          role: role,
-        },
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: `User ${email} created successfully.`,
-        variant: "default",
-      });
-      onUserAdded();
-      onOpenChange(false);
-    } catch (error: any) {
-      toast({
-        title: "User Creation Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center">
-            <User className="w-5 h-5 mr-2" /> Add New User
-          </DialogTitle>
-          <DialogDescription>
-            Create a new user account with a temporary password and assign a starting role.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4">
-          <Input
-            placeholder="Email (used as username)"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
-          />
-          <Input
-            type="password"
-            placeholder="Temporary Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-          />
-          <div className="flex items-center space-x-2">
-            <Label htmlFor="new-user-role" className="w-[100px]">
-              Initial Role
-            </Label>
-            <Select
-              value={role || "user"}
-              onValueChange={(value) => setRole(value as UserWithRole["role"])}
-              disabled={loading}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Role" />
-              </SelectTrigger>
-              <SelectContent>
-                {["admin", "inventory_man", "supervisor", "user"].map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleAddUser} disabled={loading}>
-            {loading ? "Creating..." : "Create User"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// ---------------------------------------------------------------------
-// 6. Add Attribute Dialog (from Configuration (10).tsx)
-// ---------------------------------------------------------------------
 
 const AddAttributeDialog: React.FC<{
   open: boolean;
@@ -1232,78 +983,8 @@ const Configuration = () => {
     reloadDynamicLists,
   } = useSystemSettings();
 
-  const { userRole } = useAuth();
-  const isAdmin = userRole === "admin";
+  const { isAdmin } = useIsAdmin();
 
-  // --- USER MANAGEMENT STATE & LOGIC (from Configuration (10).tsx) ---
-  const [users, setUsers] = useState<UserWithRole[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(true);
-  const [errorUsers, setErrorUsers] = useState<string | null>(null);
-  const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
-  const [showAddUserDialog, setShowAddUserDialog] = useState(false);
-
-  const loadUsers = useCallback(async () => {
-    setLoadingUsers(true);
-    setErrorUsers(null);
-    try {
-      const { data, error: edgeError } = await supabase.functions.invoke("admin-list-users");
-      if (edgeError) throw edgeError;
-
-      const { users: fetchedUsers } = data;
-      setUsers(fetchedUsers || []);
-    } catch (err: any) {
-      console.error("Error loading users:", err);
-      setErrorUsers("Failed to load user list. Check Edge Function logs.");
-    } finally {
-      setLoadingUsers(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
-
-  const handleEditPermissions = (user: UserWithRole) => {
-    setSelectedUser(user);
-    setShowPermissionsDialog(true);
-  };
-
-  const updateUserRole = async (userId: string, newRole: UserWithRole["role"]) => {
-    try {
-      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
-        body: { userId, role: newRole, action: "update" },
-      });
-
-      if (error) throw error;
-      toast({
-        title: "Success",
-        description: `Role for user ${userId.slice(0, 8)}... updated to ${newRole}.`,
-        variant: "default",
-      });
-      loadUsers();
-    } catch (error: any) {
-      toast({ title: "Role Update Failed", description: error.message, variant: "destructive" });
-    }
-  };
-
-  const deleteUserRole = async (userId: string) => {
-    try {
-      const { error } = await supabase.functions.invoke("admin-manage-user-role", {
-        body: { userId, action: "delete" },
-      });
-
-      if (error) throw error;
-      toast({
-        title: "Success",
-        description: `Role for user ${userId.slice(0, 8)}... has been removed.`,
-        variant: "default",
-      });
-      loadUsers();
-    } catch (error: any) {
-      toast({ title: "Role Removal Failed", description: error.message, variant: "destructive" });
-    }
-  };
 
   // --- ATTRIBUTE MANAGEMENT STATE & LOGIC (from Configuration (10).tsx) ---
   const [attributeTypes, setAttributeTypes] = useState<AttributeType[]>([]);
@@ -1464,12 +1145,12 @@ const Configuration = () => {
 
         {/* 1. Organizational Structure Tab - FIX APPLIED HERE */}
         <TabsContent value="organizational-structure" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
-          <OrganizationalStructure dynamicCurrencies={dynamicCurrencies} />
+          <OrganizationalStructure dynamicCurrencies={dynamicCurrencies} isAdmin={isAdmin} />
         </TabsContent>
 
         {/* 2. Workflow and Business Rules Tab - FIX APPLIED HERE */}
         <TabsContent value="workflow" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
-          <WorkflowRules />
+          <WorkflowRules isAdmin={isAdmin} />
         </TabsContent>
 
         {/* 3. System Defaults Tab (ERP IMPLEMENTATION) - FIX APPLIED HERE */}
@@ -1602,79 +1283,9 @@ const Configuration = () => {
           </Card>
         </TabsContent>
 
-        {/* 4. User Roles Tab - FIX APPLIED HERE */}
+        {/* 4. User Roles Tab - Using professional UserRolesSection component */}
         <TabsContent value="user-roles" className="p-6 h-[calc(100vh-200px)] overflow-y-auto">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>System Users</CardTitle>
-                <CardDescription>View and manage user accounts and their assigned system roles.</CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={loadUsers} disabled={loadingUsers}>
-                  <RotateCcw className={`w-4 h-4 mr-2 ${loadingUsers ? "animate-spin" : ""}`} /> Refresh
-                </Button>
-                <Button onClick={() => setShowAddUserDialog(true)} disabled={!isAdmin}>
-                  <Plus className="w-4 h-4 mr-2" /> Add User
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loadingUsers ? (
-                <p>Loading users...</p>
-              ) : errorUsers ? (
-                <p className="text-red-500">{errorUsers}</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Email</TableHead>
-                        <TableHead>System Role</TableHead>
-                        <TableHead>Created At</TableHead>
-                        <TableHead>Last Sign-in</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.email}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                user.role === "admin"
-                                  ? "default"
-                                  : user.role === "inventory_man"
-                                    ? "secondary"
-                                    : "outline"
-                              }
-                            >
-                              {user.role || "None"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
-                          <TableCell>
-                            {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "N/A"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditPermissions(user)}
-                              disabled={!isAdmin}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <UserRolesSection isAdmin={isAdmin} />
         </TabsContent>
 
         {/* 5. Stock Attributes Tab - FIX APPLIED HERE */}
@@ -1739,15 +1350,7 @@ const Configuration = () => {
         </TabsContent>
       </Tabs>
 
-      {/* MODALS (from Configuration (10).tsx) */}
-      <UserPermissionsDialog
-        open={showPermissionsDialog}
-        onOpenChange={setShowPermissionsDialog}
-        user={selectedUser}
-        onSave={updateUserRole}
-        onDelete={deleteUserRole}
-      />
-      <AddUserDialog open={showAddUserDialog} onOpenChange={setShowAddUserDialog} onUserAdded={loadUsers} />
+      {/* MODALS */}
 
       <AddAttributeDialog
         open={openAttributeDialog}
