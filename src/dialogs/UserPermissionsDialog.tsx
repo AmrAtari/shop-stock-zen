@@ -295,7 +295,7 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
     
     setSaving(true);
     try {
-      await onSave(user.id, selectedRole, selectedStoreId || null);
+      await onSave(user.id, selectedRole, selectedStoreId === "none" ? null : selectedStoreId || null);
       toast({
         title: "Success",
         description: "User permissions updated successfully.",
@@ -398,7 +398,7 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
                   <SelectValue placeholder="Select a store (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No Store Assigned</SelectItem>
+                  <SelectItem value="none">No Store Assigned</SelectItem>
                   {stores.map((store) => (
                     <SelectItem key={store.id} value={store.id}>
                       {store.name} {store.location ? `- ${store.location}` : ""}
