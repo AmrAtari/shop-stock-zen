@@ -54,10 +54,11 @@ export default function UserRolesSection({ isAdmin }: { isAdmin: boolean }) {
     
     if (roleError) throw roleError;
 
-    // Update store assignment
+    // Update store assignment (only update, don't upsert as username is required)
     const { error: storeError } = await supabase
       .from("user_profiles")
-      .upsert({ user_id: userId, store_id: storeId }, { onConflict: "user_id" });
+      .update({ store_id: storeId })
+      .eq("user_id", userId);
     
     if (storeError) throw storeError;
     
