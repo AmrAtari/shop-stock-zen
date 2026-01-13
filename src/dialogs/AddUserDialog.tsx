@@ -64,7 +64,7 @@ export const AddUserDialog: React.FC<{
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-create-user-password", {
-        body: { username, password, role, storeId: storeId || null }
+        body: { username, password, role, storeId: storeId === "none" ? null : storeId || null }
       });
 
       if (error) throw error;
@@ -145,7 +145,7 @@ export const AddUserDialog: React.FC<{
                 <SelectValue placeholder="Select store (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No Store</SelectItem>
+                <SelectItem value="none">No Store</SelectItem>
                 {stores.map((store) => (
                   <SelectItem key={store.id} value={store.id}>
                     {store.name} {store.location ? `- ${store.location}` : ""}
