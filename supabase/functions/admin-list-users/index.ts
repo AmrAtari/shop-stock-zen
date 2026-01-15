@@ -77,33 +77,34 @@ serve(async (req) => {
       const { data: userRoles, error: rolesError } = await supabaseAdmin.from("user_roles").select("*");
       if (rolesError) throw rolesError;
 
-      // Get all user profiles with store info
+      // Get all user profiles
       const { data: userProfiles, error: profilesError } = await supabaseAdmin
         .from("user_profiles")
-        .select(`
-          user_id,
-          username,
-          store_id,
-          stores:store_id (
-            name,
-            location
-          )
-        `);
+        .select("user_id, username, store_id");
       if (profilesError) console.error("Profile fetch error:", profilesError);
+
+      // Get all stores for lookup
+      const { data: allStores, error: storesError } = await supabaseAdmin
+        .from("stores")
+        .select("id, name, location");
+      if (storesError) console.error("Stores fetch error:", storesError);
+
+      // Create a store lookup map
+      const storeMap = new Map(allStores?.map((s) => [s.id, s]) || []);
 
       // Combine user data with roles and profiles
       const users = authUsers.users.map((user) => {
         const userRole = userRoles?.find((r) => r.user_id === user.id);
         const userProfile = userProfiles?.find((p) => p.user_id === user.id);
-        const store = userProfile?.stores?.[0]; // Access first store from array
+        const store = userProfile?.store_id ? storeMap.get(userProfile.store_id) : null;
         return {
           id: user.id,
           email: user.email,
           username: userProfile?.username || user.email?.split('@')[0] || 'Unknown',
           role: userRole?.role || null,
-          store_id: userProfile?.store_id,
-          store_name: store?.name,
-          store_location: store?.location,
+          store_id: userProfile?.store_id || null,
+          store_name: store?.name || null,
+          store_location: store?.location || null,
           created_at: user.created_at,
           last_sign_in_at: user.last_sign_in_at,
           email_confirmed_at: user.email_confirmed_at,

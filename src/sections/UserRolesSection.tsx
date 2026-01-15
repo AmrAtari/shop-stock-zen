@@ -46,21 +46,38 @@ export default function UserRolesSection({ isAdmin }: { isAdmin: boolean }) {
     setShowPermissionsDialog(true);
   };
 
-  const handleSaveUser = async (userId: string, role: string, storeId: string | null) => {
-    // Update role
+  const handleSaveUser = async (userId: string, role: string, storeId: string | null, username?: string) => {
+    // Update role via edge function
     const { error: roleError } = await supabase.functions.invoke("admin-manage-user-role", {
       body: { userId, role, action: "update" }
     });
     
     if (roleError) throw roleError;
 
-    // Update store assignment (only update, don't upsert as username is required)
-    const { error: storeError } = await supabase
+    // Check if user profile exists
+    const { data: existingProfile } = await supabase
       .from("user_profiles")
-      .update({ store_id: storeId })
-      .eq("user_id", userId);
-    
-    if (storeError) throw storeError;
+      .select("id, username")
+      .eq("user_id", userId)
+      .single();
+
+    if (existingProfile) {
+      // Update existing profile
+      const { error: storeError } = await supabase
+        .from("user_profiles")
+        .update({ store_id: storeId })
+        .eq("user_id", userId);
+      
+      if (storeError) throw storeError;
+    } else {
+      // Create new profile with username from the user data
+      const profileUsername = username || `user_${userId.substring(0, 8)}`;
+      const { error: insertError } = await supabase
+        .from("user_profiles")
+        .insert({ user_id: userId, username: profileUsername, store_id: storeId });
+      
+      if (insertError) throw insertError;
+    }
     
     await loadUsers();
   };
