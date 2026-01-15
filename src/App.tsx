@@ -757,7 +757,7 @@ const App = () => {
 
               {/* Phase 3 - Budgeting, Multi-Currency, Integrations */}
               <Route
-                path="/accounting/budgeting"
+                path="/accounting/budgets"
                 element={
                   <ProtectedRoute>
                     <Layout>
