@@ -35,6 +35,17 @@ import {
   User,
   Trash2,
   Building2,
+  Key,
+  Eye,
+  EyeOff,
+  Percent,
+  Receipt,
+  History,
+  CreditCard,
+  DollarSign,
+  RotateCcw,
+  Ban,
+  Clock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
@@ -149,6 +160,28 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { id: "pos.discount", label: "Apply Discounts", description: "Apply discounts to sales" },
       { id: "pos.void", label: "Void Transactions", description: "Void or cancel transactions" },
       { id: "pos.reports", label: "View POS Reports", description: "Access POS-specific reports" },
+      { id: "pos.view_previous", label: "View Previous Vouchers", description: "Access and view past transaction receipts" },
+      { id: "pos.reprint", label: "Reprint Receipts", description: "Reprint previous transaction receipts" },
+      { id: "pos.price_override", label: "Price Override", description: "Override item prices during sale" },
+      { id: "pos.hold_recall", label: "Hold & Recall", description: "Hold transactions and recall them later" },
+      { id: "pos.cash_drawer", label: "Open Cash Drawer", description: "Manually open the cash drawer" },
+      { id: "pos.end_of_day", label: "End of Day", description: "Perform end of day closing procedures" },
+    ],
+  },
+  {
+    id: "pos_limits",
+    label: "POS Limits & Controls",
+    icon: Percent,
+    color: "text-amber-500",
+    permissions: [
+      { id: "pos.discount_5", label: "Discount up to 5%", description: "Apply discounts up to 5% of item price" },
+      { id: "pos.discount_10", label: "Discount up to 10%", description: "Apply discounts up to 10% of item price" },
+      { id: "pos.discount_15", label: "Discount up to 15%", description: "Apply discounts up to 15% of item price" },
+      { id: "pos.discount_20", label: "Discount up to 20%", description: "Apply discounts up to 20% of item price" },
+      { id: "pos.discount_unlimited", label: "Unlimited Discount", description: "No discount percentage limit" },
+      { id: "pos.refund_limit_100", label: "Refund up to 100", description: "Process refunds up to 100 value" },
+      { id: "pos.refund_limit_500", label: "Refund up to 500", description: "Process refunds up to 500 value" },
+      { id: "pos.refund_unlimited", label: "Unlimited Refunds", description: "No refund value limit" },
     ],
   },
   {
@@ -183,6 +216,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
       { id: "users.create", label: "Create Users", description: "Create new user accounts" },
       { id: "users.roles", label: "Manage Roles", description: "Assign and modify user roles" },
       { id: "users.delete", label: "Remove Users", description: "Remove user access" },
+      { id: "users.reset_password", label: "Reset Passwords", description: "Reset other users' passwords" },
     ],
   },
 ];
@@ -196,9 +230,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "pi.view", "pi.create", "pi.count", "pi.approve", "pi.finalize",
     "reports.view", "reports.export", "reports.dashboard",
     "pos.access", "pos.refund", "pos.discount", "pos.void", "pos.reports",
+    "pos.view_previous", "pos.reprint", "pos.price_override", "pos.hold_recall", "pos.cash_drawer", "pos.end_of_day",
+    "pos.discount_unlimited", "pos.refund_unlimited",
     "alerts.view", "alerts.manage",
     "config.attributes", "config.stores", "config.suppliers", "config.system",
-    "users.view", "users.create", "users.roles", "users.delete",
+    "users.view", "users.create", "users.roles", "users.delete", "users.reset_password",
   ],
   supervisor: [
     // Full inventory, transfers, and PI access, view-only for POs
@@ -208,6 +244,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "pi.view", "pi.create", "pi.count", "pi.approve", "pi.finalize",
     "reports.view", "reports.export", "reports.dashboard",
     "pos.access", "pos.refund", "pos.discount", "pos.reports",
+    "pos.view_previous", "pos.reprint", "pos.price_override", "pos.hold_recall", "pos.cash_drawer", "pos.end_of_day",
+    "pos.discount_20", "pos.refund_limit_500",
     "alerts.view",
     "config.attributes", "config.stores",
   ],
@@ -219,13 +257,17 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "pi.view", "pi.create", "pi.count",
     "reports.view",
     "pos.access",
+    "pos.view_previous", "pos.hold_recall",
+    "pos.discount_10", "pos.refund_limit_100",
     "alerts.view",
   ],
   cashier: [
-    // POS and view-only access
+    // POS and view-only access with configurable limits
     "inventory.view",
     "reports.view",
     "pos.access",
+    "pos.hold_recall",
+    "pos.discount_5",
     "alerts.view",
   ],
 };
@@ -262,6 +304,12 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
+  
+  // Password reset state
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -273,6 +321,10 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
   useEffect(() => {
     if (open) {
       loadStores();
+      // Reset password fields when dialog opens
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
     }
   }, [open]);
 
@@ -312,6 +364,61 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!user) return;
+    
+    if (!newPassword) {
+      toast({
+        title: "Error",
+        description: "Please enter a new password",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-reset-password", {
+        body: { userId: user.id, newPassword }
+      });
+
+      if (error) throw error;
+      
+      toast({
+        title: "Success",
+        description: "Password has been reset successfully.",
+      });
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reset password",
+        variant: "destructive",
+      });
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!user) return;
     
@@ -340,6 +447,29 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
 
   const activePermissions = ROLE_PERMISSIONS[selectedRole] || [];
 
+  // Group POS-related permissions for better display
+  const getPOSLimitSummary = () => {
+    const discountLimit = activePermissions.find(p => p.startsWith("pos.discount_"));
+    const refundLimit = activePermissions.find(p => p.startsWith("pos.refund_"));
+    
+    let discount = "None";
+    let refund = "None";
+    
+    if (discountLimit) {
+      if (discountLimit === "pos.discount_unlimited") discount = "Unlimited";
+      else discount = discountLimit.replace("pos.discount_", "") + "%";
+    }
+    
+    if (refundLimit) {
+      if (refundLimit === "pos.refund_unlimited") refund = "Unlimited";
+      else refund = "Up to " + refundLimit.replace("pos.refund_limit_", "");
+    }
+    
+    return { discount, refund };
+  };
+
+  const posLimits = getPOSLimitSummary();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
@@ -349,15 +479,19 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
             User Management
           </DialogTitle>
           <DialogDescription>
-            Manage user profile, role, and permissions
+            Manage user profile, role, security, and permissions
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="w-4 h-4" />
               Profile
+            </TabsTrigger>
+            <TabsTrigger value="security" className="flex items-center gap-2">
+              <Key className="w-4 h-4" />
+              Security
             </TabsTrigger>
             <TabsTrigger value="role" className="flex items-center gap-2">
               <Shield className="w-4 h-4" />
@@ -412,6 +546,85 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
             </div>
           </TabsContent>
 
+          {/* Security Tab */}
+          <TabsContent value="security" className="space-y-4 mt-4">
+            <div className="rounded-lg border p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-primary" />
+                <h3 className="font-semibold">Reset Password</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Set a new password for this user. The user will need to use this new password to log in.
+              </p>
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="new-password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      disabled={resettingPassword}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirm Password</Label>
+                  <Input
+                    id="confirm-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={resettingPassword}
+                  />
+                </div>
+                
+                <Button 
+                  onClick={handleResetPassword} 
+                  disabled={resettingPassword || !newPassword || !confirmPassword}
+                  className="w-full"
+                >
+                  {resettingPassword ? "Resetting..." : "Reset Password"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4 bg-muted/30">
+              <h4 className="font-medium mb-2 flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Account Status
+              </h4>
+              <div className="text-sm space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Status:</span>
+                  <Badge variant="outline" className="bg-green-500/10 text-green-600">Active</Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Current Role:</span>
+                  <span className="font-medium">{ROLE_DESCRIPTIONS[user?.role || "cashier"]?.title}</span>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
           {/* Role Tab */}
           <TabsContent value="role" className="space-y-4 mt-4">
             <div className="space-y-3">
@@ -448,6 +661,71 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
                 <Badge variant="outline">
                   {activePermissions.length} permissions
                 </Badge>
+              </div>
+            </div>
+
+            {/* POS Limits Summary for roles */}
+            <div className="rounded-lg border p-4">
+              <h4 className="font-medium mb-3 flex items-center gap-2">
+                <Store className="w-4 h-4" />
+                POS Limits for {ROLE_DESCRIPTIONS[selectedRole]?.title}
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                  <Percent className="w-5 h-5 text-amber-500" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Max Discount</p>
+                    <p className="font-semibold">{posLimits.discount}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                  <RotateCcw className="w-5 h-5 text-blue-500" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Refund Limit</p>
+                    <p className="font-semibold">{posLimits.refund}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div className="flex items-center gap-2">
+                  {activePermissions.includes("pos.view_previous") ? (
+                    <Badge variant="outline" className="text-green-600 bg-green-500/10">
+                      <Receipt className="w-3 h-3 mr-1" />
+                      View Vouchers
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      <Ban className="w-3 h-3 mr-1" />
+                      No Vouchers
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {activePermissions.includes("pos.void") ? (
+                    <Badge variant="outline" className="text-green-600 bg-green-500/10">
+                      <Ban className="w-3 h-3 mr-1" />
+                      Void Sales
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      <Ban className="w-3 h-3 mr-1" />
+                      No Void
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {activePermissions.includes("pos.price_override") ? (
+                    <Badge variant="outline" className="text-green-600 bg-green-500/10">
+                      <DollarSign className="w-3 h-3 mr-1" />
+                      Price Override
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      <Ban className="w-3 h-3 mr-1" />
+                      No Override
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
           </TabsContent>
