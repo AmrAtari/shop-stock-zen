@@ -101,7 +101,7 @@ const Layout = ({ children }: LayoutProps) => {
       icon: Calculator,
       items: [
         { name: t('common.accounting'), href: "/accounting", icon: Calculator },
-        { name: "Budgeting", href: "/accounting/budgeting", icon: Wallet },
+        { name: "Budgets", href: "/accounting/budgets", icon: Wallet },
         { name: "Multi-Currency", href: "/accounting/multi-currency", icon: Globe },
       ],
     },
