@@ -61,7 +61,7 @@ interface UserPermissionsDialogProps {
     store_id?: string;
     store_name?: string;
   } | null;
-  onSave: (userId: string, role: string, storeId: string | null) => Promise<void>;
+  onSave: (userId: string, role: string, storeId: string | null, username?: string) => Promise<void>;
   onDelete: (userId: string) => Promise<void>;
 }
 
@@ -347,7 +347,7 @@ export const UserPermissionsDialog: React.FC<UserPermissionsDialogProps> = ({
     
     setSaving(true);
     try {
-      await onSave(user.id, selectedRole, selectedStoreId === "none" ? null : selectedStoreId || null);
+      await onSave(user.id, selectedRole, selectedStoreId === "none" ? null : selectedStoreId || null, user.username || user.email?.split('@')[0]);
       toast({
         title: "Success",
         description: "User permissions updated successfully.",
