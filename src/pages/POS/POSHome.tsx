@@ -1,6 +1,6 @@
 // src/pos/POSHome.tsx
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard, Clock, Package, Users, Star } from "lucide-react";
+import { ShoppingCart, Loader2, X, Receipt as ReceiptIcon, PauseCircle, Play, Keyboard, Clock, Package, Users, Star, Store } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { usePOS, CartItem } from "./POSContext";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
@@ -27,6 +43,12 @@ type Product = {
   sku: string;
   image?: string;
   category?: string;
+};
+
+type StoreOption = {
+  id: string;
+  name: string;
+  location: string | null;
 };
 
 const POSHome = () => {
@@ -55,6 +77,14 @@ const POSHome = () => {
   const [showHoldsSidebar, setShowHoldsSidebar] = useState(false);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [productViewMode, setProductViewMode] = useState<"scanner" | "grid">("scanner");
+  
+  // Session dialog state
+  const [showSessionDialog, setShowSessionDialog] = useState(false);
+  const [sessionCashierInput, setSessionCashierInput] = useState("");
+  const [sessionStartCash, setSessionStartCash] = useState("0");
+  const [sessionSelectedStoreId, setSessionSelectedStoreId] = useState("");
+  const [sessionStores, setSessionStores] = useState<StoreOption[]>([]);
+  const [loadingSessionStores, setLoadingSessionStores] = useState(false);
 
   // Fetch products with store-specific inventory
   const { data: products = [], isLoading: isLoadingProducts } = useQuery({
@@ -349,16 +379,49 @@ const POSHome = () => {
     return () => window.removeEventListener("keydown", handler);
   }, [cart, createHold]);
 
-  // session helper quick open
-  const quickOpenSession = async () => {
-    const cashier = prompt("Enter cashier id/email:");
-    const startCashStr = prompt("Start cash amount:", "0");
-    const startCash = parseFloat(startCashStr || "0");
-    if (!cashier) return toast.error("Cashier required");
+  // Fetch stores when session dialog opens
+  useEffect(() => {
+    if (showSessionDialog) {
+      setLoadingSessionStores(true);
+      supabase
+        .from("stores")
+        .select("id, name, location")
+        .order("name")
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Failed to load stores:", error);
+            toast.error("Failed to load stores");
+            setSessionStores([]);
+          } else {
+            setSessionStores(data || []);
+          }
+          setLoadingSessionStores(false);
+        });
+    }
+  }, [showSessionDialog]);
+
+  // Session dialog submit handler
+  const handleSessionDialogSubmit = async () => {
+    if (!sessionCashierInput.trim()) {
+      return toast.error("Please enter your Cashier ID or name.");
+    }
+    if (!sessionSelectedStoreId) {
+      return toast.error("Please select a store.");
+    }
+    const startCash = parseFloat(sessionStartCash || "0");
+    if (isNaN(startCash) || startCash < 0) {
+      return toast.error("Starting cash must be a valid non-negative number.");
+    }
     
-    const store = prompt("Enter store ID (leave empty for default):");
-    const defaultStore = "d0223c13-45d0-46c5-b737-3ded952b24cb";
-    await openSession(cashier, startCash, store || defaultStore);
+    try {
+      await openSession(sessionCashierInput.trim(), startCash, sessionSelectedStoreId);
+      setShowSessionDialog(false);
+      setSessionCashierInput("");
+      setSessionStartCash("0");
+      setSessionSelectedStoreId("");
+    } catch (error) {
+      // Error is already handled in POSContext
+    }
   };
 
   return (
@@ -378,8 +441,8 @@ const POSHome = () => {
             </div>
 
             <div className="flex gap-3 items-center">
-              {!isSessionOpen ? (
-                <Button onClick={quickOpenSession} size="lg" className="font-semibold">
+            {!isSessionOpen ? (
+                <Button onClick={() => setShowSessionDialog(true)} size="lg" className="font-semibold">
                   Open Session
                 </Button>
               ) : (
@@ -758,6 +821,95 @@ const POSHome = () => {
         isOpen={showHoldsSidebar}
         onClose={() => setShowHoldsSidebar(false)}
       />
+
+      {/* Open Session Dialog */}
+      <Dialog open={showSessionDialog} onOpenChange={setShowSessionDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Start New POS Session</DialogTitle>
+            <DialogDescription>
+              Select your store and enter your details to begin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Store Selection - First and Required */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="sessionStore" className="text-right font-medium">
+                Store <span className="text-destructive">*</span>
+              </Label>
+              <Select 
+                value={sessionSelectedStoreId} 
+                onValueChange={setSessionSelectedStoreId} 
+                disabled={loadingSessionStores}
+              >
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder={loadingSessionStores ? "Loading stores..." : "Select your store"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {sessionStores.length === 0 && !loadingSessionStores ? (
+                    <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                      No stores available
+                    </div>
+                  ) : (
+                    sessionStores.map((store) => (
+                      <SelectItem key={store.id} value={store.id}>
+                        <div className="flex items-center gap-2">
+                          <Store className="h-4 w-4 text-muted-foreground" />
+                          <span>{store.name}</span>
+                          {store.location && (
+                            <span className="text-muted-foreground text-xs">
+                              ({store.location})
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Cashier ID */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="sessionCashier" className="text-right font-medium">
+                Cashier ID <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="sessionCashier"
+                value={sessionCashierInput}
+                onChange={(e) => setSessionCashierInput(e.target.value)}
+                className="col-span-3"
+                placeholder="Enter your name or ID"
+              />
+            </div>
+
+            {/* Starting Cash */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="sessionCash" className="text-right font-medium">
+                Start Cash
+              </Label>
+              <Input
+                id="sessionCash"
+                type="number"
+                value={sessionStartCash}
+                onChange={(e) => setSessionStartCash(e.target.value)}
+                className="col-span-3"
+                placeholder="0.00"
+                min="0"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={handleSessionDialogSubmit} 
+              disabled={loadingSessionStores || !sessionSelectedStoreId}
+              className="w-full sm:w-auto"
+            >
+              Start Session
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
