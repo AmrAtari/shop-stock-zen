@@ -63,6 +63,13 @@ export const POSSessionControl = () => {
     }
   }, [open]);
 
+  // UUID validation helper
+  const isValidUUID = (str: string | null): boolean => {
+    if (!str) return false;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  };
+
   const handleOpenSession = async () => {
     const startCash = parseFloat(startCashInput);
     if (!cashierInput) {
@@ -70,6 +77,11 @@ export const POSSessionControl = () => {
     }
     if (!selectedStoreId) {
       return toast.error("Please select a store.");
+    }
+    // Validate that selectedStoreId is a proper UUID
+    if (!isValidUUID(selectedStoreId)) {
+      console.error("Invalid store ID format:", selectedStoreId);
+      return toast.error("Invalid store selection. Please select a valid store from the list.");
     }
     if (isNaN(startCash) || startCash < 0) {
       return toast.error("Starting cash must be a valid non-negative number.");
