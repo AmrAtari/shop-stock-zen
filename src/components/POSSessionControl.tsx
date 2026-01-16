@@ -22,22 +22,53 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { LogOut } from "lucide-react";
+import { LogOut, Store } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-interface Store {
+interface StoreOption {
   id: string;
   name: string;
+  location: string | null;
 }
 
 export const POSSessionControl = () => {
-  const { isSessionOpen, cashierId, sessionId, openSession } = usePOS();
+  const { isSessionOpen, cashierId, sessionId, storeId, openSession } = usePOS();
   const [open, setOpen] = useState(false);
   const [cashierInput, setCashierInput] = useState("");
   const [startCashInput, setStartCashInput] = useState("0");
   const [selectedStoreId, setSelectedStoreId] = useState("");
-  const [stores, setStores] = useState<Store[]>([]);
+  const [stores, setStores] = useState<StoreOption[]>([]);
   const [loadingStores, setLoadingStores] = useState(false);
+  const [currentStoreName, setCurrentStoreName] = useState<string | null>(null);
+
+  // Clear any corrupted localStorage on mount
+  useEffect(() => {
+    const storedStoreId = localStorage.getItem("pos-store-id");
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    
+    if (storedStoreId && !uuidRegex.test(storedStoreId)) {
+      console.warn("Clearing invalid store_id from localStorage:", storedStoreId);
+      localStorage.removeItem("pos-session-id");
+      localStorage.removeItem("pos-cashier-id");
+      localStorage.removeItem("pos-store-id");
+    }
+  }, []);
+
+  // Fetch current store name if session is open
+  useEffect(() => {
+    if (isSessionOpen && storeId) {
+      supabase
+        .from("stores")
+        .select("name")
+        .eq("id", storeId)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setCurrentStoreName(data.name);
+          }
+        });
+    }
+  }, [isSessionOpen, storeId]);
 
   // Fetch stores when dialog opens
   useEffect(() => {
@@ -45,63 +76,55 @@ export const POSSessionControl = () => {
       setLoadingStores(true);
       supabase
         .from("stores")
-        .select("id, name")
+        .select("id, name, location")
         .order("name")
         .then(({ data, error }) => {
           if (error) {
             console.error("Failed to load stores:", error);
             toast.error("Failed to load stores");
+            setStores([]);
           } else {
             setStores(data || []);
-            // Auto-select first store if available
-            if (data && data.length > 0 && !selectedStoreId) {
-              setSelectedStoreId(data[0].id);
-            }
           }
           setLoadingStores(false);
         });
     }
   }, [open]);
 
-  // UUID validation helper
-  const isValidUUID = (str: string | null): boolean => {
-    if (!str) return false;
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(str);
-  };
-
   const handleOpenSession = async () => {
     const startCash = parseFloat(startCashInput);
-    if (!cashierInput) {
-      return toast.error("Cashier ID is required.");
+    
+    if (!cashierInput.trim()) {
+      return toast.error("Please enter your Cashier ID or name.");
     }
+    
     if (!selectedStoreId) {
-      return toast.error("Please select a store.");
+      return toast.error("Please select a store from the dropdown.");
     }
-    // Validate that selectedStoreId is a proper UUID
-    if (!isValidUUID(selectedStoreId)) {
-      console.error("Invalid store ID format:", selectedStoreId);
-      return toast.error("Invalid store selection. Please select a valid store from the list.");
-    }
+    
     if (isNaN(startCash) || startCash < 0) {
       return toast.error("Starting cash must be a valid non-negative number.");
     }
 
     try {
-      await openSession(cashierInput, startCash, selectedStoreId);
+      await openSession(cashierInput.trim(), startCash, selectedStoreId);
       setOpen(false);
       setCashierInput("");
       setStartCashInput("0");
+      setSelectedStoreId("");
     } catch (error) {
-      // Error handling is in POSContext
+      // Error is already handled in POSContext
     }
   };
 
   if (isSessionOpen) {
     return (
       <div className="flex items-center gap-2">
-        <div className="text-sm font-medium text-green-600">
-          Session: <span className="font-bold">{sessionId?.substring(0, 8)}...</span> (Cashier: {cashierId})
+        <div className="flex items-center gap-2 text-sm font-medium text-green-600">
+          <Store className="h-4 w-4" />
+          <span>{currentStoreName || "Store"}</span>
+          <span className="text-muted-foreground">|</span>
+          <span>Cashier: {cashierId}</span>
         </div>
         <Button
           variant="destructive"
@@ -122,25 +145,67 @@ export const POSSessionControl = () => {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Start New Session</DialogTitle>
-          <DialogDescription>Enter your cashier ID and select a store to begin.</DialogDescription>
+          <DialogTitle>Start New POS Session</DialogTitle>
+          <DialogDescription>
+            Select your store and enter your details to begin.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
+          {/* Store Selection - First and Required */}
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="cashierId" className="text-right">
-              Cashier ID
+            <Label htmlFor="storeId" className="text-right font-medium">
+              Store <span className="text-destructive">*</span>
+            </Label>
+            <Select 
+              value={selectedStoreId} 
+              onValueChange={setSelectedStoreId} 
+              disabled={loadingStores}
+            >
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder={loadingStores ? "Loading stores..." : "Select your store"} />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.length === 0 && !loadingStores ? (
+                  <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                    No stores available
+                  </div>
+                ) : (
+                  stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      <div className="flex items-center gap-2">
+                        <Store className="h-4 w-4 text-muted-foreground" />
+                        <span>{store.name}</span>
+                        {store.location && (
+                          <span className="text-muted-foreground text-xs">
+                            ({store.location})
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Cashier ID */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="cashierId" className="text-right font-medium">
+              Cashier ID <span className="text-destructive">*</span>
             </Label>
             <Input
               id="cashierId"
               value={cashierInput}
               onChange={(e) => setCashierInput(e.target.value)}
               className="col-span-3"
-              placeholder="e.g., cashier_01"
+              placeholder="Enter your name or ID"
             />
           </div>
+
+          {/* Starting Cash */}
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="startCash" className="text-right">
-              Start Cash ($)
+            <Label htmlFor="startCash" className="text-right font-medium">
+              Start Cash
             </Label>
             <Input
               id="startCash"
@@ -152,26 +217,13 @@ export const POSSessionControl = () => {
               min="0"
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="storeId" className="text-right">
-              Store
-            </Label>
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId} disabled={loadingStores}>
-              <SelectTrigger className="col-span-3">
-                <SelectValue placeholder={loadingStores ? "Loading stores..." : "Select a store"} />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store) => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
         <DialogFooter>
-          <Button onClick={handleOpenSession} disabled={loadingStores}>
+          <Button 
+            onClick={handleOpenSession} 
+            disabled={loadingStores || !selectedStoreId}
+            className="w-full sm:w-auto"
+          >
             Start Session
           </Button>
         </DialogFooter>
