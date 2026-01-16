@@ -1066,6 +1066,7 @@ export type Database = {
           notes: string | null
           open_at: string
           start_cash: number
+          store_id: string | null
         }
         Insert: {
           cashier_id?: string | null
@@ -1076,6 +1077,7 @@ export type Database = {
           notes?: string | null
           open_at?: string
           start_cash?: number
+          store_id?: string | null
         }
         Update: {
           cashier_id?: string | null
@@ -1086,8 +1088,45 @@ export type Database = {
           notes?: string | null
           open_at?: string
           start_cash?: number
+          store_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cash_sessions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_sessions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_cashier_performance_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "cash_sessions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_daily_pos_summary"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "cash_sessions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_items_sold_report"
+            referencedColumns: ["store_id"]
+          },
+          {
+            foreignKeyName: "cash_sessions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "v_payment_methods_report"
+            referencedColumns: ["store_id"]
+          },
+        ]
       }
       categories: {
         Row: {

@@ -3,6 +3,13 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// UUID validation helper
+const isValidUUID = (str: string | null): boolean => {
+  if (!str) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
 // Define the CartItem structure for the holds
 export interface CartItem {
   id: string;
@@ -80,10 +87,20 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // --- Session Management (Keep previous implementation) ---
 
   useEffect(() => {
-    // Optionally load last open session from localStorage
+    // Load and validate last open session from localStorage
     const s = localStorage.getItem("pos-session-id");
     const c = localStorage.getItem("pos-cashier-id");
     const st = localStorage.getItem("pos-store-id");
+    
+    // Validate store_id is a proper UUID - if not, clear the invalid data
+    if (st && !isValidUUID(st)) {
+      console.warn("Invalid store_id in localStorage, clearing session data:", st);
+      localStorage.removeItem("pos-session-id");
+      localStorage.removeItem("pos-cashier-id");
+      localStorage.removeItem("pos-store-id");
+      return;
+    }
+    
     if (s && c && st) {
       setSessionId(s);
       setCashierId(c);
@@ -94,10 +111,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const openSession = async (cashierId: string, startCash: number, storeId: string) => {
     try {
+      // Validate storeId is a proper UUID
+      if (!isValidUUID(storeId)) {
+        throw new Error(`Invalid store ID format: "${storeId}". Please select a valid store.`);
+      }
+
       // 1. Check for existing open session for this cashier
       const { data: existingSessions, error: fetchError } = await supabase
         .from("cash_sessions")
-        .select("id")
+        .select("id, store_id")
         .eq("cashier_id", cashierId)
         .is("close_at", null);
 
@@ -105,29 +127,33 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (existingSessions && existingSessions.length > 0) {
         // Resume existing session
-        const existingSessionId = existingSessions[0].id;
-        setSessionId(existingSessionId);
+        const existingSession = existingSessions[0];
+        setSessionId(existingSession.id);
         setCashierId(cashierId);
-        setStoreId(storeId);
+        setStoreId(existingSession.store_id || storeId);
         setIsSessionOpen(true);
-        localStorage.setItem("pos-session-id", existingSessionId);
+        localStorage.setItem("pos-session-id", existingSession.id);
         localStorage.setItem("pos-cashier-id", cashierId);
-        localStorage.setItem("pos-store-id", storeId);
-        toast.success(`Resumed existing session: ${existingSessionId}`);
+        localStorage.setItem("pos-store-id", existingSession.store_id || storeId);
+        toast.success(`Resumed existing session: ${existingSession.id}`);
         return;
       }
 
-      // 2. Open new session
-      const newSessionId = `SESS-${Date.now()}`;
-      const { error } = await supabase.from("cash_sessions").insert({
-        id: newSessionId,
-        cashier_id: cashierId,
-        start_cash: startCash,
-        open_at: new Date().toISOString(),
-      });
+      // 2. Open new session with store_id
+      const { data: newSession, error } = await supabase
+        .from("cash_sessions")
+        .insert({
+          cashier_id: cashierId,
+          start_cash: startCash,
+          open_at: new Date().toISOString(),
+          store_id: storeId,
+        })
+        .select("id")
+        .single();
 
       if (error) throw error;
 
+      const newSessionId = newSession.id;
       setSessionId(newSessionId);
       setCashierId(cashierId);
       setStoreId(storeId);
@@ -135,10 +161,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem("pos-session-id", newSessionId);
       localStorage.setItem("pos-cashier-id", cashierId);
       localStorage.setItem("pos-store-id", storeId);
-      toast.success(`Session opened: ${newSessionId}`);
+      toast.success(`Session opened: ${newSessionId.substring(0, 8)}...`);
     } catch (err: any) {
       console.error(err);
       toast.error("Failed to open session: " + err.message);
+      throw err;
     }
   };
 
