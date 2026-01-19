@@ -70,11 +70,36 @@ const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
   minRedeemPoints: 100, // Minimum 100 points to redeem
 };
 
+// Helper to validate and get session data from localStorage synchronously
+const getValidatedSessionFromStorage = () => {
+  const s = localStorage.getItem("pos-session-id");
+  const c = localStorage.getItem("pos-cashier-id");
+  const st = localStorage.getItem("pos-store-id");
+  
+  // Validate store_id is a proper UUID - if not, clear the invalid data
+  if (st && !isValidUUID(st)) {
+    console.warn("Invalid store_id in localStorage, clearing session data:", st);
+    localStorage.removeItem("pos-session-id");
+    localStorage.removeItem("pos-cashier-id");
+    localStorage.removeItem("pos-store-id");
+    return { sessionId: null, cashierId: null, storeId: null, isOpen: false };
+  }
+  
+  if (s && c && st && isValidUUID(st)) {
+    return { sessionId: s, cashierId: c, storeId: st, isOpen: true };
+  }
+  
+  return { sessionId: null, cashierId: null, storeId: null, isOpen: false };
+};
+
 export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [cashierId, setCashierId] = useState<string | null>(null);
-  const [storeId, setStoreId] = useState<string | null>(null);
-  const [isSessionOpen, setIsSessionOpen] = useState(false);
+  // Initialize state synchronously from validated localStorage
+  const initialSession = getValidatedSessionFromStorage();
+  
+  const [sessionId, setSessionId] = useState<string | null>(initialSession.sessionId);
+  const [cashierId, setCashierId] = useState<string | null>(initialSession.cashierId);
+  const [storeId, setStoreId] = useState<string | null>(initialSession.storeId);
+  const [isSessionOpen, setIsSessionOpen] = useState(initialSession.isOpen);
   const [selectedCustomer, setSelectedCustomer] = useState<POSCustomer | null>(null);
   const [loyaltySettings] = useState<LoyaltySettings>(DEFAULT_LOYALTY_SETTINGS);
   
@@ -83,31 +108,6 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const savedHolds = localStorage.getItem("pos-holds");
     return savedHolds ? JSON.parse(savedHolds) : {};
   });
-
-  // --- Session Management (Keep previous implementation) ---
-
-  useEffect(() => {
-    // Load and validate last open session from localStorage
-    const s = localStorage.getItem("pos-session-id");
-    const c = localStorage.getItem("pos-cashier-id");
-    const st = localStorage.getItem("pos-store-id");
-    
-    // Validate store_id is a proper UUID - if not, clear the invalid data
-    if (st && !isValidUUID(st)) {
-      console.warn("Invalid store_id in localStorage, clearing session data:", st);
-      localStorage.removeItem("pos-session-id");
-      localStorage.removeItem("pos-cashier-id");
-      localStorage.removeItem("pos-store-id");
-      return;
-    }
-    
-    if (s && c && st) {
-      setSessionId(s);
-      setCashierId(c);
-      setStoreId(st);
-      setIsSessionOpen(true);
-    }
-  }, []);
 
   const openSession = async (cashierId: string, startCash: number, storeId: string) => {
     try {
