@@ -74,6 +74,9 @@ import EditTaxJurisdiction from "./pages/accounting/EditTaxJurisdiction";
 // POS Components
 import POSHome from "./pages/POS/POSHome";
 import { POSProvider } from "./pages/POS/POSContext";
+import ClosingCash from "./pages/POS/ClosingCash";
+import POSTransfers from "./pages/POS/POSTransfers";
+import POSReceipts from "./pages/POS/POSReceipts";
 
 // CRM Components
 import Customers from "./pages/crm/Customers";
@@ -787,7 +790,7 @@ const App = () => {
                 }
               />
 
-              {/* POS Routes */}
+{/* POS Routes */}
               <Route
                 path="/pos"
                 element={
@@ -795,6 +798,42 @@ const App = () => {
                     <POSProvider>
                       <Layout>
                         <POSHome />
+                      </Layout>
+                    </POSProvider>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pos/closing"
+                element={
+                  <ProtectedRoute>
+                    <POSProvider>
+                      <Layout>
+                        <ClosingCash />
+                      </Layout>
+                    </POSProvider>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pos/transfers"
+                element={
+                  <ProtectedRoute>
+                    <POSProvider>
+                      <Layout>
+                        <POSTransfers />
+                      </Layout>
+                    </POSProvider>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pos/receipts"
+                element={
+                  <ProtectedRoute>
+                    <POSProvider>
+                      <Layout>
+                        <POSReceipts />
                       </Layout>
                     </POSProvider>
                   </ProtectedRoute>
