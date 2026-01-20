@@ -4594,6 +4594,7 @@ export type Database = {
           amount: number
           cashier_id: string | null
           created_at: string
+          customer_id: number | null
           discount_fixed: number
           discount_percent: number
           id: string
@@ -4611,6 +4612,7 @@ export type Database = {
           amount: number
           cashier_id?: string | null
           created_at?: string
+          customer_id?: number | null
           discount_fixed?: number
           discount_percent?: number
           id?: string
@@ -4628,6 +4630,7 @@ export type Database = {
           amount?: number
           cashier_id?: string | null
           created_at?: string
+          customer_id?: number | null
           discount_fixed?: number
           discount_percent?: number
           id?: string
@@ -4642,6 +4645,13 @@ export type Database = {
           transaction_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_item_id_fkey"
             columns: ["item_id"]

@@ -811,6 +811,10 @@ const POSHome = () => {
           amountPaid={lastTransaction.amountPaid}
           transactionDate={lastTransaction.date}
           transactionId={lastTransaction.transactionId}
+          autoPrint={true}
+          customer={lastTransaction.customer}
+          pointsEarned={lastTransaction.pointsEarned}
+          pointsRedeemed={lastTransaction.pointsRedeemed}
         />
       )}
 

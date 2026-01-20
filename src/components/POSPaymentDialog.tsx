@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 // Re-use the Payment type defined in POSHome.tsx
 export type Payment = {
@@ -28,6 +29,7 @@ interface POSPaymentDialogProps {
 }
 
 export const POSPaymentDialog = ({ open, onOpenChange, totalAmount, onPaymentComplete }: POSPaymentDialogProps) => {
+  const { formatCurrency } = useSystemSettings();
   const [currentMethod, setCurrentMethod] = useState<"cash" | "card">("cash");
   const [currentAmount, setCurrentAmount] = useState("");
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -140,14 +142,14 @@ export const POSPaymentDialog = ({ open, onOpenChange, totalAmount, onPaymentCom
         <DialogHeader>
           <DialogTitle>Complete Transaction</DialogTitle>
           <DialogDescription>
-            Total Due: <span className="font-bold text-lg">${totalAmount.toFixed(2)}</span>
+            Total Due: <span className="font-bold text-lg">{formatCurrency(totalAmount)}</span>
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="flex justify-between font-bold text-xl text-green-600">
             <span>Remaining Due:</span>
-            <span>${remainingDue.toFixed(2)}</span>
+            <span>{formatCurrency(remainingDue)}</span>
           </div>
 
           <RadioGroup
@@ -227,7 +229,7 @@ export const POSPaymentDialog = ({ open, onOpenChange, totalAmount, onPaymentCom
                     )}
                     {p.method.charAt(0).toUpperCase() + p.method.slice(1)}
                   </span>
-                  <span>${p.amount.toFixed(2)}</span>
+                  <span>{formatCurrency(p.amount)}</span>
                 </div>
               ))}
             </div>
@@ -238,11 +240,11 @@ export const POSPaymentDialog = ({ open, onOpenChange, totalAmount, onPaymentCom
             <div className="p-3 bg-green-50 rounded-lg">
               <div className="flex justify-between font-medium">
                 <span>Total Paid:</span>
-                <span className="font-medium">${totalPaid.toFixed(2)}</span>
+                <span className="font-medium">{formatCurrency(totalPaid)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span>Change Due:</span>
-                <span className="text-primary">${change.toFixed(2)}</span>
+                <span className="text-primary">{formatCurrency(change)}</span>
               </div>
             </div>
           )}
