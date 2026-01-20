@@ -245,7 +245,7 @@ const POSHome = () => {
       return;
     }
 
-    const transactionId = `TXN-${Date.now()}`;
+    const transactionId = `TXN-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     const primaryPayment = payments.reduce((max, p) => p.amount > max.amount ? p : max, payments[0]);
     const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
     
