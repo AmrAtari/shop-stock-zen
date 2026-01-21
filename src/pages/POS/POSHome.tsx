@@ -286,7 +286,7 @@ const POSHome = () => {
           sku: item.sku,
           quantity: item.cartQuantity,
           price: item.price,
-          user_id: cashierId,
+          cashier_name: cashierId,
           customer_id: selectedCustomer?.id || null,
         })),
       );
