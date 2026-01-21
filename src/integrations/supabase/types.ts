@@ -3800,9 +3800,11 @@ export type Database = {
           customer_id: number | null
           item_id: string | null
           price: number | null
+          quantity: number | null
           sale_id: number
           sale_session_id: number | null
           sale_timestamp: string | null
+          sku: string | null
           total_amount: number | null
           user_id: number | null
         }
@@ -3810,9 +3812,11 @@ export type Database = {
           customer_id?: number | null
           item_id?: string | null
           price?: number | null
+          quantity?: number | null
           sale_id?: number
           sale_session_id?: number | null
           sale_timestamp?: string | null
+          sku?: string | null
           total_amount?: number | null
           user_id?: number | null
         }
@@ -3820,9 +3824,11 @@ export type Database = {
           customer_id?: number | null
           item_id?: string | null
           price?: number | null
+          quantity?: number | null
           sale_id?: number
           sale_session_id?: number | null
           sale_timestamp?: string | null
+          sku?: string | null
           total_amount?: number | null
           user_id?: number | null
         }
