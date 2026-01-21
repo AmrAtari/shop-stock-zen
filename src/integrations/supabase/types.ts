@@ -3798,6 +3798,7 @@ export type Database = {
       sales: {
         Row: {
           customer_id: number | null
+          item_id: string | null
           sale_id: number
           sale_session_id: number | null
           sale_timestamp: string | null
@@ -3806,6 +3807,7 @@ export type Database = {
         }
         Insert: {
           customer_id?: number | null
+          item_id?: string | null
           sale_id?: number
           sale_session_id?: number | null
           sale_timestamp?: string | null
@@ -3814,6 +3816,7 @@ export type Database = {
         }
         Update: {
           customer_id?: number | null
+          item_id?: string | null
           sale_id?: number
           sale_session_id?: number | null
           sale_timestamp?: string | null
