@@ -3797,6 +3797,7 @@ export type Database = {
       }
       sales: {
         Row: {
+          cashier_name: string | null
           customer_id: number | null
           item_id: string | null
           price: number | null
@@ -3809,6 +3810,7 @@ export type Database = {
           user_id: number | null
         }
         Insert: {
+          cashier_name?: string | null
           customer_id?: number | null
           item_id?: string | null
           price?: number | null
@@ -3821,6 +3823,7 @@ export type Database = {
           user_id?: number | null
         }
         Update: {
+          cashier_name?: string | null
           customer_id?: number | null
           item_id?: string | null
           price?: number | null
