@@ -3799,6 +3799,7 @@ export type Database = {
         Row: {
           customer_id: number | null
           item_id: string | null
+          price: number | null
           sale_id: number
           sale_session_id: number | null
           sale_timestamp: string | null
@@ -3808,6 +3809,7 @@ export type Database = {
         Insert: {
           customer_id?: number | null
           item_id?: string | null
+          price?: number | null
           sale_id?: number
           sale_session_id?: number | null
           sale_timestamp?: string | null
@@ -3817,6 +3819,7 @@ export type Database = {
         Update: {
           customer_id?: number | null
           item_id?: string | null
+          price?: number | null
           sale_id?: number
           sale_session_id?: number | null
           sale_timestamp?: string | null
