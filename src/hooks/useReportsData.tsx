@@ -53,14 +53,15 @@ export const useReportsData = (dateFrom?: string, dateTo?: string) => {
   const salesReport = useQuery({
     queryKey: ["sales-report", dateFrom, dateTo],
     queryFn: async () => {
-      let query = supabase.from("v_sales_report").select("*");
+      let query = supabase.from("v_sales_report").select("*").order("created_at", { ascending: false });
       if (dateFrom) query = query.gte("created_at", dateFrom);
       if (dateTo) query = query.lte("created_at", dateTo);
       const { data, error } = await query;
       if (error) throw error;
       return data;
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 1, // Reduced to 1 minute for fresher data
+    refetchOnMount: true,
   });
 
   // Purchase Orders Report
