@@ -77,6 +77,7 @@ import { POSProvider } from "./pages/POS/POSContext";
 import ClosingCash from "./pages/POS/ClosingCash";
 import POSTransfers from "./pages/POS/POSTransfers";
 import POSReceipts from "./pages/POS/POSReceipts";
+import POSTransactionDetail from "./pages/POS/POSTransactionDetail";
 
 // CRM Components
 import Customers from "./pages/crm/Customers";
@@ -836,6 +837,16 @@ const App = () => {
                         <POSReceipts />
                       </Layout>
                     </POSProvider>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pos/transactions/:transactionId"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <POSTransactionDetail />
+                    </Layout>
                   </ProtectedRoute>
                 }
               />
