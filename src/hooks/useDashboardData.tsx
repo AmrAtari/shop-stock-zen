@@ -9,6 +9,13 @@ interface DashboardMetrics {
   totalProducts: number;
 }
 
+interface SalesMetrics {
+  todaySales: number;
+  todayTransactions: number;
+  totalSales: number;
+  totalTransactions: number;
+}
+
 interface CategoryDistribution {
   name: string;
   value: number;
@@ -179,13 +186,50 @@ export const useDashboardData = () => {
     staleTime: 2 * 60 * 1000,
   });
 
+  // Fetch sales metrics from transactions table
+  const { data: salesMetrics, isLoading: salesLoading } = useQuery({
+    queryKey: ['dashboard-sales-metrics'],
+    queryFn: async (): Promise<SalesMetrics> => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayISO = today.toISOString();
+
+      // Get all transactions
+      const { data: allTxns, error: allError } = await supabase
+        .from("transactions")
+        .select("amount, transaction_id, is_refund")
+        .eq("is_refund", false);
+
+      if (allError) throw allError;
+
+      // Get today's transactions
+      const { data: todayTxns, error: todayError } = await supabase
+        .from("transactions")
+        .select("amount, transaction_id, is_refund")
+        .eq("is_refund", false)
+        .gte("created_at", todayISO);
+
+      if (todayError) throw todayError;
+
+      const totalSales = allTxns?.reduce((sum, t) => sum + Number(t.amount || 0), 0) || 0;
+      const totalTransactions = new Set(allTxns?.map(t => t.transaction_id)).size;
+      const todaySales = todayTxns?.reduce((sum, t) => sum + Number(t.amount || 0), 0) || 0;
+      const todayTransactions = new Set(todayTxns?.map(t => t.transaction_id)).size;
+
+      return { todaySales, todayTransactions, totalSales, totalTransactions };
+    },
+    staleTime: 1 * 60 * 1000,
+    refetchOnMount: true,
+  });
+
   return {
     metrics: metrics || { totalItems: 0, totalValue: 0, lowStockCount: 0, totalProducts: 0 },
+    salesMetrics: salesMetrics || { todaySales: 0, todayTransactions: 0, totalSales: 0, totalTransactions: 0 },
     categoryQuantity: categoryData?.categoryQuantity || [],
     categoryValue: categoryData?.categoryValue || [],
     lowStockItems: lowStockItems || [],
     stockMovementTrends: stockMovementTrends || [],
     abcDistribution: abcDistribution || [],
-    isLoading: metricsLoading || categoryLoading || lowStockLoading || trendsLoading || abcLoading,
+    isLoading: metricsLoading || categoryLoading || lowStockLoading || trendsLoading || abcLoading || salesLoading,
   };
 };

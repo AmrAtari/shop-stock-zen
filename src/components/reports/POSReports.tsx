@@ -43,17 +43,14 @@ const POSReports = ({ searchTerm, selectedStore, selectedCategory, selectedBrand
     setDrillDownOpen(true);
   };
 
-  // Filter functions
+  // Filter functions - use correct column names from views
   const filteredReceipts = useMemo(() => {
     return posReceiptsReport.filter((item: any) => {
-      const matchesSearch = item.receipt_number?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                           item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           item.item_name?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
-      const matchesBrand = selectedBrand === "all" || item.brand === selectedBrand;
-      return matchesSearch && matchesCategory && matchesBrand;
+      const matchesSearch = item.transaction_id?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           item.cashier_id?.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesSearch;
     });
-  }, [posReceiptsReport, searchTerm, selectedCategory, selectedBrand]);
+  }, [posReceiptsReport, searchTerm]);
 
   const filteredItemsSold = useMemo(() => {
     return itemsSoldReport.filter((item: any) => {
@@ -105,12 +102,12 @@ const POSReports = ({ searchTerm, selectedStore, selectedCategory, selectedBrand
     });
   }, [dailyPosSummaryReport, selectedStore]);
 
-  // Summary calculations
+  // Summary calculations - use correct column names
   const posSummary = useMemo(() => {
     const totalReceipts = filteredReceipts.length;
-    const totalSales = filteredReceipts.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
-    const totalRefunds = filteredRefunds.reduce((sum: number, item: any) => sum + (item.refund_amount || 0), 0);
-    const totalItemsSold = filteredItemsSold.reduce((sum: number, item: any) => sum + (item.total_quantity_sold || 0), 0);
+    const totalSales = filteredReceipts.reduce((sum: number, item: any) => sum + Number(item.total_amount || 0), 0);
+    const totalRefunds = filteredRefunds.reduce((sum: number, item: any) => sum + Number(item.refund_amount || 0), 0);
+    const totalItemsSold = filteredItemsSold.reduce((sum: number, item: any) => sum + Number(item.total_sold || 0), 0);
     return { totalReceipts, totalSales, totalRefunds, totalItemsSold };
   }, [filteredReceipts, filteredRefunds, filteredItemsSold]);
 
@@ -236,26 +233,22 @@ const POSReports = ({ searchTerm, selectedStore, selectedCategory, selectedBrand
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Receipt #</TableHead>
+                      <TableHead>Transaction ID</TableHead>
                       <TableHead>Date</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Amount</TableHead>
+                      <TableHead>Cashier</TableHead>
+                      <TableHead>Line Items</TableHead>
+                      <TableHead>Total Amount</TableHead>
                       <TableHead>Payment</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredReceipts.slice(0, 100).map((item: any, index: number) => (
                       <TableRow key={index}>
-                        <TableCell className="font-mono">{item.receipt_number}</TableCell>
-                        <TableCell>{item.transaction_date ? new Date(item.transaction_date).toLocaleDateString() : "-"}</TableCell>
-                        <TableCell className="font-mono">{item.sku}</TableCell>
-                        <TableCell>{item.item_name}</TableCell>
-                        <TableCell>{item.quantity}</TableCell>
-                        <TableCell>{formatCurrency(item.price || 0, currency)}</TableCell>
-                        <TableCell>{formatCurrency(item.amount || 0, currency)}</TableCell>
+                        <TableCell className="font-mono text-xs">{item.transaction_id}</TableCell>
+                        <TableCell>{item.created_at ? new Date(item.created_at).toLocaleString() : "-"}</TableCell>
+                        <TableCell>{item.cashier_id}</TableCell>
+                        <TableCell>{item.line_items}</TableCell>
+                        <TableCell className="font-semibold">{formatCurrency(item.total_amount || 0, currency)}</TableCell>
                         <TableCell className="capitalize">{item.payment_method}</TableCell>
                       </TableRow>
                     ))}
@@ -286,29 +279,25 @@ const POSReports = ({ searchTerm, selectedStore, selectedCategory, selectedBrand
                     <TableRow>
                       <TableHead>SKU</TableHead>
                       <TableHead>Item Name</TableHead>
+                      <TableHead>Category</TableHead>
                       <TableHead>Store</TableHead>
                       <TableHead>Qty Sold</TableHead>
-                      <TableHead>Total Sales</TableHead>
-                      <TableHead>Total Cost</TableHead>
-                      <TableHead>Profit</TableHead>
+                      <TableHead>Total Revenue</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredItemsSold.slice(0, 100).map((item: any) => (
+                    {filteredItemsSold.slice(0, 100).map((item: any, idx: number) => (
                       <TableRow 
-                        key={item.item_id}
+                        key={`${item.item_id}-${item.store_id}-${idx}`}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => handleRowClick(item.item_id, item.sku, item.item_name)}
                       >
                         <TableCell className="font-mono">{item.sku}</TableCell>
                         <TableCell>{item.item_name}</TableCell>
+                        <TableCell>{item.category || "-"}</TableCell>
                         <TableCell>{item.store_name || "-"}</TableCell>
-                        <TableCell>{formatNumber(item.total_quantity_sold || 0, 0)}</TableCell>
-                        <TableCell>{formatCurrency(item.total_sales_amount || 0, currency)}</TableCell>
-                        <TableCell>{formatCurrency(item.total_cost || 0, currency)}</TableCell>
-                        <TableCell className={Number(item.total_profit) >= 0 ? "text-success" : "text-destructive"}>
-                          {formatCurrency(item.total_profit || 0, currency)}
-                        </TableCell>
+                        <TableCell>{formatNumber(item.total_sold || 0, 0)}</TableCell>
+                        <TableCell className="font-semibold">{formatCurrency(item.total_revenue || 0, currency)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -389,25 +378,20 @@ const POSReports = ({ searchTerm, selectedStore, selectedCategory, selectedBrand
                       <TableHead>Date</TableHead>
                       <TableHead>Store</TableHead>
                       <TableHead>Transactions</TableHead>
-                      <TableHead>Items Sold</TableHead>
+                      <TableHead>Refunds</TableHead>
                       <TableHead>Total Sales</TableHead>
-                      <TableHead>Avg Transaction</TableHead>
+                      <TableHead>Refund Amount</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredDailyPosSummary.slice(0, 100).map((summary: any, idx: number) => (
                       <TableRow key={idx}>
-                        <TableCell>{new Date(summary.sales_date).toLocaleDateString()}</TableCell>
+                        <TableCell>{summary.transaction_date ? new Date(summary.transaction_date).toLocaleDateString() : "-"}</TableCell>
                         <TableCell>{summary.store_name || "-"}</TableCell>
-                        <TableCell>{summary.transaction_count || 0}</TableCell>
-                        <TableCell>{summary.items_sold || 0}</TableCell>
-                        <TableCell>{formatCurrency(summary.total_sales || 0, currency)}</TableCell>
-                        <TableCell>
-                          {formatCurrency(
-                            summary.transaction_count > 0 ? (summary.total_sales || 0) / summary.transaction_count : 0,
-                            currency
-                          )}
-                        </TableCell>
+                        <TableCell>{summary.total_transactions || 0}</TableCell>
+                        <TableCell>{summary.total_refunds || 0}</TableCell>
+                        <TableCell className="font-semibold">{formatCurrency(summary.total_sales || 0, currency)}</TableCell>
+                        <TableCell className="text-destructive">{formatCurrency(summary.total_refund_amount || 0, currency)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
