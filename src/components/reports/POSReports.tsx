@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Receipt, Users, CreditCard, Calendar, TrendingDown, ShoppingBag, DollarSign } from "lucide-react";
+import { Download, Receipt, Users, CreditCard, Calendar, TrendingDown, ShoppingBag, DollarSign, ExternalLink } from "lucide-react";
 import { useReportsData } from "@/hooks/useReportsData";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
@@ -19,6 +20,7 @@ interface POSReportsProps {
 }
 
 const POSReports = ({ searchTerm, selectedStore, selectedCategory, selectedBrand, dateFrom, dateTo }: POSReportsProps) => {
+  const navigate = useNavigate();
   const { settings } = useSystemSettings();
   const currency = settings?.currency || "USD";
   const [drillDownOpen, setDrillDownOpen] = useState(false);
@@ -239,17 +241,25 @@ const POSReports = ({ searchTerm, selectedStore, selectedCategory, selectedBrand
                       <TableHead>Line Items</TableHead>
                       <TableHead>Total Amount</TableHead>
                       <TableHead>Payment</TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredReceipts.slice(0, 100).map((item: any, index: number) => (
-                      <TableRow key={index}>
+                      <TableRow 
+                        key={index}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => navigate(`/pos/transactions/${encodeURIComponent(item.transaction_id)}`)}
+                      >
                         <TableCell className="font-mono text-xs">{item.transaction_id}</TableCell>
                         <TableCell>{item.created_at ? new Date(item.created_at).toLocaleString() : "-"}</TableCell>
-                        <TableCell>{item.cashier_id}</TableCell>
+                        <TableCell className="capitalize">{item.cashier_id}</TableCell>
                         <TableCell>{item.line_items}</TableCell>
                         <TableCell className="font-semibold">{formatCurrency(item.total_amount || 0, currency)}</TableCell>
                         <TableCell className="capitalize">{item.payment_method}</TableCell>
+                        <TableCell>
+                          <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
