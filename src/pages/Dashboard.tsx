@@ -143,7 +143,7 @@ const COLORS = [
 ];
 
 const Dashboard = () => {
-  const { metrics, categoryQuantity, categoryValue, lowStockItems, stockMovementTrends, abcDistribution, isLoading } =
+  const { metrics, salesMetrics, categoryQuantity, categoryValue, lowStockItems, stockMovementTrends, abcDistribution, isLoading } =
     useDashboardData();
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
@@ -621,19 +621,20 @@ const Dashboard = () => {
       {/* Key Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Total Items"
-          value={totalItemsAllStores.toLocaleString()}
-          icon={<Package className="w-5 h-5" />}
-          variant="default"
-          subtitle="Across all stores"
-          onClick={() => navigate("/inventory")}
+          title="Today's Sales"
+          value={formatCurrency(salesMetrics.todaySales, currency)}
+          icon={<ShoppingCart className="w-5 h-5" />}
+          variant="success"
+          subtitle={`${salesMetrics.todayTransactions} transactions today`}
+          onClick={() => navigate("/reports")}
         />
         <MetricCard
-          title="Inventory Value"
-          value={formatCurrency(totalValueAllStores, currency)}
+          title="Total Sales"
+          value={formatCurrency(salesMetrics.totalSales, currency)}
           icon={<DollarSign className="w-5 h-5" />}
-          variant="success"
-          subtitle="Total stock value"
+          variant="default"
+          subtitle={`${salesMetrics.totalTransactions} all-time transactions`}
+          onClick={() => navigate("/reports")}
         />
         <MetricCard
           title="Low Stock Alerts"
@@ -650,6 +651,41 @@ const Dashboard = () => {
           variant="info"
           subtitle="Operational locations"
           onClick={() => navigate("/stores")}
+        />
+      </div>
+
+      {/* Inventory Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          title="Total Items"
+          value={totalItemsAllStores.toLocaleString()}
+          icon={<Package className="w-5 h-5" />}
+          variant="default"
+          subtitle="Across all stores"
+          onClick={() => navigate("/inventory")}
+        />
+        <MetricCard
+          title="Inventory Value"
+          value={formatCurrency(totalValueAllStores, currency)}
+          icon={<TrendingUp className="w-5 h-5" />}
+          variant="success"
+          subtitle="Total stock value"
+        />
+        <MetricCard
+          title="Total Products"
+          value={metrics.totalProducts.toLocaleString()}
+          icon={<Package className="w-5 h-5" />}
+          variant="default"
+          subtitle="Unique items in catalog"
+          onClick={() => navigate("/inventory")}
+        />
+        <MetricCard
+          title="Customers"
+          value="-"
+          icon={<Users className="w-5 h-5" />}
+          variant="info"
+          subtitle="CRM members"
+          onClick={() => navigate("/crm/customers")}
         />
       </div>
 

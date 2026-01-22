@@ -78,32 +78,31 @@ export const useReportsData = (dateFrom?: string, dateTo?: string) => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // POS Receipts Report
+  // POS Receipts Report - use correct column name
   const posReceiptsReport = useQuery({
     queryKey: ["pos-receipts-report", dateFrom, dateTo],
     queryFn: async () => {
-      let query = supabase.from("v_pos_receipts_report").select("*");
+      let query = supabase.from("v_pos_receipts_report").select("*").order("created_at", { ascending: false });
       if (dateFrom) query = query.gte("created_at", dateFrom);
       if (dateTo) query = query.lte("created_at", dateTo);
       const { data, error } = await query;
       if (error) throw error;
       return data;
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 1,
+    refetchOnMount: true,
   });
 
-  // Items Sold Report
+  // Items Sold Report - note: this view doesn't have date columns, so no date filtering
   const itemsSoldReport = useQuery({
-    queryKey: ["items-sold-report", dateFrom, dateTo],
+    queryKey: ["items-sold-report"],
     queryFn: async () => {
-      let query = supabase.from("v_items_sold_report").select("*");
-      if (dateFrom) query = query.gte("first_sale_date", dateFrom);
-      if (dateTo) query = query.lte("last_sale_date", dateTo);
-      const { data, error } = await query;
+      const { data, error } = await supabase.from("v_items_sold_report").select("*");
       if (error) throw error;
       return data;
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 1,
+    refetchOnMount: true,
   });
 
   // Transfers Report
@@ -233,14 +232,15 @@ export const useReportsData = (dateFrom?: string, dateTo?: string) => {
   const dailyPosSummaryReport = useQuery({
     queryKey: ["daily-pos-summary-report", dateFrom, dateTo],
     queryFn: async () => {
-      let query = supabase.from("v_daily_pos_summary").select("*");
-      if (dateFrom) query = query.gte("sales_date", dateFrom);
-      if (dateTo) query = query.lte("sales_date", dateTo);
+      let query = supabase.from("v_daily_pos_summary").select("*").order("transaction_date", { ascending: false });
+      if (dateFrom) query = query.gte("transaction_date", dateFrom);
+      if (dateTo) query = query.lte("transaction_date", dateTo);
       const { data, error } = await query;
       if (error) throw error;
       return data;
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 1,
+    refetchOnMount: true,
   });
 
   const isLoading = 
