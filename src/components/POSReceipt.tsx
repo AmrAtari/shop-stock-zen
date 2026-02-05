@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { Printer, X, Store, Phone, Mail, MapPin } from "lucide-react";
+import { Printer, X, Store, Phone, Mail, MapPin, CreditCard, Banknote, Star, Gift, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { Payment } from "@/components/POSPaymentDialog";
 
 interface CartItem {
   id: string;
@@ -23,7 +24,8 @@ interface POSReceiptProps {
   onOpenChange: (open: boolean) => void;
   items: CartItem[];
   total: number;
-  paymentMethod: "cash" | "card";
+  paymentMethod: string;
+  payments?: Payment[];
   amountPaid?: number;
   transactionDate: Date;
   transactionId: string;
@@ -43,6 +45,7 @@ export const POSReceipt = ({
   items,
   total,
   paymentMethod,
+  payments,
   amountPaid,
   transactionDate,
   transactionId,
@@ -417,9 +420,29 @@ export const POSReceipt = ({
               </div>
             )}
 
-            {paymentMethod === "cash" && amountPaid && (
-              <>
-                <div className="flex justify-between text-sm pt-2 border-t border-dashed">
+            {/* Payment Breakdown for split payments */}
+            {payments && payments.length > 1 && (
+              <div className="pt-2 border-t border-dashed space-y-1">
+                <div className="text-xs font-semibold text-muted-foreground uppercase">Payment Breakdown</div>
+                {payments.map((p, idx) => (
+                  <div key={idx} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground capitalize flex items-center gap-1">
+                      {p.method === "cash" && <Banknote className="h-3 w-3" />}
+                      {p.method === "card" && <CreditCard className="h-3 w-3" />}
+                      {p.method === "loyalty" && <Star className="h-3 w-3 text-yellow-500" />}
+                      {p.method === "gift_card" && <Gift className="h-3 w-3 text-purple-500" />}
+                      {p.method === "store_credit" && <Wallet className="h-3 w-3 text-emerald-500" />}
+                      {p.method.replace("_", " ")}
+                    </span>
+                    <span>{formatCurrency(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {paymentMethod.includes("cash") && amountPaid && amountPaid > total && (
+              <div className="pt-2 border-t border-dashed space-y-1">
+                <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Amount Paid</span>
                   <span>{formatCurrency(amountPaid)}</span>
                 </div>
@@ -427,7 +450,7 @@ export const POSReceipt = ({
                   <span>Change</span>
                   <span>{formatCurrency(change)}</span>
                 </div>
-              </>
+              </div>
             )}
 
             <div className="flex justify-between text-xl font-bold pt-3 mt-2 border-t-2 border-foreground">
