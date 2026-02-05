@@ -1,33 +1,59 @@
 // src/pages/POS/POSReceipts.tsx
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 
 const POSReceipts = () => {
   const [q, setQ] = useState("");
+  const navigate = useNavigate();
 
-  // Note: This query hits the 'transactions' table (line items).
-  // For a receipts list, querying 'transaction_summary' is usually better.
-  // We'll keep 'transactions' for now as per your original file structure.
+  // Query unique transactions (grouped by transaction_id)
   const { data: receipts = [], isLoading } = useQuery({
-    queryKey: ["receipts", q],
+    queryKey: ["pos-receipts", q],
     queryFn: async () => {
-      // You should adjust this query to fetch from 'transaction_summary' if you want a list of unique receipts.
-      const builder = supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(200);
-      if (q) builder.ilike("id", `%${q}%`);
-      const { data, error } = await builder;
+      // Get unique transaction summaries
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("transaction_id, created_at, payment_method, customer_id, amount")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      
       if (error) throw error;
-      return data || [];
+      
+      // Group by transaction_id and calculate totals
+      const grouped = (data || []).reduce((acc: Record<string, any>, tx) => {
+        if (!acc[tx.transaction_id]) {
+          acc[tx.transaction_id] = {
+            transaction_id: tx.transaction_id,
+            created_at: tx.created_at,
+            payment_method: tx.payment_method,
+            customer_id: tx.customer_id,
+            total: 0,
+          };
+        }
+        acc[tx.transaction_id].total += tx.amount || 0;
+        return acc;
+      }, {});
+      
+      let results = Object.values(grouped);
+      
+      // Filter by search query
+      if (q) {
+        results = results.filter((r: any) => 
+          r.transaction_id?.toLowerCase().includes(q.toLowerCase())
+        );
+      }
+      
+      return results;
     },
   });
 
   const openReceipt = (tx: any) => {
-    // navigate to receipt page / or open modal
-    window.location.assign(`/pos/receipt/${tx.id}`);
+    navigate(`/pos/transactions/${tx.transaction_id}`);
   };
 
   return (
@@ -54,17 +80,23 @@ const POSReceipts = () => {
             <div className="text-muted-foreground">No receipts found</div>
           ) : (
             <div className="space-y-2">
-              {/* Note: This logic assumes 'r.total' and 'r.id' are available, which may be more accurate if querying 'transaction_summary' */}
               {receipts.map((r: any) => (
-                <div key={r.id} className="flex justify-between items-center p-3 border rounded">
+                <div 
+                  key={r.transaction_id} 
+                  className="flex justify-between items-center p-3 border rounded hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => openReceipt(r)}
+                >
                   <div>
-                    <div className="font-medium">{r.id}</div>
+                    <div className="font-medium font-mono text-sm">{r.transaction_id}</div>
                     <div className="text-sm text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
                   </div>
-                  <div className="flex gap-2">
-                    <div className="font-semibold">${r.total}</div>
-                    <Button variant="outline" size="sm" onClick={() => openReceipt(r)}>
-                      Open
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="font-semibold">${r.total?.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground capitalize">{r.payment_method}</div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); openReceipt(r); }}>
+                      View
                     </Button>
                   </div>
                 </div>
