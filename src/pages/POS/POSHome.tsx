@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { POSBarcodeInput } from "@/components/POSBarcodeInput";
-import { POSPaymentDialog } from "@/components/POSPaymentDialog";
+import { POSPaymentDialog, Payment } from "@/components/POSPaymentDialog";
 import { POSReceipt } from "@/components/POSReceipt";
 import { POSHoldsSidebar } from "@/components/POSHoldsSidebar";
 import { POSCustomerSelector } from "@/components/POS/POSCustomerSelector";
@@ -238,7 +238,7 @@ const POSHome = () => {
   );
 
   // Checkout flow: create transaction, write sales rows, update stock, attach sessionId & cashierId
-  const handlePaymentComplete = async (payments: Array<{ method: "cash" | "card"; amount: number }>, changeDue: number) => {
+  const handlePaymentComplete = async (payments: Payment[], changeDue: number, loyaltyPointsUsedFromDialog?: number) => {
     if (!cart.length) return toast.error("Cart empty");
     if (!sessionId || !cashierId) {
       toast.error("Open a cashier session first");
@@ -248,6 +248,14 @@ const POSHome = () => {
     const transactionId = `TXN-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     const primaryPayment = payments.reduce((max, p) => p.amount > max.amount ? p : max, payments[0]);
     const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    
+    // Calculate loyalty points used from payments
+    const loyaltyPayments = payments.filter(p => p.method === "loyalty");
+    const loyaltyAmountPaid = loyaltyPayments.reduce((sum, p) => sum + p.amount, 0);
+    const loyaltyPointsUsedInPayment = loyaltyPointsUsedFromDialog || Math.ceil((loyaltyAmountPaid * 100) / loyaltySettings.pointValueInCents);
+    
+    // Format payment method for storage (combine all methods)
+    const paymentMethodStr = payments.map(p => p.method).filter((v, i, a) => a.indexOf(v) === i).join(",");
     
     try {
       // Insert into transactions table
@@ -270,7 +278,7 @@ const POSHome = () => {
             itemDiscountFixed * item.cartQuantity -
             (item.price * item.cartQuantity * itemDiscountPercent) / 100,
           is_refund: false,
-          payment_method: primaryPayment.method,
+          payment_method: paymentMethodStr,
           customer_id: selectedCustomer?.id || null,
         };
       });
@@ -325,9 +333,10 @@ const POSHome = () => {
         }
       }
 
-      // Update customer loyalty points
+      // Update customer loyalty points (including points used as payment)
       if (selectedCustomer) {
-        const netPointsChange = pointsToEarn - pointsToRedeem;
+        const totalPointsRedeemed = pointsToRedeem + loyaltyPointsUsedInPayment;
+        const netPointsChange = pointsToEarn - totalPointsRedeemed;
         const newLoyaltyPoints = Math.max(0, (selectedCustomer.loyalty_points || 0) + netPointsChange);
         
         const { error: loyaltyError } = await supabase
@@ -338,21 +347,27 @@ const POSHome = () => {
         if (loyaltyError) {
           console.error("Error updating loyalty points:", loyaltyError);
         } else {
-          toast.success(`Customer earned ${pointsToEarn} points${pointsToRedeem > 0 ? `, redeemed ${pointsToRedeem} points` : ""}`);
+          const redemptionMsg = totalPointsRedeemed > 0 ? `, redeemed ${totalPointsRedeemed} points` : "";
+          toast.success(`Customer earned ${pointsToEarn} points${redemptionMsg}`);
         }
       }
+
+      // Calculate total points redeemed for receipt
+      const totalPointsRedeemed = pointsToRedeem + loyaltyPointsUsedInPayment;
 
       // show receipt
       setLastTransaction({
         transactionId,
         items: cart,
         total,
-        paymentMethod: primaryPayment.method,
+        paymentMethod: paymentMethodStr,
+        payments: payments, // Store full payment breakdown
         amountPaid: totalPaid,
         date: new Date(),
         customer: selectedCustomer,
         pointsEarned: pointsToEarn,
-        pointsRedeemed: pointsToRedeem,
+        pointsRedeemed: totalPointsRedeemed,
+        loyaltyAmountPaid,
       });
 
       setCart([]);
@@ -799,6 +814,8 @@ const POSHome = () => {
         onOpenChange={setShowPaymentDialog}
         totalAmount={total}
         onPaymentComplete={handlePaymentComplete}
+        customer={selectedCustomer}
+        loyaltySettings={loyaltySettings}
       />
 
       {lastTransaction && (
@@ -808,6 +825,7 @@ const POSHome = () => {
           items={lastTransaction.items}
           total={lastTransaction.total}
           paymentMethod={lastTransaction.paymentMethod}
+          payments={lastTransaction.payments}
           amountPaid={lastTransaction.amountPaid}
           transactionDate={lastTransaction.date}
           transactionId={lastTransaction.transactionId}
