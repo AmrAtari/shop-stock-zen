@@ -248,6 +248,16 @@ const App = () => {
                 }
               />
               <Route
+                path="/inventory/physical/:id"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <PhysicalInventoryDetail />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/inventory-recalculate"
                 element={
                   <ProtectedRoute>
