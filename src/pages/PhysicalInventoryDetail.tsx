@@ -48,7 +48,7 @@ const PhysicalInventoryDetail: React.FC = () => {
 
       setSession({
         ...data,
-        store_name: data.stores?.[0]?.name || "N/A",
+        store_name: (data.stores as any)?.name || "N/A",
         status: data.status as "draft" | "in_progress" | "completed",
       } as SessionWithStore);
     } catch (err: any) {
@@ -67,14 +67,25 @@ const PhysicalInventoryDetail: React.FC = () => {
         .from("physical_inventory_counts")
         .select("*")
         .eq("session_id", session.id)
-        .order("sku");
+        .order("created_at");
 
       if (existingError) throw existingError;
 
       if (existingCounts?.length) {
+        // Fetch item details for existing counts
+        const itemIds = existingCounts.map(c => c.item_id);
+        const { data: itemsData } = await supabase
+          .from("items")
+          .select("id, name, sku")
+          .in("id", itemIds);
+        
+        const itemMap = new Map((itemsData || []).map(i => [i.id, i]));
+        
         setCounts(
           existingCounts.map((c) => ({
             ...c,
+            sku: itemMap.get(c.item_id)?.sku || c.item_id,
+            item_name: itemMap.get(c.item_id)?.name || "N/A",
             status: c.counted_quantity > 0 ? "counted" : "pending",
           })) as LocalPhysicalInventoryCount[],
         );
@@ -142,11 +153,9 @@ const PhysicalInventoryDetail: React.FC = () => {
 
   const saveCounts = async () => {
     const countsToSave = counts.map((c) => ({
-      id: c.id,
+      ...(c.id ? { id: c.id } : {}),
       session_id: c.session_id,
       item_id: c.item_id,
-      sku: c.sku,
-      item_name: c.item_name,
       system_quantity: c.system_quantity,
       counted_quantity: c.counted_quantity,
       status: c.counted_quantity > 0 ? "counted" : "pending",
