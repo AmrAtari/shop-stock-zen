@@ -158,9 +158,7 @@ const PhysicalInventoryDetail: React.FC = () => {
       item_id: c.item_id,
       system_quantity: c.system_quantity,
       counted_quantity: c.counted_quantity,
-      status: c.counted_quantity > 0 ? "counted" : "pending",
-      variance: c.variance,
-      variance_percentage: c.variance_percentage,
+      status: c.counted_quantity > 0 ? "approved" : "pending",
     }));
 
     if (countsToSave.length === 0) {
