@@ -228,7 +228,7 @@ const App = () => {
                 }
               />
               <Route
-                path="/physical-inventory/new"
+                path="/inventory/physical/new"
                 element={
                   <ProtectedRoute>
                     <Layout>
