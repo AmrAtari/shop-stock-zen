@@ -84,7 +84,7 @@ serve(async (req) => {
 
     const aiData = await aiResp.json();
     let sql = (aiData.choices?.[0]?.message?.content || "").trim();
-    sql = sql.replace(/```sql\n?/gi, "").replace(/```\n?/g, "").trim();
+    sql = sql.replace(/```sql\n?/gi, "").replace(/```\n?/g, "").replace(/;\s*$/g, "").trim();
 
     // Security checks
     const upper = sql.toUpperCase().trim();
