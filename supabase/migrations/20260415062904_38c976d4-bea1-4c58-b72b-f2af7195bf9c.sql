@@ -1,0 +1,1 @@
+ALTER TABLE public.physical_inventory_sessions ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMP WITH TIME ZONE;
