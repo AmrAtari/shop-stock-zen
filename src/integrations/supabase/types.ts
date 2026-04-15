@@ -3019,6 +3019,7 @@ export type Database = {
           created_at: string
           department: string | null
           expected_items: number | null
+          finalized_at: string | null
           id: string
           location_filter: string | null
           notes: string | null
@@ -3037,6 +3038,7 @@ export type Database = {
           created_at?: string
           department?: string | null
           expected_items?: number | null
+          finalized_at?: string | null
           id?: string
           location_filter?: string | null
           notes?: string | null
@@ -3055,6 +3057,7 @@ export type Database = {
           created_at?: string
           department?: string | null
           expected_items?: number | null
+          finalized_at?: string | null
           id?: string
           location_filter?: string | null
           notes?: string | null
