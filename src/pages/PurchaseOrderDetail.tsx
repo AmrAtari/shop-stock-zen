@@ -384,6 +384,20 @@ const PurchaseOrderDetail = () => {
         </div>
       </div>
 
+      {po.status === "awaiting_approval" && (
+        <Card className="border-warning bg-warning/10">
+          <CardContent className="py-4 flex items-center gap-3">
+            <Clock className="w-5 h-5 text-warning" />
+            <div>
+              <p className="font-semibold">Awaiting Admin Approval</p>
+              <p className="text-sm text-muted-foreground">
+                This purchase order will not affect inventory or financials until an admin approves it.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <div className="flex justify-between items-start">
