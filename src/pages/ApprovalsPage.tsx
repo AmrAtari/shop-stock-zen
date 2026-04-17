@@ -1,256 +1,213 @@
-import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
-import { Card, CardContent, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Check, X, Clock } from 'lucide-react';
-import { useNavigate, BrowserRouter } from 'react-router-dom'; // <-- Added BrowserRouter
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Check, X, Clock, ShoppingCart, Truck, Eye } from "lucide-react";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { usePendingApprovals, useApprovalActions, type PendingApproval } from "@/hooks/useApprovals";
+import { format } from "date-fns";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+import { formatCurrency } from "@/lib/formatters";
 
-// The following absolute imports are causing persistent resolution errors in the build environment.
-// They are commented out, and mocked versions of 'supabase' and 'useIsAdmin' are defined below
-// to ensure the component compiles and can be viewed.
-// import { supabase } from '@/integrations/supabase/client';
-// import { useIsAdmin } from '@/hooks/useIsAdmin'; 
-
-// --- MOCK DEFINITIONS TO ENSURE COMPILATION ---
-// NOTE: Please replace these mock declarations with your actual imports when running in your local environment.
-const supabase = { 
-    // Mock methods required by the component logic
-    from: (table: string) => ({ 
-        select: (cols: string = '*') => ({ 
-            eq: (col: string, val: string) => ({ 
-                order: (col: string, options: any) => ({ data: [], error: null }),
-            }),
-        }),
-        update: (data: any) => ({ 
-            eq: (col: string, val: string) => ({ error: null }) 
-        }),
-    }),
-    // FIX: Moved 'channel' and 'removeChannel' to the top level of the supabase object
-    channel: (name: string) => ({ 
-        on: (type: string, filter: any, callback: Function) => ({ subscribe: () => ({}) }), 
-        subscribe: () => ({}), 
-        removeChannel: () => ({}) 
-    }),
-    removeChannel: (channel: any) => ({}) // For the cleanup function
-};
-
-// Mocks the hook to always return 'isAdmin: true' so the page is visible.
-const useIsAdmin = () => ({ isAdmin: true, isLoading: false }); 
-// --- END MOCK DEFINITIONS ---
-
-
-// Define the interface for the approval request data
-interface ApprovalRequest {
-  id: string;
-  type: 'stock_adjustment' | 'new_product' | 'price_change';
-  description: string;
-  requested_by: string; // User ID of the requester
-  status: 'pending' | 'approved' | 'rejected';
-  created_at: string;
-  payload: any; 
-}
-
-// Renamed the main logic component to be wrapped by the Router component below
-const ApprovalsPageContent = () => {
-  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
-  // Using the mocked hook now
-  const { isAdmin, isLoading: isAuthLoading } = useIsAdmin();
+const ApprovalsPage = () => {
+  const { isAdmin, isLoading: roleLoading } = useIsAdmin();
+  const { data: pending = [], isLoading } = usePendingApprovals();
+  const { approvePO, rejectPO, approveTransfer, rejectTransfer } = useApprovalActions();
   const navigate = useNavigate();
+  const { settings } = useSystemSettings();
+  const currency = settings?.currency || "USD";
 
-  // Redirect non-admins
-  useEffect(() => {
-    // Only run this check after authentication is done
-    if (!isAuthLoading && !isAdmin) {
-      toast.error('You do not have permission to view this page.');
-      // Wait briefly before redirecting to allow the toast to show
-      setTimeout(() => navigate('/'), 100); 
-    }
-  }, [isAdmin, isAuthLoading, navigate]);
+  const [rejectTarget, setRejectTarget] = useState<PendingApproval | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
-  // Function to fetch pending approvals
-  const fetchApprovals = async () => {
-    setIsLoading(true);
-    try {
-      // Check if we are using the mock
-      if (typeof supabase.from !== 'function') {
-        setApprovals([]);
-        console.warn('Using mocked supabase client. Real data will not load.');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Fetch only pending requests
-      const { data, error } = await supabase
-        .from('inventory_approvals')
-        .select('*')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true });
+  if (roleLoading) {
+    return <div className="p-8"><Skeleton className="h-32 w-full" /></div>;
+  }
 
-      if (error) throw error;
-      setApprovals(data as ApprovalRequest[]);
-    } catch (error) {
-      console.error('Error fetching approvals:', error);
-      toast.error('Failed to load pending approvals.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // Fetch only if the user is confirmed to be an admin
-    if (!isAuthLoading && isAdmin) {
-      fetchApprovals();
-    }
-  }, [isAdmin, isAuthLoading]);
-  
-  // Setup real-time listener (MOCK - will only run if supabase is the real client)
-  useEffect(() => {
-      if (!isAuthLoading && isAdmin) {
-          // Check if the mock is properly structured for the channel method
-          if (typeof supabase.channel !== 'function') {
-              console.warn('Supabase mock is incomplete. Skipping real-time setup.');
-              return;
-          }
-
-          const channel = supabase
-              .channel('pending-approvals-updates')
-              .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_approvals', filter: 'status=eq.pending' }, (payload) => {
-                  fetchApprovals(); // Refetch on any change to pending approvals
-              })
-              .subscribe();
-
-          // Check if removeChannel is available on the main client object
-          if (typeof supabase.removeChannel === 'function') {
-              return () => {
-                  supabase.removeChannel(channel);
-              };
-          } else {
-              console.warn('Supabase mock is incomplete. Cannot remove channel on cleanup.');
-              return;
-          }
-      }
-  }, [isAuthLoading, isAdmin]);
-
-
-  // Function to handle the approval/rejection action
-  const handleAction = async (id: string, newStatus: 'approved' | 'rejected') => {
-    setIsProcessing(true);
-    try {
-      // Check if we are using the mock
-      if (typeof supabase.from !== 'function') {
-        toast.info(`Mock Action: Request ${id} would be ${newStatus}. (Real action requires actual imports)`);
-        setIsProcessing(false);
-        return;
-      }
-
-      // 1. Update the status of the approval request
-      const { error: updateError } = await supabase
-        .from('inventory_approvals')
-        .update({ status: newStatus, approved_at: new Date().toISOString() })
-        .eq('id', id);
-
-      if (updateError) throw updateError;
-
-      // NOTE: In a real system, you would execute the inventory change stored in the 'payload' here.
-      // Example: if (newStatus === 'approved') { await executeInventoryUpdate(id, approvals.find(a => a.id === id)?.payload); }
-
-      toast.success(`Request ${newStatus} successfully!`);
-      // The real-time listener should handle the refresh, but we call it manually for immediate feedback
-      fetchApprovals(); 
-    } catch (error) {
-      console.error('Error processing action:', error);
-      toast.error(`Failed to ${newStatus} request.`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Display skeleton loading state until both auth and data are ready
-  if (isAuthLoading || (isAdmin && isLoading)) {
+  if (!isAdmin) {
     return (
-      <div className="p-8 space-y-4">
-        <h1 className="text-3xl font-bold">Pending Approvals</h1>
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-24 w-full" />
+      <div className="p-8">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">Only administrators can review approvals.</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  // If user is not admin, the useEffect handles redirection.
-  if (!isAdmin) {
-    return null; 
-  }
+  const pos = pending.filter((p): p is Extract<PendingApproval, { kind: "po" }> => p.kind === "po");
+  const transfers = pending.filter((p): p is Extract<PendingApproval, { kind: "transfer" }> => p.kind === "transfer");
+
+  const submitReject = () => {
+    if (!rejectTarget) return;
+    if (rejectTarget.kind === "po") {
+      rejectPO.mutate({ poDbId: rejectTarget.id, reason: rejectReason });
+    } else {
+      rejectTransfer.mutate({ transferId: rejectTarget.id, reason: rejectReason });
+    }
+    setRejectTarget(null);
+    setRejectReason("");
+  };
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold flex items-center gap-3">
-        <Clock className="w-8 h-8 text-primary" />
-        Pending Approvals
-        <span className="text-xl font-normal text-muted-foreground">({approvals.length})</span>
-      </h1>
-      <p className="text-muted-foreground">Review inventory adjustments, new product creations, or price changes that require administrative consent.</p>
-
-      {approvals.length === 0 ? (
-        <Card className="p-12 text-center border-dashed border-2">
-          <Check className="w-10 h-10 text-green-500 mx-auto mb-4" />
-          <CardTitle>All Clear!</CardTitle>
-          <p className="text-muted-foreground mt-2">There are no pending approvals at this time.</p>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {approvals.map((approval) => (
-            <Card key={approval.id} className="relative shadow-lg hover:shadow-xl transition-shadow">
-              <CardContent className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
-                <div className="flex-grow">
-                  <span className="text-xs font-semibold uppercase text-primary tracking-wider rounded-full bg-primary/10 px-2 py-0.5">
-                    {approval.type.replace(/_/g, ' ')}
-                  </span>
-                  <h3 className="text-lg font-semibold mt-1">{approval.description}</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Requested by User ID: <code className="text-xs bg-gray-100 p-1 rounded">{approval.requested_by}</code>
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Date: {new Date(approval.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex space-x-2 shrink-0 pt-2 sm:pt-0">
-                  <Button
-                    variant="default" 
-                    size="sm"
-                    onClick={() => handleAction(approval.id, 'approved')}
-                    disabled={isProcessing}
-                    className="flex items-center bg-green-500 hover:bg-green-600 text-white"
-                  >
-                    <Check className="w-4 h-4 mr-1" /> Approve
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleAction(approval.id, 'rejected')}
-                    disabled={isProcessing}
-                    className="flex items-center"
-                  >
-                    <X className="w-4 h-4 mr-1" /> Reject
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+    <div className="p-8 space-y-6 max-w-6xl mx-auto">
+      <div className="flex items-center gap-3">
+        <Clock className="w-7 h-7 text-primary" />
+        <div>
+          <h1 className="text-3xl font-bold">Pending Approvals</h1>
+          <p className="text-muted-foreground">Review purchase orders and transfers awaiting your decision.</p>
         </div>
-      )}
+        <Badge variant="secondary" className="ml-auto text-base">{pending.length} pending</Badge>
+      </div>
+
+      <Tabs defaultValue="all" className="w-full">
+        <TabsList>
+          <TabsTrigger value="all">All ({pending.length})</TabsTrigger>
+          <TabsTrigger value="po">Purchase Orders ({pos.length})</TabsTrigger>
+          <TabsTrigger value="transfer">Transfers ({transfers.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all" className="space-y-3 mt-4">
+          {isLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : pending.length === 0 ? (
+            <EmptyState />
+          ) : (
+            pending.map((p) => (
+              <ApprovalRow
+                key={`${p.kind}-${p.id}`}
+                item={p}
+                currency={currency}
+                onApprove={() =>
+                  p.kind === "po" ? approvePO.mutate(p.id) : approveTransfer.mutate(p.id)
+                }
+                onReject={() => setRejectTarget(p)}
+                onView={() =>
+                  p.kind === "po" ? navigate(`/purchase-orders/${p.id}`) : navigate(`/transfers/${p.id}`)
+                }
+              />
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="po" className="space-y-3 mt-4">
+          {pos.length === 0 ? <EmptyState /> : pos.map((p) => (
+            <ApprovalRow
+              key={`po-${p.id}`}
+              item={p}
+              currency={currency}
+              onApprove={() => approvePO.mutate(p.id)}
+              onReject={() => setRejectTarget(p)}
+              onView={() => navigate(`/purchase-orders/${p.id}`)}
+            />
+          ))}
+        </TabsContent>
+
+        <TabsContent value="transfer" className="space-y-3 mt-4">
+          {transfers.length === 0 ? <EmptyState /> : transfers.map((t) => (
+            <ApprovalRow
+              key={`transfer-${t.id}`}
+              item={t}
+              currency={currency}
+              onApprove={() => approveTransfer.mutate(t.id)}
+              onReject={() => setRejectTarget(t)}
+              onView={() => navigate(`/transfers/${t.id}`)}
+            />
+          ))}
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={!!rejectTarget} onOpenChange={(o) => !o && setRejectTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject {rejectTarget?.kind === "po" ? "Purchase Order" : "Transfer"} {rejectTarget?.number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Reason (optional)</Label>
+            <Textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Explain why this is being rejected..."
+              rows={4}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={submitReject}>Reject</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-// Wrap the content component with BrowserRouter to provide the necessary context for useNavigate()
-const ApprovalsPage = () => (
-    <BrowserRouter>
-        <ApprovalsPageContent />
-    </BrowserRouter>
+const EmptyState = () => (
+  <Card>
+    <CardContent className="py-12 text-center space-y-3">
+      <Check className="w-10 h-10 text-green-500 mx-auto" />
+      <CardTitle>All clear</CardTitle>
+      <p className="text-muted-foreground">No pending items right now.</p>
+    </CardContent>
+  </Card>
 );
+
+const ApprovalRow = ({
+  item,
+  currency,
+  onApprove,
+  onReject,
+  onView,
+}: {
+  item: PendingApproval;
+  currency: string;
+  onApprove: () => void;
+  onReject: () => void;
+  onView: () => void;
+}) => {
+  const isPO = item.kind === "po";
+  return (
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-5 flex flex-col md:flex-row gap-4 md:items-center">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className={`p-2 rounded-lg ${isPO ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
+            {isPO ? <ShoppingCart className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold truncate">{item.number}</h3>
+              <Badge variant="outline">{isPO ? "Purchase Order" : "Transfer"}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {isPO
+                ? `→ ${item.store_name || "Unknown store"} · ${item.total_items ?? 0} items · ${formatCurrency(item.total_cost || 0, currency)}`
+                : `${item.from_store_name || "?"} → ${item.to_store_name || "?"} · ${item.total_items ?? 0} items`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Submitted {item.submitted_at ? format(new Date(item.submitted_at), "PPp") : "—"}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={onView}>
+            <Eye className="w-4 h-4 mr-1" /> View
+          </Button>
+          <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={onApprove}>
+            <Check className="w-4 h-4 mr-1" /> Approve
+          </Button>
+          <Button size="sm" variant="destructive" onClick={onReject}>
+            <X className="w-4 h-4 mr-1" /> Reject
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default ApprovalsPage;
