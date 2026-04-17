@@ -208,6 +208,15 @@ export const TransferDetailPage = () => {
         </div>
       )}
 
+      {enhancedTransfer?.status === "awaiting_approval" && (
+        <Card className="p-4 border-warning bg-warning/10">
+          <p className="font-semibold">Awaiting Admin Approval</p>
+          <p className="text-sm text-muted-foreground">
+            This transfer will not move stock until an admin approves it from the Approvals page.
+          </p>
+        </Card>
+      )}
+
       <div className="flex gap-2 pt-4">
         <Button
           onClick={() => updateStatusMutation.mutate({ transferId, status: "approved" })}

@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator";
 import { usePurchaseOrderDetail } from "@/hooks/usePurchaseOrderDetail";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package, Loader2 } from "lucide-react";
+import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package, Loader2, Clock } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
