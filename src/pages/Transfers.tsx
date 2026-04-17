@@ -20,6 +20,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/hooks/queryKeys";
+import { useUserRole } from "@/hooks/useUserRole";
 
 // -------------------
 // Types
@@ -76,6 +77,7 @@ const useStores = () => {
 const Transfers = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isAdmin } = useUserRole();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -144,6 +146,7 @@ const Transfers = () => {
     setIsCreating(true);
     try {
       const transferNumber = `TRF-${String(transfers.length + 1).padStart(5, "0")}`;
+      const { data: { user } } = await supabase.auth.getUser();
 
       const { data, error } = await supabase
         .from("transfers")
@@ -152,11 +155,14 @@ const Transfers = () => {
           from_store_id: formData.from_store_id,
           to_store_id: formData.to_store_id,
           transfer_date: formData.transfer_date.toISOString(),
-          status: "pending",
+          // Non-admins go through approval gate; admins skip straight to pending.
+          status: isAdmin ? "pending" : "awaiting_approval",
           total_items: 0,
           reason: formData.reason || null,
           notes: formData.notes || null,
           created_at: new Date().toISOString(),
+          submitted_by: isAdmin ? null : user?.id,
+          submitted_at: isAdmin ? null : new Date().toISOString(),
         })
         .select()
         .single();
@@ -164,7 +170,11 @@ const Transfers = () => {
       if (error) throw error;
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
-      toast.success("Transfer created successfully");
+      toast.success(
+        isAdmin
+          ? "Transfer created successfully"
+          : "Transfer submitted for admin approval"
+      );
       setIsCreateModalOpen(false);
       setFormData({
         from_store_id: "",
@@ -174,7 +184,6 @@ const Transfers = () => {
         notes: "",
       });
 
-      // Navigate to transfer detail page to add items
       if (data) {
         navigate(`/transfers/${data.transfer_id}`);
       }
@@ -235,6 +244,7 @@ const Transfers = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="awaiting_approval">Awaiting Approval</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="in_transit">In Transit</SelectItem>
