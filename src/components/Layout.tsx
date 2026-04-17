@@ -61,7 +61,9 @@ const Layout = ({ children }: LayoutProps) => {
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
   const { t } = useTranslation();
-  
+  const { data: pendingApprovals = [] } = usePendingApprovals();
+  const pendingCount = isAdmin ? pendingApprovals.length : 0;
+
   // Track which groups are open
   const [openGroups, setOpenGroups] = useState<string[]>(["Sales & CRM", "Inventory", "Accounting", "Reports"]);
 
@@ -77,6 +79,9 @@ const Layout = ({ children }: LayoutProps) => {
   const standaloneItems: NavItem[] = [
     { name: t('common.dashboard'), href: "/", icon: LayoutDashboard },
     { name: t('common.pos'), href: "/pos", icon: Receipt },
+    ...(isAdmin
+      ? [{ name: "Approvals", href: "/approvals", icon: ShieldCheck, badgeCount: pendingCount }]
+      : []),
   ];
 
   // Grouped navigation
