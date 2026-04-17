@@ -122,6 +122,8 @@ const Transfers = () => {
         return "default";
       case "pending":
         return "warning";
+      case "awaiting_approval":
+        return "warning";
       case "rejected":
         return "destructive";
       default:

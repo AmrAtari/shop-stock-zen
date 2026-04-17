@@ -84,8 +84,10 @@ const PurchaseOrders = () => {
         return "success";
       case "pending":
       case "draft":
+      case "awaiting_approval":
         return "warning";
       case "cancelled":
+      case "rejected":
         return "destructive";
       default:
         return "default";
@@ -159,10 +161,12 @@ const PurchaseOrders = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="awaiting_approval">Awaiting Approval</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
