@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator";
 import { usePurchaseOrderDetail } from "@/hooks/usePurchaseOrderDetail";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package, Loader2 } from "lucide-react";
+import { ArrowLeft, Printer, Download, Edit, CheckCircle, XCircle, Send, Package, Loader2, Clock } from "lucide-react";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
@@ -122,10 +122,25 @@ const PurchaseOrderDetail = () => {
 
   const handleApprove = async () => {
     try {
-      await updateStatusMutation.mutateAsync("approved");
+      // If awaiting_approval → release into normal pending flow.
+      // If pending → approved.
+      const next = po.status === "awaiting_approval" ? "pending" : "approved";
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({
+          status: next,
+          approval_decided_by: user?.id,
+          approval_decided_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      queryClient.invalidateQueries({ queryKey: ["approvals", "pending"] });
       toast({
         title: "PO Approved",
-        description: "Purchase order has been approved.",
+        description: `Purchase order moved to ${next}.`,
       });
     } catch (error) {
       toast({
@@ -138,7 +153,20 @@ const PurchaseOrderDetail = () => {
 
   const handleReject = async () => {
     try {
-      await updateStatusMutation.mutateAsync("cancelled");
+      const next = po.status === "awaiting_approval" ? "rejected" : "cancelled";
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({
+          status: next,
+          approval_decided_by: user?.id,
+          approval_decided_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      queryClient.invalidateQueries({ queryKey: ["approvals", "pending"] });
       toast({
         title: "PO Rejected",
         description: "Purchase order has been rejected.",
@@ -270,8 +298,10 @@ const PurchaseOrderDetail = () => {
         return "success";
       case "pending":
       case "draft":
+      case "awaiting_approval":
         return "warning";
       case "cancelled":
+      case "rejected":
         return "destructive";
       default:
         return "default";
@@ -299,6 +329,18 @@ const PurchaseOrderDetail = () => {
             <Download className="mr-2 h-4 w-4" />
             Export Excel
           </Button>
+          {po.status === "awaiting_approval" && isAdmin && (
+            <>
+              <Button onClick={handleApprove} variant="default">
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Approve
+              </Button>
+              <Button onClick={handleReject} variant="destructive">
+                <XCircle className="mr-2 h-4 w-4" />
+                Reject
+              </Button>
+            </>
+          )}
           {po.status === "draft" && (
             <>
               {/* Added Edit button */}
@@ -341,6 +383,20 @@ const PurchaseOrderDetail = () => {
           )}
         </div>
       </div>
+
+      {po.status === "awaiting_approval" && (
+        <Card className="border-warning bg-warning/10">
+          <CardContent className="py-4 flex items-center gap-3">
+            <Clock className="w-5 h-5 text-warning" />
+            <div>
+              <p className="font-semibold">Awaiting Admin Approval</p>
+              <p className="text-sm text-muted-foreground">
+                This purchase order will not affect inventory or financials until an admin approves it.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

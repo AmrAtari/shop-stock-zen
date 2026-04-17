@@ -3450,6 +3450,8 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          approval_decided_at: string | null
+          approval_decided_by: string | null
           approved_by: string | null
           authorized_by: string | null
           billing_address: string | null
@@ -3470,12 +3472,15 @@ export type Database = {
           payment_terms: string | null
           po_id: number
           po_number: string | null
+          rejection_reason: string | null
           shipping_address: string | null
           shipping_charges: number | null
           shipping_method: string | null
           special_instructions: string | null
           status: string | null
           store_id: string | null
+          submitted_at: string | null
+          submitted_by: string | null
           subtotal: number | null
           supplier: string | null
           supplier_contact_person: string | null
@@ -3486,6 +3491,8 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          approval_decided_at?: string | null
+          approval_decided_by?: string | null
           approved_by?: string | null
           authorized_by?: string | null
           billing_address?: string | null
@@ -3506,12 +3513,15 @@ export type Database = {
           payment_terms?: string | null
           po_id?: number
           po_number?: string | null
+          rejection_reason?: string | null
           shipping_address?: string | null
           shipping_charges?: number | null
           shipping_method?: string | null
           special_instructions?: string | null
           status?: string | null
           store_id?: string | null
+          submitted_at?: string | null
+          submitted_by?: string | null
           subtotal?: number | null
           supplier?: string | null
           supplier_contact_person?: string | null
@@ -3522,6 +3532,8 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          approval_decided_at?: string | null
+          approval_decided_by?: string | null
           approved_by?: string | null
           authorized_by?: string | null
           billing_address?: string | null
@@ -3542,12 +3554,15 @@ export type Database = {
           payment_terms?: string | null
           po_id?: number
           po_number?: string | null
+          rejection_reason?: string | null
           shipping_address?: string | null
           shipping_charges?: number | null
           shipping_method?: string | null
           special_instructions?: string | null
           status?: string | null
           store_id?: string | null
+          submitted_at?: string | null
+          submitted_by?: string | null
           subtotal?: number | null
           supplier?: string | null
           supplier_contact_person?: string | null
@@ -4833,6 +4848,8 @@ export type Database = {
       }
       transfers: {
         Row: {
+          approval_decided_at: string | null
+          approval_decided_by: string | null
           approved_at: string | null
           approved_by: string | null
           created_at: string | null
@@ -4841,11 +4858,14 @@ export type Database = {
           reason: string | null
           received_at: string | null
           received_by: string | null
+          rejection_reason: string | null
           request_date: string | null
           requested_by: string | null
           shipped_at: string | null
           shipped_by: string | null
           status: string | null
+          submitted_at: string | null
+          submitted_by: string | null
           to_store_id: string
           total_items: number | null
           transfer_date: string | null
@@ -4853,6 +4873,8 @@ export type Database = {
           transfer_number: string | null
         }
         Insert: {
+          approval_decided_at?: string | null
+          approval_decided_by?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
@@ -4861,11 +4883,14 @@ export type Database = {
           reason?: string | null
           received_at?: string | null
           received_by?: string | null
+          rejection_reason?: string | null
           request_date?: string | null
           requested_by?: string | null
           shipped_at?: string | null
           shipped_by?: string | null
           status?: string | null
+          submitted_at?: string | null
+          submitted_by?: string | null
           to_store_id: string
           total_items?: number | null
           transfer_date?: string | null
@@ -4873,6 +4898,8 @@ export type Database = {
           transfer_number?: string | null
         }
         Update: {
+          approval_decided_at?: string | null
+          approval_decided_by?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
@@ -4881,11 +4908,14 @@ export type Database = {
           reason?: string | null
           received_at?: string | null
           received_by?: string | null
+          rejection_reason?: string | null
           request_date?: string | null
           requested_by?: string | null
           shipped_at?: string | null
           shipped_by?: string | null
           status?: string | null
+          submitted_at?: string | null
+          submitted_by?: string | null
           to_store_id?: string
           total_items?: number | null
           transfer_date?: string | null

@@ -25,12 +25,15 @@ import {
   Truck,
   ReceiptText,
   Cog,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { usePendingApprovals } from "@/hooks/useApprovals";
+import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -40,6 +43,7 @@ interface NavItem {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  badgeCount?: number;
 }
 
 interface NavGroup {
@@ -57,7 +61,9 @@ const Layout = ({ children }: LayoutProps) => {
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
   const { t } = useTranslation();
-  
+  const { data: pendingApprovals = [] } = usePendingApprovals();
+  const pendingCount = isAdmin ? pendingApprovals.length : 0;
+
   // Track which groups are open
   const [openGroups, setOpenGroups] = useState<string[]>(["Sales & CRM", "Inventory", "Accounting", "Reports"]);
 
@@ -73,6 +79,9 @@ const Layout = ({ children }: LayoutProps) => {
   const standaloneItems: NavItem[] = [
     { name: t('common.dashboard'), href: "/", icon: LayoutDashboard },
     { name: t('common.pos'), href: "/pos", icon: Receipt },
+    ...(isAdmin
+      ? [{ name: "Approvals", href: "/approvals", icon: ShieldCheck, badgeCount: pendingCount }]
+      : []),
   ];
 
   // Grouped navigation
@@ -171,7 +180,10 @@ const Layout = ({ children }: LayoutProps) => {
                   )}
                 >
                   <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.name}</span>
+                  <span className="font-medium flex-1">{item.name}</span>
+                  {item.badgeCount && item.badgeCount > 0 ? (
+                    <Badge variant="destructive" className="ml-auto">{item.badgeCount}</Badge>
+                  ) : null}
                 </Link>
               );
             })}
