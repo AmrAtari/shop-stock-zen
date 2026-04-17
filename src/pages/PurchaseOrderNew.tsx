@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { Item, Supplier } from "@/types/database";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { formatCurrency } from "@/lib/formatters";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const poSchema = z.object({
   supplier: z.string().min(1, "Supplier is required"),
@@ -69,6 +70,7 @@ const PurchaseOrderNew = () => {
   const queryClient = useQueryClient();
   const { settings } = useSystemSettings();
   const systemCurrency = settings?.currency || "USD";
+  const { isAdmin } = useUserRole();
   const { data: suppliers = [] } = useSuppliers();
   const { data: stores = [] } = useStores();
   const { data: inventory = [] } = useQuery<Item[]>({
@@ -333,8 +335,11 @@ const PurchaseOrderNew = () => {
         shipping_charges: data.shippingCharges,
         total_cost: grandTotal,
         total_items: poItems.reduce((sum, item) => sum + item.quantity, 0),
-        status: "draft",
+        // Non-admin users go through the approval queue. Admins create as draft.
+        status: isAdmin ? "draft" : "awaiting_approval",
         authorized_by: user?.id,
+        submitted_by: isAdmin ? null : user?.id,
+        submitted_at: isAdmin ? null : new Date().toISOString(),
       };
 
       // Create purchase order and retrieve the inserted row's po_id
@@ -380,7 +385,11 @@ const PurchaseOrderNew = () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.metrics });
 
-      toast.success(`Purchase Order ${poNumber} created successfully`);
+      toast.success(
+        isAdmin
+          ? `Purchase Order ${poNumber} created successfully`
+          : `Purchase Order ${poNumber} submitted for admin approval`,
+      );
       navigate("/purchase-orders");
     } catch (error: any) {
       console.error("PO creation error:", error);
