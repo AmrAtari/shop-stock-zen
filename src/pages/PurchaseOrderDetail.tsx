@@ -122,10 +122,25 @@ const PurchaseOrderDetail = () => {
 
   const handleApprove = async () => {
     try {
-      await updateStatusMutation.mutateAsync("approved");
+      // If awaiting_approval → release into normal pending flow.
+      // If pending → approved.
+      const next = po.status === "awaiting_approval" ? "pending" : "approved";
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({
+          status: next,
+          approval_decided_by: user?.id,
+          approval_decided_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      queryClient.invalidateQueries({ queryKey: ["approvals", "pending"] });
       toast({
         title: "PO Approved",
-        description: "Purchase order has been approved.",
+        description: `Purchase order moved to ${next}.`,
       });
     } catch (error) {
       toast({
@@ -138,7 +153,20 @@ const PurchaseOrderDetail = () => {
 
   const handleReject = async () => {
     try {
-      await updateStatusMutation.mutateAsync("cancelled");
+      const next = po.status === "awaiting_approval" ? "rejected" : "cancelled";
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({
+          status: next,
+          approval_decided_by: user?.id,
+          approval_decided_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.detail(id!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders.all });
+      queryClient.invalidateQueries({ queryKey: ["approvals", "pending"] });
       toast({
         title: "PO Rejected",
         description: "Purchase order has been rejected.",
@@ -270,8 +298,10 @@ const PurchaseOrderDetail = () => {
         return "success";
       case "pending":
       case "draft":
+      case "awaiting_approval":
         return "warning";
       case "cancelled":
+      case "rejected":
         return "destructive";
       default:
         return "default";
@@ -299,6 +329,18 @@ const PurchaseOrderDetail = () => {
             <Download className="mr-2 h-4 w-4" />
             Export Excel
           </Button>
+          {po.status === "awaiting_approval" && isAdmin && (
+            <>
+              <Button onClick={handleApprove} variant="default">
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Approve
+              </Button>
+              <Button onClick={handleReject} variant="destructive">
+                <XCircle className="mr-2 h-4 w-4" />
+                Reject
+              </Button>
+            </>
+          )}
           {po.status === "draft" && (
             <>
               {/* Added Edit button */}
