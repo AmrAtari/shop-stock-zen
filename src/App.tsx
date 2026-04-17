@@ -27,6 +27,7 @@ import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
+import ApprovalsPage from "./pages/ApprovalsPage";
 
 // Accounting Components
 import AccountingDashboard from "./pages/accounting/AccountingDashboard";
@@ -175,8 +176,16 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
-
-              {/* Inventory Management Routes */}
+              <Route
+                path="/approvals"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <ApprovalsPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/inventory"
                 element={
