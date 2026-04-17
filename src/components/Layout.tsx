@@ -180,7 +180,10 @@ const Layout = ({ children }: LayoutProps) => {
                   )}
                 >
                   <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.name}</span>
+                  <span className="font-medium flex-1">{item.name}</span>
+                  {item.badgeCount && item.badgeCount > 0 ? (
+                    <Badge variant="destructive" className="ml-auto">{item.badgeCount}</Badge>
+                  ) : null}
                 </Link>
               );
             })}
