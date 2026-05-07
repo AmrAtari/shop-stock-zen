@@ -1056,6 +1056,240 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_products: {
+        Row: {
+          attribute_filters: Json | null
+          brand_id: string | null
+          campaign_id: string
+          category_id: string | null
+          created_at: string
+          id: string
+          product_id: string | null
+        }
+        Insert: {
+          attribute_filters?: Json | null
+          brand_id?: string | null
+          campaign_id: string
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          product_id?: string | null
+        }
+        Update: {
+          attribute_filters?: Json | null
+          brand_id?: string | null
+          campaign_id?: string
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          product_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_products_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaign_rules: {
+        Row: {
+          action_type: string | null
+          action_value: Json | null
+          campaign_id: string
+          condition_group: number
+          created_at: string
+          field_name: string
+          field_value: Json | null
+          id: string
+          logical_operator: string
+          operator: string
+          sort_order: number
+        }
+        Insert: {
+          action_type?: string | null
+          action_value?: Json | null
+          campaign_id: string
+          condition_group?: number
+          created_at?: string
+          field_name: string
+          field_value?: Json | null
+          id?: string
+          logical_operator?: string
+          operator: string
+          sort_order?: number
+        }
+        Update: {
+          action_type?: string | null
+          action_value?: Json | null
+          campaign_id?: string
+          condition_group?: number
+          created_at?: string
+          field_name?: string
+          field_value?: Json | null
+          id?: string
+          logical_operator?: string
+          operator?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_rules_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaign_usage: {
+        Row: {
+          campaign_id: string
+          customer_id: number | null
+          discount_amount: number
+          id: string
+          salesperson_id: string | null
+          source_id: string
+          source_type: string
+          transaction_total: number
+          used_at: string
+        }
+        Insert: {
+          campaign_id: string
+          customer_id?: number | null
+          discount_amount?: number
+          id?: string
+          salesperson_id?: string | null
+          source_id: string
+          source_type?: string
+          transaction_total?: number
+          used_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          customer_id?: number | null
+          discount_amount?: number
+          id?: string
+          salesperson_id?: string | null
+          source_id?: string
+          source_type?: string
+          transaction_total?: number
+          used_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_usage_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          applies_to_scope: string
+          auto_apply: boolean
+          campaign_budget: number | null
+          can_combine: boolean
+          code: string
+          consumed_budget: number
+          cost_center: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          discount_account_code: string | null
+          discount_method: Database["public"]["Enums"]["discount_method"]
+          discount_value: number
+          end_date: string | null
+          id: string
+          internal_notes: string | null
+          max_discount_amount: number | null
+          max_discount_percentage: number | null
+          minimum_quantity: number | null
+          minimum_quotation_value: number | null
+          name: string
+          priority: number
+          requires_approval: boolean
+          start_date: string | null
+          status: Database["public"]["Enums"]["campaign_status"]
+          tier_config: Json | null
+          type: Database["public"]["Enums"]["campaign_type"]
+          updated_at: string
+          usage_count: number
+          usage_limit: number | null
+          usage_per_client: number | null
+        }
+        Insert: {
+          applies_to_scope?: string
+          auto_apply?: boolean
+          campaign_budget?: number | null
+          can_combine?: boolean
+          code: string
+          consumed_budget?: number
+          cost_center?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_account_code?: string | null
+          discount_method?: Database["public"]["Enums"]["discount_method"]
+          discount_value?: number
+          end_date?: string | null
+          id?: string
+          internal_notes?: string | null
+          max_discount_amount?: number | null
+          max_discount_percentage?: number | null
+          minimum_quantity?: number | null
+          minimum_quotation_value?: number | null
+          name: string
+          priority?: number
+          requires_approval?: boolean
+          start_date?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          tier_config?: Json | null
+          type?: Database["public"]["Enums"]["campaign_type"]
+          updated_at?: string
+          usage_count?: number
+          usage_limit?: number | null
+          usage_per_client?: number | null
+        }
+        Update: {
+          applies_to_scope?: string
+          auto_apply?: boolean
+          campaign_budget?: number | null
+          can_combine?: boolean
+          code?: string
+          consumed_budget?: number
+          cost_center?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_account_code?: string | null
+          discount_method?: Database["public"]["Enums"]["discount_method"]
+          discount_value?: number
+          end_date?: string | null
+          id?: string
+          internal_notes?: string | null
+          max_discount_amount?: number | null
+          max_discount_percentage?: number | null
+          minimum_quantity?: number | null
+          minimum_quotation_value?: number | null
+          name?: string
+          priority?: number
+          requires_approval?: boolean
+          start_date?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          tier_config?: Json | null
+          type?: Database["public"]["Enums"]["campaign_type"]
+          updated_at?: string
+          usage_count?: number
+          usage_limit?: number | null
+          usage_per_client?: number | null
+        }
+        Relationships: []
+      }
       cash_sessions: {
         Row: {
           cashier_id: string | null
@@ -1556,6 +1790,65 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      discount_approvals: {
+        Row: {
+          approved_by: string | null
+          campaign_id: string | null
+          comment: string | null
+          created_at: string
+          discount_amount: number
+          final_amount: number
+          id: string
+          margin_impact: number | null
+          original_amount: number
+          requested_by: string | null
+          source_id: string
+          source_type: string
+          status: Database["public"]["Enums"]["approval_status"]
+          updated_at: string
+        }
+        Insert: {
+          approved_by?: string | null
+          campaign_id?: string | null
+          comment?: string | null
+          created_at?: string
+          discount_amount?: number
+          final_amount?: number
+          id?: string
+          margin_impact?: number | null
+          original_amount?: number
+          requested_by?: string | null
+          source_id: string
+          source_type?: string
+          status?: Database["public"]["Enums"]["approval_status"]
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string | null
+          campaign_id?: string | null
+          comment?: string | null
+          created_at?: string
+          discount_amount?: number
+          final_amount?: number
+          id?: string
+          margin_impact?: number | null
+          original_amount?: number
+          requested_by?: string | null
+          source_id?: string
+          source_type?: string
+          status?: Database["public"]["Enums"]["approval_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discount_approvals_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       document_attachments: {
         Row: {
@@ -4625,6 +4918,62 @@ export type Database = {
         }
         Relationships: []
       }
+      transaction_discounts: {
+        Row: {
+          applied_to: string | null
+          approval_comment: string | null
+          approval_status: Database["public"]["Enums"]["approval_status"]
+          approved_by: string | null
+          campaign_id: string | null
+          created_at: string
+          created_by: string | null
+          discount_amount: number
+          discount_type: string
+          discount_value: number
+          id: string
+          source_id: string
+          source_type: string
+        }
+        Insert: {
+          applied_to?: string | null
+          approval_comment?: string | null
+          approval_status?: Database["public"]["Enums"]["approval_status"]
+          approved_by?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          discount_amount?: number
+          discount_type: string
+          discount_value?: number
+          id?: string
+          source_id: string
+          source_type?: string
+        }
+        Update: {
+          applied_to?: string | null
+          approval_comment?: string | null
+          approval_status?: Database["public"]["Enums"]["approval_status"]
+          approved_by?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          discount_amount?: number
+          discount_type?: string
+          discount_value?: number
+          id?: string
+          source_id?: string
+          source_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_discounts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           amount: number
@@ -6310,6 +6659,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user" | "supervisor" | "inventory_man" | "cashier"
+      approval_status: "not_required" | "pending" | "approved" | "rejected"
       bank_account_type:
         | "checking"
         | "savings"
@@ -6317,6 +6667,35 @@ export type Database = {
         | "money_market"
         | "current"
         | "fixed_deposit"
+      campaign_status:
+        | "draft"
+        | "scheduled"
+        | "active"
+        | "paused"
+        | "expired"
+        | "cancelled"
+      campaign_type:
+        | "general"
+        | "seasonal"
+        | "client_specific"
+        | "project_based"
+        | "category"
+        | "brand"
+        | "quantity_based"
+        | "bundle"
+        | "clearance"
+        | "special_approval"
+      discount_method:
+        | "fixed"
+        | "percentage"
+        | "category"
+        | "brand"
+        | "attribute"
+        | "quantity_tier"
+        | "value_tier"
+        | "bundle"
+        | "client_specific"
+        | "manual_approval"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -6445,6 +6824,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user", "supervisor", "inventory_man", "cashier"],
+      approval_status: ["not_required", "pending", "approved", "rejected"],
       bank_account_type: [
         "checking",
         "savings",
@@ -6452,6 +6832,38 @@ export const Constants = {
         "money_market",
         "current",
         "fixed_deposit",
+      ],
+      campaign_status: [
+        "draft",
+        "scheduled",
+        "active",
+        "paused",
+        "expired",
+        "cancelled",
+      ],
+      campaign_type: [
+        "general",
+        "seasonal",
+        "client_specific",
+        "project_based",
+        "category",
+        "brand",
+        "quantity_based",
+        "bundle",
+        "clearance",
+        "special_approval",
+      ],
+      discount_method: [
+        "fixed",
+        "percentage",
+        "category",
+        "brand",
+        "attribute",
+        "quantity_tier",
+        "value_tier",
+        "bundle",
+        "client_specific",
+        "manual_approval",
       ],
     },
   },

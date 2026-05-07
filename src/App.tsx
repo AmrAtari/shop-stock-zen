@@ -28,6 +28,8 @@ import NotFound from "./pages/NotFound";
 import AIReports from "./pages/AIReports";
 import InventoryRecalculate from "./pages/InventoryRecalculate";
 import ApprovalsPage from "./pages/ApprovalsPage";
+import CampaignsList from "./pages/campaigns/CampaignsList";
+import CampaignForm from "./pages/campaigns/CampaignForm";
 
 // Accounting Components
 import AccountingDashboard from "./pages/accounting/AccountingDashboard";
@@ -186,6 +188,10 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route path="/campaigns" element={<ProtectedRoute><Layout><CampaignsList /></Layout></ProtectedRoute>} />
+              <Route path="/campaigns/new" element={<ProtectedRoute><Layout><CampaignForm /></Layout></ProtectedRoute>} />
+              <Route path="/campaigns/:id" element={<ProtectedRoute><Layout><CampaignForm readOnly /></Layout></ProtectedRoute>} />
+              <Route path="/campaigns/:id/edit" element={<ProtectedRoute><Layout><CampaignForm /></Layout></ProtectedRoute>} />
               <Route
                 path="/inventory"
                 element={
