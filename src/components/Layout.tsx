@@ -26,6 +26,7 @@ import {
   ReceiptText,
   Cog,
   ShieldCheck,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -92,6 +93,7 @@ const Layout = ({ children }: LayoutProps) => {
       items: [
         { name: "Customers", href: "/crm/customers", icon: Users },
         { name: "Sales Orders", href: "/sales/orders", icon: FileText },
+        { name: "Campaigns", href: "/campaigns", icon: Megaphone },
       ],
     },
     {
