@@ -30,6 +30,8 @@ import InventoryRecalculate from "./pages/InventoryRecalculate";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import CampaignsList from "./pages/campaigns/CampaignsList";
 import CampaignForm from "./pages/campaigns/CampaignForm";
+import CampaignsDashboard from "./pages/campaigns/CampaignsDashboard";
+import CampaignApprovals from "./pages/campaigns/CampaignApprovals";
 
 // Accounting Components
 import AccountingDashboard from "./pages/accounting/AccountingDashboard";
@@ -192,6 +194,8 @@ const App = () => {
               <Route path="/campaigns/new" element={<ProtectedRoute><Layout><CampaignForm /></Layout></ProtectedRoute>} />
               <Route path="/campaigns/:id" element={<ProtectedRoute><Layout><CampaignForm readOnly /></Layout></ProtectedRoute>} />
               <Route path="/campaigns/:id/edit" element={<ProtectedRoute><Layout><CampaignForm /></Layout></ProtectedRoute>} />
+              <Route path="/campaigns-dashboard" element={<ProtectedRoute><Layout><CampaignsDashboard /></Layout></ProtectedRoute>} />
+              <Route path="/campaigns-approvals" element={<ProtectedRoute><Layout><CampaignApprovals /></Layout></ProtectedRoute>} />
               <Route
                 path="/inventory"
                 element={
