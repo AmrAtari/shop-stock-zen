@@ -234,6 +234,14 @@ export const POSPaymentDialog = ({
         </DialogHeader>
 
         <div className="space-y-4">
+          {campaignContext && (
+            <CampaignDiscountPanel
+              ctx={{ ...campaignContext, subtotal: campaignContext.subtotal ?? totalAmount }}
+              applied={appliedCampaign}
+              onApply={(a) => { setAppliedCampaign(a); onCampaignApplied?.(a); }}
+              draft
+            />
+          )}
           <div className="flex justify-between font-bold text-xl text-green-600">
             <span>Remaining Due:</span>
             <span>{formatCurrency(remainingDue)}</span>
