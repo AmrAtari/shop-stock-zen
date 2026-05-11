@@ -26,6 +26,8 @@ import { useCustomers } from "@/hooks/useCustomers";
 import { useStores } from "@/hooks/usePurchaseOrders";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { supabase } from "@/integrations/supabase/client";
+import CampaignDiscountPanel from "@/components/campaigns/CampaignDiscountPanel";
+import type { ApplicableCampaign } from "@/hooks/useCampaignEngine";
 
 interface OrderItem extends Partial<SalesOrderItem> {
   tempId: string;
@@ -51,6 +53,7 @@ export default function SalesOrderNew() {
 
   const [items, setItems] = useState<OrderItem[]>([]);
   const [newItemSku, setNewItemSku] = useState("");
+  const [appliedCampaign, setAppliedCampaign] = useState<ApplicableCampaign | null>(null);
 
   const addItem = async () => {
     if (!newItemSku.trim()) return;
@@ -106,7 +109,8 @@ export default function SalesOrderNew() {
       sum + ((item.line_total || 0) * (item.tax_rate || 0)) / 100,
     0
   );
-  const total = subtotal + taxAmount;
+  const campaignDiscount = appliedCampaign?.discount_amount ?? 0;
+  const total = Math.max(0, subtotal + taxAmount - campaignDiscount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,11 +126,37 @@ export default function SalesOrderNew() {
       billing_address: formData.billing_address || null,
       notes: formData.notes || null,
       subtotal,
+      discount_amount: campaignDiscount,
       tax_amount: taxAmount,
       total_amount: total,
       status: "draft",
       items: items.map(({ tempId, ...item }) => item),
     });
+
+    if (appliedCampaign) {
+      try {
+        const { recordCampaignDiscount } = await import("@/hooks/useCampaignEngine");
+        const { data: u } = await supabase.auth.getUser();
+        await recordCampaignDiscount({
+          campaign: appliedCampaign.campaign,
+          discount_amount: campaignDiscount,
+          ctx: {
+            source: "sales_order",
+            store_id: formData.store_id || null,
+            customer_id: formData.customer_id ? parseInt(formData.customer_id) : null,
+            subtotal,
+            total_quantity: items.reduce((s, i) => s + (i.quantity || 0), 0),
+            lines: items.map((i) => ({
+              item_id: (i as any).item_id ?? null,
+              quantity: i.quantity || 0,
+              unit_price: i.unit_price || 0,
+              line_total: i.line_total || 0,
+            })),
+          },
+          user_id: u?.user?.id ?? null,
+        });
+      } catch { /* non-blocking */ }
+    }
 
     navigate("/sales/orders");
   };
@@ -381,6 +411,12 @@ export default function SalesOrderNew() {
                   <span>Tax:</span>
                   <span>{formatCurrency(taxAmount)}</span>
                 </div>
+                {campaignDiscount > 0 && (
+                  <div className="flex justify-between text-primary">
+                    <span>Campaign Discount:</span>
+                    <span>-{formatCurrency(campaignDiscount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
                   <span>Total:</span>
                   <span>{formatCurrency(total)}</span>
@@ -389,6 +425,27 @@ export default function SalesOrderNew() {
             </div>
           </CardContent>
         </Card>
+
+        {items.length > 0 && (
+          <CampaignDiscountPanel
+            ctx={{
+              source: "sales_order",
+              store_id: formData.store_id || null,
+              customer_id: formData.customer_id ? parseInt(formData.customer_id) : null,
+              subtotal,
+              total_quantity: items.reduce((s, i) => s + (i.quantity || 0), 0),
+              lines: items.map((i) => ({
+                item_id: (i as any).item_id ?? null,
+                quantity: i.quantity || 0,
+                unit_price: i.unit_price || 0,
+                line_total: i.line_total || 0,
+              })),
+            }}
+            applied={appliedCampaign}
+            onApply={setAppliedCampaign}
+            draft
+          />
+        )}
 
         <div className="flex justify-end gap-4">
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>
