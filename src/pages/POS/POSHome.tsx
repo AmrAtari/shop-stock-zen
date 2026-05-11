@@ -816,6 +816,19 @@ const POSHome = () => {
         onPaymentComplete={handlePaymentComplete}
         customer={selectedCustomer}
         loyaltySettings={loyaltySettings}
+        campaignContext={{
+          source: "pos",
+          store_id: storeId,
+          customer_id: selectedCustomer?.id ?? null,
+          subtotal,
+          total_quantity: cart.reduce((s, i) => s + i.cartQuantity, 0),
+          lines: cart.map((i) => ({
+            item_id: i.id,
+            quantity: i.cartQuantity,
+            unit_price: i.price,
+            line_total: i.price * i.cartQuantity,
+          })),
+        }}
       />
 
       {lastTransaction && (
