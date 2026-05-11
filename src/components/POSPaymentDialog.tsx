@@ -15,6 +15,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { POSCustomer } from "@/pages/POS/POSContext";
+import CampaignDiscountPanel from "@/components/campaigns/CampaignDiscountPanel";
+import type { ApplicableCampaign, CampaignContext } from "@/hooks/useCampaignEngine";
 
 // Extended Payment type with loyalty, gift card, store credit
 export type PaymentMethod = "cash" | "card" | "loyalty" | "gift_card" | "store_credit";
@@ -38,6 +40,9 @@ interface POSPaymentDialogProps {
     minRedeemPoints: number;
   };
   onLoyaltyPointsUsed?: (points: number) => void;
+  /** Optional campaign context for discount panel */
+  campaignContext?: Omit<CampaignContext, "subtotal"> & { subtotal?: number };
+  onCampaignApplied?: (a: ApplicableCampaign | null) => void;
 }
 
 export const POSPaymentDialog = ({ 
@@ -48,6 +53,8 @@ export const POSPaymentDialog = ({
   customer,
   loyaltySettings,
   onLoyaltyPointsUsed,
+  campaignContext,
+  onCampaignApplied,
 }: POSPaymentDialogProps) => {
   const { formatCurrency } = useSystemSettings();
   const [currentMethod, setCurrentMethod] = useState<PaymentMethod>("cash");
@@ -56,6 +63,9 @@ export const POSPaymentDialog = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [giftCardNumber, setGiftCardNumber] = useState("");
   const [loyaltyPointsToUse, setLoyaltyPointsToUse] = useState(0);
+  const [appliedCampaign, setAppliedCampaign] = useState<ApplicableCampaign | null>(null);
+  const campaignDiscount = appliedCampaign?.discount_amount ?? 0;
+  const effectiveTotal = Math.max(0, totalAmount - campaignDiscount);
 
   // Customer loyalty data
   const availableLoyaltyPoints = customer?.loyalty_points || 0;
@@ -74,7 +84,7 @@ export const POSPaymentDialog = ({
 
   // --- Calculations ---
   const totalPaid = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
-  const remainingDue = useMemo(() => Math.max(0, totalAmount - totalPaid), [totalAmount, totalPaid]);
+  const remainingDue = useMemo(() => Math.max(0, effectiveTotal - totalPaid), [effectiveTotal, totalPaid]);
   
   // Cash change calculation
   const change = useMemo(() => {
@@ -153,9 +163,9 @@ export const POSPaymentDialog = ({
     // Handle case where payment is entered but not added
     if (finalPayments.length === 0 && (parseFloat(currentAmount) || 0) > 0) {
       const amount = parseFloat(currentAmount) || 0;
-      const paid = currentMethod === "cash" ? amount : Math.min(amount, totalAmount);
+      const paid = currentMethod === "cash" ? amount : Math.min(amount, effectiveTotal);
       finalPayments = [{ method: currentMethod, amount: paid }];
-      finalChangeDue = currentMethod === "cash" ? Math.max(0, amount - totalAmount) : 0;
+      finalChangeDue = currentMethod === "cash" ? Math.max(0, amount - effectiveTotal) : 0;
     }
 
     // Calculate loyalty points used
@@ -209,7 +219,12 @@ export const POSPaymentDialog = ({
         <DialogHeader>
           <DialogTitle>Complete Transaction</DialogTitle>
           <DialogDescription>
-            Total Due: <span className="font-bold text-lg">{formatCurrency(totalAmount)}</span>
+            Total Due: <span className="font-bold text-lg">{formatCurrency(effectiveTotal)}</span>
+            {campaignDiscount > 0 && (
+              <span className="ml-2 text-xs text-primary">
+                (campaign: -{formatCurrency(campaignDiscount)})
+              </span>
+            )}
             {customer && (
               <span className="ml-2 text-xs text-muted-foreground">
                 Customer: {customer.name}
