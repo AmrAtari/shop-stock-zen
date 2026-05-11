@@ -94,6 +94,8 @@ const Layout = ({ children }: LayoutProps) => {
         { name: "Customers", href: "/crm/customers", icon: Users },
         { name: "Sales Orders", href: "/sales/orders", icon: FileText },
         { name: "Campaigns", href: "/campaigns", icon: Megaphone },
+        { name: "Campaigns Dashboard", href: "/campaigns-dashboard", icon: Megaphone },
+        { name: "Discount Approvals", href: "/campaigns-approvals", icon: Megaphone },
       ],
     },
     {
