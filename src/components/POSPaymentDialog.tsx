@@ -195,6 +195,7 @@ export const POSPaymentDialog = ({
     setIsProcessing(false);
     setGiftCardNumber("");
     setLoyaltyPointsToUse(0);
+    setAppliedCampaign(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
