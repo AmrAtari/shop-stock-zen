@@ -11,6 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCampaign, useUpsertCampaign, type Campaign } from "@/hooks/useCampaigns";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
+import RuleBuilder from "@/components/campaigns/RuleBuilder";
+import EligibilityPicker from "@/components/campaigns/EligibilityPicker";
 
 const empty: Partial<Campaign> = {
   name: "", code: "", description: "", type: "general", status: "draft", priority: 0,
@@ -67,6 +69,8 @@ export default function CampaignForm({ readOnly = false }: { readOnly?: boolean 
           <TabsTrigger value="basic">Basic Info</TabsTrigger>
           <TabsTrigger value="discount">Discount</TabsTrigger>
           <TabsTrigger value="limits">Limits & Budget</TabsTrigger>
+          <TabsTrigger value="rules" disabled={!id}>Rules</TabsTrigger>
+          <TabsTrigger value="eligibility" disabled={!id}>Eligibility</TabsTrigger>
           <TabsTrigger value="erp">ERP Controls</TabsTrigger>
         </TabsList>
 
@@ -185,6 +189,26 @@ export default function CampaignForm({ readOnly = false }: { readOnly?: boolean 
               <Field label="Cost Center">
                 <Input disabled={readOnly} value={form.cost_center ?? ""} onChange={(e)=>set("cost_center", e.target.value)} />
               </Field>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="rules">
+          <Card>
+            <CardHeader><CardTitle>Rule Builder</CardTitle></CardHeader>
+            <CardContent>
+              {id ? <RuleBuilder campaignId={id} readOnly={readOnly} /> :
+                <p className="text-sm text-muted-foreground">Save the campaign first to add rules.</p>}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="eligibility">
+          <Card>
+            <CardHeader><CardTitle>Product / Category / Brand Eligibility</CardTitle></CardHeader>
+            <CardContent>
+              {id ? <EligibilityPicker campaignId={id} readOnly={readOnly} /> :
+                <p className="text-sm text-muted-foreground">Save the campaign first to set eligibility.</p>}
             </CardContent>
           </Card>
         </TabsContent>
