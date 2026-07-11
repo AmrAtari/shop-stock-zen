@@ -42,10 +42,26 @@ serve(async (req) => {
   }
 
   try {
-    const { question } = await req.json();
-
-    if (!question?.trim()) {
-      return new Response(JSON.stringify({ error: "Question is required" }), {
+    let body: unknown;
+    try { body = await req.json(); } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const raw = (body as any)?.question;
+    if (typeof raw !== "string") {
+      return new Response(JSON.stringify({ error: "'question' must be a string" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const question = raw.trim();
+    if (question.length < 3 || question.length > 1000) {
+      return new Response(JSON.stringify({ error: "Question must be 3-1000 characters" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(question)) {
+      return new Response(JSON.stringify({ error: "Question contains invalid control characters" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

@@ -11,13 +11,19 @@ serve(async (req) => {
   }
 
   try {
-    const { spreadsheetId, sheetName = 'Sheet1' } = await req.json();
-
-    if (!spreadsheetId) {
-      return new Response(
-        JSON.stringify({ error: 'Spreadsheet ID is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let body: any;
+    try { body = await req.json(); } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { spreadsheetId, sheetName = 'Sheet1' } = body ?? {};
+    if (typeof spreadsheetId !== 'string' || !/^[a-zA-Z0-9_-]{20,100}$/.test(spreadsheetId)) {
+      return new Response(JSON.stringify({ error: 'Invalid spreadsheetId format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (typeof sheetName !== 'string' || sheetName.length === 0 || sheetName.length > 100 || !/^[a-zA-Z0-9 _\-]+$/.test(sheetName)) {
+      return new Response(JSON.stringify({ error: 'Invalid sheetName' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const apiKey = Deno.env.get('GOOGLE_SHEETS_API_KEY');
