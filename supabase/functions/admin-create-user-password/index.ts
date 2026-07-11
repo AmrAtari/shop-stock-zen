@@ -13,13 +13,32 @@ serve(async (req) => {
   }
 
   try {
-    console.log("Creating user with username and password...");
-    const { username, password, role, storeId } = await req.json();
-    console.log("Received data:", { username, role, storeId });
-
-    // Validate inputs
-    if (!username || !password || !role) {
-      throw new Error("Username, password, and role are required");
+    let body: any;
+    try { body = await req.json(); } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400,
+      });
+    }
+    const { username, password, role, storeId } = body ?? {};
+    const ALLOWED_ROLES = ["admin", "supervisor", "inventory_man", "cashier"];
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const errors: string[] = [];
+    if (typeof username !== "string" || !/^[a-zA-Z0-9_.-]{3,50}$/.test(username.trim())) {
+      errors.push("username must be 3-50 chars (letters, numbers, _ . -)");
+    }
+    if (typeof password !== "string" || password.length < 8 || password.length > 128) {
+      errors.push("password must be 8-128 characters");
+    }
+    if (typeof role !== "string" || !ALLOWED_ROLES.includes(role)) {
+      errors.push(`role must be one of: ${ALLOWED_ROLES.join(", ")}`);
+    }
+    if (storeId !== undefined && storeId !== null && storeId !== "" && !(typeof storeId === "string" && UUID_RE.test(storeId))) {
+      errors.push("storeId must be a valid UUID");
+    }
+    if (errors.length) {
+      return new Response(JSON.stringify({ error: errors.join("; ") }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400,
+      });
     }
 
     const supabaseAdmin = createClient(
