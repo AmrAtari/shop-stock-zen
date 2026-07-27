@@ -18,7 +18,7 @@ interface UserRoleAccess {
 const Auth = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const { t } = useTranslation();
 
@@ -34,6 +34,12 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
+      // Allow login with username or email
+      const trimmed = identifier.trim();
+      const email = trimmed.includes("@")
+        ? trimmed
+        : `${trimmed.toLowerCase().replace(/\s+/g, "")}@internal.system`;
+
       // 1️⃣ Sign in
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -118,13 +124,14 @@ const Auth = () => {
           <CardContent>
             <form onSubmit={handleSignIn} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">{t("common.email")}</Label>
+                <Label htmlFor="identifier">Username or Email</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder={t("auth.emailPlaceholder")}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="identifier"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="username or you@example.com"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
                 />
               </div>
