@@ -26,8 +26,8 @@ serve(async (req) => {
     if (typeof username !== "string" || !/^[a-zA-Z0-9_.-]{3,50}$/.test(username.trim())) {
       errors.push("username must be 3-50 chars (letters, numbers, _ . -)");
     }
-    if (typeof password !== "string" || password.length < 8 || password.length > 128) {
-      errors.push("password must be 8-128 characters");
+    if (typeof password !== "string" || password.length < 6 || password.length > 128) {
+      errors.push("password must be 6-128 characters");
     }
     if (typeof role !== "string" || !ALLOWED_ROLES.includes(role)) {
       errors.push(`role must be one of: ${ALLOWED_ROLES.join(", ")}`);
